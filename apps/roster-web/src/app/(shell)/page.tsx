@@ -96,10 +96,13 @@ export default function BenchForecastPage() {
     onEscape: () => setSelectedId(undefined),
   });
 
+  // F36: the total counts only bench regions beginning inside the cost horizon,
+  // and says so, because a figure that silently means something narrower than
+  // the window on screen is the kind of number this product cannot afford.
   const benchedCopy =
     forecast.benchedCount === 0
       ? `Nobody is on the bench in the next ${horizon} days`
-      : `${forecast.benchedCount} of ${forecast.cohortSize} people have bench time · ${formatMoney(forecast.totalBenchCost)} unrecovered`;
+      : `${forecast.benchedCount} of ${forecast.cohortSize} people have bench time · ${formatMoney(forecast.totalBenchCost)} unrecovered in the next ${forecast.costHorizonDays} days`;
 
   return (
     <>
@@ -181,13 +184,15 @@ export default function BenchForecastPage() {
               onSelectRow={setSelectedId}
               scrollToTodayNonce={todayNonce}
             />
-            <div className="mt-2 flex items-center gap-2">
+            <div className="mt-2 flex items-start gap-2">
               <Badge tone="attention">Amber</Badge>
               <Text variant="small" className="text-text-secondary">
-                Bench time. The figure is unrecovered salary cost across the
-                gap, counted in working days from each person&rsquo;s own
+                Bench time, counted in working days from each person&rsquo;s own
                 calendar — a Karachi Saturday counts as half a day, a London
-                Saturday not at all.
+                Saturday not at all. A gap beginning within{" "}
+                {forecast.costHorizonDays} days carries its unrecovered cost;
+                beyond that it shows days only, because being unassigned five
+                months out is a plan rather than a loss.
               </Text>
             </div>
           </div>

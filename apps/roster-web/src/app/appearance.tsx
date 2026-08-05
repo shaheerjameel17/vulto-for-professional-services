@@ -23,6 +23,8 @@ import {
   type ReactNode,
 } from "react";
 import type {
+  BarFill,
+  BenchFill,
   Density,
   ResolvedTheme,
   ThemePreference,
@@ -32,8 +34,14 @@ type AppearanceValue = {
   theme: ThemePreference;
   resolvedTheme: ResolvedTheme;
   density: Density;
+  /** FDN-12 candidate. Temporary — see @vulto/tokens. */
+  benchFill: BenchFill;
+  /** FDN-12 candidate. Temporary — see @vulto/tokens. */
+  barFill: BarFill;
   setTheme: (theme: ThemePreference) => void;
   setDensity: (density: Density) => void;
+  setBenchFill: (fill: BenchFill) => void;
+  setBarFill: (fill: BarFill) => void;
 };
 
 const AppearanceContext = createContext<AppearanceValue | null>(null);
@@ -45,6 +53,10 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   // VPS-002 names the compact density's 32px row as the thing to look at
   // first. No document states the workspace default — see Findings F20.
   const [density, setDensity] = useState<Density>("compact");
+
+  // FDN-12 candidates, defaulting to the middle of each set.
+  const [benchFill, setBenchFill] = useState<BenchFill>("present");
+  const [barFill, setBarFill] = useState<BarFill>("wash");
 
   useEffect(() => {
     const query = window.matchMedia("(prefers-color-scheme: dark)");
@@ -61,12 +73,24 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     const root = document.documentElement;
     root.setAttribute("data-theme", resolvedTheme);
     root.setAttribute("data-density", density);
+    root.setAttribute("data-bench", benchFill);
+    root.setAttribute("data-bar", barFill);
     root.style.colorScheme = resolvedTheme;
-  }, [resolvedTheme, density]);
+  }, [resolvedTheme, density, benchFill, barFill]);
 
   const value = useMemo<AppearanceValue>(
-    () => ({ theme, resolvedTheme, density, setTheme, setDensity }),
-    [theme, resolvedTheme, density],
+    () => ({
+      theme,
+      resolvedTheme,
+      density,
+      benchFill,
+      barFill,
+      setTheme,
+      setDensity,
+      setBenchFill,
+      setBarFill,
+    }),
+    [theme, resolvedTheme, density, benchFill, barFill],
   );
 
   return (

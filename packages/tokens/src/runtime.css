@@ -94,3 +94,86 @@
   --vt-cell-padding: 8px; /* space-2 */
   --vt-bar-height: 20px; /* VPS-D002, Timeline */
 }
+
+/*
+ * ─────────────────────────────────────────────────────────────────────────
+ * FDN-12 — candidate fills, to be chosen by looking.
+ *
+ * VPS-D001's governing rule is that the interface is color-starved so money
+ * is the only thing on screen with a hue. The first build inverted it: the
+ * assignment bars were the loudest thing on the canvas and the bench region
+ * the quietest. These two sets exist so the correction can be judged rather
+ * than argued.
+ *
+ * TEMPORARY. One candidate from each pair becomes the token and the rest of
+ * this block is deleted.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+
+/* Bench region. Solid, chosen per theme. The cost figure sits on it in
+ * text-primary, so each candidate is checked against that in both themes. */
+
+/* The attribute selectors deliberately omit `:root` so a candidate can also be
+ * scoped to a subtree, which is how the comparison strip shows all three at
+ * once without restating a single hex value. A scoping element carries both
+ * data-theme and data-bench so the dark pairs still resolve. */
+
+:root,
+[data-bench="present"] {
+  --vt-bench-fill: #f5dbb4;
+}
+[data-bench="restrained"] {
+  --vt-bench-fill: #f9e8d0;
+}
+[data-bench="assertive"] {
+  --vt-bench-fill: #f0cb94;
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"][data-bench="present"] {
+  --vt-bench-fill: #4e3a1c;
+}
+[data-theme="dark"][data-bench="restrained"] {
+  --vt-bench-fill: #3b2e1a;
+}
+[data-theme="dark"][data-bench="assertive"] {
+  --vt-bench-fill: #63491f;
+}
+
+/*
+ * Assignment bar. The hue moves to a 2px left edge and the fill goes quiet.
+ *
+ * `--vt-bar-mix` is mixed opaquely with `--vt-bar-base` rather than layered
+ * as an alpha, so nothing beneath a bar can show through it either. The mix
+ * runs higher in dark, where a low mix against near-black goes muddy before
+ * it goes quiet.
+ *
+ *   hairline  no hue in the fill at all. Hue lives only in the edge
+ *   wash      a low tint, still legibly the project's color
+ *   tint      the loudest of the three, and still far below the old bar
+ */
+
+:root,
+[data-bar="wash"] {
+  --vt-bar-mix: 12%;
+  --vt-bar-base: var(--vt-bg-surface);
+}
+[data-bar="hairline"] {
+  --vt-bar-mix: 0%;
+  --vt-bar-base: var(--vt-bg-subtle);
+}
+[data-bar="tint"] {
+  --vt-bar-mix: 22%;
+  --vt-bar-base: var(--vt-bg-surface);
+}
+
+:root[data-theme="dark"],
+[data-theme="dark"][data-bar="wash"] {
+  --vt-bar-mix: 18%;
+}
+[data-theme="dark"][data-bar="hairline"] {
+  --vt-bar-mix: 0%;
+}
+[data-theme="dark"][data-bar="tint"] {
+  --vt-bar-mix: 30%;
+}

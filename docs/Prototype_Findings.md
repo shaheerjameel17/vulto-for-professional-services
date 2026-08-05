@@ -40,15 +40,16 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F25 | Panels cannot trap focus and also be dismissed by the canvas | `VPS-D002` | **New** |
 | F26 | Window position relative to today is unspecified | `VRS-F005` | **New** |
 | F27 | Bench cost has no annual denominator | `VRS-F005` | **New** |
-| F28 | Left column content does not fit its own row at compact density | `VRS-F005`, `VPS-D001` | **New**, measured |
+| F28 | Left column content does not fit its own row at compact density | `VRS-F005`, `VPS-D001` | **Closed by FDN-11/12**, provisional |
 | F29 | Bench region has no specified height | `VPS-D002` | **New** |
 | F30 | Aggregate utilization has no formula on the screen that displays it | `VRS-F005` | **New** |
-| F31 | The bench region is specified as patternless and is drawn over a pattern | `VPS-D001`, `VPS-D002` | **New**, visible on screen |
-| F32 | The amber is weak in light mode and strong in dark | `VPS-D001` | **New**, look-at-it |
-| F33 | Categorical bars outshout the amber in dark mode | `VPS-D001` | **New**, look-at-it |
-| F34 | `cat-4` and `cat-8` do not read as cool | `VPS-D001` | **New** |
-| F35 | Bar labels at `text-inverse` fail on mid-tone categorical fills | `VPS-D002` | **New** |
-| F36 | The amber saturates at the 180-day horizon | `VRS-F005` | **New**, look-at-it |
+| F31 | The bench region is specified as patternless and is drawn over a pattern | `VPS-D001`, `VPS-D002` | **Closed by FDN-12**, verified |
+| F32 | The amber is weak in light mode and strong in dark | `VPS-D001` | **Closed by FDN-12**, pending candidate |
+| F33 | Categorical bars outshout the amber in dark mode | `VPS-D001` | **Closed by FDN-12** |
+| F34 | `cat-4` and `cat-8` do not read as cool | `VPS-D001` | **Survives FDN-12** |
+| F35 | Bar labels at `text-inverse` fail on mid-tone categorical fills | `VPS-D002` | **Closed by FDN-12**, verified |
+| F36 | The amber saturates at the 180-day horizon | `VRS-F005` | **Half closed**, see below |
+| F37 | A quiet bar's opaque fill does not follow its own row's backdrop | `VPS-D002` | **New**, introduced by FDN-12 |
 
 ---
 
@@ -216,6 +217,124 @@ The number is arithmetically correct and operationally misleading. Being unassig
 
 ---
 
+## FDN-11 and FDN-12 — what changed, and what the changes closed
+
+Both were token-layer changes only. No screen logic was touched beyond the two
+items explicitly in scope, F28 and F36.
+
+### FDN-11 — two faces
+
+Inter Variable replaces both Plus Jakarta Sans and Manrope. Geist Mono stays for
+figures. `VPS-D001` goes from three faces to two, and its typography section
+needs rewriting accordingly.
+
+**Loaded as a variable font, and it matters.** The scale now asks for weight 560
+at `micro` and 640 at `display` and `h1`. Verified in the browser as 560 and 640
+rather than rounded to 500 and 600, which is what a static build would have done
+silently.
+
+**The line-height re-derivation produced exactly one change, and that is the
+finding.** Inter's content box is 1.21em, against Manrope's 1.29em and Plus
+Jakarta Sans' 1.28em — Inter is the tighter face vertically despite the taller
+x-height, so every line height in the old scale already cleared it. The single
+exception was `display`, where 32/36 was 1.125 and had been sitting inside Plus
+Jakarta Sans' own content box too. It moves to 32/40.
+
+That is worth recording because the expectation going in was that a face swap
+would ripple through the vertical rhythm, and it did not. The real change was
+horizontal.
+
+**Tracking was re-derived from Inter's own dynamic-metrics curve,**
+`-0.0223 + 0.185 · e^(-0.1745 · size)`, which yields −0.022em at 32px, −0.020em
+at 24px and −0.017em at 20px, crossing zero at about 12px. Applied above 20px
+only, per the decision to tighten the display sizes and leave the body sizes
+alone. The old scale used a flat −0.01em at `h2` and above, which was roughly
+half of what Inter wants at display sizes.
+
+**One exception carried forward:** `micro` keeps +0.04em. That is `VPS-D001`'s
+uppercase treatment rather than a metric inherited from Manrope, and uppercase
+needs the tracking at 11px.
+
+### FDN-12 — the color weight, inverted
+
+The assignment bar's hue moved to a 2px `cat-n` left edge, its fill went quiet
+and opaque, and its label became `text-primary`. The bench region became a solid
+color chosen per theme.
+
+**Three candidates each, chosen by looking.** Switchers at the sidebar foot, and
+a side-by-side strip at the top of `/foundations`. Bench: `restrained`,
+`present`, `assertive`. Bar: `hairline` (no hue in the fill at all), `wash`,
+`tint`.
+
+**The mechanism that closed F31 was opacity, not color.** Both fills are now
+opaque — the bench region is a solid token, and the bar mixes `cat-n` with the
+surface via `color-mix` rather than layering an alpha. Verified: the bench region
+computes to `rgb(78, 58, 28)` in dark with no alpha channel, and the bar to an
+`oklab()` value with none. Nothing beneath either can show through, so the
+non-working-day striping is gone.
+
+### F34 survives, and should be recorded as surviving
+
+`cat-4` (`#D946EF`) and `cat-8` (`#EC4899`) are unchanged, so `VPS-D001`'s claim
+that the categorical palette is drawn "exclusively from the cool half of the
+wheel" is still not what the palette does.
+
+What changed is only the symptom. At a 12–30% mix behind a 2px edge, a magenta
+that was the most aggressive element on the canvas is now a pale lilac wash, and
+the practical risk of confusing it with a cost signal is largely gone.
+
+**The documentation defect is untouched.** Either the two tokens are replaced
+with genuinely cool hues, or the rule is restated as excluding the amber-to-red
+arc rather than the whole warm half. FDN-12 removed the pressure to decide; it
+did not decide.
+
+### F36 is half closed
+
+The cost figure now renders only for bench regions beginning within 45 days, and
+the header total says which window it counts. Verified at the 180-day horizon:
+regions beyond the boundary show `76d` and `80d` in quiet `mono` with no figure,
+and the header reads "£59,637 unrecovered in the next 45 days".
+
+**Two parts of the original finding are untouched.**
+
+**The magnitude is still unbounded.** The rule as specified gates *which* regions
+carry a figure, not *how much* of a region counts. Lena Petrova's assignment ends
+inside the boundary, so her gap begins inside it and is costed in full — about
+115 working days and £23,351 at the 180-day horizon. The workspace total also
+still grows with the horizon, from £46,016 at 90 days to £59,637 at 180, because
+regions that begin inside the boundary simply extend further as the window does.
+
+Bounding the magnitude means truncating a gap's cost at the 45-day line, which
+says something about that gap that is not true — the cost does not stop at day
+45. This is the genuine trade-off, and it is a founder decision rather than an
+implementation one.
+
+**The visual saturation is unchanged.** At 180 days most of the canvas is still
+amber, because the regions are still drawn; only their figures went away. F36 as
+scoped addressed the number, not the color. If the concern was that a
+mostly-amber screen has lost what amber is for, that concern still holds.
+
+### F37 — new, introduced by FDN-12
+
+A quiet bar's fill is an opaque mix against `bg-surface`. A row's backdrop is not
+always `bg-surface`: it is `bg-hover` on hover and `bg-selected` on selection.
+
+Measured in light mode: `--vt-bar-base` is `#ffffff` while a hovered row is
+`#f4f4f5` and a selected row is `#eef2ff`. So a bar on a hovered or selected row
+carries a fill mixed against the wrong backdrop and reads as slightly detached
+from the row it belongs to — most visible on the selected row, where the brand
+tint is furthest from the surface.
+
+This did not exist before FDN-12 because a fully saturated bar had no backdrop
+dependency. It is the cost of making the fill opaque, and opacity is what closed
+F31, so it is worth paying rather than reverting.
+
+**Proposed correction:** the mix base follows the row state rather than being
+fixed to `bg-surface` — which means `VPS-D002` has to say that a quiet fill
+composites against its own row, not against the canvas.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.
@@ -247,6 +366,10 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 | F27 | Annual working days counted from the working-day index |
 | F29 | Bench region fills the row height |
 | F30 | Utilization is covered working days weighted by `billable_percentage` over total working days |
+| F28 | The role line appears at comfortable density only. VRS-F005's separate rule still drops it below 1280px regardless |
+| F36 | Cost horizon of 45 days. A region beginning inside it is costed in full; beyond it, days and no figure. The header total states the window |
+| FDN-11 | `display` moves to 32/40; tracking −0.022 / −0.02 / −0.015em above 20px, zero below; weights 640 / 600 / 560 where the variable font is used |
+| FDN-12 | Bench fill and bar fill each carry three candidates pending a choice |
 
 ---
 

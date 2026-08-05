@@ -51,6 +51,25 @@ export const DAY_WIDTH: Record<Horizon, number> = {
  */
 const LEAD_IN_DAYS = 14;
 
+/*
+ * PROVISIONAL, F36: the horizon at which a bench region stops carrying a cost
+ * figure.
+ *
+ * At the 180-day horizon almost nobody has confirmed assignments covering the
+ * back half of the window, so almost every row carried a large amber region and
+ * the accumulated total ran to a quarter of a million pounds. The number was
+ * arithmetically correct and operationally misleading: being unassigned five
+ * months out is the normal state of a professional services firm, not a cost
+ * already incurred. A screen that is mostly amber has lost what amber is for.
+ *
+ * A region beginning inside this boundary shows money. Beyond it, the same
+ * region shows days and no figure, and the header total says which window it
+ * is counting. A region that begins inside the boundary and runs past it counts
+ * in full — the alternative is splitting one gap into two, which would say
+ * something about the gap that is not true.
+ */
+export const COST_HORIZON_DAYS = 45;
+
 const MONTHS = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December",
@@ -64,7 +83,10 @@ const money = new Intl.NumberFormat("en-GB", {
 
 export type ForecastRow = TimelineRow & {
   employee: Employee;
+  /** Every bench working day in the window. */
   benchWorkingDays: number;
+  /** Only those in regions beginning inside the cost horizon, per F36. */
+  costedBenchWorkingDays: number;
   benchCost: number;
   nextRolloff?: string;
 };
@@ -77,8 +99,10 @@ export type Forecast = {
   utilization: number;
   ghostContribution: number;
   cohortSize: number;
+  /** Counts only regions beginning inside the cost horizon, per F36. */
   totalBenchCost: number;
   benchedCount: number;
+  costHorizonDays: number;
 };
 
 export function buildForecast(
@@ -92,6 +116,8 @@ export function buildForecast(
   }
 
   const todayIndex = dates.indexOf(TODAY);
+  // F36: a region beginning at or after this index shows days, not money.
+  const costHorizonDate = addDays(TODAY, COST_HORIZON_DAYS);
 
   // Column metadata is entity-independent for shading purposes only where both
   // calendars agree. Where they differ — a Karachi Saturday — the row's own
@@ -136,6 +162,7 @@ export function buildForecast(
       employee.baseCompensationAmount / annualWorkingDays(employee.entityId);
 
     const bench: ForecastRow["bench"] = [];
+    let costedBenchWorkingDays = 0;
     let runStart: number | null = null;
     let runWorkingDays = 0;
 
@@ -144,6 +171,11 @@ export function buildForecast(
       // A region containing no working days costs nothing and is not amber.
       if (runWorkingDays > 0) {
         const cost = runWorkingDays * dailyCost;
+        // F36: does this region begin inside the cost horizon?
+        const withinCostHorizon = dates[runStart]! < costHorizonDate;
+        const costed = canSeeCompensation && withinCostHorizon;
+        if (withinCostHorizon) costedBenchWorkingDays += runWorkingDays;
+
         bench.push({
           id: `${employee.employeeId}-bench-${runStart}`,
           start: runStart,
@@ -151,10 +183,12 @@ export function buildForecast(
           workingDays: runWorkingDays,
           // F5/F6: absent, not zero and not a fallback, where the viewer is
           // not authorized for compensation.
-          costLabel: canSeeCompensation ? money.format(cost) : undefined,
-          title: canSeeCompensation
+          costLabel: costed ? money.format(cost) : undefined,
+          title: costed
             ? `${runWorkingDays} working days on the bench · ${money.format(cost)} unrecovered`
-            : `${runWorkingDays} working days on the bench`,
+            : withinCostHorizon
+              ? `${runWorkingDays} working days on the bench`
+              : `${runWorkingDays} working days on the bench · begins beyond the ${COST_HORIZON_DAYS}-day cost horizon`,
         });
       }
       runStart = null;
@@ -202,6 +236,7 @@ export function buildForecast(
     return {
       id: employee.employeeId,
       employee,
+      costedBenchWorkingDays,
       primaryLabel: employee.fullName,
       secondaryLabel:
         employee.employeeType === "Ghost"
@@ -212,7 +247,8 @@ export function buildForecast(
       bars,
       bench,
       benchWorkingDays,
-      benchCost: benchWorkingDays * dailyCost,
+      // F36: only the days inside the cost horizon carry money.
+      benchCost: costedBenchWorkingDays * dailyCost,
       nextRolloff: assignments
         .map((assignment) => assignment.endDate)
         .filter((date) => date >= TODAY)
@@ -233,6 +269,7 @@ export function buildForecast(
     cohortSize: realRows.length,
     totalBenchCost: realRows.reduce((total, row) => total + row.benchCost, 0),
     benchedCount: realRows.filter((row) => row.benchWorkingDays > 0).length,
+    costHorizonDays: COST_HORIZON_DAYS,
   };
 }
 

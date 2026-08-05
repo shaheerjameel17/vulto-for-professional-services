@@ -1,27 +1,26 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Manrope, Plus_Jakarta_Sans } from "next/font/google";
+import { Geist_Mono, Inter } from "next/font/google";
 import { AppearanceProvider } from "./appearance";
 import "./globals.css";
 
 /*
- * Three faces, three jobs, no overlap. VPS-D001.
+ * FDN-11. Two faces, two jobs.
+ *
+ * Inter carries display, interface and body; Geist Mono carries the figures.
+ *
+ * Inter is loaded as a variable font — no `weight` array, which is what makes
+ * next/font serve the variable file rather than static cuts. The token scale
+ * asks for 560 and 640, weights no static family provides, and a static build
+ * would silently round them to 500 and 600.
  *
  * Self-hosted via next/font per VPS-A001: no external font CDN, both for
  * latency and because a font request is a third-party beacon on every page of
- * an HR product. Only the weights VPS-D001 names are loaded.
+ * an HR product.
  */
 
-const jakarta = Plus_Jakarta_Sans({
+const inter = Inter({
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
-  variable: "--font-jakarta",
-  display: "swap",
-});
-
-const manrope = Manrope({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-manrope",
+  variable: "--font-inter",
   display: "swap",
 });
 
@@ -47,7 +46,9 @@ export default function RootLayout({
       lang="en"
       data-theme="light"
       data-density="compact"
-      className={`${jakarta.variable} ${manrope.variable} ${geistMono.variable}`}
+      data-bench="present"
+      data-bar="wash"
+      className={`${inter.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
       <body>

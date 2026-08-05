@@ -12,6 +12,15 @@
 @import "./runtime.css";
 @import "./theme.css";
 
+/*
+ * Density as a variant, so a component can express "the role line appears at
+ * comfortable density" without reading state or branching in TypeScript.
+ * Density is an attribute on the root element; this is how a descendant asks
+ * about it.
+ */
+@custom-variant compact (&:where(:root[data-density="compact"] *));
+@custom-variant comfortable (&:where(:root[data-density="comfortable"] *));
+
 @layer base {
   /*
    * Tabular figures globally rather than per component. VPS-D001: a column
@@ -84,6 +93,39 @@
   background-color: var(--vt-bg-raised);
   border: 1px solid var(--vt-border-default);
   box-shadow: var(--vt-shadow-overlay);
+}
+
+/*
+ * Assignment bar fills, per FDN-12.
+ *
+ * One utility per categorical token, because the fill is an opaque mix rather
+ * than a color: `color-mix` against the surface instead of an alpha layer, so
+ * nothing beneath a bar shows through it. The mix percentage and the base both
+ * come from the candidate block in runtime.css.
+ */
+@utility bar-cat-1 {
+  background-color: color-mix(in oklab, var(--color-cat-1) var(--vt-bar-mix), var(--vt-bar-base));
+}
+@utility bar-cat-2 {
+  background-color: color-mix(in oklab, var(--color-cat-2) var(--vt-bar-mix), var(--vt-bar-base));
+}
+@utility bar-cat-3 {
+  background-color: color-mix(in oklab, var(--color-cat-3) var(--vt-bar-mix), var(--vt-bar-base));
+}
+@utility bar-cat-4 {
+  background-color: color-mix(in oklab, var(--color-cat-4) var(--vt-bar-mix), var(--vt-bar-base));
+}
+@utility bar-cat-5 {
+  background-color: color-mix(in oklab, var(--color-cat-5) var(--vt-bar-mix), var(--vt-bar-base));
+}
+@utility bar-cat-6 {
+  background-color: color-mix(in oklab, var(--color-cat-6) var(--vt-bar-mix), var(--vt-bar-base));
+}
+@utility bar-cat-7 {
+  background-color: color-mix(in oklab, var(--color-cat-7) var(--vt-bar-mix), var(--vt-bar-base));
+}
+@utility bar-cat-8 {
+  background-color: color-mix(in oklab, var(--color-cat-8) var(--vt-bar-mix), var(--vt-bar-base));
 }
 
 /* Motion. VPS-D003 — three durations, one decelerating curve. */

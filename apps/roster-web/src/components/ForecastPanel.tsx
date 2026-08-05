@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge, Button, InlineAlert, Text } from "@vulto/ui";
-import { formatMoney, type ForecastRow } from "../lib/bench";
+import { COST_HORIZON_DAYS, formatMoney, type ForecastRow } from "../lib/bench";
 import { ENTITY_NAMES } from "../fixtures/calendar";
 
 /*
@@ -72,11 +72,18 @@ export function ForecastPanel({
               {row.benchWorkingDays} working days on the bench
             </Text>
             {/* Structurally absent for a viewer without compensation access —
-              * not zeroed, not redacted, not a lock icon. */}
-            {canSeeCompensation ? (
-              <Text variant="mono-lg" className="text-text-primary">
-                {formatMoney(row.benchCost)}
-              </Text>
+              * not zeroed, not redacted, not a lock icon.
+              * F36: the figure covers the cost horizon, and says so. */}
+            {canSeeCompensation && row.costedBenchWorkingDays > 0 ? (
+              <>
+                <Text variant="mono-lg" className="text-text-primary">
+                  {formatMoney(row.benchCost)}
+                </Text>
+                <Text variant="small" className="text-text-secondary">
+                  {row.costedBenchWorkingDays} of those days fall within the next{" "}
+                  {COST_HORIZON_DAYS}
+                </Text>
+              </>
             ) : null}
           </div>
         )}

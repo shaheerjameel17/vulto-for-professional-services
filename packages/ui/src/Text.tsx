@@ -5,29 +5,17 @@ import { cx } from "./cx";
 /*
  * Typography, as a component rather than a set of classes.
  *
- * Each of VPS-D001's eleven type tokens bundles a size, a line height, a face
- * and a weight. There is no legitimate reason to use 14px with the display
- * face, so the four parts are never assembled by hand at a call site: a
- * feature asks for `body` and gets all four.
+ * Each of VPS-D001's eleven type tokens bundles a size, a line height, a
+ * weight and a tracking value. The four are never assembled by hand at a call
+ * site: a feature asks for `body` and gets all four.
  *
- * The face pairing is fixed by VPS-D001: Plus Jakarta Sans carries display
- * and headings, Manrope carries interface and body, Geist Mono carries every
- * figure a person will read as money.
+ * FDN-11 reduced the face pairing to two. Inter carries display, interface and
+ * body; Geist Mono carries every figure a person will read as money. Which of
+ * the two a token uses is the only face decision left, so it is a predicate
+ * rather than a map.
  */
 
-const FACE: Record<TypeToken, string> = {
-  display: "font-display",
-  h1: "font-display",
-  h2: "font-display",
-  h3: "font-ui",
-  body: "font-ui",
-  "body-medium": "font-ui",
-  small: "font-ui",
-  label: "font-ui",
-  micro: "font-ui",
-  mono: "font-mono",
-  "mono-lg": "font-mono",
-};
+const MONO_TOKENS = new Set<TypeToken>(["mono", "mono-lg"]);
 
 const SIZE: Record<TypeToken, string> = {
   display: "text-display",
@@ -87,7 +75,12 @@ export function Text({
   const Component = as ?? DEFAULT_ELEMENT[variant];
   return (
     <Component
-      className={cx(FACE[variant], SIZE[variant], CASING[variant], className)}
+      className={cx(
+        MONO_TOKENS.has(variant) ? "font-mono" : "font-ui",
+        SIZE[variant],
+        CASING[variant],
+        className,
+      )}
       {...rest}
     >
       {children}

@@ -71,3 +71,15 @@ export type Density = (typeof DENSITIES)[number];
 export const THEMES = ["light", "dark", "system"] as const;
 export type ThemePreference = (typeof THEMES)[number];
 export type ResolvedTheme = "light" | "dark";
+
+/*
+ * FDN-12 candidates. TEMPORARY — these exist so the fills can be chosen by
+ * looking rather than by argument. One of each becomes the token, and both
+ * unions plus their runtime.css blocks are then deleted.
+ */
+
+export const BENCH_FILLS = ["restrained", "present", "assertive"] as const;
+export type BenchFill = (typeof BENCH_FILLS)[number];
+
+export const BAR_FILLS = ["hairline", "wash", "tint"] as const;
+export type BarFill = (typeof BAR_FILLS)[number];

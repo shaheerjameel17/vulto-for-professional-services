@@ -118,37 +118,65 @@
   --container-content: 1440px; /* VPS-D004 */
 
   /* ---- Typography ------------------------------------------------- */
-  /* Three faces, three jobs, no overlap. The family variables are supplied
-   * by the app via next/font — the one token that cannot live wholly in
-   * this package, because next/font generates the family name at build. */
+  /*
+   * FDN-11. Two faces, two jobs.
+   *
+   * Inter Variable carries display, interface and body. Geist Mono carries
+   * every figure a person will read as money. Plus Jakarta Sans and Manrope
+   * are both retired.
+   *
+   * Inter is loaded as a variable font, not as static cuts, which is what
+   * makes the intermediate weights below available — `micro` at 560 and the
+   * headings at 640 are weights no static family offers.
+   *
+   * The family variables are supplied by the app via next/font — the one
+   * token that cannot live wholly in this package, because next/font
+   * generates the family name at build.
+   */
 
   --font-*: initial;
   --font-weight-*: initial;
-  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
-  --font-ui: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  /* Base is 14px, not 16. VPS-D001: a 16px base would cost roughly two
-   * rows of the Bench Forecast per viewport. Each token carries its own
-   * line height, weight and tracking, so the four parts are never
-   * assembled by hand at a call site. */
+  /*
+   * Base is 14px, not 16. VPS-D001: a 16px base would cost roughly two rows
+   * of the Bench Forecast per viewport.
+   *
+   * LINE HEIGHTS, re-derived against Inter's metrics rather than inherited.
+   * Inter's content box is (ascender + descender) / em = 1.21em, against
+   * Manrope's 1.29em and Plus Jakarta Sans' 1.28em — Inter is the tighter
+   * face vertically, despite the taller x-height. Every line height in the
+   * old scale already clears 1.21em except `display`, where 32/36 was 1.125
+   * and sat inside Jakarta's own content box too. `display` moves to 40.
+   * Nothing else needed to change, which is itself worth knowing.
+   *
+   * TRACKING, derived from Inter's dynamic-metrics curve
+   *   -0.0223 + 0.185 · e^(-0.1745 · size)
+   * which yields -0.022em at 32px, -0.020em at 24px and -0.017em at 20px,
+   * crossing zero at about 12px. Applied above 20px only, per the decision
+   * to tighten the display sizes and leave the body sizes alone.
+   *
+   * `micro` keeps +0.04em. That is VPS-D001's uppercase treatment, not a
+   * metric inherited from Manrope, and uppercase needs the tracking at 11px.
+   */
 
   --text-*: initial;
 
   --text-display: 32px;
-  --text-display--line-height: 36px;
-  --text-display--font-weight: 700;
-  --text-display--letter-spacing: -0.01em;
+  --text-display--line-height: 40px;
+  --text-display--font-weight: 640;
+  --text-display--letter-spacing: -0.022em;
 
   --text-h1: 24px;
   --text-h1--line-height: 30px;
-  --text-h1--font-weight: 700;
-  --text-h1--letter-spacing: -0.01em;
+  --text-h1--font-weight: 640;
+  --text-h1--letter-spacing: -0.02em;
 
   --text-h2: 20px;
   --text-h2--line-height: 26px;
   --text-h2--font-weight: 600;
-  --text-h2--letter-spacing: -0.01em;
+  --text-h2--letter-spacing: -0.015em;
 
   --text-h3: 16px;
   --text-h3--line-height: 22px;
@@ -177,7 +205,7 @@
 
   --text-micro: 11px;
   --text-micro--line-height: 14px;
-  --text-micro--font-weight: 600;
+  --text-micro--font-weight: 560;
   --text-micro--letter-spacing: 0.04em;
 
   --text-mono: 13px;
@@ -252,4 +280,17 @@
   --color-danger: var(--vt-danger);
 
   --color-avatar-fallback: var(--vt-avatar-fallback);
+
+  /*
+   * FDN-12. The bench region's fill is a chosen color per theme, not
+   * `attention` composited at a percentage.
+   *
+   * Two reasons it stopped being a composite. A transparent fill let the
+   * non-working-day shading beneath it show through as a repeating stripe,
+   * which is the pattern VPS-D001 and VPS-D002 both forbid on this exact
+   * element (F31). And one percentage cannot serve both themes: 12% over
+   * white was a pale peach that read as an absence of color, while the same
+   * 12% over neutral-900 carried real weight (F32).
+   */
+  --color-bench: var(--vt-bench-fill);
 }

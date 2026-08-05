@@ -12,6 +12,7 @@ import {
   Text,
 } from "@vulto/ui";
 import { TYPE_TOKENS } from "@vulto/tokens";
+import { CandidateStrip } from "../../../components/CandidateStrip";
 
 /*
  * The token proof sheet.
@@ -86,15 +87,15 @@ const SPACE: { token: string; px: number; className: string }[] = [
 ];
 
 const TYPE_SPEC: Record<string, string> = {
-  display: "32 / 36 · Jakarta 700",
-  h1: "24 / 30 · Jakarta 700",
-  h2: "20 / 26 · Jakarta 600",
-  h3: "16 / 22 · Manrope 600",
-  body: "14 / 20 · Manrope 400",
-  "body-medium": "14 / 20 · Manrope 500",
-  small: "13 / 18 · Manrope 400",
-  label: "12 / 16 · Manrope 500",
-  micro: "11 / 14 · Manrope 600",
+  display: "32 / 40 · Inter 640 · −0.022em",
+  h1: "24 / 30 · Inter 640 · −0.02em",
+  h2: "20 / 26 · Inter 600 · −0.015em",
+  h3: "16 / 22 · Inter 600",
+  body: "14 / 20 · Inter 400",
+  "body-medium": "14 / 20 · Inter 500",
+  small: "13 / 18 · Inter 400",
+  label: "12 / 16 · Inter 500",
+  micro: "11 / 14 · Inter 560 · +0.04em",
   mono: "13 / 18 · Geist Mono 400",
   "mono-lg": "20 / 26 · Geist Mono 500",
 };
@@ -125,7 +126,24 @@ export default function FoundationsPage() {
         subtitle="VPS-D001 rendered. Toggle theme and density at the sidebar foot."
       />
       <Content>
+        <Section title="Candidates to choose from">
+          <Text variant="small" className="mb-4 text-text-secondary">
+            FDN-12. Switch between them at the sidebar foot to see each one
+            across the whole Forecast, which is the better test — a fill is
+            judged in context, not in a swatch.
+          </Text>
+          <CandidateStrip />
+        </Section>
+
         <Section title="Type scale">
+          <Text variant="small" className="mb-4 text-text-secondary">
+            FDN-11. Two faces: Inter Variable for everything except figures,
+            Geist Mono for those. Line heights re-derived against Inter&rsquo;s
+            1.21em content box, which moved exactly one of them —{" "}
+            <code className="font-mono text-mono">display</code>, from 36 to 40.
+            Tracking derived from Inter&rsquo;s own metric curve and applied
+            above 20px only.
+          </Text>
           <div className="flex flex-col gap-4">
             {TYPE_TOKENS.map((token) => (
               <div
@@ -238,14 +256,10 @@ export default function FoundationsPage() {
           <div className="mt-4 flex flex-col gap-2">
             <Text variant="small" className="text-text-secondary">
               attention is the most important token in this product and the
-              reason the palette is otherwise starved. Below is the bench
-              region&rsquo;s 12% fill, on its own.
+              reason the palette is otherwise starved. It still marks badges,
+              alerts and over-target states. The bench region no longer
+              composites it at a percentage — see the candidates above.
             </Text>
-            <div className="flex h-16 items-center rounded-md bg-attention/12 px-3">
-              <Text variant="mono-lg" className="text-text-primary">
-                £18,400
-              </Text>
-            </div>
           </div>
         </Section>
 

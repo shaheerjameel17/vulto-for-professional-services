@@ -84,37 +84,33 @@ export type TimelineProps = {
   scrollToTodayNonce?: number;
 };
 
+/*
+ * FDN-12. The bar's fill is quiet and opaque; the hue lives in a 2px left
+ * edge. `bar-cat-n` mixes the categorical token with the surface at the
+ * candidate percentage rather than layering an alpha, so nothing beneath a bar
+ * shows through.
+ */
 const FILL: Record<CategoricalToken, string> = {
-  "cat-1": "bg-cat-1",
-  "cat-2": "bg-cat-2",
-  "cat-3": "bg-cat-3",
-  "cat-4": "bg-cat-4",
-  "cat-5": "bg-cat-5",
-  "cat-6": "bg-cat-6",
-  "cat-7": "bg-cat-7",
-  "cat-8": "bg-cat-8",
+  "cat-1": "bar-cat-1",
+  "cat-2": "bar-cat-2",
+  "cat-3": "bar-cat-3",
+  "cat-4": "bar-cat-4",
+  "cat-5": "bar-cat-5",
+  "cat-6": "bar-cat-6",
+  "cat-7": "bar-cat-7",
+  "cat-8": "bar-cat-8",
 };
 
-const GHOST_FILL: Record<CategoricalToken, string> = {
-  "cat-1": "bg-cat-1/12 border-cat-1",
-  "cat-2": "bg-cat-2/12 border-cat-2",
-  "cat-3": "bg-cat-3/12 border-cat-3",
-  "cat-4": "bg-cat-4/12 border-cat-4",
-  "cat-5": "bg-cat-5/12 border-cat-5",
-  "cat-6": "bg-cat-6/12 border-cat-6",
-  "cat-7": "bg-cat-7/12 border-cat-7",
-  "cat-8": "bg-cat-8/12 border-cat-8",
-};
-
-const GHOST_TEXT: Record<CategoricalToken, string> = {
-  "cat-1": "text-cat-1",
-  "cat-2": "text-cat-2",
-  "cat-3": "text-cat-3",
-  "cat-4": "text-cat-4",
-  "cat-5": "text-cat-5",
-  "cat-6": "text-cat-6",
-  "cat-7": "text-cat-7",
-  "cat-8": "text-cat-8",
+/** The 2px left edge, and the dashed border a Ghost bar carries instead. */
+const EDGE: Record<CategoricalToken, string> = {
+  "cat-1": "border-cat-1",
+  "cat-2": "border-cat-2",
+  "cat-3": "border-cat-3",
+  "cat-4": "border-cat-4",
+  "cat-5": "border-cat-5",
+  "cat-6": "border-cat-6",
+  "cat-7": "border-cat-7",
+  "cat-8": "border-cat-8",
 };
 
 export function Timeline({
@@ -241,10 +237,20 @@ export function Timeline({
                   >
                     {row.primaryLabel}
                   </Text>
-                  {/* VRS-F005: the role line drops below 1280px. */}
+                  {/*
+                    * F28. The role line appears at comfortable density only.
+                    *
+                    * At compact the Bench Forecast row is 36px and this stack
+                    * was 38px — `body-medium` at 14/20 above `small` at 13/18 —
+                    * so the role bled into the next row and the whole column
+                    * read as misaligned against the bars.
+                    *
+                    * VRS-F005's separate rule still applies: the role line also
+                    * drops below 1280px regardless of density.
+                    */}
                   <Text
                     variant="small"
-                    className="hidden truncate text-text-secondary xl:block"
+                    className="hidden truncate text-text-secondary xl:comfortable:block"
                   >
                     {row.secondaryLabel}
                   </Text>
@@ -318,18 +324,16 @@ function Bar({ bar, dayWidth }: { bar: TimelineBar; dayWidth: number }) {
       style={style}
       className={cx(
         "absolute top-1/2 flex h-bar -translate-y-1/2 items-center overflow-hidden rounded-md px-2",
-        bar.ghost
-          ? cx("border border-dashed", GHOST_FILL[bar.colorToken])
-          : FILL[bar.colorToken],
+        FILL[bar.colorToken],
+        EDGE[bar.colorToken],
+        // A Ghost carries a dashed border on all four sides, per VRS-F007's
+        // dashed-border rule. A real assignment carries the 2px left edge.
+        bar.ghost ? "border border-dashed" : "border-l-2",
       )}
     >
-      <Text
-        variant="small"
-        className={cx(
-          "truncate",
-          bar.ghost ? GHOST_TEXT[bar.colorToken] : "text-text-inverse",
-        )}
-      >
+      {/* text-primary, not text-inverse. A theme-flipping label over a fill
+        * that does not flip was never going to hold contrast on eight hues. */}
+      <Text variant="small" className="truncate text-text-primary">
         {bar.label}
       </Text>
     </div>
@@ -359,7 +363,7 @@ function BenchRegion({
     <div
       title={region.title}
       style={{ left: region.start * dayWidth, width }}
-      className="absolute inset-y-0 flex items-center overflow-hidden bg-attention/12 px-2"
+      className="absolute inset-y-0 flex items-center overflow-hidden bg-bench px-2"
     >
       {showCost ? (
         <Text variant="mono-lg" className="truncate text-text-primary">
