@@ -1,0 +1,9 @@
+@import "tailwindcss";
+@import "@vulto/tokens/css";
+
+/*
+ * packages/ui lives outside this app's directory tree, so Tailwind is told
+ * where to find the class names it uses. Without this, every component in the
+ * design system would render unstyled.
+ */
+@source "../../../../packages/ui/src";

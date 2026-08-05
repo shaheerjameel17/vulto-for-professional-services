@@ -1,0 +1,96 @@
+/*
+ * Runtime tokens — the values that change without a rebuild.
+ *
+ * Theme and density are resolved here, once, as data attributes on the root
+ * element. Nothing downstream asks which theme or density it is in: a
+ * component references `--vt-bg-surface` and gets the right answer. Writing
+ * the two modes as separate class sets would mean writing every component
+ * twice, and VPS-D001's claim that dark mode is first-class would become
+ * false the first time someone forgot a branch.
+ *
+ * Values: VPS-D001 (semantic surface tokens, density), VPS-D003 (motion).
+ */
+
+:root {
+  /* Semantic surface — VPS-D001, light column */
+  --vt-bg-canvas: #fafafa; /* neutral-50 */
+  --vt-bg-surface: #ffffff; /* neutral-0 */
+  --vt-bg-raised: #ffffff; /* neutral-0 */
+  --vt-bg-subtle: #f4f4f5; /* neutral-100 */
+  --vt-bg-hover: #f4f4f5; /* neutral-100 */
+  --vt-bg-selected: #eef2ff; /* brand-50 */
+  --vt-border-default: #e4e4e7; /* neutral-200 */
+  --vt-border-strong: #d4d4d8; /* neutral-300 */
+  --vt-border-focus: #6366f1; /* brand-500 */
+  --vt-text-primary: #18181b; /* neutral-900 */
+  --vt-text-secondary: #52525b; /* neutral-600 */
+  --vt-text-tertiary: #a1a1aa; /* neutral-400 */
+  --vt-text-inverse: #ffffff; /* neutral-0 */
+  --vt-text-brand: #4f46e5; /* brand-600 */
+
+  /* Semantic hues — VPS-D001. Three, deliberately no fourth. */
+  --vt-success: #059669;
+  --vt-attention: #d97706;
+  --vt-danger: #dc2626;
+
+  /* Avatar initials fallback — VPS-D002 names the light/dark ramp pair
+   * directly rather than a semantic token, so it gets its own variable. */
+  --vt-avatar-fallback: #e4e4e7; /* neutral-200 */
+
+  /* Elevation — VPS-D001. Only `overlay` casts a shadow. */
+  --vt-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.08);
+
+  /* Motion — VPS-D003. Nothing exceeds 180ms. */
+  --vt-motion-instant: 0ms;
+  --vt-motion-fast: 120ms;
+  --vt-motion-base: 180ms;
+}
+
+:root[data-theme="dark"] {
+  /* VPS-D001, dark column. A first-class theme, not an inversion. */
+  --vt-bg-canvas: #09090b; /* neutral-950 */
+  --vt-bg-surface: #18181b; /* neutral-900 */
+  --vt-bg-raised: #27272a; /* neutral-800 */
+  --vt-bg-subtle: #27272a; /* neutral-800 */
+  --vt-bg-hover: #27272a; /* neutral-800 */
+  --vt-bg-selected: #312e81; /* brand-900 */
+  --vt-border-default: #27272a; /* neutral-800 */
+  --vt-border-strong: #3f3f46; /* neutral-700 */
+  --vt-border-focus: #818cf8; /* brand-400 */
+  --vt-text-primary: #fafafa; /* neutral-50 */
+  --vt-text-secondary: #a1a1aa; /* neutral-400 */
+  --vt-text-tertiary: #71717a; /* neutral-500 */
+  --vt-text-inverse: #09090b; /* neutral-950 */
+  --vt-text-brand: #818cf8; /* brand-400 */
+
+  --vt-success: #10b981;
+  --vt-attention: #f59e0b;
+  --vt-danger: #ef4444;
+
+  --vt-avatar-fallback: #27272a; /* neutral-800 */
+
+  --vt-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.4);
+}
+
+/*
+ * Density — VPS-D001. Two modes, because a five-person studio and a
+ * hundred-and-fifty-person agency are looking at genuinely different
+ * amounts of information.
+ */
+
+:root,
+:root[data-density="comfortable"] {
+  --vt-row-height: 40px;
+  --vt-timeline-row-height: 44px;
+  --vt-control-height: 32px;
+  --vt-cell-padding: 12px; /* space-3 */
+  --vt-bar-height: 24px; /* VPS-D002, Timeline */
+}
+
+:root[data-density="compact"] {
+  --vt-row-height: 32px;
+  --vt-timeline-row-height: 36px;
+  --vt-control-height: 28px;
+  --vt-cell-padding: 8px; /* space-2 */
+  --vt-bar-height: 20px; /* VPS-D002, Timeline */
+}

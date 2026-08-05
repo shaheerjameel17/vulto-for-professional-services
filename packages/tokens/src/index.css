@@ -1,0 +1,98 @@
+/*
+ * @vulto/tokens — the only source of values in this product.
+ *
+ * VPS-D001 owns color, typography, space, radius and elevation.
+ * VPS-D003 owns motion.
+ *
+ * Import order matters: `runtime.css` declares the variables that theme.css
+ * references, and theme.css clears Tailwind's defaults before declaring
+ * Vulto's scale.
+ */
+
+@import "./runtime.css";
+@import "./theme.css";
+
+@layer base {
+  /*
+   * Tabular figures globally rather than per component. VPS-D001: a column
+   * of costs whose digits do not align is a column that cannot be scanned,
+   * and scanning is the entire point of the Bench Forecast.
+   */
+  html {
+    font-feature-settings: "tnum" 1;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--vt-bg-canvas);
+    color: var(--vt-text-primary);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * VPS-D002's accessibility floor: a visible 2px border-focus ring at 2px
+   * offset on every interactive element. Focus is never suppressed, so this
+   * is a base rule rather than something each component remembers.
+   */
+  :focus-visible {
+    outline: 2px solid var(--vt-border-focus);
+    outline-offset: 2px;
+  }
+
+  [data-disabled="true"],
+  :disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+/*
+ * VPS-D003: `prefers-reduced-motion: reduce` sets every duration to 0ms and
+ * removes every transform. Nothing else changes — no functionality is lost,
+ * no layout differs, and no alternative animation is substituted.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --vt-motion-fast: 0ms;
+    --vt-motion-base: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    transform: none !important;
+  }
+}
+
+/* ---- Composite utilities ------------------------------------------- */
+
+/*
+ * Elevation. Three levels, and only the third uses a shadow. VPS-D001.
+ * `flat` needs no utility: it is the absence of both.
+ */
+@utility elevation-raised {
+  background-color: var(--vt-bg-surface);
+  border: 1px solid var(--vt-border-default);
+}
+
+@utility elevation-overlay {
+  background-color: var(--vt-bg-raised);
+  border: 1px solid var(--vt-border-default);
+  box-shadow: var(--vt-shadow-overlay);
+}
+
+/* Motion. VPS-D003 — three durations, one decelerating curve. */
+@utility motion-fast {
+  transition-timing-function: var(--ease-vulto);
+  transition-duration: var(--vt-motion-fast);
+}
+
+@utility motion-base {
+  transition-timing-function: var(--ease-vulto);
+  transition-duration: var(--vt-motion-base);
+}

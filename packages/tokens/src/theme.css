@@ -1,0 +1,255 @@
+/*
+ * The Tailwind scale, generated from VPS-D001.
+ *
+ * Tailwind's own scales are DELETED, not extended. `--color-*: initial` and
+ * friends clear the defaults before a single Vulto value is declared.
+ *
+ * The reason: VPS-A001-T09 and VPS-A007's lint gate catch arbitrary values
+ * like `p-[7px]`. They do not catch `bg-red-500` or `p-7` — valid Tailwind,
+ * absent from VPS-D001. Clearing the namespace makes an off-token value fail
+ * to compile, which is a stronger guarantee than a lint rule and arrives
+ * sooner. If a value you need is not here, that is a design system question.
+ */
+
+@theme {
+  /* ---- Color ------------------------------------------------------ */
+
+  --color-*: initial;
+
+  /* Structural, not palette. */
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  /* Neutral ramp — zinc, cool-neutral. VPS-D001. */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #a1a1aa;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
+  --color-neutral-950: #09090b;
+
+  /* Brand — indigo. Rationed: marks exactly three things. VPS-D001. */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+
+  /* Categorical — cool half of the wheel only, so a project bar can never
+   * be mistaken for a cost signal. VPS-D001. */
+  --color-cat-1: #3b82f6;
+  --color-cat-2: #8b5cf6;
+  --color-cat-3: #06b6d4;
+  --color-cat-4: #d946ef;
+  --color-cat-5: #0ea5e9;
+  --color-cat-6: #a855f7;
+  --color-cat-7: #64748b;
+  --color-cat-8: #ec4899;
+
+  /* ---- Radius ----------------------------------------------------- */
+
+  --radius-*: initial;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-full: 9999px;
+
+  /* ---- Space ------------------------------------------------------ */
+  /* Four-pixel base. The full permitted set, and nothing between.
+   * `--spacing: initial` disables Tailwind's dynamic scale, so `p-7`
+   * does not exist. VPS-D001. */
+
+  --spacing: initial;
+  --spacing-0: 0px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+
+  /* Density-resolved dimensions. One attribute flip changes all of them,
+   * so no component branches on density. VPS-D001. */
+  --spacing-row: var(--vt-row-height);
+  --spacing-timeline-row: var(--vt-timeline-row-height);
+  --spacing-control: var(--vt-control-height);
+  --spacing-cell: var(--vt-cell-padding);
+  --spacing-bar: var(--vt-bar-height);
+
+  /* Structural dimensions from VPS-D002 and VPS-D004. These are fixed
+   * layout sizes, not spacing — see Prototype_Findings F19: VPS-D001
+   * claims authority over every size but its space set cannot express
+   * them, and the shell documents introduce them directly. */
+  --spacing-sidebar: 240px; /* VPS-D004 */
+  --spacing-sidebar-collapsed: 48px; /* VPS-D004 */
+  --spacing-panel: 360px; /* VPS-D004, VPS-D002 */
+  --spacing-page-header: 56px; /* VPS-D004 */
+  --spacing-timeline-label: 220px; /* VPS-D002, VRS-F005 */
+  --spacing-timeline-label-narrow: 160px; /* VRS-F005, below 1280px */
+  --spacing-palette: 640px; /* VPS-D002 */
+  --spacing-icon: 16px; /* VPS-D002 */
+  --spacing-dot: 6px; /* VPS-D002, the today line's dot. Not in D001's set. */
+  --spacing-badge: 20px; /* VPS-D002 */
+  --spacing-avatar-sm: 20px; /* VPS-D002 */
+  --spacing-avatar-md: 24px; /* VPS-D002 */
+  --spacing-avatar-lg: 32px; /* VPS-D002 */
+  --spacing-avatar-xl: 40px; /* VPS-D002 */
+  --spacing-button-sm: 24px; /* VPS-D002 */
+  --spacing-button-md: 28px; /* VPS-D002 */
+  --spacing-button-lg: 32px; /* VPS-D002 */
+
+  --container-*: initial;
+  --container-content: 1440px; /* VPS-D004 */
+
+  /* ---- Typography ------------------------------------------------- */
+  /* Three faces, three jobs, no overlap. The family variables are supplied
+   * by the app via next/font — the one token that cannot live wholly in
+   * this package, because next/font generates the family name at build. */
+
+  --font-*: initial;
+  --font-weight-*: initial;
+  --font-display: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  --font-ui: var(--font-manrope), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  /* Base is 14px, not 16. VPS-D001: a 16px base would cost roughly two
+   * rows of the Bench Forecast per viewport. Each token carries its own
+   * line height, weight and tracking, so the four parts are never
+   * assembled by hand at a call site. */
+
+  --text-*: initial;
+
+  --text-display: 32px;
+  --text-display--line-height: 36px;
+  --text-display--font-weight: 700;
+  --text-display--letter-spacing: -0.01em;
+
+  --text-h1: 24px;
+  --text-h1--line-height: 30px;
+  --text-h1--font-weight: 700;
+  --text-h1--letter-spacing: -0.01em;
+
+  --text-h2: 20px;
+  --text-h2--line-height: 26px;
+  --text-h2--font-weight: 600;
+  --text-h2--letter-spacing: -0.01em;
+
+  --text-h3: 16px;
+  --text-h3--line-height: 22px;
+  --text-h3--font-weight: 600;
+  --text-h3--letter-spacing: 0;
+
+  --text-body: 14px;
+  --text-body--line-height: 20px;
+  --text-body--font-weight: 400;
+  --text-body--letter-spacing: 0;
+
+  --text-body-medium: 14px;
+  --text-body-medium--line-height: 20px;
+  --text-body-medium--font-weight: 500;
+  --text-body-medium--letter-spacing: 0;
+
+  --text-small: 13px;
+  --text-small--line-height: 18px;
+  --text-small--font-weight: 400;
+  --text-small--letter-spacing: 0;
+
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-label--font-weight: 500;
+  --text-label--letter-spacing: 0;
+
+  --text-micro: 11px;
+  --text-micro--line-height: 14px;
+  --text-micro--font-weight: 600;
+  --text-micro--letter-spacing: 0.04em;
+
+  --text-mono: 13px;
+  --text-mono--line-height: 18px;
+  --text-mono--font-weight: 400;
+  --text-mono--letter-spacing: 0;
+
+  --text-mono-lg: 20px;
+  --text-mono-lg--line-height: 26px;
+  --text-mono-lg--font-weight: 500;
+  --text-mono-lg--letter-spacing: 0;
+
+  /* ---- Elevation -------------------------------------------------- */
+  /* Three levels, only the third uses a shadow. Nothing else in this
+   * product casts one. VPS-D001. */
+
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --shadow-overlay: var(--vt-shadow-overlay);
+
+  /* Backdrop blur is forbidden by VPS-D001. Clearing the namespace means
+   * `blur-sm` does not compile. */
+  --blur-*: initial;
+
+  /* ---- Motion ----------------------------------------------------- */
+  /* A single decelerating curve throughout: fast departure, soft arrival.
+   * No spring, no bounce, no overshoot. VPS-D003. */
+
+  --ease-*: initial;
+  --ease-vulto: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Breakpoints ------------------------------------------------ */
+  /* VPS-D003 names 1024, 1280 and 1536; VRS-F010 and VPS-F002 name 768.
+   * Those four, and no others — Tailwind's 640px `sm` is not a Vulto
+   * breakpoint. */
+
+  --breakpoint-*: initial;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+/*
+ * Semantic surface tokens. Components reference these, never raw ramp
+ * values — this is what makes theming a single switch. VPS-D001.
+ *
+ * `@theme inline` so the utility emits the runtime variable directly and
+ * resolves against the root's data-theme rather than a frozen copy.
+ */
+@theme inline {
+  --color-bg-canvas: var(--vt-bg-canvas);
+  --color-bg-surface: var(--vt-bg-surface);
+  --color-bg-raised: var(--vt-bg-raised);
+  --color-bg-subtle: var(--vt-bg-subtle);
+  --color-bg-hover: var(--vt-bg-hover);
+  --color-bg-selected: var(--vt-bg-selected);
+
+  --color-border-default: var(--vt-border-default);
+  --color-border-strong: var(--vt-border-strong);
+  --color-border-focus: var(--vt-border-focus);
+
+  --color-text-primary: var(--vt-text-primary);
+  --color-text-secondary: var(--vt-text-secondary);
+  --color-text-tertiary: var(--vt-text-tertiary);
+  --color-text-inverse: var(--vt-text-inverse);
+  --color-text-brand: var(--vt-text-brand);
+
+  --color-success: var(--vt-success);
+  --color-attention: var(--vt-attention);
+  --color-danger: var(--vt-danger);
+
+  --color-avatar-fallback: var(--vt-avatar-fallback);
+}
