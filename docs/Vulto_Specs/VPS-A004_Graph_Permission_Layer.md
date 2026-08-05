@@ -1,0 +1,338 @@
+---
+Type:
+  - Vulto for Professional Services Specs
+Date: "[[2026-07-31]]"
+Product Phase:
+  - Architecture
+Feature Type:
+  - Compliance
+aliases:
+  - VPS-A004
+---
+
+# VPS-A004 — Graph Permission Layer
+
+**Status:** Decided at Founder Level
+**Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
+**Depends On:** [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (node registry and privacy classes), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (tier model and encryption)
+**Blocks:** [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] and every feature in every application
+
+This document is the single source of truth for who may read and write what, how permission is enforced, and how aggregates are prevented from identifying individuals.
+
+**One interceptor serves every application.** A person's role resolves identically whether the query came from Roster or Projects, because both are lenses over the same graph and the same session.
+
+---
+
+## Decision
+
+Access control is enforced **at the graph query layer, not the UI layer**. A role without permission to reach a node type cannot reach it via any query path, regardless of how the query is constructed or which application's interface issued it. UI-only access control is a false security model and is prohibited.
+
+Permission is derived by default from each node type's Privacy Class in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]. The detailed matrix that follows is reserved for node types whose behavior genuinely needs more nuance than the default provides. With ninety-three registered node types, hand-maintaining a bespoke row for each is neither realistic nor something an implementer should be left to infer.
+
+---
+
+## Context
+
+A property graph connects everything. Without a principled permission layer, a sufficiently creative traversal can navigate from a broadly visible node to a sensitive one it was never meant to reach. This is acute here specifically, because Roster stores wellness signals, salary figures and performance assessments alongside project assignments, skills and team structure in the same graph. Separating them into different databases would destroy the intelligence value of the graph. They must coexist with architecturally enforced boundaries.
+
+Enforcement is layered, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Standing Rule 5. The sync layer prevents sensitive nodes from reaching an unauthorized device at all — cryptographically for Tiers 1 and 3, by distribution control for Tiers 0 and 2. This document prevents sensitive nodes from appearing in query results even where the data exists locally. For Tiers 1 and 3 this is defense in depth behind a mathematical guarantee. For Tiers 0 and 2 it is the primary mechanism.
+
+Every decision this interceptor makes — every denial at any tier, and every successful grant of Tier 1 or Tier 3 data — writes an AuditEntry per [[VPS-F004_Silent_Audit_Log|VPS-F004]]. This is intrinsic to the single choke point every query already passes through, not a per-feature integration a future feature could forget to wire up.
+
+---
+
+## Role definitions
+
+| Role | Description | Assignment |
+|---|---|---|
+| **Owner** | Founder or executive with full traversal rights | Manually assigned, maximum 3 per workspace |
+| **HR Admin** | Full HR operational access. No access to others' wellness | Assigned by Owner |
+| **Finance Admin** | Full financial access. Read-only on HR operational nodes | Assigned by Owner |
+| **Manager** | Full access to direct reports' operational data. No salary, no wellness | Automatic, from `managed_by` |
+| **Team Member** | Full access to own nodes. Read on shared project and team nodes | Default for all employees |
+| **Candidate** | Read-only on own Candidate node via [[VRS-F030_Candidate_Portal|VRS-F030]] only | Automatic on candidate creation |
+| **Client** | Read-only on own Project nodes via [[Vulto Comms]]' portal only | Assigned by Owner or HR Admin |
+
+**Role combinations.** A user may hold several roles and receives the union of their permissions — the higher grant wherever rules differ. A founder who also manages a team holds both Owner and Manager permissions.
+
+**Cross-application evaluation.** Role is evaluated per authenticated user, never per application. A person's WorkspaceMembership role applies identically regardless of whether the query came from Roster, [[Vulto Projects]] or [[Vulto Accounts]], because local-first means every application is a different lens over the same session and the same local graph, not a separate service with its own identity.
+
+**Recovery keyholders are not a role.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 1 recovery model designates trusted people as keyholders. These are existing Owner, Finance Admin or HR Admin holders selected for recovery, not a new permission category.
+
+---
+
+## Default permission mapping by privacy class
+
+Unless a node type appears in the detailed matrix with an explicit override, this table is its grant.
+
+`Full` = create, read, update, soft-delete. `Read` = read only. `None` = **structurally absent** from query results, not hidden and not redacted.
+
+| Privacy Class | Owner | HR Admin | Finance Admin | Manager | Team Member |
+|---|---|---|---|---|---|
+| Standard | Full | Full | Read | Full (direct reports) | Read (own + team) |
+| Finance-restricted | Full | Full | Full | None | Read (own only) |
+| HR-restricted | Full | Full | Read | None | Read (own only) |
+| Manager-restricted | Full | Full | None | Read (direct reports) | None |
+| Owner and HR Admin only | Full | Full | None | None | None |
+| HR Admin only | Read | Full | None | None | None |
+| Owner only | Full | None | None | None | None |
+| Owner-restricted | Full | None | None | None | None |
+| Sensitive | Full (aggregate only) | Full (aggregate only) | None | None | Full (own only) |
+| Self and Finance-restricted | Full | Full | Full | None | Read (own only) |
+| Self only | None | None | None | None | Full (own only) |
+| Self-only, absolute | **None, no exceptions** | None | None | None | Full (own only) |
+| Recipient-only | Own only | Own only | Own only | Own only | Own only |
+| Role-dependent | Follows the Privacy Class of the nodes the record references | | | | |
+| Inherited | Follows the referenced or parent node's Privacy Class | | | | |
+
+**Three recurring override patterns** account for nearly every row in the matrix below, and are named here so that a new feature applies them on sight rather than rediscovering them:
+
+**The self-service pattern.** Standard's `Read (own + team)` for Team Member is wrong for any record an employee creates about themselves. TimesheetEntry, LeaveRequest, Expense, DevelopmentGoal, TrainingRecord and Invoice all grant Team Member `Full (own only)`. A new node type an employee submits takes this grant automatically.
+
+**The workspace-configuration pattern.** Standard's person-scoped framing is wrong for workspace-wide definitions. LeavePolicy, Entity, OnboardingTemplate, CareerPath, Certification, CustomFieldDefinition, WorkingCalendar and Policy all grant every role `Read` and restrict write to Owner and HR Admin. Everyone should see the rules that govern them; only two roles set them.
+
+**The signal-clearing pattern.** Manager-restricted's `Read` default is wrong for a signal a Manager is expected to act on. BurnoutAlert, TimesheetAnomalyFlag and ProbationCheckIn grant Manager `Full (direct reports)`, because reviewing a flag and clearing it is the entire point of routing it to them. In each case the subject of the signal gets `None`: the person a system-generated signal is about is not automatically its audience.
+
+---
+
+## Permission matrix by node type
+
+Only node types whose behavior differs from their Privacy Class default, or whose nuance is worth stating explicitly.
+
+| Node Type | Owner | HR Admin | Finance Admin | Manager | Team Member |
+|---|---|---|---|---|---|
+| Employee (operational) | Full | Full | Read | Full (direct reports) | Read (own + team) |
+| Employee (compensation) | Full | Full | Full | None | Read (own only) |
+| WellnessTriggerEvent | None | None | None | None | Full (own only) |
+| PulseEntry, CoffeePulseEntry | Aggregate only | Aggregate only | None | None | Full (own only) |
+| BurnoutAlert | Full | Full | None | Full (direct reports) | None |
+| TimesheetAnomalyFlag | Full | Full | None | Full (direct reports) | None |
+| FlightRiskSignal | Full | Full | None | None | None |
+| ProbationCheckIn | Full | Full | None | Full (direct reports) | None |
+| Assignment | Full | Full | Read | Full | Read |
+| TimesheetEntry | Full | Full | Read | Read (direct reports) | Full (own only) |
+| LeaveRequest | Full | Full | Read | Full (direct reports, for approval) | Full (own only) |
+| Expense | Full | Full | Full | Read (direct reports) | Full (own only) |
+| Invoice | Full | Read | Full | None | Full (own only) |
+| PayRun | Full | Full | Full | None | None |
+| PaySlip | Full | Full | Full | None | Read (own only) |
+| Contract (identifying) | Full | Full | Read | None | Read (own only) |
+| Contract (content) | Full | Full | Full | None | Read (own only) |
+| HRCase, CaseEvent (identifying) | Full | Full | None | None | None |
+| HRCase, CaseEvent (content) | Full | Full | None | None | None |
+| WorkAuthorization | Full | Full | None | None | Read (own only) |
+| OrgScenario | Full | Full | None | None | None |
+| Document (Tier 0 default) | Full | Full | Read | Read (project-scoped) | Read (own only) |
+| Document (provenance-elevated) | Full | Full | Follows source | None | Read (own only) |
+| Candidate, DraftHiringRecord | Full | Full | None | Read (pipeline) | None |
+| InterviewRound | Full | Full | None | Read (pipeline) | None, plus participant grant |
+| FeedbackEntry | Full | Full | None | Read (pipeline) | None, plus own-entry Full |
+| Offer (identifying) | Full | Full | Read | None | None |
+| Offer (terms) | Full | Full | Full | None | None |
+| Requisition (identifying) | Full | Full | Read | Read | None |
+| Requisition (budget) | Full | Read | Full | None | None |
+| HeadcountPlan | Full | Read | Full | None | None |
+| CompensationBand | Full | Read | Full | None | Read (own band only) |
+| CompensationChange | Full | Full | Full | None | Read (own only) |
+| Referral | Full | Full | None | Read | Full (own submissions) |
+| TalentPool | Full | Full | None | Read | None |
+| ReviewEntry | Full | Full | None | Full (direct reports) | Full (own self-assessment) |
+| OnboardingTask | Full | Full | Read | Read (direct reports' plans) | Read (own plan), plus assignee Full |
+| DevelopmentGoal, TrainingRecord | Full | Full | Read | Full (direct reports) | Full (own only) |
+| SubVendor | Full | Full | Full | Read | None |
+| HeadcountSnapshot | Full | Full | Read | None | None |
+| AuditEntry | Full | Full | None | None | None |
+| ImportBatch | Full | Full | None | None | None |
+| ErasureRequest, RetentionPolicy | Full | Full | None | None | None |
+| Notification | Recipient-only, absolute. No role sees another user's | | | | |
+| GraphReference | Visible only where the user has Read on both source and target, per [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | | | | |
+| ApprovalStage | Inherits the grant of the record it gates | | | | |
+
+**Participant-scoped grants** appear three times above and are a distinct mechanism from role-based access: an Employee with a `participating_in` edge to an InterviewRound reads that round regardless of organizational role; the interviewer on a FeedbackEntry has Full on that entry only; the assignee on an OnboardingTask has Full on that task only. A Team Member asked to sit on a panel needs to see the panel they are on, which the role columns alone cannot express.
+
+**Field-level write authority within a granted node** — who may write the self-assessment versus the manager assessment on a ReviewEntry, for example — is enforced at the application layer rather than as a permission row per field. A graph permission row per field would be unmaintainable at this schema's size.
+
+---
+
+## Graph traversal rules
+
+A query traversing from Node A to Node B via an edge operates under these rules:
+
+1. The traversal is permitted if and only if the requesting role has at minimum `Read` on Node A, on Node B, **and on the edge type** connecting them.
+2. Where `Read` on Node B is absent, the traversal stops at Node A. Node B is **not** included in the result.
+3. The result does not indicate that Node B or the edge exists. The node is absent — not hidden, not redacted, not replaced with a placeholder or a count.
+4. This applies recursively at every hop. A boundary at hop 2 does not expose the existence of nodes at hop 3.
+
+**Relationship to the tier model.** For Tiers 1 and 3 an unauthorized device never receives the document, so these rules never encounter it — the node was never locally present. For Tiers 0 and 2, which sync broadly, these rules are the only enforcement. Both produce the same observable result; only the second depends on this document working correctly.
+
+**Three kinds of absence must never be conflated.** A node absent through permission is absent permanently for that user and presents as though it never existed. A Tier 1 record absent through [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s retention window is absent only from local materialization, for an authorized user, and is one fetch away. A record absent mid-sync is absent transiently and resolves without user action.
+
+Conflating them means telling a user that a forbidden record can be requested, that a retrievable one cannot, or that a loading one needs action. All three are distinguishable at the application layer using the sync-status marker required by [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], and each has a defined visual treatment in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]].
+
+---
+
+## Aggregate disclosure control
+
+**This section replaces four separate mechanisms with one.** The previous specification set reached the same answer independently in [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]], [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]], [[VRS-F060_Hiring_Quality_Analytics|VRS-F060]] and [[VRS-F059_Retention_Analytics|VRS-F059]] — four configuration keys, four defaults, four implementations of one idea — and applied it in none of the places it was not explicitly written, most notably the Bench Forecast's filtered utilization percentage, which can identify an individual in a small workspace as readily as any survey result.
+
+Every aggregate in this product passes through one mechanism.
+
+### The rule
+
+An aggregate is displayed only where the cohort contributing to it meets the minimum size configured in [[VPS-F005_Workspace_Configuration_Console|VPS-F005]]:
+
+- `k_anonymity_minimum`, default 5, for aggregates over Tier 0 and Tier 2 data.
+- `k_anonymity_minimum_sensitive`, default 8, for aggregates derived from Tier 3 data, set higher because those contributions describe personal distress rather than general sentiment.
+
+Below the threshold, the aggregate is **suppressed, not approximated**. It renders as the restricted state per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], with copy naming the reason plainly — *not enough responses to show this without identifying someone* — rather than a rounded or noised figure, which invites a reader to treat an unreliable number as a real one.
+
+### Differencing protection
+
+Threshold checking alone is insufficient, and this is the failure mode that makes a per-feature implementation unsafe. A user who can request *utilization for the design team*, twelve people, and *utilization for the design team excluding contractors*, eleven people, has learned the twelfth person's figure by subtraction, with both queries passing the threshold individually.
+
+Three requirements follow:
+
+1. **Aggregates are computed over the filtered cohort, never derived by subtracting one displayed aggregate from another.**
+2. **A filter that reduces a cohort by fewer than `k` members returns the unfiltered aggregate** rather than a new one, and says so.
+3. **Sequences of aggregate queries against overlapping cohorts are recorded in [[VPS-F004_Silent_Audit_Log|VPS-F004]]**, so a deliberate differencing attempt is visible after the fact even though it cannot always be prevented in the moment.
+
+### Where it applies
+
+Every aggregate without exception, including: filtered utilization on [[VRS-F005_The_Bench_Forecast|VRS-F005]]; agency-wide utilization on [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]]; team sentiment on [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] and [[VRS-F077_Monthly_Coffee_Pulse|VRS-F077]]; wellness trends on [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]; hiring correlations on [[VRS-F060_Hiring_Quality_Analytics|VRS-F060]]; turnover cohorts on [[VRS-F059_Retention_Analytics|VRS-F059]]; workforce composition on [[VRS-F058_People_Analytics_Dashboard|VRS-F058]]; and cross-tenant benchmarks on [[VRS-F071_Salary_Benchmarking|VRS-F071]] and [[VRS-F072_Agency_Benchmarking|VRS-F072]].
+
+A new feature displaying an aggregate does not define a threshold. It calls this mechanism.
+
+### Structural anonymization is separate and stronger
+
+Where a contribution must never be linkable to a person at all, [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] registers a contribution node carrying **no edge to Employee whatsoever** — `PulseAggregateContribution` and `WellnessAggregateContribution`. That is anonymization by structural absence of a link, and it survives a role change, a permission bug and a compelled disclosure. Aggregate disclosure control above is the additional layer applied on top of it, not a substitute for it.
+
+---
+
+## Wellness privacy partitioning
+
+WellnessTriggerEvent carries the most sensitive data in the graph. Its rule is absolute: only the employee to whom it belongs may traverse to it. No other role, including Owner and HR Admin, has any access to another employee's wellness records.
+
+Three independent layers enforce this:
+
+- **Sync** ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): never synced to any device but the owning employee's own.
+- **Cryptographic** ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): end-to-end encrypted with a key that never leaves the owner's devices. No server-side or cross-device decryption is possible.
+- **Query** (this document): even if such a node existed locally and were somehow decrypted, the interceptor strips it for every role but the owner.
+
+The first two do not depend on this document functioning correctly. This is a structural guarantee, not a policy claim resting on query-layer discipline.
+
+---
+
+## Write-authority enforcement for bootstrap node types
+
+Every rule above governs *who*, by role, may read or write. This section governs a separate question, orthogonal to role: *which application* currently holds write authority for a node type [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Cross-Suite Node Ownership table marks as a Roster bootstrap.
+
+A Finance Admin with full role-based write permission on RateCard is correctly refused a write once [[Vulto Accounts]] is activated for that workspace — not because their role changed, but because the authoritative writer did.
+
+This check runs inside the same interceptor, immediately after the role check and never in place of it. A write role-based permission already refuses is refused there; write-authority enforcement only narrows a write that would otherwise be allowed. Two sequential gates, not one combined rule. Full detail lives in [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]].
+
+---
+
+## Technical specifications
+
+| ID | Specification |
+|---|---|
+| A004-T01 | Permission checks MUST occur at the graph query layer as an interceptor before results are returned. Checks performed only in application code after retrieval are insufficient and prohibited |
+| A004-T02 | The interceptor MUST be the single path all graph queries pass through. No bypass may exist from application code |
+| A004-T03 | Permission rules MUST be defined in a configuration file in version control. Changes require a pull request with engineering leadership review once staffed; until then, recorded by the founder |
+| A004-T04 | Every denial MUST be logged to [[VPS-F004_Silent_Audit_Log|VPS-F004]] with requesting user, node type, node ID, attempted traversal path and denial reason |
+| A004-T05 | Role combinations MUST resolve as the union of permissions, computed correctly in every case |
+| A004-T06 | Permission changes MUST take effect immediately. Active sessions MUST NOT require restart |
+| A004-T07 | An automated test suite MUST cover every role and Privacy Class combination in the default mapping, and every role and node type combination in the matrix. No deployment may reduce this coverage |
+| A004-T08 | A node type absent from the matrix MUST fall back to its Privacy Class default automatically. A node type reaching implementation with no defined behavior is a specification error, not something for application code to guess |
+| A004-T09 | Role evaluation MUST be identical regardless of which application issued the query. No application-specific permission path may exist |
+| A004-T10 | Permission absence, retention-window absence and mid-sync absence MUST be distinguishable at the application layer using the sync-status marker from [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], and MUST render per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s three defined states |
+| A004-T11 | For any bootstrap node type, the interceptor MUST additionally check write authority per [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] after role permission has passed, never as a substitute for it |
+| A004-T12 | Every aggregate MUST pass through the disclosure control mechanism defined here. A feature MUST NOT define its own threshold |
+| A004-T13 | An aggregate below threshold MUST be suppressed entirely. Rounding, noising or approximating a sub-threshold aggregate is prohibited |
+| A004-T14 | A filter reducing a cohort by fewer than `k` members MUST return the unfiltered aggregate and indicate that it has done so |
+| A004-T15 | Aggregates MUST be computed over the filtered cohort directly. Deriving one aggregate by subtracting another is prohibited |
+
+---
+
+## Acceptance criteria
+
+**GIVEN** a Manager constructs a query from a Project node
+**WHEN** the traversal would reach a WellnessTriggerEvent via any sequence of edges
+**THEN** it is absent from the result — no placeholder, no redaction marker, no count — and the result is identical to one where the node did not exist
+
+---
+
+**GIVEN** an Owner attempts to access Employee X's WellnessTriggerEvent
+**WHEN** the query executes
+**THEN** the nodes are absent. Owner does not override the absolute wellness rule
+
+---
+
+**GIVEN** a permission rule is updated and deployed
+**WHEN** a user with an active session makes an affected query
+**THEN** the updated permission applies immediately without re-authentication
+
+---
+
+**GIVEN** a new node type is registered in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] with a Privacy Class but no matrix entry
+**WHEN** a query reaches it
+**THEN** the default mapping for its Privacy Class applies, with no undefined behavior
+
+---
+
+**GIVEN** the same user queries once through Roster and once through [[Vulto Projects]]
+**WHEN** both request the same node
+**THEN** the permission result is identical
+
+---
+
+**GIVEN** a design team of four people
+**WHEN** a user filters the Bench Forecast to that team and views utilization
+**THEN** the aggregate is suppressed and renders the restricted state, because four is below `k_anonymity_minimum`
+
+---
+
+**GIVEN** a twelve-person cohort whose aggregate displays, and a filter that would reduce it to eleven
+**WHEN** the filter is applied
+**THEN** the unfiltered aggregate is returned with an indication that the filter was not applied to the figure, because the reduction is smaller than `k`
+
+---
+
+**GIVEN** a denial occurs
+**WHEN** [[VPS-F004_Silent_Audit_Log|VPS-F004]] is queried
+**THEN** an entry exists with requesting user, node type, node ID, attempted path and reason, timestamped to millisecond accuracy
+
+---
+
+## Out of scope
+
+- UI-layer-only access control, prohibited as a sole mechanism
+- Role management UI for end users; assignment is an Owner operation in workspace settings
+- Field-level encryption as a substitute for permission enforcement; [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] and this document are complementary layers, not interchangeable
+- The cryptographic mechanics of Tier 1 and Tier 3, fully specified in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
+- Differential privacy with calibrated noise, deliberately rejected in favor of suppression — a noised figure invites a reader to treat an unreliable number as real
+
+---
+
+## Decisions recorded
+
+**The k-anonymity mechanism is unified here.** Four features had independently reached the same answer with four configuration keys and four implementations, and no aggregate outside those four was protected at all. One mechanism, two thresholds, applied everywhere.
+
+**Differencing protection is specified**, which none of the four previous implementations addressed. Threshold checking alone is defeated by two individually-compliant queries against overlapping cohorts.
+
+**Suppression is chosen over noising.** An approximated figure below threshold looks like a real figure and will be acted on as one.
+
+**The matrix is rewritten without correction archeology.** The previous version carried the reasoning for each historical fix inside the table cells, which made a reference table read as a changelog. The three recurring override patterns are named once above, so a new feature applies them on sight.
+
+**Rows are added for twenty-four new node types** introduced in [[VRS-001_Feature_Register|VRS-001]], each classified against the same patterns rather than new ones.
+
+---
+
+## Related Notes
+
+- [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] — the node registry and privacy classes this layer enforces
+- [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — the tier model, and the reader sets derived from the classes here
+- [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] — the reference protocol, whose visibility rules depend on this document
+- [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] — the visual treatment of the three kinds of absence
+- [[VPS-F004_Silent_Audit_Log|VPS-F004]] — the audit log every denial writes to
+- [[VPS-F005_Workspace_Configuration_Console|VPS-F005]] — where the two k-anonymity thresholds are configured
