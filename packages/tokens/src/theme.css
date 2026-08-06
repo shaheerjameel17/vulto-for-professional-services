@@ -46,23 +46,27 @@
   --color-brand-800: #3730a3;
   --color-brand-900: #312e81;
 
-  /* Categorical — cool half of the wheel only, so a project bar can never
-   * be mistaken for a cost signal. VPS-D001. */
-  --color-cat-1: #3b82f6;
-  --color-cat-2: #8b5cf6;
-  --color-cat-3: #06b6d4;
-  --color-cat-4: #d946ef;
-  --color-cat-5: #0ea5e9;
-  --color-cat-6: #a855f7;
-  --color-cat-7: #64748b;
-  --color-cat-8: #ec4899;
+  /* Categorical tokens are declared per theme in runtime.css and aliased in the
+   * `@theme inline` block below — FDN-20 made them theme-aware, because one
+   * value mixed against white and against near-black cannot be right for both. */
 
   /* ---- Radius ----------------------------------------------------- */
 
+  /*
+   * FDN-19 adds `radius-xl` and states the concentric rule the scale now obeys:
+   *
+   *   a nested radius equals the outer radius minus the gap between them.
+   *
+   * The workspace inset is `radius-xl` at 12px. The contextual panel sits 4px
+   * inside it, so it takes 12 − 4 = 8px, which is `radius-lg`. That is why the
+   * scale is 4 / 6 / 8 / 12 rather than an arbitrary set: each step is a
+   * legitimate nesting of the one above it at a space-1 or space-2 gap.
+   */
   --radius-*: initial;
   --radius-sm: 4px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --radius-xl: 12px;
   --radius-full: 9999px;
 
   /* ---- Space ------------------------------------------------------ */
@@ -91,6 +95,7 @@
   --spacing-control: var(--vt-control-height);
   --spacing-cell: var(--vt-cell-padding);
   --spacing-bar: var(--vt-bar-height);
+  --spacing-bench-bar: var(--vt-bench-bar-height); /* FDN-15 */
 
   /* Structural dimensions from VPS-D002 and VPS-D004. These are fixed
    * layout sizes, not spacing — see Prototype_Findings F19: VPS-D001
@@ -116,6 +121,7 @@
 
   --container-*: initial;
   --container-content: 1440px; /* VPS-D004 */
+  --container-tooltip: 280px; /* VPS-D002 */
 
   /* ---- Typography ------------------------------------------------- */
   /*
@@ -213,9 +219,36 @@
   --text-mono--font-weight: 400;
   --text-mono--letter-spacing: 0;
 
+  /*
+   * FDN-15 adds a twelfth type token, which is a design system change rather
+   * than a component decision — recorded as such in Findings.
+   *
+   * The bench figure has to be heavier than an assignment bar's label, by
+   * weight rather than by hue. At the `match` height there is no room to also
+   * be larger, so this is `mono` at 500 against the label's Inter 400. It
+   * follows VPS-D001's existing `body` / `body-medium` naming exactly.
+   */
+  --text-mono-medium: 13px;
+  --text-mono-medium--line-height: 18px;
+  --text-mono-medium--font-weight: 500;
+  --text-mono-medium--letter-spacing: 0;
+
+  /*
+   * FDN-20's thirteenth token. A supporting figure in a group: large enough to
+   * read as a figure rather than a caption, and below the one that leads.
+   *
+   * 16px is `h3`'s step on the size ladder, so this adds no new size.
+   */
+  --text-mono-md: 16px;
+  --text-mono-md--line-height: 22px;
+  --text-mono-md--font-weight: 500;
+  --text-mono-md--letter-spacing: 0;
+
+  /* Weight 600 so the leading figure outweighs whatever sits beside it. Geist
+   * Mono is loaded variable, so 600 is a real weight. */
   --text-mono-lg: 20px;
   --text-mono-lg--line-height: 26px;
-  --text-mono-lg--font-weight: 500;
+  --text-mono-lg--font-weight: 600;
   --text-mono-lg--letter-spacing: 0;
 
   /* ---- Elevation -------------------------------------------------- */
@@ -282,6 +315,24 @@
   --color-avatar-fallback: var(--vt-avatar-fallback);
 
   /*
+   * Categorical. FDN-20: per theme, because the bar is an opaque mix — 34%
+   * against white, 42% against near-black — and a single source value comes out
+   * pastel in one theme and saturated in the other.
+   */
+  --color-cat-1: var(--vt-cat-1);
+  --color-cat-2: var(--vt-cat-2);
+  --color-cat-3: var(--vt-cat-3);
+  --color-cat-4: var(--vt-cat-4);
+  --color-cat-5: var(--vt-cat-5);
+  --color-cat-6: var(--vt-cat-6);
+  --color-cat-7: var(--vt-cat-7);
+  --color-cat-8: var(--vt-cat-8);
+
+  --color-nonworking-rest: var(--vt-nonworking-rest);
+  --color-segment-track: var(--vt-segment-track);
+  --color-segment-active: var(--vt-segment-active);
+
+  /*
    * FDN-12. The bench region's fill is a chosen color per theme, not
    * `attention` composited at a percentage.
    *
@@ -293,4 +344,14 @@
    * 12% over neutral-900 carried real weight (F32).
    */
   --color-bench: var(--vt-bench-fill);
+  --color-bench-figure: var(--vt-bench-figure);
+  /* FDN-18: the neutral fill that replaced `bg-selected` on navigation items
+   * and segmented controls, once brand was reserved to three uses. It is its
+   * own value rather than an alias of `bg-subtle`, because F38 moved light
+   * `bg-canvas` to neutral-100 — the same value — and the sidebar sits directly
+   * on the canvas, so an active item filled with `bg-subtle` was invisible. */
+  --color-bg-active: var(--vt-bg-active);
+
+  /* FDN-15: the faintest hint that a column is not a working day. */
+  --color-nonworking: var(--vt-nonworking-fill);
 }

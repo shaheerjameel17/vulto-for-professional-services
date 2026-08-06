@@ -15,7 +15,12 @@ import { cx } from "./cx";
  * rather than a map.
  */
 
-const MONO_TOKENS = new Set<TypeToken>(["mono", "mono-lg"]);
+const MONO_TOKENS = new Set<TypeToken>([
+  "mono",
+  "mono-medium",
+  "mono-md",
+  "mono-lg",
+]);
 
 const SIZE: Record<TypeToken, string> = {
   display: "text-display",
@@ -28,6 +33,8 @@ const SIZE: Record<TypeToken, string> = {
   label: "text-label",
   micro: "text-micro",
   mono: "text-mono",
+  "mono-medium": "text-mono-medium",
+  "mono-md": "text-mono-md",
   "mono-lg": "text-mono-lg",
 };
 
@@ -47,6 +54,8 @@ const DEFAULT_ELEMENT: Record<TypeToken, ElementType> = {
   label: "span",
   micro: "span",
   mono: "span",
+  "mono-medium": "span",
+  "mono-md": "span",
   "mono-lg": "span",
 };
 

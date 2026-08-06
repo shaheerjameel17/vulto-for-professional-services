@@ -102,7 +102,7 @@ Components reference these, never raw ramp values. This is what makes theming a 
 
 | Token | Light | Dark |
 |---|---|---|
-| `bg-canvas` | `neutral-50` | `neutral-950` |
+| `bg-canvas` | `neutral-100` | `neutral-950` |
 | `bg-surface` | `neutral-0` | `neutral-900` |
 | `bg-raised` | `neutral-0` | `neutral-800` |
 | `bg-subtle` | `neutral-100` | `neutral-800` |

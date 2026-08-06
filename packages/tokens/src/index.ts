@@ -18,6 +18,26 @@ export const TYPE_TOKENS = [
   "label",
   "micro",
   "mono",
+  /*
+   * FDN-15's twelfth token, and F40 is settled in favor of keeping it.
+   *
+   * The question was whether `mono` at 400 could simply become 500, leaving the
+   * scale at eleven. It cannot: `mono` at 400 is load-bearing on the bench bar,
+   * where the day count is deliberately lighter than the cost figure beside it.
+   * That is the "weight, not hue" distinction FDN-15 established, and
+   * redefining `mono` would collapse it. VPS-D001's count moves to twelve.
+   */
+  "mono-medium",
+  /*
+   * FDN-20's thirteenth token, for a supporting figure in a group — large
+   * enough to read as a figure rather than a caption, below the figure that
+   * leads. 16px is an existing step on VPS-D001's size ladder.
+   *
+   * NAMING COLLISION, for FDN-21 to resolve: `-medium` denotes weight here
+   * (matching `body-medium`) while `-md` and `-lg` denote size. The mono family
+   * is now the one place in the scale where a suffix means two things.
+   */
+  "mono-md",
   "mono-lg",
 ] as const;
 
@@ -78,8 +98,12 @@ export type ResolvedTheme = "light" | "dark";
  * unions plus their runtime.css blocks are then deleted.
  */
 
-export const BENCH_FILLS = ["restrained", "present", "assertive"] as const;
-export type BenchFill = (typeof BENCH_FILLS)[number];
-
-export const BAR_FILLS = ["hairline", "wash", "tint"] as const;
-export type BarFill = (typeof BAR_FILLS)[number];
+/*
+ * FDN-20 categorical palette candidates.
+ *
+ * `current` is the palette as built, kept for comparison. `spread` leans on hue,
+ * `ladder` on lightness. TEMPORARY — one becomes the token set, and the other
+ * two plus this union are then deleted.
+ */
+export const CAT_PALETTES = ["current", "spread", "ladder"] as const;
+export type CatPalette = (typeof CAT_PALETTES)[number];

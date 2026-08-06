@@ -13,12 +13,31 @@
 
 :root {
   /* Semantic surface — VPS-D001, light column */
-  --vt-bg-canvas: #fafafa; /* neutral-50 */
+  /* F38: neutral-100, not neutral-50. Against neutral-0 the old value gave
+   * 1.04:1, so the inset workspace panel was carried entirely by its border and
+   * the canvas it sits on was not perceptible. Dark was already at 1.12:1. */
+  --vt-bg-canvas: #f4f4f5; /* neutral-100 */
   --vt-bg-surface: #ffffff; /* neutral-0 */
   --vt-bg-raised: #ffffff; /* neutral-0 */
   --vt-bg-subtle: #f4f4f5; /* neutral-100 */
   --vt-bg-hover: #f4f4f5; /* neutral-100 */
   --vt-bg-selected: #eef2ff; /* brand-50 */
+  --vt-bg-active: #e4e4e7; /* neutral-200 — FDN-18, one step off the canvas */
+
+  /*
+   * Segmented controls, FDN-20.
+   *
+   * A brand fill carried the active state on its own. One neutral fill cannot,
+   * so the control is rebuilt the way a segmented control actually works: the
+   * track recesses and the active segment sits on top of it. The active label
+   * also changes weight and color, so three channels carry what one used to.
+   *
+   * These are their own values rather than `bg-subtle` and `bg-raised` because
+   * in dark those two are both neutral-800 — see F10, still open — and the
+   * inversion would have collapsed.
+   */
+  --vt-segment-track: #f4f4f5; /* neutral-100 */
+  --vt-segment-active: #ffffff; /* neutral-0 */
   --vt-border-default: #e4e4e7; /* neutral-200 */
   --vt-border-strong: #d4d4d8; /* neutral-300 */
   --vt-border-focus: #6366f1; /* brand-500 */
@@ -37,8 +56,41 @@
    * directly rather than a semantic token, so it gets its own variable. */
   --vt-avatar-fallback: #e4e4e7; /* neutral-200 */
 
+  /*
+   * Non-working day columns on the Timeline. FDN-15.
+   *
+   * This was `bg-subtle`, which had to be strong enough to be seen through a
+   * 12% bench fill. Now that the bench is an opaque bar it no longer competes,
+   * so the shading can go back to what it is: the faintest possible hint that a
+   * column is not a working day. It stopped reading as structure in dark mode.
+   *
+   * F39: the first pass overshot. `bg-subtle` read as structure in dark; the
+   * correction to #F7F7F8 / #1E1E22 landed at 1.07:1 in both themes and read as
+   * absent. These sit between the two, at roughly 1.09:1 light and 1.12:1 dark.
+   *
+   * FDN-20 splits it in two. Which days a person does not work is a fact about
+   * that person, and it matters while you are looking at them rather than while
+   * you are scanning fifteen rows. At rest the shading is barely there; on row
+   * hover it comes up to full weight, arriving with the row border so the two
+   * read as one gesture rather than two effects.
+   *
+   * Neither value is expressible in VPS-D001's ramp — see Findings F19.
+   */
+  --vt-nonworking-rest: #fafafa;
+  --vt-nonworking-fill: #f5f5f6;
+
   /* Elevation — VPS-D001. Only `overlay` casts a shadow. */
   --vt-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.08);
+
+  /*
+   * FDN-19. The scroll-boundary fade's inputs, at rest.
+   *
+   * A scrolling container overrides these on itself and the masked track
+   * inherits them. They live here rather than in the utility because a
+   * declaration on the consuming element would shadow what it inherits.
+   */
+  --vt-scroll-x: 0px;
+  --vt-scroll-fade: 0px;
 
   /* Motion — VPS-D003. Nothing exceeds 180ms. */
   --vt-motion-instant: 0ms;
@@ -54,6 +106,10 @@
   --vt-bg-subtle: #27272a; /* neutral-800 */
   --vt-bg-hover: #27272a; /* neutral-800 */
   --vt-bg-selected: #312e81; /* brand-900 */
+  --vt-bg-active: #27272a; /* neutral-800 */
+
+  --vt-segment-track: #18181b; /* neutral-900 */
+  --vt-segment-active: #3f3f46; /* neutral-700 */
   --vt-border-default: #27272a; /* neutral-800 */
   --vt-border-strong: #3f3f46; /* neutral-700 */
   --vt-border-focus: #818cf8; /* brand-400 */
@@ -68,6 +124,9 @@
   --vt-danger: #ef4444;
 
   --vt-avatar-fallback: #27272a; /* neutral-800 */
+
+  --vt-nonworking-rest: #1c1c20;
+  --vt-nonworking-fill: #232327;
 
   --vt-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.4);
 }
@@ -114,30 +173,41 @@
  * text-primary, so each candidate is checked against that in both themes. */
 
 /* The attribute selectors deliberately omit `:root` so a candidate can also be
- * scoped to a subtree, which is how the comparison strip shows all three at
+ * scoped to a subtree, which is how the comparison strip shows all of them at
  * once without restating a single hex value. A scoping element carries both
- * data-theme and data-bench so the dark pairs still resolve. */
+ * data-theme and the candidate attribute so the dark pairs still resolve. */
 
-:root,
-[data-bench="present"] {
-  --vt-bench-fill: #f5dbb4;
-}
-[data-bench="restrained"] {
-  --vt-bench-fill: #f9e8d0;
-}
-[data-bench="assertive"] {
-  --vt-bench-fill: #f0cb94;
+/*
+ * FDN-15. The bench bar's amber is chosen per theme, not mixed against the
+ * surface. Mixing is what produced tan in light and olive in dark — neither of
+ * which is amber, which was the whole point of the element.
+ *
+ * Saturated, where assignment bars are tinted. Money is the only thing on
+ * screen with a hue, so it is the only thing at full strength.
+ *
+ * FDN-20 settled this on the bright amber with a near-black figure. The
+ * alternative — amber-700 with white — was the only way white could clear
+ * VPS-D001's 4.5:1 floor, since white on amber-500 is 2.15:1 and amber-600
+ * still fails at 3.19:1. It is deleted.
+ *
+ * The step from amber-500 to amber-400 between themes follows VPS-D001's own
+ * pattern for its semantic hues, where `attention` goes 600 to 500 because a
+ * near-black field needs more luminance to carry the same perceived weight.
+ */
+:root {
+  --vt-bench-fill: #f59e0b; /* amber-500 */
+  --vt-bench-figure: #09090b; /* neutral-950 — 9.26:1 */
 }
 
-:root[data-theme="dark"],
-[data-theme="dark"][data-bench="present"] {
-  --vt-bench-fill: #4e3a1c;
+:root[data-theme="dark"] {
+  --vt-bench-fill: #fbbf24; /* amber-400 */
+  --vt-bench-figure: #09090b; /* neutral-950 — 11.92:1 */
 }
-[data-theme="dark"][data-bench="restrained"] {
-  --vt-bench-fill: #3b2e1a;
-}
-[data-theme="dark"][data-bench="assertive"] {
-  --vt-bench-fill: #63491f;
+
+/* FDN-15, settled: the bench bar sits at exactly an assignment bar's height, so
+ * a row reads as one sequence of periods. The `tall` variant is deleted. */
+:root {
+  --vt-bench-bar-height: var(--vt-bar-height);
 }
 
 /*
@@ -153,27 +223,129 @@
  *   tint      the loudest of the three, and still far below the old bar
  */
 
+/*
+ * ─────────────────────────────────────────────────────────────────────────
+ * FDN-20 — categorical palette candidates.
+ *
+ * The assignment rule is not changing: a hue is assigned by hashing the
+ * Project's UUID, so a project is the same color everywhere without storing a
+ * color on the node. What was wrong is the palette it draws from.
+ *
+ * Three exclusions now, and the third is new:
+ *   the warm arc          protects `attention`, which means money
+ *   green and teal        protects `success`
+ *   the brand's hue band  a project bar must not read as a brand element
+ *
+ * Indigo 500 sits at hue 239°. The retired `cat-2` (#8B5CF6) was 258° and
+ * `cat-6` (#A855F7) was 271°, both inside that band. Excluding roughly
+ * 225°–280° is what closes F34.
+ *
+ * THE CONSEQUENCE IS WORTH STATING. After all three exclusions the cool arc
+ * supports about four distinguishable hue families — cyan near 192°, sky near
+ * 200°, blue near 217°, and fuchsia near 293° — plus a hue-neutral slate. Eight
+ * categorical tokens therefore cannot come from hue alone. Every candidate
+ * below spends lightness to reach eight, and they differ mainly in how much.
+ *
+ * Values are per theme: a 600-level source in light, a 400-level source in dark,
+ * mirroring what VPS-D001 already does for its semantic hues.
+ *
+ * TEMPORARY. One palette becomes the token set.
+ * ─────────────────────────────────────────────────────────────────────────
+ */
+
+/* `current` — the palette as built, for comparison. One value per theme. */
 :root,
-[data-bar="wash"] {
-  --vt-bar-mix: 12%;
-  --vt-bar-base: var(--vt-bg-surface);
+[data-cat-palette="current"] {
+  --vt-cat-1: #3b82f6;
+  --vt-cat-2: #8b5cf6;
+  --vt-cat-3: #06b6d4;
+  --vt-cat-4: #d946ef;
+  --vt-cat-5: #0ea5e9;
+  --vt-cat-6: #a855f7;
+  --vt-cat-7: #64748b;
+  --vt-cat-8: #ec4899;
 }
-[data-bar="hairline"] {
-  --vt-bar-mix: 0%;
-  --vt-bar-base: var(--vt-bg-subtle);
+
+/* `spread` — four hues at two lightness steps each. Leans on hue. */
+[data-cat-palette="spread"] {
+  --vt-cat-1: #2563eb; /* blue-600 · 217° */
+  --vt-cat-2: #0891b2; /* cyan-600 · 192° */
+  --vt-cat-3: #c026d3; /* fuchsia-600 · 293° */
+  --vt-cat-4: #64748b; /* slate-500 · hue-neutral */
+  --vt-cat-5: #1e3a8a; /* blue-900 */
+  --vt-cat-6: #164e63; /* cyan-900 */
+  --vt-cat-7: #701a75; /* fuchsia-900 */
+  --vt-cat-8: #0369a1; /* sky-700 · 200° */
 }
-[data-bar="tint"] {
-  --vt-bar-mix: 22%;
-  --vt-bar-base: var(--vt-bg-surface);
+
+/* `ladder` — two hues at three steps each, plus one accent and a slate. Leans
+ * on lightness, which stays distinguishable in a dense field where hue at low
+ * mix percentages does not. */
+[data-cat-palette="ladder"] {
+  --vt-cat-1: #2563eb; /* blue-600 */
+  --vt-cat-2: #0891b2; /* cyan-600 */
+  --vt-cat-3: #1e40af; /* blue-800 */
+  --vt-cat-4: #155e75; /* cyan-800 */
+  --vt-cat-5: #60a5fa; /* blue-400 */
+  --vt-cat-6: #22d3ee; /* cyan-400 */
+  --vt-cat-7: #a21caf; /* fuchsia-700 */
+  --vt-cat-8: #475569; /* slate-600 */
 }
 
 :root[data-theme="dark"],
-[data-theme="dark"][data-bar="wash"] {
-  --vt-bar-mix: 18%;
+[data-theme="dark"][data-cat-palette="current"] {
+  --vt-cat-1: #3b82f6;
+  --vt-cat-2: #8b5cf6;
+  --vt-cat-3: #06b6d4;
+  --vt-cat-4: #d946ef;
+  --vt-cat-5: #0ea5e9;
+  --vt-cat-6: #a855f7;
+  --vt-cat-7: #64748b;
+  --vt-cat-8: #ec4899;
 }
-[data-theme="dark"][data-bar="hairline"] {
-  --vt-bar-mix: 0%;
+
+[data-theme="dark"][data-cat-palette="spread"] {
+  --vt-cat-1: #60a5fa; /* blue-400 */
+  --vt-cat-2: #22d3ee; /* cyan-400 */
+  --vt-cat-3: #e879f9; /* fuchsia-400 */
+  --vt-cat-4: #94a3b8; /* slate-400 */
+  --vt-cat-5: #bfdbfe; /* blue-200 */
+  --vt-cat-6: #a5f3fc; /* cyan-200 */
+  --vt-cat-7: #f5d0fe; /* fuchsia-200 */
+  --vt-cat-8: #7dd3fc; /* sky-300 */
 }
-[data-theme="dark"][data-bar="tint"] {
-  --vt-bar-mix: 30%;
+
+[data-theme="dark"][data-cat-palette="ladder"] {
+  --vt-cat-1: #60a5fa; /* blue-400 */
+  --vt-cat-2: #22d3ee; /* cyan-400 */
+  --vt-cat-3: #93c5fd; /* blue-300 */
+  --vt-cat-4: #67e8f9; /* cyan-300 */
+  --vt-cat-5: #1d4ed8; /* blue-700 */
+  --vt-cat-6: #0e7490; /* cyan-700 */
+  --vt-cat-7: #e879f9; /* fuchsia-400 */
+  --vt-cat-8: #94a3b8; /* slate-400 */
+}
+
+/*
+ * Assignment bar fill. FDN-12 chose the `tint` candidate; the other two are
+ * deleted.
+ *
+ * FDN-18 raises it. The bars were quieted when the amber was an unlabelled wash
+ * that could only compete on saturation, so anything with a hue took attention
+ * away from it. The amber now wins on shape, saturation and weight at once — it
+ * is a solid bar with a heavy figure inside it — which leaves the bars real
+ * room. At 22% a fully assigned row read as empty, which is a worse failure than
+ * a bar that is slightly too present.
+ *
+ * Still an opaque mix against the surface rather than an alpha layer, so nothing
+ * beneath a bar shows through it. The mix runs higher in dark, where a low mix
+ * against near-black goes muddy before it goes quiet.
+ */
+:root {
+  --vt-bar-mix: 34%;
+  --vt-bar-base: var(--vt-bg-surface);
+}
+
+:root[data-theme="dark"] {
+  --vt-bar-mix: 42%;
 }

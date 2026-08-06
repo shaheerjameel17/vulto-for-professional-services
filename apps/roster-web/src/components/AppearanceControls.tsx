@@ -1,12 +1,7 @@
 "use client";
 
 import { Text, ToggleGroup } from "@vulto/ui";
-import type {
-  BarFill,
-  BenchFill,
-  Density,
-  ThemePreference,
-} from "@vulto/tokens";
+import type { CatPalette, Density, ThemePreference } from "@vulto/tokens";
 import { useAppearance } from "../app/appearance";
 
 /*
@@ -18,16 +13,8 @@ import { useAppearance } from "../app/appearance";
  */
 
 export function AppearanceControls() {
-  const {
-    theme,
-    density,
-    benchFill,
-    barFill,
-    setTheme,
-    setDensity,
-    setBenchFill,
-    setBarFill,
-  } = useAppearance();
+  const { theme, density, catPalette, setTheme, setDensity, setCatPalette } =
+    useAppearance();
 
   return (
     <div className="flex flex-col gap-2">
@@ -53,33 +40,19 @@ export function AppearanceControls() {
         className="w-full"
       />
 
-      {/* FDN-12 candidates. Temporary evaluation furniture — this block goes
-        * away once one of each pair is chosen. */}
-      <Text variant="micro" className="mt-2 text-text-tertiary">
-        Bench fill
+      {/* FDN-20 candidate. Temporary evaluation furniture — this block goes away
+        * once a palette is chosen. */}
+      <Text variant="micro" className="mt-2 text-text-secondary">
+        Project palette
       </Text>
-      <ToggleGroup<BenchFill>
-        label="Bench fill candidate"
-        value={benchFill}
-        onChange={setBenchFill}
+      <ToggleGroup<CatPalette>
+        label="Categorical palette candidate"
+        value={catPalette}
+        onChange={setCatPalette}
         options={[
-          { value: "restrained", label: "1" },
-          { value: "present", label: "2" },
-          { value: "assertive", label: "3" },
-        ]}
-        className="w-full"
-      />
-      <Text variant="micro" className="text-text-tertiary">
-        Bar fill
-      </Text>
-      <ToggleGroup<BarFill>
-        label="Bar fill candidate"
-        value={barFill}
-        onChange={setBarFill}
-        options={[
-          { value: "hairline", label: "1" },
-          { value: "wash", label: "2" },
-          { value: "tint", label: "3" },
+          { value: "current", label: "Now" },
+          { value: "spread", label: "Hue" },
+          { value: "ladder", label: "Light" },
         ]}
         className="w-full"
       />

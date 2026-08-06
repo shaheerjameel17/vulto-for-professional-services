@@ -104,28 +104,56 @@
  * come from the candidate block in runtime.css.
  */
 @utility bar-cat-1 {
-  background-color: color-mix(in oklab, var(--color-cat-1) var(--vt-bar-mix), var(--vt-bar-base));
+  background-color: color-mix(in oklab, var(--vt-cat-1) var(--vt-bar-mix), var(--vt-bar-base));
 }
 @utility bar-cat-2 {
-  background-color: color-mix(in oklab, var(--color-cat-2) var(--vt-bar-mix), var(--vt-bar-base));
+  background-color: color-mix(in oklab, var(--vt-cat-2) var(--vt-bar-mix), var(--vt-bar-base));
 }
 @utility bar-cat-3 {
-  background-color: color-mix(in oklab, var(--color-cat-3) var(--vt-bar-mix), var(--vt-bar-base));
+  background-color: color-mix(in oklab, var(--vt-cat-3) var(--vt-bar-mix), var(--vt-bar-base));
 }
 @utility bar-cat-4 {
-  background-color: color-mix(in oklab, var(--color-cat-4) var(--vt-bar-mix), var(--vt-bar-base));
+  background-color: color-mix(in oklab, var(--vt-cat-4) var(--vt-bar-mix), var(--vt-bar-base));
 }
 @utility bar-cat-5 {
-  background-color: color-mix(in oklab, var(--color-cat-5) var(--vt-bar-mix), var(--vt-bar-base));
+  background-color: color-mix(in oklab, var(--vt-cat-5) var(--vt-bar-mix), var(--vt-bar-base));
 }
 @utility bar-cat-6 {
-  background-color: color-mix(in oklab, var(--color-cat-6) var(--vt-bar-mix), var(--vt-bar-base));
+  background-color: color-mix(in oklab, var(--vt-cat-6) var(--vt-bar-mix), var(--vt-bar-base));
 }
 @utility bar-cat-7 {
-  background-color: color-mix(in oklab, var(--color-cat-7) var(--vt-bar-mix), var(--vt-bar-base));
+  background-color: color-mix(in oklab, var(--vt-cat-7) var(--vt-bar-mix), var(--vt-bar-base));
 }
 @utility bar-cat-8 {
-  background-color: color-mix(in oklab, var(--color-cat-8) var(--vt-bar-mix), var(--vt-bar-base));
+  background-color: color-mix(in oklab, var(--vt-cat-8) var(--vt-bar-mix), var(--vt-bar-base));
+}
+
+/*
+ * FDN-19. The fade where a horizontally scrolling track passes under a frozen
+ * column.
+ *
+ * This is an alpha mask, not a painted gradient and not a backdrop blur. A blur
+ * is the glassmorphism VPS-D001 rules out; a fade on a scroll boundary is
+ * information — it says the content continues. VPS-D001 carries the exception
+ * explicitly, scoped to scroll boundaries and never to surfaces.
+ *
+ * `--vt-scroll-x` is the track's current horizontal scroll offset, which in the
+ * track's own coordinate space is exactly where the frozen column's right edge
+ * falls. `--vt-scroll-fade` is clamped to the scroll offset so that at rest —
+ * nothing hidden — there is no fade to explain.
+ */
+@utility scroll-boundary-fade {
+  /* The two variables are declared on :root and set on the scroll container.
+   * They must NOT be declared here: a local declaration on the element that
+   * consumes them shadows the inherited value, and the mask would freeze at
+   * its resting state. */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    transparent var(--vt-scroll-x),
+    black calc(var(--vt-scroll-x) + var(--vt-scroll-fade)),
+    black 100%
+  );
 }
 
 /* Motion. VPS-D003 — three durations, one decelerating curve. */

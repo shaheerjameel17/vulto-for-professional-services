@@ -50,6 +50,7 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F35 | Bar labels at `text-inverse` fail on mid-tone categorical fills | `VPS-D002` | **Closed by FDN-12**, verified |
 | F36 | The amber saturates at the 180-day horizon | `VRS-F005` | **Half closed**, see below |
 | F37 | A quiet bar's opaque fill does not follow its own row's backdrop | `VPS-D002` | **New**, introduced by FDN-12 |
+| F38 | In light mode the canvas and the surface are 1.04:1 apart | `VPS-D001` | **Corrected in `VPS-D001`** |
 
 ---
 
@@ -334,6 +335,28 @@ fixed to `bg-surface` — which means `VPS-D002` has to say that a quiet fill
 composites against its own row, not against the canvas.
 
 ---
+
+### F38 — new, and it undercuts the inset panel in light mode
+
+Light mode's `bg-canvas` (`neutral-50`) and `bg-surface` (`neutral-0`) are
+**1.04:1** apart. Dark mode's are 1.12:1 — nearly three times the separation.
+
+So in light mode the inset workspace panel is carried almost entirely by its 1px
+border, and the "one continuous background with a panel inset into it" reading
+that FDN-16 is built on barely happens. In dark it works.
+
+This is not a bug in FDN-16; it is a gap in `VPS-D001`'s light ramp that FDN-16
+is the first thing to depend on. **Proposed correction:** light `bg-canvas` moves
+from `neutral-50` to `neutral-100`, which takes the separation to roughly 1.10:1
+and matches what dark already does.
+
+## FDN-20
+
+### Settled, and deleted
+
+The bench figure is the bright amber with a near-black figure. Variant B —
+amber-700 with white — is gone, along with its tokens, its switcher, its type and
+the `data-bench-text` attribute.
 
 ## Closed by founder decision during this build
 
