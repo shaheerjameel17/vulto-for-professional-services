@@ -60,7 +60,11 @@ export function Panel({
       aria-label={title}
       className={cx(
         "flex w-panel shrink-0 flex-col overflow-y-auto",
-        "border-l border-border-default bg-bg-surface",
+        // FDN-19: an inset within the inset. `radius-lg` is the workspace's
+        // `radius-xl` minus the space-1 gap around it, per VPS-D001's concentric
+        // rule. It carries a border on all four sides now that it no longer
+        // meets the workspace edge.
+        "rounded-lg border border-border-default bg-bg-raised",
         "motion-base transition-[opacity,transform]",
       )}
     >

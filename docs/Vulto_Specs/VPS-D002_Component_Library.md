@@ -82,6 +82,10 @@ The most-used component in the product and the one most worth getting right.
 
 Row heights per density from [[VPS-D001_Design_Foundations|VPS-D001]]. Header row uses `micro`, uppercase, `text-tertiary`, with a 1px bottom `border-default`. Rows have no separators — separation comes from row hover and alignment alone, which keeps a hundred-row table from reading as a grid of cages.
 
+**Row hover is `bg-hover`, and this is deliberately not what the Timeline does.** The Timeline expresses hover and selection as a border around the whole row instead, for two reasons that do not apply here. A Timeline row spans a frozen person column and a horizontally scrolling track, and a fill leaves those two halves reading as separate objects at exactly the join that matters. And a Timeline row contains quiet opaque bars whose fill is mixed against the surface, so a row-level fill puts them on a backdrop they were not mixed against. A Table row has neither property: it has no frozen column and no opaque fills inside it, so `bg-hover` breaks nothing and remains correct.
+
+The divergence is therefore a Timeline affordance rather than a change to row hover generally, and no other surface may adopt the border treatment without the same two conditions holding.
+
 Numeric columns are right-aligned and set in `mono`. Text columns are left-aligned. There is no center alignment anywhere in this product.
 
 Behavior: sticky header, column sort on header click, keyboard row navigation per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], row selection via checkbox column, and virtualised rendering above 100 rows. Sorting and filtering run against the local SQLite index and never round-trip.
@@ -93,7 +97,8 @@ Behavior: sticky header, column sort on header click, keyboard row navigation pe
 The Bench Forecast canvas, owned in behavior by [[VRS-F005_The_Bench_Forecast|VRS-F005]] and in appearance here. Also used by [[VRS-F051_Team_Capacity_Planner|VRS-F051]] and [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]].
 
 - Fixed left column, 220px, holding avatar, name and role, with its own right border.
-- Scrollable right region, horizontally virtualised, showing the configured window.
+- Scrollable right region, horizontally virtualised, showing the configured window. Where it passes beneath the left column it fades over roughly 24px, per the scroll-boundary exception in [[VPS-D001_Design_Foundations|VPS-D001]].
+- **Row hover and selection are a border around the whole row**, spanning the left column and the track as one object — hover in `border-strong`, selection in `brand-500`. Not a background fill; see the Table's note above for why the two differ.
 - Day columns; non-working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] render with `bg-subtle`.
 - **Assignment bar:** filled `cat-n` by project hash, `radius-md`, height 20px compact / 24px comfortable, label inside at `small` `text-inverse` truncating with ellipsis.
 - **Ghost bar:** same geometry, 1px dashed border in `cat-n`, 12% fill, per the dashed-border rule.

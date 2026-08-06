@@ -24,21 +24,43 @@ export type AppShellProps = {
 
 export function AppShell({ sidebar, panel, children }: AppShellProps) {
   return (
-    <div className="relative flex h-screen overflow-hidden bg-bg-canvas">
+    // FDN-16: one continuous background across the window. The sidebar has no
+    // surface of its own and sits directly on this canvas.
+    <div className="flex h-screen overflow-hidden bg-bg-canvas">
       {sidebar}
-      <div className="flex min-w-0 flex-1 flex-col">{children}</div>
       {/*
-       * VPS-D003's responsive rule: at 1280–1535px the Panel overlays the right
-       * edge of content; at 1536px and above it opens alongside without
-       * displacing it. Displacing at the design center costs the Bench Forecast
-       * roughly half its width, which on a screen whose horizontal space is
-       * time is not a cosmetic difference.
+       * The workspace, as an inset panel: rounded corners, a hairline border,
+       * margin on all four sides. The page header lives inside it, so the whole
+       * of what an application shows sits on one surface and the chrome around
+       * it is canvas.
        */}
-      {panel ? (
-        <div className="absolute inset-y-0 right-0 z-30 flex 2xl:static 2xl:z-auto">
-          {panel}
+      {/* FDN-19: `radius-xl`. The concentric rule in VPS-D001 derives every
+        * nested radius from this one. */}
+      <div className="relative m-3 flex min-w-0 flex-1 rounded-xl border border-border-default bg-bg-surface">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
+          {children}
         </div>
-      ) : null}
+        {/*
+         * FDN-19: an inset within the inset. The Panel sits space-1 inside the
+         * workspace on all four sides and carries `radius-lg` — 12px minus the
+         * 4px gap — so it is concentric with the panel containing it rather than
+         * running to the window edge.
+         *
+         * VPS-D003's responsive rule: at 1280–1535px the Panel overlays the
+         * right edge of content; at 1536px and above it opens alongside without
+         * displacing it. Displacing at the design center costs the Bench
+         * Forecast roughly half its width, which on a screen whose horizontal
+         * space is time is not a cosmetic difference.
+         *
+         * `absolute` is what makes that true below 1536px: the content column
+         * keeps its full width and the Panel is drawn over it.
+         */}
+        {panel ? (
+          <div className="absolute inset-y-1 right-1 z-30 flex 2xl:static 2xl:my-1 2xl:mr-1 2xl:z-auto">
+            {panel}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

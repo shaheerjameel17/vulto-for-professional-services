@@ -51,6 +51,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F36 | The amber saturates at the 180-day horizon | `VRS-F005` | **Half closed**, see below |
 | F37 | A quiet bar's opaque fill does not follow its own row's backdrop | `VPS-D002` | **New**, introduced by FDN-12 |
 | F38 | In light mode the canvas and the surface are 1.04:1 apart | `VPS-D001` | **Corrected in `VPS-D001`** |
+| F41 | Table and Timeline disagree about what row hover looks like | `VPS-D002` | **Stated in `VPS-D002`** as a Timeline affordance |
+| F42 | At the design center the Panel hides a third of the canvas either way | `VPS-D003`, `VRS-F005` | **New**, measured |
+| F43 | Brand appears on the workspace mark, a fourth use | `VPS-D001` | **Exempted in `VPS-D001`** |
 
 ---
 
@@ -336,6 +339,31 @@ composites against its own row, not against the canvas.
 
 ---
 
+## FDN-15 and FDN-16 — what changed
+
+### FDN-16 — shell architecture
+
+One continuous `bg-canvas` across the window. The sidebar lost its surface and
+its right border and now sits directly on that canvas. The workspace is an inset
+panel — `radius-lg`, a 1px `border-default`, space-3 margin on all four sides —
+and the page header lives inside it. The contextual Panel moved inside the inset
+too, so it is clipped by the same rounded corners: it is part of the workspace
+rather than a third region floating beside it.
+
+The Timeline lost its own `raised` elevation as a direct consequence. A bordered
+canvas inside a bordered inset panel is the nested card `VPS-D002` forbids, and
+the workspace is now the raised surface.
+
+Segmented controls became pills, applied once on `ToggleGroup` so it reaches the
+horizon toggle, Owner/Manager, density, theme and the candidate switchers
+together. Buttons keep `radius-md` — the distinction is between a control you set
+and an action you take. **Note on scope:** the Filters and Today controls are
+`ghost` Buttons rather than segmented controls, so they kept `radius-md`. If
+those were meant to be the "filter chips", say so and they move.
+
+Comfortable is the default density. The mechanism is unchanged — still one data
+attribute on the root, still no component branching on it.
+
 ### F38 — new, and it undercuts the inset panel in light mode
 
 Light mode's `bg-canvas` (`neutral-50`) and `bg-surface` (`neutral-0`) are
@@ -350,6 +378,103 @@ is the first thing to depend on. **Proposed correction:** light `bg-canvas` move
 from `neutral-50` to `neutral-100`, which takes the separation to roughly 1.10:1
 and matches what dark already does.
 
+### F41 — new, and it needs a decision rather than a fix
+
+`VPS-D002`'s Table says rows carry no separators and that separation comes from
+"row hover and alignment alone", meaning `bg-hover`. FDN-16 changed the Timeline's
+row hover to a border. The two data surfaces in the product now express the same
+state two different ways.
+
+Only the Timeline was in scope, so the Table is untouched and still fills. The
+question is whether the border treatment is a Timeline affordance — justified
+because a Timeline row spans a frozen column and a scrolling track, which a
+Table row does not — or whether it is the new row hover everywhere and `VPS-D002`
+should say so.
+
+Worth noting that the reason F37 existed at all does not apply to a Table: a
+Table has no quiet opaque fills sitting inside its rows, so `bg-hover` breaks
+nothing there.
+
+---
+
+### FDN-18 — accent and weight
+
+**Brand is out of navigation and out of segmented controls.** Both now take a
+neutral `bg-active` with `text-primary`.
+
+`bg-active` is its own value rather than an alias of `bg-subtle`, and that is a
+consequence of F38: moving light `bg-canvas` to neutral-100 made it identical to
+`bg-subtle`, and the sidebar sits directly on the canvas, so an active nav item
+filled with `bg-subtle` was invisible. Caught on screen, not in review.
+
+### F43 — new, and it came out of FDN-18's own audit
+
+Auditing every element for brand color found exactly three uses: the today line,
+its dot, and **the workspace mark in the sidebar**, which is a 20px `brand-600`
+square holding the workspace initial.
+
+That mark is not the today line, not a primary action and not a focus ring, so
+under FDN-18's enumeration it should be neutral. But it is plausibly a different
+thing from all three — a logo rather than a signal — and `VPS-D001`'s rule
+enumerates signals.
+
+Left as brand, flagged rather than decided. The audit also cannot see the row
+selection border, which is `brand-500` and only exists while a row is selected;
+it is the one surviving instance of `VPS-D001`'s "current selection or focus".
+
+### FDN-19 — panel, radius and the mask
+
+**The contextual panel is an inset within the inset**, sitting `1` inside the
+workspace on all four sides with a border on all four and `radius-lg`.
+
+**The concentric rule is now in `VPS-D001`**, along with `radius-xl` at 12px.
+Measured: the workspace is 12px radius at 12px margin, and the panel is 8px —
+`12 − 4`. The rule is scoped so it governs nesting rather than every pairing, or
+a Card inside a `6`-padded region would owe a negative radius.
+
+**The scroll-boundary mask works, and `VPS-D001` carries the exception.** At a
+400px scroll offset the track's computed mask is
+`linear-gradient(to right, transparent 0px, transparent 400px, black 424px, black 100%)`
+with `backdrop-filter: none`. The exception is written with three conditions —
+mask not fill, never `backdrop-filter`, scroll boundaries never surfaces — and an
+explicit statement that it is not general permission for gradients.
+
+One implementation note: the fade's two variables must be declared on `:root` and
+set on the scroll container. Declaring them inside the utility shadowed the
+inherited values and froze the mask at its resting state — which is how it was
+first built, and it silently did nothing.
+
+**The Tooltip is drawn from the system.** Radix-backed, `overlay` elevation,
+200ms delay, `small` text, 280px max. Zero native `title` attributes remain on
+the 30 assignment bars and 25 bench bars. Nav items and toolbar buttons carry it
+too, with the shortcut in `mono` `text-tertiary` alongside the label.
+
+Segmented controls now get a tooltip **only where there is a shortcut to
+document**. Nine of the twelve were repeating their own visible label, which is
+what `VPS-D002` means by a tooltip that contains the only copy of nothing.
+
+### F42 — new, and the panel question answered
+
+**Measured: the panel does not displace content.** The Timeline's scroll
+container is 966px wide at a 1280px viewport with the panel open and 966px with
+it closed. `absolute` positioning is doing its job, and `VPS-D003`'s 1280–1535px
+overlay rule is what is implemented.
+
+**But the observation behind the question stands.** The panel covers the right
+360px of a 966px canvas, so a bar whose left edge falls under it loses its label
+— occlusion rather than truncation, and specified rather than broken.
+
+The finding is that **neither of `VPS-D003`'s two behaviors is good here.**
+Displacing costs the Forecast a third of its width; overlaying hides the same
+third. On a screen whose horizontal space is time, "the panel is open" should not
+mean "a third of the forecast is unreadable", and `VPS-D003`'s table has no third
+option.
+
+A third behavior probably belongs to `VRS-F005` rather than `VPS-D003`, since it
+is specific to a canvas where horizontal position carries meaning: on selection,
+scroll the track so the selected row's live region sits left of the panel. Not
+built — it is a behavior change, not chrome.
+
 ## FDN-20
 
 ### Settled, and deleted
@@ -357,6 +482,18 @@ and matches what dark already does.
 The bench figure is the bright amber with a near-black figure. Variant B —
 amber-700 with white — is gone, along with its tokens, its switcher, its type and
 the `data-bench-text` attribute.
+
+### The segmented control, rebuilt
+
+A brand fill carried the active state on its own, and one neutral fill could not
+replace it. The control is now built the way a segmented control actually works:
+the track recesses to `--vt-segment-track` and the active segment sits on top at
+`--vt-segment-active`, with the label also changing weight and color. Three
+channels for what one used to carry.
+
+Those two are their own values rather than `bg-subtle` and `bg-raised`, because in
+dark both of those are neutral-800 — **F10, still open** — and the inversion would
+have collapsed into no change at all. F10 has now blocked two separate designs.
 
 ## Closed by founder decision during this build
 
@@ -393,6 +530,8 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 | F36 | Cost horizon of 45 days. A region beginning inside it is costed in full; beyond it, days and no figure. The header total states the window |
 | FDN-11 | `display` moves to 32/40; tracking −0.022 / −0.02 / −0.015em above 20px, zero below; weights 640 / 600 / 560 where the variable font is used |
 | FDN-12 | Bench fill and bar fill each carry three candidates pending a choice |
+| F20 | Comfortable is the workspace default density, per FDN-16 |
+| FDN-16 | Workspace inset at space-3 with `radius-lg`; row hover `border-strong`, selection `brand-500`; segmented controls at `radius-full`, Buttons unchanged |
 
 ---
 

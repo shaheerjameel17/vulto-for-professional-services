@@ -5,6 +5,7 @@ import type { LucideIcon } from "lucide-react";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
 import { Text } from "./Text";
+import { Tooltip, TooltipProvider } from "./Tooltip";
 
 /*
  * VPS-D004. 240px, `bg-canvas`, 1px right border, collapsible to 48px icons
@@ -62,10 +63,14 @@ export function Sidebar({
   userName,
 }: SidebarProps) {
   return (
+    <TooltipProvider>
     <nav
       aria-label="Main"
       className={cx(
-        "flex shrink-0 flex-col border-r border-border-default bg-bg-canvas",
+        // FDN-16: no surface and no right border. The sidebar sits directly on
+        // the window's canvas, and the inset workspace panel beside it is what
+        // creates the separation a border used to.
+        "flex shrink-0 flex-col",
         "motion-base transition-[width]",
         collapsed ? "w-sidebar-collapsed" : "w-sidebar",
       )}
@@ -116,21 +121,24 @@ export function Sidebar({
                 const active = item.href === activeHref;
                 return (
                   <li key={item.href}>
+                    <Tooltip
+                      content={item.label}
+                      shortcut={item.shortcut}
+                      side="right"
+                    >
                     <button
                       type="button"
                       onClick={() => onNavigate(item.href)}
                       aria-current={active ? "page" : undefined}
-                      title={
-                        item.shortcut
-                          ? `${item.label} · ${item.shortcut}`
-                          : item.label
-                      }
                       className={cx(
                         "flex h-8 w-full items-center gap-2 rounded-md px-2",
                         "font-ui text-body-medium motion-fast transition-colors",
+                        // FDN-18: a neutral fill, not brand. Which page you are
+                        // on is location, not selection, and brand is reserved
+                        // to the today line, primary actions and focus rings.
                         active
-                          ? "bg-bg-selected text-text-brand"
-                          : "text-text-primary hover:bg-bg-hover",
+                          ? "bg-bg-active text-text-primary"
+                          : "text-text-secondary hover:bg-bg-hover",
                         collapsed && "justify-center px-0",
                       )}
                     >
@@ -154,6 +162,7 @@ export function Sidebar({
                         </>
                       )}
                     </button>
+                    </Tooltip>
                   </li>
                 );
               })}
@@ -200,5 +209,6 @@ export function Sidebar({
         </button>
       </div>
     </nav>
+    </TooltipProvider>
   );
 }

@@ -26,6 +26,8 @@ export {
   type NavGroup,
 } from "./Sidebar";
 
+export { Tooltip, TooltipProvider, type TooltipProps } from "./Tooltip";
+
 export { useShortcuts, type ShortcutMap } from "./useShortcuts";
 export {
   Timeline,

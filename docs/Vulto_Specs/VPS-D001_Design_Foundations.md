@@ -69,6 +69,10 @@ Indigo. `brand-500` `#6366F1` is the anchor, per founder decision.
 
 **Brand color is rationed.** It marks exactly three things: the primary action on a screen, the current selection or focus, and the today line on the Bench Forecast. It is never a background fill for a large region, never a heading color, and never used to indicate status. A screen showing brand color in four places has three too many.
 
+**Which page a person is on is not one of the three.** Location is not selection, so navigation items and segmented controls take a neutral active treatment. A neutral active state needs more than a fill to carry what a brand fill carried alone — separation from its own background, plus a change of label weight or color.
+
+**The workspace mark is exempt.** The three uses above are *signals*: they tell a person where the action is, what is selected, and where today falls. A mark is not a signal, it is an identity, and rendering the workspace's own initial in the brand color is what a logo is for. This exemption is stated so that an audit of brand usage does not keep reopening it — the rule is about signals, and the mark is not competing with them.
+
 ### Semantic
 
 Three semantic hues. There is deliberately no fourth.
@@ -192,8 +196,19 @@ This is a flat product. That is an instruction about execution, not a license fo
 |---|---|---|
 | `radius-sm` | 4px | Badges, chips, inline elements |
 | `radius-md` | 6px | **Default.** Buttons, inputs, cards, bars |
-| `radius-lg` | 8px | Modals, popovers, panels |
+| `radius-lg` | 8px | Modals, popovers, the contextual panel |
+| `radius-xl` | 12px | The inset workspace panel |
 | `radius-full` | 9999px | Avatars, pills, status dots |
+
+### The concentric rule
+
+> **A nested radius equals the outer radius minus the gap between them.**
+
+Two rounded rectangles sharing a center are only concentric when this holds. Where it does not, the inner corner either bulges toward the outer one or floats inside it, and the result reads as an alignment error that nobody can name.
+
+The scale above is 4 / 6 / 8 / 12 for this reason rather than by preference: each step is a legitimate nesting of the step above it at a `1` or `2` gap. The inset workspace panel is `radius-xl`; the contextual panel sits `1` inside it and therefore takes `12 − 4 = 8`, which is `radius-lg`.
+
+**This governs nesting, not every pairing.** An element inset from its container by more than the container's radius has no concentric obligation — the arithmetic would give a negative value — and takes the radius its own component specifies. A Card inside a content region padded by `6` is the ordinary case.
 
 **Elevation** has exactly three levels and only the third uses a shadow.
 
@@ -206,6 +221,22 @@ This is a flat product. That is an instruction about execution, not a license fo
 Nothing else in this product casts a shadow. There is no `hover` elevation change, no lifted card, no glow. Hover is expressed as `bg-hover`, and that is the whole vocabulary.
 
 **Explicitly forbidden:** gradients of any kind, backdrop blur, glassmorphism, translucent panels over content, inner shadows, colored shadows, more than one border width, and decorative iconography. Each of these was available and each was declined.
+
+### The one exception, scoped narrowly
+
+> **A gradient may be used as an alpha mask at a scroll boundary, and nowhere else.**
+
+Where a horizontally scrolling region passes beneath a frozen column — the Timeline's person column in [[VRS-F005_The_Bench_Forecast|VRS-F005]] is the only instance at present — the scrolling content fades out over roughly 24px rather than being cut off at the column's edge.
+
+**This is information, not decoration.** A hard cut says the content ends. A fade says it continues, which is the fact the user needs in order to know there is more timeline behind the column.
+
+Three conditions bound it, and all three are load-bearing:
+
+1. **It is a `mask-image`, never a painted fill.** An alpha mask makes existing content transparent. A gradient *fill* would be a new colored surface, which is what the rule above forbids.
+2. **It is never `backdrop-filter`.** A blur behind content is the glassmorphism this system declined, and it would be the same effect this exception exists to avoid needing.
+3. **It applies at a scroll boundary only, never to a surface.** No panel, card, header, bar, region or background may carry a mask or a gradient of any kind. A surface that fades has no scroll boundary to explain and is decoration.
+
+This exception may not be cited as general permission for gradients. It authorizes one treatment, at one kind of edge, for one stated reason.
 
 ---
 
