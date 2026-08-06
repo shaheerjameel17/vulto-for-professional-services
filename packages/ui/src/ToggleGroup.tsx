@@ -57,28 +57,47 @@ export function ToggleGroup<T extends string>({
         className,
       )}
     >
-      {options.map((option) => (
-        // FDN-19: a tooltip only where there is a shortcut to document. The
-        // label is already visible, so a tooltip repeating it was noise — which
-        // is most of what the native `title` attribute was doing here.
-        <MaybeTooltip key={option.value} shortcut={option.shortcut}>
-        <RadixToggleGroup.Item
-          value={option.value}
-          className={cx(
-            "inline-flex h-control items-center rounded-full px-3",
-            // Inactive: lighter weight and secondary color.
-            "font-ui text-body text-text-secondary",
-            "motion-fast transition-colors hover:text-text-primary",
-            // Active: raised off the track, primary color, heavier weight.
-            // FDN-18 took brand out of here; three neutral channels replace it.
-            "data-[state=on]:bg-segment-active data-[state=on]:text-text-primary",
-            "data-[state=on]:text-body-medium",
-          )}
-        >
-          {option.label}
-        </RadixToggleGroup.Item>
-        </MaybeTooltip>
-      ))}
+      {options.map((option) => {
+        /*
+         * FDN-23. The active state is computed from `value` directly rather
+         * than read off Radix's own `data-state`, which is not this
+         * component's to rely on: Tooltip.Trigger's `asChild` merges its own
+         * `data-state` ("closed"/"open", tooltip visibility) onto whatever it
+         * wraps, and when that happens to be a ToggleGroup.Item, the two
+         * primitives collide on the one attribute and the wrapper wins. The
+         * Horizon control below is wrapped for its shortcut hint; Viewing-as
+         * never is, which is the entire reason only one of them went dark.
+         *
+         * A JS-known boolean sidesteps the collision rather than working
+         * around this one instance, and matches how every other active state
+         * in this design system is already driven (Sidebar's nav item,
+         * Timeline's row selection) — neither of those reads a Radix
+         * data-attribute either.
+         */
+        const active = option.value === value;
+        return (
+          // FDN-19: a tooltip only where there is a shortcut to document. The
+          // label is already visible, so a tooltip repeating it was noise —
+          // which is most of what the native `title` attribute was doing here.
+          <MaybeTooltip key={option.value} shortcut={option.shortcut}>
+            <RadixToggleGroup.Item
+              value={option.value}
+              className={cx(
+                "inline-flex h-control items-center rounded-full px-3",
+                "font-ui motion-fast transition-colors",
+                // Active: raised off the track, primary color, heavier weight.
+                // FDN-18 took brand out of here; three neutral channels
+                // replace it. Inactive: lighter weight and secondary color.
+                active
+                  ? "bg-segment-active text-body-medium text-text-primary"
+                  : "text-body text-text-secondary hover:text-text-primary",
+              )}
+            >
+              {option.label}
+            </RadixToggleGroup.Item>
+          </MaybeTooltip>
+        );
+      })}
     </RadixToggleGroup.Root>
   );
 }
