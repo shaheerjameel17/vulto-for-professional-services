@@ -81,7 +81,7 @@ The directory must render 150 employees within 200ms from the local graph, which
 
 **Employee profile** uses Tabs — Overview, Skills, Documents, Activity — with identity fixed above them: avatar at 40px, name at `h1`, job title and department at `small` in `text-secondary`, status Badge, and the actions menu right-aligned.
 
-Overview is a two-column Section layout. Employment fields left, reporting line and working pattern right. Every field is an inline-editable Input that commits on blur, with no explicit save button — an operational record edited dozens of times a day should not require a save action, and [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s optimistic write model makes the change appear instantly.
+Overview is a two-column Section layout. Employment fields left, reporting line and working pattern right. **Fields render as text, not as permanent Inputs.** `E` on the focused field, or a click, opens it for editing; blur or `Cmd+Enter` commits; `Escape` discards. There is no explicit save button at any point in this cycle — an operational record edited dozens of times a day should not require a save action, and [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s optimistic write model makes a committed change appear instantly. A screen where every one of thirty fields is permanently a bordered box reads as a data-entry form; this screen is a record that happens to be editable, and the read state is what keeps it looking like one.
 
 Compensation fields render as a distinct Section with a lock affordance, visible only to authorized roles. For everyone else the Section is **structurally absent**, not disabled — per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s sensitive-restricted treatment, since the existence of a compensation figure is unremarkable but its value is not.
 
@@ -323,6 +323,8 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 **Bulk import is no longer out of scope by omission.** It is out of scope for this document because [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] owns it — a meaningful difference from the previous *manual entry only*, which described a limitation rather than a boundary.
 
 **Tier 1 revocation is added to the offboarding sequence.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] requires revocation on any Tier 1 access change; offboarding is the most consequential instance, and the sequence previously stopped at the device wipe.
+
+**The Overview layout sentence is corrected to match this document's own keyboard table.** It previously read *"every field is an inline-editable Input that commits on blur,"* which describes a permanent Input with no read state — and the same document's keyboard table assigns `E` to open an edit and `Escape` to discard one, both of which presuppose a state to open and close. The two could not both be true. The keyboard model is kept: it is consistent with [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s model everywhere else in the product, and it is also the one that avoids thirty permanently bordered boxes on a screen that should read as a record.
 
 ---
 

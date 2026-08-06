@@ -1,19 +1,19 @@
 "use client";
 
 import { useState } from "react";
-import { Input, Section, Text } from "@vulto/ui";
+import { Section, Text } from "@vulto/ui";
 import type { EmployeeProfile } from "../../lib/profile";
+import { EditableField } from "./EditableField";
 
 /*
- * VRS-F002: "Overview is a two-column Section layout. Employment fields
- * left, reporting line and working pattern right. Every field is an
- * inline-editable Input that commits on blur, with no explicit save
- * button."
+ * VRS-F002, corrected by FDN-24: fields render as text, not as permanent
+ * Inputs. `E` on a focused field, or a click, opens it; blur or `Cmd+Enter`
+ * commits; `Escape` discards. See EditableField for the mechanics.
  *
- * Editing commits to local state only — there is nowhere else for it to
- * go in a static prototype, and CLAUDE.md forbids persisting it anywhere
- * that would survive a reload. The point being tested is the interaction,
- * not the storage.
+ * Editing commits to local state only — there is nowhere else for it to go
+ * in a static prototype, and CLAUDE.md forbids persisting it anywhere that
+ * would survive a reload. The point being tested is the interaction, not
+ * the storage.
  *
  * Compensation renders as its own Section, present only when
  * `profile.compensation` exists. There is no branch here for the
@@ -36,6 +36,9 @@ type FieldState = {
   contractedHours: string;
   billingRateDefault: string;
   billabilityTargetOverride: string;
+  compensationBaseAmount: string;
+  compensationFrequency: string;
+  compensationCurrency: string;
 };
 
 export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
@@ -57,11 +60,16 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
       profile.billabilityTargetOverride !== undefined
         ? String(profile.billabilityTargetOverride)
         : "",
+    compensationBaseAmount: profile.compensation
+      ? String(profile.compensation.baseAmount)
+      : "",
+    compensationFrequency: profile.compensation?.frequency ?? "",
+    compensationCurrency: profile.compensation?.currency ?? "",
   });
 
-  function set(key: keyof FieldState) {
-    return (e: React.ChangeEvent<HTMLInputElement>) =>
-      setFields((prev) => ({ ...prev, [key]: e.target.value }));
+  function commit(key: keyof FieldState) {
+    return (value: string) =>
+      setFields((prev) => ({ ...prev, [key]: value }));
   }
 
   return (
@@ -69,15 +77,15 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
         <Section title="Employment">
           <div className="flex flex-col gap-4">
-            <Input label="Job title" value={fields.jobTitle} onChange={set("jobTitle")} />
-            <Input label="Department" value={fields.department} onChange={set("department")} />
+            <EditableField label="Job title" value={fields.jobTitle} onCommit={commit("jobTitle")} />
+            <EditableField label="Department" value={fields.department} onCommit={commit("department")} />
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Employment type" value={fields.employmentType} onChange={set("employmentType")} />
-              <Input label="Seniority" value={fields.seniorityLevel} onChange={set("seniorityLevel")} />
+              <EditableField label="Employment type" value={fields.employmentType} onCommit={commit("employmentType")} />
+              <EditableField label="Seniority" value={fields.seniorityLevel} onCommit={commit("seniorityLevel")} />
             </div>
-            <Input label="Start date" type="date" value={fields.startDate} onChange={set("startDate")} />
+            <EditableField label="Start date" type="date" value={fields.startDate} onCommit={commit("startDate")} />
             {profile.probationStatus ? (
-              <Input
+              <EditableField
                 label="Probation"
                 value={`${profile.probationStatus}${profile.probationEndDate ? ` · ${profile.probationEndDate}` : ""}`}
                 readOnly
@@ -85,55 +93,55 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
               />
             ) : null}
             {profile.contractEndDate ? (
-              <Input label="Contract end date" type="date" value={profile.contractEndDate} readOnly />
+              <EditableField label="Contract end date" type="date" value={profile.contractEndDate} readOnly />
             ) : null}
-            <Input label="Email" type="email" value={fields.email} onChange={set("email")} />
-            <Input label="Phone" value={fields.phone} onChange={set("phone")} />
+            <EditableField label="Email" type="email" value={fields.email} onCommit={commit("email")} />
+            <EditableField label="Phone" value={fields.phone} onCommit={commit("phone")} />
             <div className="grid grid-cols-2 gap-4">
-              <Input label="Timezone" value={fields.timezone} onChange={set("timezone")} />
-              <Input label="Location" value={fields.location} onChange={set("location")} />
+              <EditableField label="Timezone" value={fields.timezone} onCommit={commit("timezone")} />
+              <EditableField label="Location" value={fields.location} onCommit={commit("location")} />
             </div>
-            <Input label="Notes" value={fields.notes} onChange={set("notes")} />
+            <EditableField label="Notes" value={fields.notes} onCommit={commit("notes")} />
           </div>
         </Section>
 
         <Section title="Reporting & schedule">
           <div className="flex flex-col gap-4">
-            <Input
+            <EditableField
               label="Reports to"
-              value={fields.managerName || "—"}
+              value={fields.managerName}
               readOnly={!fields.managerName}
-              onChange={set("managerName")}
+              onCommit={commit("managerName")}
             />
-            <Input
+            <EditableField
               label="Working pattern"
               value={profile.workingPatternNote}
               readOnly
               helperText="Resolved through VRS-F004. Never computed here."
             />
             <div className="grid grid-cols-2 gap-4">
-              <Input
+              <EditableField
                 label="Contracted hours"
                 type="number"
                 value={fields.contractedHours}
-                onChange={set("contractedHours")}
+                onCommit={commit("contractedHours")}
                 suffix="hrs/wk"
               />
-              <Input
+              <EditableField
                 label="Billing rate"
                 type="number"
                 value={fields.billingRateDefault}
-                onChange={set("billingRateDefault")}
+                onCommit={commit("billingRateDefault")}
                 suffix="GBP/day"
                 helperText="Tier 0 — what the agency charges."
               />
             </div>
             {profile.billabilityTargetOverride !== undefined ? (
-              <Input
+              <EditableField
                 label="Billability target override"
                 type="number"
                 value={fields.billabilityTargetOverride}
-                onChange={set("billabilityTargetOverride")}
+                onCommit={commit("billabilityTargetOverride")}
                 suffix="%"
               />
             ) : null}
@@ -144,14 +152,23 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
       {profile.compensation ? (
         <Section title="Compensation">
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
-            <Input
+            <EditableField
               label="Base amount"
               type="number"
-              defaultValue={profile.compensation.baseAmount}
-              suffix={profile.compensation.currency}
+              value={fields.compensationBaseAmount}
+              onCommit={commit("compensationBaseAmount")}
+              suffix={fields.compensationCurrency}
             />
-            <Input label="Frequency" defaultValue={profile.compensation.frequency} />
-            <Input label="Currency" defaultValue={profile.compensation.currency} />
+            <EditableField
+              label="Frequency"
+              value={fields.compensationFrequency}
+              onCommit={commit("compensationFrequency")}
+            />
+            <EditableField
+              label="Currency"
+              value={fields.compensationCurrency}
+              onCommit={commit("compensationCurrency")}
+            />
           </div>
           <Text variant="small" className="mt-2 text-text-tertiary">
             Tier 1, end-to-end encrypted. Visible to Owner, Finance Admin, HR

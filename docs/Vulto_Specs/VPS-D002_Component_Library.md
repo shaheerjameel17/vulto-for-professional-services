@@ -54,6 +54,8 @@ Labels sit above, `label` token, `text-secondary`. Helper text sits below at `sm
 
 `DatePicker` respects the workspace working calendar from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]: non-working days render at `text-tertiary` and are visually distinct from disabled days, because a Friday that is a weekend in Dubai and a working day in Karachi is a fact the picker must express.
 
+**The affix contract.** A currency symbol, a unit or a percentage sign is a prefix or suffix, never freehand text inside the value. It is laid out as a sibling of the field's own input element within the same bordered container — never positioned over it — so reserving its space is a property of the layout, not a padding value chosen to dodge whatever the browser happens to render in that corner. `small`, `text-tertiary`. A numeric input carrying an affix suppresses the browser's native step spinner; an unaffixed numeric input keeps it. This exists because Roster prices almost everything — rates, hours, percentages, currency, across the payroll cluster alone — and every one of those fields needs this contract to hold.
+
 ### Checkbox, Radio, Switch, Toggle Group
 
 16px controls. `Switch` is reserved for settings that take effect immediately; anything requiring a save uses `Checkbox`. `Toggle Group` handles small mutually exclusive sets — density mode, timeline zoom — and replaces a select where there are three or fewer options.

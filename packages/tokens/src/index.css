@@ -156,6 +156,22 @@
   );
 }
 
+/*
+ * FDN-24. Suppresses the browser's native step spinner on a numeric input.
+ * Scoped to affixed number inputs by Input.tsx — an unaffixed one keeps its
+ * spinner. Without this, the spinner renders inside the input's own box
+ * regardless of how much padding an affix reserves, which is the collision
+ * the affix contract in VPS-D002 exists to prevent.
+ */
+@utility no-spinner {
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+  }
+  -moz-appearance: textfield;
+}
+
 /* Motion. VPS-D003 — three durations, one decelerating curve. */
 @utility motion-fast {
   transition-timing-function: var(--ease-vulto);
