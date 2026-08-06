@@ -24,9 +24,11 @@ const inter = Inter({
   display: "swap",
 });
 
+// Also variable, as of FDN-15: `mono-lg` now asks for 600 so the bench figure
+// is heavier than the assignment label beside it, and the static pair of cuts
+// did not include it.
 const geistMono = Geist_Mono({
   subsets: ["latin"],
-  weight: ["400", "500"],
   variable: "--font-geist-mono",
   display: "swap",
 });

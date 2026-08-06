@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, type CSSProperties } from "react";
 import type { CategoricalToken } from "@vulto/tokens";
 import { cx } from "./cx";
 import { Avatar } from "./Avatar";
 import { Badge } from "./Badge";
 import { Text } from "./Text";
+import { Tooltip, TooltipProvider } from "./Tooltip";
 
 /*
  * The Bench Forecast canvas — owned in behavior by VRS-F005 and in appearance
@@ -25,10 +26,15 @@ import { Text } from "./Text";
  *        height and the region none.
  */
 
-/** Below this width the cost figure cannot be shown without truncating it. */
-const COST_MIN_WIDTH = 88;
+/**
+ * Below this width the cost figure cannot be shown without truncating it, so it
+ * is suppressed instead. Sized for `mono-medium`, which FDN-15 settled on.
+ */
+const COST_MIN_WIDTH = 72;
 /** Below this the day count does not fit either, and nothing is shown. */
 const COUNT_MIN_WIDTH = 44;
+/** FDN-19: how far the track fades before it passes under the person column. */
+const SCROLL_FADE_PX = 24;
 
 export type TimelineDay = {
   date: string;
@@ -125,6 +131,29 @@ export function Timeline({
   const scroller = useRef<HTMLDivElement>(null);
   const trackWidth = days.length * dayWidth;
 
+  /*
+   * FDN-19. The fade at the boundary where the track passes under the frozen
+   * person column.
+   *
+   * The mask lives on each row's track, whose own coordinate space starts where
+   * the track starts — so the boundary, in that space, is exactly the current
+   * scroll offset. Both values are published as CSS variables and the mask is
+   * declared once in the token layer, so this writes two custom properties per
+   * scroll frame and touches no React state.
+   */
+  const onScroll = useCallback(() => {
+    const node = scroller.current;
+    if (!node) return;
+    const x = node.scrollLeft;
+    node.style.setProperty("--vt-scroll-x", `${x}px`);
+    // Clamped to the offset: at rest nothing is hidden, so there is no fade to
+    // explain.
+    node.style.setProperty(
+      "--vt-scroll-fade",
+      `${Math.min(x, SCROLL_FADE_PX)}px`,
+    );
+  }, []);
+
   useEffect(() => {
     if (todayIndex < 0 || !scroller.current) return;
     // Land today a little in from the left edge so the run-up is visible.
@@ -133,14 +162,20 @@ export function Timeline({
   }, [scrollToTodayNonce, todayIndex, dayWidth]);
 
   return (
+    <TooltipProvider>
     <div
       ref={scroller}
-      className="elevation-raised min-h-0 flex-1 overflow-auto rounded-md"
+      onScroll={onScroll}
+      // FDN-16: flat. The workspace is now the raised surface, and a bordered
+      // canvas inside a bordered inset panel is the nested card VPS-D002
+      // forbids.
+      className="min-h-0 flex-1 overflow-auto"
     >
       <div className="min-w-max">
-        {/* Column header. Sticky vertically so it survives the row scroll. */}
-        <div className="sticky top-0 z-20 flex bg-bg-surface">
-          <div className="sticky left-0 z-30 flex w-timeline-label-narrow shrink-0 items-end border-r border-b border-border-default bg-bg-surface px-cell pb-1 xl:w-timeline-label">
+        {/* Column header. Sticky vertically so it survives the row scroll, and
+          * above the row hover outline, which is z-20. */}
+        <div className="sticky top-0 z-40 flex bg-bg-surface">
+          <div className="sticky left-0 z-50 flex w-timeline-label-narrow shrink-0 items-end border-r border-b border-border-default bg-bg-surface px-cell pb-1 xl:w-timeline-label">
             <Text variant="micro" className="text-text-tertiary">
               Person
             </Text>
@@ -174,7 +209,7 @@ export function Timeline({
                   style={{ width: dayWidth }}
                   className={cx(
                     "relative flex shrink-0 flex-col items-center justify-end pb-1",
-                    !day.isWorking && "bg-bg-subtle",
+                    !day.isWorking && "bg-nonworking",
                   )}
                 >
                   {dayWidth >= 18 ? (
@@ -209,20 +244,40 @@ export function Timeline({
               aria-label={`${row.primaryLabel}, ${row.secondaryLabel}`}
               aria-pressed={selected}
               onClick={() => onSelectRow?.(row.id)}
-              className={cx(
-                "group flex h-timeline-row cursor-default",
-                selected ? "bg-bg-selected" : "hover:bg-bg-hover",
-              )}
+              className="group relative flex h-timeline-row cursor-default"
             >
+              {/*
+                * FDN-16. Hover and selection are a border on the whole row
+                * rather than a background fill, so the person column and the
+                * timeline read as one object.
+                *
+                * Drawn as an overlay rather than an outline on the row itself
+                * because the sticky label column paints its own background over
+                * anything the row draws beneath it, which would have broken the
+                * border exactly where the two halves meet.
+                *
+                * This is also what closes F37 by construction: no row-level
+                * fill exists any more, so a quiet bar's opaque mix against
+                * `bg-surface` is always mixing against what is actually behind
+                * it. Selection had to move too — hover alone would have left
+                * `bg-selected` breaking the same bars.
+                */}
+              <span
+                aria-hidden
+                className={cx(
+                  "pointer-events-none absolute inset-0 z-20 rounded-md border",
+                  "motion-fast transition-colors",
+                  selected
+                    ? "border-brand-500"
+                    : "border-transparent group-hover:border-border-strong",
+                )}
+              />
               <div
                 className={cx(
                   "sticky left-0 z-10 flex w-timeline-label-narrow shrink-0 items-center gap-2",
-                  "border-r border-border-default px-cell xl:w-timeline-label",
                   // The sticky column needs its own fill or the track shows
-                  // through as it scrolls beneath.
-                  selected
-                    ? "bg-bg-selected"
-                    : "bg-bg-surface group-hover:bg-bg-hover",
+                  // through as it scrolls beneath. It is now unconditional.
+                  "border-r border-border-default bg-bg-surface px-cell xl:w-timeline-label",
                 )}
               >
                 <Avatar
@@ -262,25 +317,40 @@ export function Timeline({
                 ) : null}
               </div>
 
+              {/* FDN-19: the track carries the scroll-boundary mask, so content
+                * fades as it passes under the person column rather than being
+                * cut by it. The person column is a sibling and is not masked. */}
               <div
-                className="relative shrink-0"
+                className="scroll-boundary-fade relative shrink-0"
                 style={{ width: trackWidth }}
               >
-                {/* Non-working days, per VRS-F004's index. */}
+                {/*
+                  * Non-working days, per VRS-F004's index.
+                  *
+                  * FDN-20: barely there at rest, full weight on row hover. Whose
+                  * Saturday is a working day is a fact about that person, and it
+                  * matters while you are looking at them rather than while you
+                  * are scanning fifteen rows.
+                  *
+                  * It transitions on the same `group-hover` and at the same
+                  * `motion-fast` as the row border, so the two arrive together
+                  * as one gesture.
+                  */}
                 <div className="absolute inset-0 flex">
                   {days.map((day) => (
                     <div
                       key={day.date}
                       style={{ width: dayWidth }}
                       className={cx(
-                        "shrink-0",
-                        !day.isWorking && "bg-bg-subtle",
+                        "shrink-0 motion-fast transition-colors",
+                        !day.isWorking &&
+                          "bg-nonworking-rest group-hover:bg-nonworking",
                       )}
                     />
                   ))}
                 </div>
 
-                {/* Bench regions, beneath the bars. */}
+                {/* Bench bars, on the same plane as the assignment bars. */}
                 {row.bench.map((region) => (
                   <BenchRegion
                     key={region.id}
@@ -309,6 +379,7 @@ export function Timeline({
         })}
       </div>
     </div>
+    </TooltipProvider>
   );
 }
 
@@ -319,34 +390,41 @@ function Bar({ bar, dayWidth }: { bar: TimelineBar; dayWidth: number }) {
   };
 
   return (
-    <div
-      title={bar.title ?? bar.label}
-      style={style}
-      className={cx(
-        "absolute top-1/2 flex h-bar -translate-y-1/2 items-center overflow-hidden rounded-md px-2",
-        FILL[bar.colorToken],
-        EDGE[bar.colorToken],
-        // A Ghost carries a dashed border on all four sides, per VRS-F007's
-        // dashed-border rule. A real assignment carries the 2px left edge.
-        bar.ghost ? "border border-dashed" : "border-l-2",
-      )}
-    >
-      {/* text-primary, not text-inverse. A theme-flipping label over a fill
-        * that does not flip was never going to hold contrast on eight hues. */}
-      <Text variant="small" className="truncate text-text-primary">
-        {bar.label}
-      </Text>
-    </div>
+    <Tooltip content={bar.title ?? bar.label}>
+      <div
+        style={style}
+        className={cx(
+          "absolute top-1/2 flex h-bar -translate-y-1/2 items-center overflow-hidden rounded-md px-2",
+          FILL[bar.colorToken],
+          EDGE[bar.colorToken],
+          // A Ghost carries a dashed border on all four sides, per VRS-F007's
+          // dashed-border rule. A real assignment carries the 2px left edge.
+          bar.ghost ? "border border-dashed" : "border-l-2",
+        )}
+      >
+        {/* text-primary, not text-inverse. A theme-flipping label over a fill
+          * that does not flip was never going to hold contrast on eight hues. */}
+        <Text variant="small" className="truncate text-text-primary">
+          {bar.label}
+        </Text>
+      </div>
+    </Tooltip>
   );
 }
 
 /*
  * The signature element.
  *
- * A flat `attention`-tinted region at 12% fill, no border, no pattern, with the
- * accumulated unrecovered cost left-aligned inside it in `mono-lg`. It does not
- * animate, pulse or draw attention conventionally — the restraint of everything
- * around it is what makes it land.
+ * FDN-15: a bar, not a cell. Same radius as an assignment bar and on the same
+ * plane, so a row reads as a sequence of periods — assigned, bench, assigned —
+ * rather than as bars floating in a tinted cell.
+ *
+ * The fill is a saturated amber chosen per theme, where assignment bars are
+ * tinted. The figure inside is heavier than an assignment label by weight
+ * rather than by hue.
+ *
+ * It does not animate, pulse or draw attention conventionally — the restraint
+ * of everything around it is what makes it land.
  */
 function BenchRegion({
   region,
@@ -360,21 +438,25 @@ function BenchRegion({
   const showCount = !showCost && width >= COUNT_MIN_WIDTH;
 
   return (
-    <div
-      title={region.title}
-      style={{ left: region.start * dayWidth, width }}
-      className="absolute inset-y-0 flex items-center overflow-hidden bg-bench px-2"
-    >
-      {showCost ? (
-        <Text variant="mono-lg" className="truncate text-text-primary">
-          {region.costLabel}
-        </Text>
-      ) : null}
-      {showCount ? (
-        <Text variant="mono" className="truncate text-text-secondary">
-          {region.workingDays}d
-        </Text>
-      ) : null}
-    </div>
+    <Tooltip content={region.title ?? `${region.workingDays} working days`}>
+      <div
+        style={{ left: region.start * dayWidth, width }}
+        className="absolute top-1/2 flex h-bench-bar -translate-y-1/2 items-center overflow-hidden rounded-md bg-bench px-2"
+      >
+        {showCost ? (
+          <Text variant="mono-medium" className="truncate text-bench-figure">
+            {region.costLabel}
+          </Text>
+        ) : null}
+        {/* Weight, not hue: the day count is the same color as the figure and a
+          * lighter weight, because it is the same kind of fact stated smaller.
+          * This is why `mono` must stay at 400 — see F40. */}
+        {showCount ? (
+          <Text variant="mono" className="truncate text-bench-figure">
+            {region.workingDays}d
+          </Text>
+        ) : null}
+      </div>
+    </Tooltip>
   );
 }

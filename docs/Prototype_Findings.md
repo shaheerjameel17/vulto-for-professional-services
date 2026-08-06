@@ -49,8 +49,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F34 | `cat-4` and `cat-8` do not read as cool | `VPS-D001` | **Survives FDN-12** |
 | F35 | Bar labels at `text-inverse` fail on mid-tone categorical fills | `VPS-D002` | **Closed by FDN-12**, verified |
 | F36 | The amber saturates at the 180-day horizon | `VRS-F005` | **Half closed**, see below |
-| F37 | A quiet bar's opaque fill does not follow its own row's backdrop | `VPS-D002` | **New**, introduced by FDN-12 |
+| F37 | A quiet bar's opaque fill does not follow its own row's backdrop | `VPS-D002` | **Closed by FDN-16**, verified |
 | F38 | In light mode the canvas and the surface are 1.04:1 apart | `VPS-D001` | **Corrected in `VPS-D001`** |
+| F39 | Non-working shading may now be below the threshold of perception | `VPS-D001` | **Closed**, middle value |
 | F41 | Table and Timeline disagree about what row hover looks like | `VPS-D002` | **Stated in `VPS-D002`** as a Timeline affordance |
 | F42 | At the design center the Panel hides a third of the canvas either way | `VPS-D003`, `VRS-F005` | **New**, measured |
 | F43 | Brand appears on the workspace mark, a fourth use | `VPS-D001` | **Exempted in `VPS-D001`** |
@@ -364,6 +365,73 @@ those were meant to be the "filter chips", say so and they move.
 Comfortable is the default density. The mechanism is unchanged — still one data
 attribute on the root, still no component branching on it.
 
+### F37 is closed by construction, and verified
+
+Row hover and selection are now a border on the whole row rather than a
+background fill. Measured: the row's own background is `rgba(0, 0, 0, 0)`, the
+label column's is unconditionally `bg-surface`, and `--vt-bar-base` and
+`--vt-bg-surface` resolve to the same value. A quiet bar's opaque mix is
+therefore always mixing against what is actually behind it.
+
+**Selection had to move too, and that goes beyond what was asked.** Changing
+hover alone would have left `bg-selected` breaking the same bars on the selected
+row, so F37 would have survived. `VPS-D001` already assigns brand to "the current
+selection or focus", so a 1px `brand-500` border is the reading that follows from
+the existing rule rather than a new one.
+
+**One implementation note worth recording.** The border is an absolutely
+positioned overlay inside the row, not an `outline` on the row itself. The sticky
+label column paints its own background over anything the row draws beneath it,
+which would have broken the border exactly where the person column meets the
+timeline — the join the change exists to make visible.
+
+### FDN-15 — the bench region became a bar
+
+Same `radius-md` as an assignment bar, on the same plane, so a row reads as a
+sequence of periods rather than as bars floating in a tinted cell.
+
+**The amber is chosen per theme, not mixed.** `#F59E0B` (amber-500) in light,
+`#FBBF24` (amber-400) in dark. The step between them follows `VPS-D001`'s own
+pattern for its semantic hues — `attention` goes 600 to 500 between themes,
+because a near-black field needs more luminance to carry the same perceived
+weight — so the bench amber goes 500 to 400 for the same reason.
+
+Mixing against the surface is what produced tan in light and olive in dark. It
+was never going to produce amber, because the surface was in the mix.
+
+The figure sits on the amber at 9.26:1 in light and 11.92:1 in dark, so it is
+comfortably legible in both.
+
+**Two height variants, switchable at the sidebar foot.**
+
+| | Bench bar | Assignment bar | Row | Figure |
+|---|---|---|---|---|
+| `match` | 24px | 24px | 44px | `mono-medium`, 13/18/500 |
+| `tall` | 32px | 24px | 44px | `mono-lg`, 20/26/600 |
+
+`match` is the one that delivers the stated intent — one plane, one sequence of
+periods — but it costs the figure its size and leans entirely on weight. `tall`
+keeps `mono-lg` and stands 8px proud of the bars on either side of it.
+
+Neither overflows its bar. `mono-lg` does not fit inside 24px, which is why
+`match` drops to `mono-medium` rather than clipping.
+
+### F40 — new, introduced by FDN-15
+
+`mono-medium` is a twelfth type token. `VPS-D001` states eleven.
+
+It exists because the bench figure has to be heavier than an assignment bar's
+label by weight rather than hue, and at the `match` height there is no room to
+also be larger. It is `mono` at 500 against the label's Inter 400, and it follows
+`VPS-D001`'s existing `body` / `body-medium` naming exactly.
+
+`mono-lg` also moved from 500 to 600 so the figure is heavier than the label at
+the `tall` height too. Geist Mono is now loaded as a variable font, since the
+static pair of cuts did not include 600.
+
+**If `tall` wins, `mono-medium` can be deleted** and the scale returns to eleven.
+If `match` wins, `VPS-D001` gains a token.
+
 ### F38 — new, and it undercuts the inset panel in light mode
 
 Light mode's `bg-canvas` (`neutral-50`) and `bg-surface` (`neutral-0`) are
@@ -377,6 +445,21 @@ This is not a bug in FDN-16; it is a gap in `VPS-D001`'s light ramp that FDN-16
 is the first thing to depend on. **Proposed correction:** light `bg-canvas` moves
 from `neutral-50` to `neutral-100`, which takes the separation to roughly 1.10:1
 and matches what dark already does.
+
+### F39 — new, and possibly an overcorrection
+
+Non-working day columns went from `bg-subtle` to a dedicated
+`--vt-nonworking-fill`, because once the bench is an opaque bar the shading no
+longer has to be visible through a 12% tint.
+
+Both themes now sit at **1.07:1** against the surface, and on screen the columns
+are very close to invisible — in dark they read as absent rather than quiet. The
+brief was that the shading read as structure in dark mode, and it may have
+travelled past quiet.
+
+Neither value is expressible in `VPS-D001`'s ramp, which is another instance of
+F19. A middle value is probably right; this needs a look rather than a
+calculation.
 
 ### F41 — new, and it needs a decision rather than a fix
 
@@ -397,6 +480,28 @@ nothing there.
 
 ---
 
+## FDN-17, FDN-18 and FDN-19
+
+### Settled, and their scaffolding deleted
+
+**Bench height is `match`.** The `tall` variant, its switcher, its token and the
+per-density override are gone. The bench bar and an assignment bar both measure
+24px at comfortable, verified.
+
+**Bar fill is candidate 3.** The `hairline` and `wash` candidates, the
+`data-bar` attribute and the `BarFill` union are gone; one settled token remains,
+raised per FDN-18.
+
+**F40 is settled at twelve tokens, and the code decided it rather than
+preference.** `mono` at 13/18/400 cannot become 500: it is load-bearing on the
+bench bar, where the day count is deliberately lighter than the cost figure
+beside it. That is FDN-15's "weight, not hue" distinction, and redefining `mono`
+would collapse the two into the same weight. `mono-medium` stays and `VPS-D001`'s
+type table carries it.
+
+Worth noting: `VPS-D001` never stated a count in prose — "eleven" was inferred
+from the table's length. Adding the row was the whole amendment.
+
 ### FDN-18 — accent and weight
 
 **Brand is out of navigation and out of segmented controls.** Both now take a
@@ -406,6 +511,20 @@ neutral `bg-active` with `text-primary`.
 consequence of F38: moving light `bg-canvas` to neutral-100 made it identical to
 `bg-subtle`, and the sidebar sits directly on the canvas, so an active nav item
 filled with `bg-subtle` was invisible. Caught on screen, not in review.
+
+**The assignment bars are raised** from 22%/30% to 34%/42%. Hannah Weiss's row —
+fully assigned, previously reading as empty in light mode — now reads as
+assigned.
+
+**F39 is closed at a middle value.** `#F5F5F6` light and `#232327` dark, roughly
+1.09:1 and 1.12:1 against the surface, between the `bg-subtle` that read as
+structure and the correction that read as absent.
+
+**The bench figure carries two variants**, and they are a pair rather than two
+choices. White on amber-500 is 2.15:1, and white only clears `VPS-D001`'s floor
+once the amber darkens to amber-700 — amber-600 fails at 3.19:1 — so the fill and
+the figure have to move together. Variant A is amber-500 with a near-black figure
+at 9.26:1; variant B is amber-700 with white at 5.05:1. Dark is identical in both.
 
 ### F43 — new, and it came out of FDN-18's own audit
 
@@ -495,6 +614,19 @@ Those two are their own values rather than `bg-subtle` and `bg-raised`, because 
 dark both of those are neutral-800 — **F10, still open** — and the inversion would
 have collapsed into no change at all. F10 has now blocked two separate designs.
 
+### Off-days on demand
+
+`--vt-nonworking-rest` at 1.02:1 against the surface, coming up to
+`--vt-nonworking-fill` at 1.09:1 on row hover.
+
+**It reads as one gesture, and that is structural rather than lucky.** Both the
+shading and FDN-16's row border transition on `group-hover` from the same
+ancestor, both at `motion-fast` — verified as 0.12s and the same
+`cubic-bezier(0.2, 0, 0, 1)` on both. They cannot arrive at different times.
+
+Worth a look nonetheless: the rest-to-hover delta is small, and it may be too
+quiet to register as calendar detail appearing rather than as nothing happening.
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.
@@ -529,8 +661,9 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 | F28 | The role line appears at comfortable density only. VRS-F005's separate rule still drops it below 1280px regardless |
 | F36 | Cost horizon of 45 days. A region beginning inside it is costed in full; beyond it, days and no figure. The header total states the window |
 | FDN-11 | `display` moves to 32/40; tracking −0.022 / −0.02 / −0.015em above 20px, zero below; weights 640 / 600 / 560 where the variable font is used |
-| FDN-12 | Bench fill and bar fill each carry three candidates pending a choice |
+| FDN-12 | Bar fill carries three candidates pending a choice |
 | F20 | Comfortable is the workspace default density, per FDN-16 |
+| FDN-15 | Bench amber `#F59E0B` light / `#FBBF24` dark; two height variants pending a choice; `mono-lg` weight 500 → 600 |
 | FDN-16 | Workspace inset at space-3 with `radius-lg`; row hover `border-strong`, selection `brand-500`; segmented controls at `radius-full`, Buttons unchanged |
 
 ---

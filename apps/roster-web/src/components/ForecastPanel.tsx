@@ -79,10 +79,14 @@ export function ForecastPanel({
                 <Text variant="mono-lg" className="text-text-primary">
                   {formatMoney(row.benchCost)}
                 </Text>
-                <Text variant="small" className="text-text-secondary">
-                  {row.costedBenchWorkingDays} of those days fall within the next{" "}
-                  {COST_HORIZON_DAYS}
-                </Text>
+                {/* Only worth saying where the two differ. "22 of those 22
+                  * days" is noise. */}
+                {row.costedBenchWorkingDays < row.benchWorkingDays ? (
+                  <Text variant="small" className="text-text-secondary">
+                    {row.costedBenchWorkingDays} of those days fall within the
+                    next {COST_HORIZON_DAYS}
+                  </Text>
+                ) : null}
               </>
             ) : null}
           </div>
