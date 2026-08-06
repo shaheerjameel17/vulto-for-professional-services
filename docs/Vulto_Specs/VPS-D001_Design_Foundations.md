@@ -98,7 +98,21 @@ Project bars on the Bench Forecast and the Capacity Planner need distinguishable
 | `cat-3` | `#06B6D4` | `cat-7` | `#64748B` |
 | `cat-4` | `#D946EF` | `cat-8` | `#EC4899` |
 
-Assigned deterministically by hashing the Project's UUID, so a project is the same color on every device and for every user without storing a color on the node. Green and teal are excluded to protect `success`; everything warm is excluded to protect `attention`.
+Assigned deterministically by hashing the Project's UUID, so a project is the same color on every device and for every user without storing a color on the node.
+
+**Three exclusions, and the palette is what remains.**
+
+| Excluded | Protects |
+|---|---|
+| The warm arc — red through yellow | `attention`, which is to say money |
+| Green and teal | `success` |
+| **The brand's own hue band** | The brand. A project bar must never read as a brand element |
+
+The third exclusion is the one that took rendering to find. Indigo 500 sits at hue 239°, and two categorical tokens sat inside its band — one at 258° and one at 271°. On screen they did not read as arbitrary project colors; they read as though the interface were trying to say something. Excluding roughly 225°–280° is what closes that.
+
+**The consequence is that eight tokens cannot come from hue alone.** What survives all three exclusions is about four distinguishable hue families — cyan, sky, blue and fuchsia — plus a hue-neutral slate. The remaining tokens are lightness steps within those families, and that is a deliberate consequence of the exclusions rather than a shortage of imagination.
+
+**Categorical values differ per theme,** like the semantic hues above and for the same reason: a project bar is an opaque mix against its surface, so one source value comes out pastel against white and saturated against near-black. A 600-level value in light and a 400-level value in dark holds a consistent weight in both.
 
 ### Semantic surface tokens
 

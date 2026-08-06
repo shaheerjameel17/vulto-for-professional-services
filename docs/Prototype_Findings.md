@@ -46,7 +46,7 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F31 | The bench region is specified as patternless and is drawn over a pattern | `VPS-D001`, `VPS-D002` | **Closed by FDN-12**, verified |
 | F32 | The amber is weak in light mode and strong in dark | `VPS-D001` | **Closed by FDN-12**, pending candidate |
 | F33 | Categorical bars outshout the amber in dark mode | `VPS-D001` | **Closed by FDN-12** |
-| F34 | `cat-4` and `cat-8` do not read as cool | `VPS-D001` | **Survives FDN-12** |
+| F34 | The categorical palette's exclusions were understated | `VPS-D001` | **Rule restated in `VPS-D001`**; palette pending a choice |
 | F35 | Bar labels at `text-inverse` fail on mid-tone categorical fills | `VPS-D002` | **Closed by FDN-12**, verified |
 | F36 | The amber saturates at the 180-day horizon | `VRS-F005` | **Half closed**, see below |
 | F37 | A quiet bar's opaque fill does not follow its own row's backdrop | `VPS-D002` | **Closed by FDN-16**, verified |
@@ -658,6 +658,35 @@ Those two are their own values rather than `bg-subtle` and `bg-raised`, because 
 dark both of those are neutral-800 — **F10, still open** — and the inversion would
 have collapsed into no change at all. F10 has now blocked two separate designs.
 
+### The categorical palette
+
+**The rule is restated in `VPS-D001` and F34 is closed as a documentation
+defect.** The exclusions are the warm arc, green and teal, and the brand's own
+hue band. Indigo 500 is at 239°; the retired `cat-2` was 258° and `cat-6` was
+271°, both inside it.
+
+**The consequence is now written down too, because it is not obvious.** After all
+three exclusions the cool arc supports roughly four distinguishable hue families
+— cyan 192°, sky 200°, blue 217°, fuchsia 293° — plus a hue-neutral slate. Eight
+tokens cannot come from hue alone, so every candidate spends lightness to reach
+eight. That is a consequence of the exclusions, not a shortage of options, and
+`VPS-D001` says so rather than leaving the next reader to rediscover it.
+
+**Categorical tokens are now per theme**, like the semantic hues, because the bar
+is an opaque mix — 34% against white, 42% against near-black — and one source
+value comes out pastel in one theme and saturated in the other.
+
+Three fields on `/foundations` at fifteen rows each, with real hash assignment
+from the real Project UUIDs and the amber bars included, since "does the amber
+still win" is half the test. `current`, `spread` (four hues, two lightness steps),
+`ladder` (two hues, three steps, one accent, one slate).
+
+**Two things to look for that the palettes cannot settle on their own.** In
+`spread` the pale cyan and pale blue sit close together at a 34% mix, so hue
+separation that is obvious at full strength may not survive the tint. In `ladder`
+the cyan-800 step carries a faint green cast in light mode, which is the boundary
+`success` is meant to own.
+
 ### Off-days on demand
 
 `--vt-nonworking-rest` at 1.02:1 against the surface, coming up to
@@ -670,6 +699,20 @@ ancestor, both at `motion-fast` — verified as 0.12s and the same
 
 Worth a look nonetheless: the rest-to-hover delta is small, and it may be too
 quiet to register as calendar detail appearing rather than as nothing happening.
+
+### An implementation note that produced wrong colors silently
+
+The hand-written `bar-cat-n` utilities referenced `var(--color-cat-n)`, the
+Tailwind theme alias. An `@theme inline` alias is substituted into Tailwind's own
+generated utilities and is **not** emitted as a custom property, so a
+hand-written utility referencing it resolves to nothing and `color-mix` falls
+back — which looked like a working bar in the wrong color. All three palette
+fields rendered identically and the CSS was valid.
+
+The utilities now reference `--vt-cat-n` directly. Caught by measuring computed
+values across the three fields, not by looking: the fields looked plausible.
+
+---
 
 ## Closed by founder decision during this build
 

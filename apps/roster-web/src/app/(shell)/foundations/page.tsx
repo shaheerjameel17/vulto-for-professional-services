@@ -31,6 +31,7 @@ const SURFACE_TOKENS: { name: string; className: string; light: string; dark: st
   { name: "bg-subtle", className: "bg-bg-subtle", light: "neutral-100", dark: "neutral-800" },
   { name: "bg-hover", className: "bg-bg-hover", light: "neutral-100", dark: "neutral-800" },
   { name: "bg-selected", className: "bg-bg-selected", light: "brand-50", dark: "brand-900" },
+  { name: "bg-active", className: "bg-bg-active", light: "neutral-200", dark: "neutral-800" },
 ];
 
 const NEUTRAL = [
@@ -97,11 +98,13 @@ const TYPE_SPEC: Record<string, string> = {
   label: "12 / 16 · Inter 500",
   micro: "11 / 14 · Inter 560 · +0.04em",
   mono: "13 / 18 · Geist Mono 400",
-  "mono-lg": "20 / 26 · Geist Mono 500",
+  "mono-medium": "13 / 18 · Geist Mono 500 · FDN-15, the twelfth token",
+  "mono-lg": "20 / 26 · Geist Mono 600",
 };
 
 const SAMPLE: Record<string, string> = {
   mono: "£4,200 · 12 days · 76%",
+  "mono-medium": "£4,200",
   "mono-lg": "£18,400",
 };
 
@@ -128,9 +131,11 @@ export default function FoundationsPage() {
       <Content>
         <Section title="Candidates to choose from">
           <Text variant="small" className="mb-4 text-text-secondary">
-            FDN-12. Switch between them at the sidebar foot to see each one
-            across the whole Forecast, which is the better test — a fill is
-            judged in context, not in a swatch.
+            FDN-20. Switch between them at the sidebar foot to see each one
+            across the whole Forecast. A palette is judged as a field, not as a
+            row of chips: what matters is whether fifteen rows stay
+            distinguishable from each other and stay subordinate to the amber.
+            The amber bars are included for exactly that reason.
           </Text>
           <CandidateStrip />
         </Section>

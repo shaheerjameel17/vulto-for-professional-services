@@ -47,9 +47,8 @@ export default function RootLayout({
     <html
       lang="en"
       data-theme="light"
-      data-density="compact"
-      data-bench="present"
-      data-bar="wash"
+      data-density="comfortable"
+      data-cat-palette="current"
       className={`${inter.variable} ${geistMono.variable}`}
       suppressHydrationWarning
     >
