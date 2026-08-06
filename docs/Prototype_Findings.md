@@ -57,6 +57,8 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F42 | At the design center the Panel hides a third of the canvas either way | `VPS-D003`, `VRS-F005` | **New**, measured |
 | F43 | Brand appears on the workspace mark, a fourth use | `VPS-D001` | **Exempted in `VPS-D001`** |
 | F44 | The mono family's suffixes mean two different things | `VPS-D001` | **New**, introduced by FDN-20 |
+| F45 | The Employee profile's Screens table names a Panel with nothing for it to show | `VRS-F002` | **New** |
+| F46 | Tabs.Trigger's label, wrapped in Text as a nested span, gave the tab an empty accessible name | `VPS-D002` | **Closed**, fixed in Tabs |
 
 ---
 
@@ -714,6 +716,60 @@ values across the three fields, not by looking: the fields looked plausible.
 
 ---
 
+## FDN-3 — the employee profile
+
+### What was built
+
+The profile header, the full tab structure (Overview, Skills, Documents,
+Activity) and enough per-person detail across all four to make the density
+real: roughly thirty fields on Overview alone once employment, reporting and
+schedule are counted together, plus skills with proficiency and verification,
+certifications, a document list and an activity feed, for all fifteen real
+employees. `Input` and `Tabs` are new in `packages/ui`, both per `VPS-D002`.
+
+A minimal `/people` list exists only to reach a profile — it is explicitly not
+`VRS-F002`'s own People directory, which is a full `VPS-D002` Table with
+filters and a Panel summary, and stays out of scope until its own pass.
+
+### Structural absence, verified rather than assumed
+
+`lib/profile.ts`'s `buildEmployeeProfile` adds the `compensation` key with a
+**conditional spread**, not a conditional value: `...(canSeeCompensation ? {
+compensation } : {})`. An unauthorized view-model has no `compensation` key
+at all, not a key holding `undefined`.
+
+Checked in the browser rather than by reading the code back: with the
+prototype's viewer toggle set to Team Member, the rendered page's HTML
+contains no "Compensation" heading, no salary figure, and no occurrence of
+the string "Tier 1" anywhere. The layout closes cleanly on toggle — the
+two-column Employment/Reporting grid simply ends where the Compensation
+Section would have started, with no gap and no rendered placeholder.
+
+### F45 — new
+
+`VRS-F002`'s Screens table lists "Content + Panel" for the Employee profile
+but the Layout and components section never says what the Panel would show —
+unlike the People directory, there is no list on this screen for a Panel to
+open a summary from. Built as Content-only; logged rather than resolved by
+inventing a use for the Panel.
+
+### F46 — new, and fixed
+
+`Tabs.Trigger`'s label was wrapped in `<Text variant="body-medium"
+as="span">`, which gave every tab an empty accessible name — `read_page`'s
+accessibility tree showed `tab [ref] type="button"` with no name at all,
+confirmed by a `find` query for the tab's own label returning no matches.
+The visible text rendered as a child `generic` node rather than contributing
+to the button's name. Fixed by rendering the label directly as the
+Trigger's child, with the same typography classes moved onto the Trigger
+itself — a diagnostic step taken while investigating a suspected click bug in
+the same component that turned out to be unrelated: stale cached element
+positions in one debugging pass, not a rendering fault. Worth recording
+because the same wrapping pattern appears nowhere else in this component set,
+and shouldn't be reintroduced.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.
@@ -759,6 +815,5 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 
 - **The working-day rule holds.** `apps/roster-web/src/fixtures/calendar.ts` is the only file that inspects a date's weekday, and it exists as the stand-in for `VRS-F004`'s materialization worker. Every consumer reads the index. Two divergent entity calendars — London Monday–Friday, Karachi Monday–Friday plus a four-hour Saturday — so a weekend assumption anywhere is visible on screen.
 - **Off-token values do not compile.** Tailwind's default color, spacing, radius, type, shadow, blur and breakpoint scales are cleared before `VPS-D001`'s are declared. Verified: `bg-red-500`, `p-7`, `shadow-lg`, `blur-sm`, `rounded-xl`, `gap-9`, `font-bold` and `max-w-md` all produce no CSS; the token equivalents all do.
-- **`VPS-D002`'s Tooltip is not built.** Shortcut discovery on hover currently uses the native `title` attribute.
-- **Table, Chart, Modal, Toast, Progress, Select, Textarea, DatePicker, Checkbox, Radio, Switch, Breadcrumb and Pagination are not built.** None is needed by the shell or the Forecast; they arrive with the screens that compose them.
+- **Tooltip, Input and Tabs are built**, added for the shell's shortcut hints and the employee profile respectively. **Table, Chart, Modal, Toast, Progress, Select, Textarea, DatePicker, Checkbox, Radio, Switch, Breadcrumb and Pagination are still not.** None is needed by a screen built so far; each arrives with the screen that composes it. The profile's date and numeric fields stand in for DatePicker and Select with `Input`'s own shell — the distinct dropdown and calendar affordances aren't built, since that interaction isn't what the profile screen exists to test.
 - **The good-news empty state is implemented but unreachable** with the current fixture, since somebody always has bench time in this data.

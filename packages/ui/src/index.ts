@@ -7,6 +7,8 @@ export { Badge, type BadgeProps } from "./Badge";
 export { Avatar, type AvatarProps } from "./Avatar";
 export { Skeleton, type SkeletonProps } from "./Skeleton";
 export { InlineAlert, type InlineAlertProps } from "./InlineAlert";
+export { Input, type InputProps } from "./Input";
+export { Tabs, TabPanel, type TabsProps, type TabItem } from "./Tabs";
 export { Card, type CardProps } from "./Card";
 export { Section, type SectionProps } from "./Section";
 export { Stat, type StatProps } from "./Stat";
