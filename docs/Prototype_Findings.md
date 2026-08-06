@@ -59,6 +59,12 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F44 | The mono family's suffixes mean two different things | `VPS-D001` | **New**, introduced by FDN-20 |
 | F45 | The Employee profile's Screens table names a Panel with nothing for it to show | `VRS-F002` | **New** |
 | F46 | Tabs.Trigger's label, wrapped in Text as a nested span, gave the tab an empty accessible name | `VPS-D002` | **Closed**, fixed in Tabs |
+| F47 | `VRS-F002` contradicted itself: permanent Inputs in prose, open/close-an-edit in the keyboard table | `VRS-F002` | **Closed**, keyboard model kept |
+| F48 | `VPS-D002`'s Input has no affix contract; suffixed number fields overlap their own spinner | `VPS-D002` | **Closed**, affix contract added |
+| F49 | `InputProps`' own `prefix` collided with `HTMLAttributes`' RDFa `prefix?: string` | — | **Closed**, `prefix` omitted alongside `className` |
+| F50 | People was a name-and-role list, not `VRS-F002`'s Table directory | `VRS-F002` | **Closed**, built as `VPS-D002`'s Table |
+| F51 | F9 at Table scale: a directory is nothing but column headers doing load-bearing work at 2.6:1 | `VPS-D002` | **Recorded, not patched** — resolves with FDN-9 |
+| F52 | Profile tabs were underlined beside pill segmented controls on the same screen | `VPS-D002` | **Closed**, Tabs and Toggle Group unified as one treatment |
 
 ---
 
@@ -770,6 +776,113 @@ and shouldn't be reintroduced.
 
 ---
 
+## FDN-24 and FDN-25
+
+### FDN-24 — the profile is a form, not a record
+
+`VRS-F002`'s layout sentence and its own keyboard table couldn't both be
+true — a permanently-editable Input has nothing for `E` to open and nothing
+for `Escape` to close. The keyboard model won, for the reason the ticket
+gave: it's consistent with `VPS-D003` everywhere else, and thirty
+permanently bordered boxes on a screen with nothing being edited reads as a
+data-entry form.
+
+`EditableField` is new in the app (not `packages/ui` — this is `VRS-F002`'s
+own interaction, not a generic design-system component). Read state is
+plain text, no border, no box. `E` on the focused field, or a click, opens
+it as a real `Input`; blur or `Cmd+Enter` commits; `Escape` discards and
+reverts to the pre-edit value.
+
+**Verified, not assumed, and the verification found a tooling limit worth
+recording.** Escape-discards is confirmed two ways: a direct `keydown`
+listener shows `e.key` resolves to `"Escape"` correctly, and the field
+visibly reverts. Blur-commits is confirmed by typing a change and clicking
+elsewhere, watching the field close back to text carrying the new value.
+Cmd+Enter-commits uses the identical `onKeyDown` handler and could not be
+exercised through this session's browser-automation tool: its synthesized
+`"Return"`/`"Enter"` keydown carries an empty `e.key`, with or without the
+modifier, while every named key this build has relied on elsewhere —
+`Escape`, `j`, `k` — resolves correctly. That is a gap in the tool, not
+evidence about the code; it's recorded because a future session hitting the
+same wall shouldn't re-diagnose it as a component bug.
+
+### The affix contract, and the bug that motivated it
+
+Contracted hours and Billing rate previously rendered their unit suffix and
+the browser's native number-spinner in the same corner of the box, because
+`Input`'s suffix was positioned over the field rather than beside it.
+`VPS-D002` gains the contract: prefix and suffix are laid out as siblings
+of the actual `<input>` inside one shared bordered container, never
+positioned over it, and a numeric field carrying either suppresses the
+native spinner via a new `no-spinner` token utility.
+
+**Verified in the browser, not by reading the code back.** `getComputedStyle`
+queried against `::-webkit-inner-spin-button` directly returned misleading
+values (`appearance: auto`, `display: block`) — querying a vendor
+pseudo-element's computed style through this automation path isn't
+reliable, and is logged here so it isn't re-trusted next time. What
+settled it was a real screenshot at high relative zoom: `40` with no
+spinner arrows, `hrs/wk` sitting flush beside it, measured programmatically
+at a 0px gap between the two, meaning adjacent siblings rather than overlap.
+
+**F49 — new, found while building the contract.** `InputProps` declared its
+own `prefix?: ReactNode` alongside `Omit<InputHTMLAttributes<...>,
+"className">` — but `HTMLAttributes` already carries an RDFa `prefix?:
+string`, and the two intersected silently into a type any non-string
+`ReactNode` value would fail against. The fix is the same shape as
+`className`'s existing exclusion: `prefix` needed omitting from the native
+attributes too. Worth recording because it's a trap in React's own DOM
+typings, not this codebase's design, and it will bite the next component
+that names a prop `prefix`, `about`, `content`, `property`, `rel`,
+`resource`, `rev`, `typeof` or `vocab` — the RDFa set `HTMLAttributes`
+carries by default.
+
+**Audited.** `Input` is used in exactly one place — inside `EditableField`
+— so the audit `VPS-D002` calls for is complete by construction rather
+than by checking a list.
+
+### FDN-25 — People as a Table, tabs as pills
+
+**People.** Built as `VPS-D002`'s `Table`: sticky header, click-to-sort,
+eight columns (name, role, department, entity, type, status, reports-to,
+hours/week), pill filters for entity and employment type. Verified sorting
+by clicking the Name header and reading back an alphabetical list, and
+verified the entity filter narrows fifteen rows to the expected ten UK
+employees. Row click still opens the profile directly.
+
+**Deliberately not built:** checkbox row selection, keyboard row
+navigation, virtualisation above 100 rows. `VPS-D002` specifies all three;
+no screen composing `Table` needs any of them yet, and building ahead of
+that need is the premature abstraction CLAUDE.md warns against. Logged
+here rather than silently absent.
+
+**F51, at Table scale, recorded rather than patched, exactly as asked.**
+The header row's `micro` `text-tertiary` computes to the same ~2.6:1 as
+`Stat`'s label under F9 — except a table's headers are the *entire* text a
+column carries, not one label beside a bigger number. Left exactly as
+`VPS-D002` specifies; FDN-9 owns the correction.
+
+**Tabs became pills.** Same track, same active-fill, same weight change as
+`ToggleGroup` — `VPS-D002` now states the two as one treatment rather than
+describing an underline separately. The active state is computed from the
+known `value` rather than read off Radix's own `data-state`, matching
+`ToggleGroup`'s fix from FDN-23 before this component needed it: the
+moment a Tab trigger is ever wrapped in `Tooltip`, `data-state` stops being
+exclusively its own, and the new composed-primitives rule in `VPS-D002`
+(below) is exactly the situation that would create.
+
+### The composed-primitives rule
+
+`VPS-D002` now states plainly what FDN-23 found by debugging it: wrapping
+one primitive's trigger around another's own styled element merges the
+wrapper's DOM attributes onto the child, and where both write the same
+attribute for their own state, the wrapper's silently wins. The rule going
+forward — a component derives its visual state from a prop it already
+holds, never from an attribute a second primitive might also be writing —
+is now written down instead of left to be rediscovered per component.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.
@@ -815,5 +928,5 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 
 - **The working-day rule holds.** `apps/roster-web/src/fixtures/calendar.ts` is the only file that inspects a date's weekday, and it exists as the stand-in for `VRS-F004`'s materialization worker. Every consumer reads the index. Two divergent entity calendars — London Monday–Friday, Karachi Monday–Friday plus a four-hour Saturday — so a weekend assumption anywhere is visible on screen.
 - **Off-token values do not compile.** Tailwind's default color, spacing, radius, type, shadow, blur and breakpoint scales are cleared before `VPS-D001`'s are declared. Verified: `bg-red-500`, `p-7`, `shadow-lg`, `blur-sm`, `rounded-xl`, `gap-9`, `font-bold` and `max-w-md` all produce no CSS; the token equivalents all do.
-- **Tooltip, Input and Tabs are built**, added for the shell's shortcut hints and the employee profile respectively. **Table, Chart, Modal, Toast, Progress, Select, Textarea, DatePicker, Checkbox, Radio, Switch, Breadcrumb and Pagination are still not.** None is needed by a screen built so far; each arrives with the screen that composes it. The profile's date and numeric fields stand in for DatePicker and Select with `Input`'s own shell — the distinct dropdown and calendar affordances aren't built, since that interaction isn't what the profile screen exists to test.
+- **Tooltip, Input, Tabs and Table are built.** `Table` implements sticky header, click-to-sort and hover only — checkbox row selection, keyboard row navigation and virtualisation above 100 rows are all in `VPS-D002` but unbuilt, since no screen composing it needs any of the three yet. **Chart, Modal, Toast, Progress, Select, Textarea, DatePicker, Checkbox, Radio, Switch, Breadcrumb and Pagination are still not built.** None is needed by a screen built so far; each arrives with the screen that composes it. The profile's date and numeric fields stand in for DatePicker and Select with `Input`'s own shell — the distinct dropdown and calendar affordances aren't built, since that interaction isn't what the profile screen exists to test.
 - **The good-news empty state is implemented but unreachable** with the current fixture, since somebody always has bench time in this data.

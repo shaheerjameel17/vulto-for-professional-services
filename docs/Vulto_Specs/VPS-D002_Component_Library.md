@@ -58,7 +58,9 @@ Labels sit above, `label` token, `text-secondary`. Helper text sits below at `sm
 
 ### Checkbox, Radio, Switch, Toggle Group
 
-16px controls. `Switch` is reserved for settings that take effect immediately; anything requiring a save uses `Checkbox`. `Toggle Group` handles small mutually exclusive sets — density mode, timeline zoom — and replaces a select where there are three or fewer options.
+16px controls. `Switch` is reserved for settings that take effect immediately; anything requiring a save uses `Checkbox`. `Toggle Group` handles small mutually exclusive sets — density mode, timeline zoom, and Tabs, below — and replaces a select where there are three or fewer options.
+
+**Segmented controls, as a class.** A track at `bg-subtle`-equivalent depth with `1` internal padding; the active segment raised onto its own fill at `bg-raised`-equivalent depth, `radius-full`, with a weight change from `body` to `body-medium` alongside the fill. Neutral throughout — brand marks selection only where [[VPS-D001_Design_Foundations|VPS-D001]] says it does, and which segment is currently set is not that. `Toggle Group` and `Tabs` are two components from this one treatment, not two treatments that happen to coincide: a `Toggle Group` sets a value; `Tabs` switches which view of an object is shown; both are a small mutually exclusive set sharing a track, and a screen that shows one as pills and the other underlined has one inconsistency where the rule was meant to prevent it.
 
 ### Badge
 
@@ -139,7 +141,7 @@ The right-hand contextual surface, 360px, full height, `raised`, with a 1px left
 
 ### Tabs
 
-Underline style: 2px `brand-500` on the active tab, `text-secondary` on the rest. Tabs switch views of the same object. They never carry unsaved state between them.
+The segmented-control treatment defined under Toggle Group above, not an underline. Tabs switch views of the same object. They never carry unsaved state between them.
 
 ### Section
 
@@ -166,6 +168,8 @@ Static `bg-subtle` blocks matching the shape of incoming content. **No shimmer, 
 ### Tooltip
 
 `overlay`, 200ms delay, `small` text, max-width 280px. Tooltips explain; they never contain the only copy of a piece of information, and never contain an action.
+
+**Composed primitives may not share a styling attribute.** Wrapping one interactive primitive's trigger around another's own element — Tooltip's `asChild` around a Toggle Group item, say — merges the wrapper's props onto the wrapped element, and where both write the same DOM attribute for their own state, the wrapper's value wins silently. A Toggle Group item that reads `data-state="on"`/`"off"` for its active fill, wrapped in a Tooltip whose own `data-state` means `"open"`/`"closed"`, loses its active state to a tooltip that isn't open — correct in every other respect, wrong on screen, and wrong for a reason neither component's own documentation would lead an implementer to expect. Any component wrapped in Tooltip derives its own visual state from a value it already holds — a prop, not a shared attribute a second primitive might also be writing.
 
 ---
 

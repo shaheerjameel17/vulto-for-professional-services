@@ -10,6 +10,7 @@ export { InlineAlert, type InlineAlertProps } from "./InlineAlert";
 export { Input, type InputProps } from "./Input";
 export { Tabs, TabPanel, type TabsProps, type TabItem } from "./Tabs";
 export { Card, type CardProps } from "./Card";
+export { Table, type TableProps, type TableColumn } from "./Table";
 export { Section, type SectionProps } from "./Section";
 export { Stat, type StatProps } from "./Stat";
 export {

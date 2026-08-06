@@ -5,9 +5,19 @@ import type { ReactNode } from "react";
 import { cx } from "./cx";
 
 /*
- * VPS-D002. Underline style: 2px brand-500 on the active tab, text-secondary
- * on the rest. Tabs switch views of the same object. They never carry
- * unsaved state between them.
+ * VPS-D002, corrected by FDN-25: the segmented-control treatment, not an
+ * underline. Tabs and Toggle Group are one visual language — a track with
+ * `1` internal padding, the active segment raised onto its own fill with a
+ * weight change, neutral throughout. Tabs switch views of the same object;
+ * they never carry unsaved state between them.
+ *
+ * The active state is computed from `value` directly, exactly as
+ * ToggleGroup's is, rather than read off Radix's own `data-state`. That is
+ * FDN-23's lesson applied here before it needed to be — the moment a
+ * Trigger is ever wrapped in Tooltip, `data-state` stops being this
+ * component's alone, and the new rule in VPS-D002 says a component derives
+ * its visual state from a value it holds rather than an attribute a second
+ * primitive might also be writing.
  *
  * Radix supplies arrow-key navigation between triggers and the ARIA wiring
  * VPS-D002's accessibility floor requires.
@@ -28,21 +38,30 @@ export type TabsProps = {
 export function Tabs({ items, value, onChange, children }: TabsProps) {
   return (
     <RadixTabs.Root value={value} onValueChange={onChange}>
-      <RadixTabs.List className="flex gap-6 border-b border-border-default">
-        {items.map((item) => (
-          <RadixTabs.Trigger
-            key={item.value}
-            value={item.value}
-            className={cx(
-              "flex h-10 items-center border-b-2 border-transparent",
-              "font-ui text-body-medium text-text-secondary",
-              "motion-fast transition-colors hover:text-text-primary",
-              "data-[state=active]:border-brand-500 data-[state=active]:text-text-primary",
-            )}
-          >
-            {item.label}
-          </RadixTabs.Trigger>
-        ))}
+      <RadixTabs.List
+        className={cx(
+          "inline-flex items-center rounded-full border border-border-default",
+          "bg-segment-track p-1",
+        )}
+      >
+        {items.map((item) => {
+          const active = item.value === value;
+          return (
+            <RadixTabs.Trigger
+              key={item.value}
+              value={item.value}
+              className={cx(
+                "inline-flex h-control items-center rounded-full px-3",
+                "font-ui motion-fast transition-colors",
+                active
+                  ? "bg-segment-active text-body-medium text-text-primary"
+                  : "text-body text-text-secondary hover:text-text-primary",
+              )}
+            >
+              {item.label}
+            </RadixTabs.Trigger>
+          );
+        })}
       </RadixTabs.List>
       {children}
     </RadixTabs.Root>
