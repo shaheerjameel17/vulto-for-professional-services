@@ -52,9 +52,11 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F37 | A quiet bar's opaque fill does not follow its own row's backdrop | `VPS-D002` | **Closed by FDN-16**, verified |
 | F38 | In light mode the canvas and the surface are 1.04:1 apart | `VPS-D001` | **Corrected in `VPS-D001`** |
 | F39 | Non-working shading may now be below the threshold of perception | `VPS-D001` | **Closed**, middle value |
+| F40 | The type scale has twelve tokens; `VPS-D001` said eleven | `VPS-D001` | **Settled at twelve, `VPS-D001` amended** |
 | F41 | Table and Timeline disagree about what row hover looks like | `VPS-D002` | **Stated in `VPS-D002`** as a Timeline affordance |
 | F42 | At the design center the Panel hides a third of the canvas either way | `VPS-D003`, `VRS-F005` | **New**, measured |
 | F43 | Brand appears on the workspace mark, a fourth use | `VPS-D001` | **Exempted in `VPS-D001`** |
+| F44 | The mono family's suffixes mean two different things | `VPS-D001` | **New**, introduced by FDN-20 |
 
 ---
 
@@ -594,6 +596,30 @@ is specific to a canvas where horizontal position carries meaning: on selection,
 scroll the track so the selected row's live region sits left of the panel. Not
 built — it is a behavior change, not chrome.
 
+### FDN-17 — the summary band, and F8 closed
+
+Three figures, top right, money largest: `mono-lg` at 20px weight 600 for
+**£46,016** with "unrecovered · next 45 days", then **13 of 15** and **74%** at
+`mono`. Verified the money figure computes to `rgb(24, 24, 27)` — `text-primary`,
+not amber. Size carries the hierarchy; the hue stays exclusive to the timeline.
+
+The page header's subtitle is gone. It was stating the most important fact on the
+screen at 13px.
+
+**The legend is an info icon beside the band**, and its two full-width lines are
+returned to rows.
+
+**F8 is closed with a stated reason.** Two bands: `VPS-D004`'s page header is
+56px, and a 20px figure with a `micro` label beneath it plus a row of pill
+controls does not fit inside it alongside an `h1`. The arithmetic decided it.
+
+**One deviation to accept or reject:** `VPS-D002` specifies a Stat's label as
+`micro` in `text-tertiary`, which is F9's 2.6:1. Three of them now sit in this
+screen's most important band, so `Stat` uses `text-secondary` throughout. F9
+remains open and this is the second surface pushing on it.
+
+---
+
 ## FDN-20
 
 ### Settled, and deleted
@@ -601,6 +627,24 @@ built — it is a behavior change, not chrome.
 The bench figure is the bright amber with a near-black figure. Variant B —
 amber-700 with white — is gone, along with its tokens, its switcher, its type and
 the `data-bench-text` attribute.
+
+### The band's hierarchy
+
+**£46,016** at `mono-lg` 20px/600, **13 of 15** and **74%** at `mono-md`
+16px/500. Verified in the browser. Money still leads by four pixels and a weight
+step; the other two are figures rather than captions.
+
+`mono-md` is a thirteenth type token on an existing size step — 16px is `h3`'s.
+`VPS-D001`'s table carries it.
+
+### F44 — new, and it is a naming problem rather than a visual one
+
+The mono family now reads `mono` / `mono-medium` / `mono-md` / `mono-lg`, where
+`-medium` denotes **weight** (matching `body-medium`) and `-md` and `-lg` denote
+**size**. One suffix convention, two meanings, in one family.
+
+Nothing renders wrong. It is a trap for whoever reads the scale next, and it
+belongs in FDN-21's pass rather than a rename mid-flight.
 
 ### The segmented control, rebuilt
 

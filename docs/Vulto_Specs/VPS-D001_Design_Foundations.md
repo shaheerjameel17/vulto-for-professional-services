@@ -158,6 +158,7 @@ Base is 14px, not 16. This is a professional tool used for hours by people who w
 | `micro` | 11 / 14 | Manrope | 600 | Column headers, eyebrows. Uppercase, `letter-spacing: 0.04em` |
 | `mono` | 13 / 18 | Geist Mono | 400 | Figures, IDs |
 | `mono-medium` | 13 / 18 | Geist Mono | 500 | A figure that must outweigh a label beside it at the same size |
+| `mono-md` | 16 / 22 | Geist Mono | 500 | A supporting figure in a group, where another figure leads |
 | `mono-lg` | 20 / 26 | Geist Mono | 600 | Accumulated cost figures, the bench number |
 
 Letter-spacing is `-0.01em` at `h2` and above, `0` at body sizes. Uppercase is permitted at `micro` only.

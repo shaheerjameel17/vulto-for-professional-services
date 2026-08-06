@@ -1,17 +1,19 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { SlidersHorizontal } from "lucide-react";
+import { Info, SlidersHorizontal } from "lucide-react";
 import {
-  Badge,
   Button,
   Content,
+  Icon,
   PageHeader,
   Panel,
   Stat,
   Text,
   Timeline,
   ToggleGroup,
+  Tooltip,
+  TooltipProvider,
   useShortcuts,
 } from "@vulto/ui";
 import { buildForecast, DAY_WIDTH, formatMoney, type Horizon } from "../../lib/bench";
@@ -99,17 +101,12 @@ export default function BenchForecastPage() {
   // F36: the total counts only bench regions beginning inside the cost horizon,
   // and says so, because a figure that silently means something narrower than
   // the window on screen is the kind of number this product cannot afford.
-  const benchedCopy =
-    forecast.benchedCount === 0
-      ? `Nobody is on the bench in the next ${horizon} days`
-      : `${forecast.benchedCount} of ${forecast.cohortSize} people have bench time · ${formatMoney(forecast.totalBenchCost)} unrecovered in the next ${forecast.costHorizonDays} days`;
-
   return (
-    <>
-      <PageHeader
-        title="Bench Forecast"
-        subtitle={canSeeCompensation ? benchedCopy : `${forecast.benchedCount} of ${forecast.cohortSize} people have bench time`}
-      />
+    <TooltipProvider>
+      {/* FDN-17: the subtitle is gone. The figures it carried are the band's
+        * job now, and at `small` in a header they were the smallest statement of
+        * the most important fact on the screen. */}
+      <PageHeader title="Bench Forecast" />
 
       <Content fullBleed>
         {/*
@@ -129,21 +126,23 @@ export default function BenchForecastPage() {
                 { value: "180", label: "180", shortcut: "3" },
               ]}
             />
-            <Button
-              ref={filtersRef}
-              variant="ghost"
-              icon={SlidersHorizontal}
-              title="Filters · F"
-            >
-              Filters
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={() => setTodayNonce((value) => value + 1)}
-              title="Scroll today into view · T"
-            >
-              Today
-            </Button>
+            {/* VPS-D003: single-letter shortcuts are documented on hover of the
+              * control they trigger, which is how they are discovered without a
+              * manual. Now through VPS-D002's Tooltip rather than the browser's
+              * own box. */}
+            <Tooltip content="Filter the cohort" shortcut="F">
+              <Button ref={filtersRef} variant="ghost" icon={SlidersHorizontal}>
+                Filters
+              </Button>
+            </Tooltip>
+            <Tooltip content="Scroll today into view" shortcut="T">
+              <Button
+                variant="ghost"
+                onClick={() => setTodayNonce((value) => value + 1)}
+              >
+                Today
+              </Button>
+            </Tooltip>
           </div>
 
           <div className="flex items-center gap-6">
@@ -158,12 +157,57 @@ export default function BenchForecastPage() {
                 { value: "manager", label: "Manager" },
               ]}
             />
-            <Stat
-              label="Utilization"
-              value={`${forecast.utilization}%`}
-              denominator={`${forecast.cohortSize} people${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
-              className="items-end text-right"
-            />
+
+            {/*
+              * FDN-17. Three figures, money largest.
+              *
+              * The hierarchy was inverted: utilization held a 32px `display`
+              * figure while the unrecovered total sat at 13px in a subtitle, on
+              * a screen whose entire thesis is that money is what matters.
+              *
+              * The money figure is NOT amber. If amber appears in the chrome it
+              * stops meaning this specific gap, so size carries the hierarchy
+              * and the hue stays exclusive to the timeline.
+              */}
+            <div className="flex items-end gap-6">
+              {canSeeCompensation ? (
+                <Stat
+                  label={`Unrecovered · next ${forecast.costHorizonDays} days`}
+                  value={formatMoney(forecast.totalBenchCost)}
+                  scale="mono-lg"
+                  labelPlacement="below"
+                  className="items-end text-right"
+                />
+              ) : null}
+              <Stat
+                label="People with bench time"
+                value={`${forecast.benchedCount} of ${forecast.cohortSize}`}
+                scale="mono-md"
+                labelPlacement="below"
+                className="items-end text-right"
+              />
+              <Stat
+                label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
+                value={`${forecast.utilization}%`}
+                scale="mono-md"
+                labelPlacement="below"
+                className="items-end text-right"
+              />
+              {/* FDN-17: the legend became this. An amber bar with £3,938
+                * written inside it explains itself. */}
+              <Tooltip
+                content="Amber is bench time — a period with no assignment. The figure inside is unrecovered salary cost, counted in working days from each person's own calendar. A gap beginning within 45 days carries its cost; beyond that it shows days only, because being unassigned five months out is a plan rather than a loss."
+                side="bottom"
+              >
+                <button
+                  type="button"
+                  aria-label="What the amber means"
+                  className="mb-1 rounded-md p-1 text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-secondary"
+                >
+                  <Icon icon={Info} />
+                </button>
+              </Tooltip>
+            </div>
           </div>
         </div>
 
@@ -174,7 +218,10 @@ export default function BenchForecastPage() {
             </Text>
           </div>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col p-6 pt-4">
+          /* FDN-17: the two-line legend is gone, which returns its height to
+            * rows. On a screen where vertical space is people visible, that was
+            * the worst trade in the layout. */
+          <div className="flex min-h-0 flex-1 flex-col px-6 pb-6">
             <Timeline
               days={forecast.days}
               rows={forecast.rows}
@@ -184,20 +231,9 @@ export default function BenchForecastPage() {
               onSelectRow={setSelectedId}
               scrollToTodayNonce={todayNonce}
             />
-            <div className="mt-2 flex items-start gap-2">
-              <Badge tone="attention">Amber</Badge>
-              <Text variant="small" className="text-text-secondary">
-                Bench time, counted in working days from each person&rsquo;s own
-                calendar — a Karachi Saturday counts as half a day, a London
-                Saturday not at all. A gap beginning within{" "}
-                {forecast.costHorizonDays} days carries its unrecovered cost;
-                beyond that it shows days only, because being unassigned five
-                months out is a plan rather than a loss.
-              </Text>
-            </div>
           </div>
         )}
       </Content>
-    </>
+    </TooltipProvider>
   );
 }

@@ -17,8 +17,18 @@ import { Text } from "./Text";
 export type StatProps = {
   label: string;
   value: string;
-  /** `display` for a dashboard's single number, `mono-lg` for a figure. */
-  scale?: "display" | "mono-lg";
+  /**
+   * `display` for a dashboard's single number, `mono-lg` for a figure.
+   *
+   * FDN-17 adds `mono`, for the subordinate figures in a group where one figure
+   * carries the hierarchy and the others support it.
+   */
+  scale?: "display" | "mono-lg" | "mono-md" | "mono";
+  /**
+   * FDN-17: the label sits below the value where the value leads a group. Above
+   * remains the default, which is what every other Stat in the product does.
+   */
+  labelPlacement?: "above" | "below";
   denominator?: string;
   delta?: { text: string; tone: "success" | "attention" };
   /** VPS-D004's suppressed-aggregate state, per VPS-A004's k-anonymity rule. */
@@ -30,44 +40,70 @@ export function Stat({
   label,
   value,
   scale = "display",
+  labelPlacement = "above",
   denominator,
   delta,
   suppressedReason,
   className,
 }: StatProps) {
-  return (
-    <div className={cx("flex flex-col gap-1", className)}>
-      <Text variant="micro" className="text-text-tertiary">
-        {label}
+  /*
+   * FINDING F9 pressure: VPS-D002 specifies `micro` in `text-tertiary` for a
+   * Stat's label, which computes to about 2.6:1. Three of these now sit in the
+   * Bench Forecast's most important band, so they take `text-secondary` here.
+   * F9 remains open; this is the second surface pushing on it.
+   */
+  const labelNode = (
+    <Text variant="micro" className="text-text-secondary">
+      {label}
+    </Text>
+  );
+
+  const valueNode = suppressedReason ? (
+    <div className="rounded-md border border-border-default bg-bg-subtle px-3 py-2">
+      <Text variant="small" className="text-text-secondary">
+        {suppressedReason}
       </Text>
-
-      {suppressedReason ? (
-        <div className="rounded-md border border-border-default bg-bg-subtle px-3 py-2">
-          <Text variant="small" className="text-text-tertiary">
-            {suppressedReason}
-          </Text>
-        </div>
-      ) : (
-        <div className="flex items-baseline gap-2">
-          <Text variant={scale} className="text-text-primary">
-            {value}
-          </Text>
-          {denominator ? (
-            <Text variant="micro" className="text-text-tertiary">
-              {denominator}
-            </Text>
-          ) : null}
-        </div>
-      )}
-
-      {delta && !suppressedReason ? (
-        <Text
-          variant="small"
-          className={delta.tone === "success" ? "text-success" : "text-attention"}
-        >
-          {delta.text}
+    </div>
+  ) : (
+    <div className="flex items-baseline gap-2">
+      <Text variant={scale} className="text-text-primary">
+        {value}
+      </Text>
+      {denominator ? (
+        <Text variant="micro" className="text-text-secondary">
+          {denominator}
         </Text>
       ) : null}
+    </div>
+  );
+
+  const deltaNode =
+    delta && !suppressedReason ? (
+      <Text
+        variant="small"
+        className={delta.tone === "success" ? "text-success" : "text-attention"}
+      >
+        {delta.text}
+      </Text>
+    ) : null;
+
+  return (
+    <div className={cx("flex flex-col gap-1", className)}>
+      {/* The delta stays with the value rather than being flipped with the
+        * label, so it reads as a qualification of the figure either way. */}
+      {labelPlacement === "above" ? (
+        <>
+          {labelNode}
+          {valueNode}
+          {deltaNode}
+        </>
+      ) : (
+        <>
+          {valueNode}
+          {labelNode}
+          {deltaNode}
+        </>
+      )}
     </div>
   );
 }
