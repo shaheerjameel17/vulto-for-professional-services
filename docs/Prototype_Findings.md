@@ -1087,6 +1087,35 @@ every surface.
 
 ---
 
+## FDN-31 — deliberate Timeline scroll boundaries
+
+The clipped `GUST` month label and unfinished right edge had the same underlying
+cause: the Timeline knew the horizontal offset needed by its frozen person
+column, but its mask applied only to row tracks and only at the left boundary.
+The month band was therefore hard-clipped by an opaque sibling, while content
+at the other edge simply ran out of the viewport.
+
+The shared Timeline now publishes both visible track boundaries as runtime
+geometry. The existing 24px alpha mask applies to the month header and every
+row, fading only where more content exists. At the actual right end its fade
+resolves to 0px, so the termination is crisp instead of implying another page.
+The active month label is shifted just inside the clear part of the left mask;
+if a full label cannot fit before the next month, it is suppressed. A partial
+label can no longer become a different word.
+
+**Measured across the full matrix.** At 30, 90 and 180 days in Light and Dark,
+Comfortable and Compact, the first visible month was `August`, no visible month
+crossed the frozen-column boundary, the header mask was applied, and the right
+continuation fade measured 24px. At the true right edge the fade measured 0px.
+The frozen person column's x position and width were identical before and after
+horizontal scrolling, and the Today action returned the 90-day view from its
+maximum offset to the today position with the line and dot still rendered.
+
+Screenshots cover both edges at 90 days in Light/Comfortable and at 180 days in
+Dark/Compact under `artifacts/prototype-findings/fdn-31-*`.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.

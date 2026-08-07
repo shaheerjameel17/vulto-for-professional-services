@@ -33,7 +33,7 @@ import { Tooltip, TooltipProvider } from "./Tooltip";
 const COST_MIN_WIDTH = 72;
 /** Below this the day count does not fit either, and nothing is shown. */
 const COUNT_MIN_WIDTH = 44;
-/** FDN-19: how far the track fades before it passes under the person column. */
+/** FDN-19/31: how far the track fades at a horizontal scroll boundary. */
 const SCROLL_FADE_PX = 24;
 
 export type TimelineDay = {
@@ -132,27 +132,67 @@ export function Timeline({
   const trackWidth = days.length * dayWidth;
 
   /*
-   * FDN-19. The fade at the boundary where the track passes under the frozen
-   * person column.
-   *
-   * The mask lives on each row's track, whose own coordinate space starts where
-   * the track starts — so the boundary, in that space, is exactly the current
-   * scroll offset. Both values are published as CSS variables and the mask is
-   * declared once in the token layer, so this writes two custom properties per
-   * scroll frame and touches no React state.
+   * FDN-19/31. The fades at the boundaries of the horizontally scrolling
+   * track. The left boundary is the current scroll offset; the right boundary
+   * is that offset plus the visible width after the frozen person column. The
+   * mask is declared once in the token layer and scrolling touches no state.
    */
   const onScroll = useCallback(() => {
     const node = scroller.current;
     if (!node) return;
     const x = node.scrollLeft;
+    const labelWidth =
+      node.querySelector<HTMLElement>("[data-timeline-label]")?.offsetWidth ??
+      0;
+    const visibleTrackWidth = Math.max(0, node.clientWidth - labelWidth);
+    const rightEdge = Math.min(trackWidth, x + visibleTrackWidth);
+    const remaining = Math.max(0, trackWidth - rightEdge);
+    const leftFade = Math.min(x, SCROLL_FADE_PX);
+    const rightFade = Math.min(remaining, SCROLL_FADE_PX);
     node.style.setProperty("--vt-scroll-x", `${x}px`);
     // Clamped to the offset: at rest nothing is hidden, so there is no fade to
     // explain.
     node.style.setProperty(
       "--vt-scroll-fade",
-      `${Math.min(x, SCROLL_FADE_PX)}px`,
+      `${leftFade}px`,
     );
-  }, []);
+    node.style.setProperty("--vt-scroll-end", `${rightEdge}px`);
+    node.style.setProperty("--vt-scroll-end-fade", `${rightFade}px`);
+
+    /*
+     * A mask prevents track paint from hard-clipping, but text needs a stronger
+     * rule: "GUST" is still a word even if "AU" faded under the frozen column.
+     * Keep the active month label just inside the clear part of the mask and
+     * suppress any label that cannot fit completely at either boundary.
+     */
+    const monthLabels = Array.from(
+      node.querySelectorAll<HTMLElement>("[data-timeline-month]"),
+    );
+    const visibleLeft = x + leftFade + 2;
+    const visibleRight = rightEdge - rightFade - 2;
+    monthLabels.forEach((month, index) => {
+      const start = month.offsetLeft;
+      const nextStart = monthLabels[index + 1]?.offsetLeft ?? trackWidth;
+      let target = start;
+      let visible = start >= x;
+      if (start <= x && x < nextStart) {
+        target = Math.min(visibleLeft, nextStart - month.offsetWidth - 2);
+        visible = target >= start && target >= visibleLeft;
+      }
+      if (target + month.offsetWidth > visibleRight) visible = false;
+      month.style.transform = target === start ? "" : `translateX(${target - start}px)`;
+      month.style.visibility = visible ? "visible" : "hidden";
+    });
+  }, [trackWidth]);
+
+  useEffect(() => {
+    const node = scroller.current;
+    if (!node) return;
+    onScroll();
+    const observer = new ResizeObserver(onScroll);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [onScroll]);
 
   useEffect(() => {
     if (todayIndex < 0 || !scroller.current) return;
@@ -175,13 +215,16 @@ export function Timeline({
         {/* Column header. Sticky vertically so it survives the row scroll, and
           * above the row hover outline, which is z-20. */}
         <div className="sticky top-0 z-40 flex bg-bg-surface">
-          <div className="sticky left-0 z-50 flex w-timeline-label-narrow shrink-0 items-end border-r border-b border-border-default bg-bg-surface px-cell pb-1 xl:w-timeline-label">
+          <div
+            data-timeline-label
+            className="sticky left-0 z-50 flex w-timeline-label-narrow shrink-0 items-end border-r border-b border-border-default bg-bg-surface px-cell pb-1 xl:w-timeline-label"
+          >
             <Text variant="micro" className="text-text-tertiary">
               Person
             </Text>
           </div>
           <div
-            className="relative shrink-0 border-b border-border-default"
+            className="scroll-boundary-fade relative shrink-0 border-b border-border-default"
             style={{ width: trackWidth }}
           >
             {/* Month labels get their own band. Positioned against the track
@@ -192,6 +235,7 @@ export function Timeline({
                 day.monthLabel ? (
                   <Text
                     key={`month-${day.date}`}
+                    data-timeline-month
                     variant="micro"
                     className="absolute top-1 whitespace-nowrap text-text-secondary"
                     style={{ left: index * dayWidth + 2 }}
@@ -317,9 +361,9 @@ export function Timeline({
                 ) : null}
               </div>
 
-              {/* FDN-19: the track carries the scroll-boundary mask, so content
-                * fades as it passes under the person column rather than being
-                * cut by it. The person column is a sibling and is not masked. */}
+              {/* FDN-19/31: the track carries the scroll-boundary mask, so
+                * content fades under the person column and at the viewport's
+                * right edge. The person column is a sibling and is not masked. */}
               <div
                 className="scroll-boundary-fade relative shrink-0"
                 style={{ width: trackWidth }}

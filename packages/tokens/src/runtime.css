@@ -92,6 +92,8 @@
    */
   --vt-scroll-x: 0px;
   --vt-scroll-fade: 0px;
+  --vt-scroll-end: 100%;
+  --vt-scroll-end-fade: 0px;
 
   /* Motion — VPS-D003. Nothing exceeds 180ms. */
   --vt-motion-instant: 0ms;

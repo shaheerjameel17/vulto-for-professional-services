@@ -139,8 +139,9 @@
  *
  * `--vt-scroll-x` is the track's current horizontal scroll offset, which in the
  * track's own coordinate space is exactly where the frozen column's right edge
- * falls. `--vt-scroll-fade` is clamped to the scroll offset so that at rest —
- * nothing hidden — there is no fade to explain.
+ * falls. `--vt-scroll-end` is the visible right edge after accounting for the
+ * frozen column. Each fade is clamped to the content hidden beyond its edge, so
+ * an edge with no continuation has no fade to explain.
  */
 @utility scroll-boundary-fade {
   /* The two variables are declared on :root and set on the scroll container.
@@ -152,7 +153,9 @@
     transparent 0,
     transparent var(--vt-scroll-x),
     black calc(var(--vt-scroll-x) + var(--vt-scroll-fade)),
-    black 100%
+    black calc(var(--vt-scroll-end) - var(--vt-scroll-end-fade)),
+    transparent var(--vt-scroll-end),
+    transparent 100%
   );
 }
 
