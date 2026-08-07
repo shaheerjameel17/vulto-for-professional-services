@@ -34,17 +34,17 @@
   --color-neutral-900: #18181b;
   --color-neutral-950: #09090b;
 
-  /* Brand — indigo. Rationed: marks exactly three things. VPS-D001. */
-  --color-brand-50: #eef2ff;
-  --color-brand-100: #e0e7ff;
-  --color-brand-200: #c7d2fe;
-  --color-brand-300: #a5b4fc;
-  --color-brand-400: #818cf8;
-  --color-brand-500: #6366f1;
-  --color-brand-600: #4f46e5;
-  --color-brand-700: #4338ca;
-  --color-brand-800: #3730a3;
-  --color-brand-900: #312e81;
+  /* Brand — amber. Rationed: marks exactly three things. VPS-D001. */
+  --color-brand-50: #fffbeb;
+  --color-brand-100: #fef3c7;
+  --color-brand-200: #fde68a;
+  --color-brand-300: #fcd34d;
+  --color-brand-400: #fbbf24;
+  --color-brand-500: #f59e0b;
+  --color-brand-600: #d97706;
+  --color-brand-700: #b45309;
+  --color-brand-800: #92400e;
+  --color-brand-900: #78350f;
 
   /* Categorical tokens are declared per theme in runtime.css and aliased in the
    * `@theme inline` block below — FDN-20 made them theme-aware, because one
@@ -100,7 +100,7 @@
    * layout sizes, not spacing — see Prototype_Findings F19: VPS-D001
    * claims authority over every size but its space set cannot express
    * them, and the shell documents introduce them directly. */
-  --spacing-sidebar: 240px; /* VPS-D004 */
+  --spacing-sidebar: 216px; /* VPS-D004 */
   --spacing-sidebar-collapsed: 48px; /* VPS-D004 */
   --spacing-panel: 360px; /* VPS-D004, VPS-D002 */
   --spacing-page-header: 48px; /* VPS-D004, corrected by FDN-33 */

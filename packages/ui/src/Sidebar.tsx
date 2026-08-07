@@ -9,7 +9,7 @@ import { Text } from "./Text";
 import { Tooltip, TooltipProvider } from "./Tooltip";
 
 /*
- * VPS-D004. 240px, `bg-canvas`, 1px right border, collapsible to 48px icons
+ * VPS-D004. 216px, `bg-canvas`, no right border, collapsible to 48px icons
  * via Cmd+\.
  *
  * There is no top-level global header bar in this product. The workspace
@@ -17,7 +17,7 @@ import { Tooltip, TooltipProvider } from "./Tooltip";
  * sidebar's foot — which returns roughly 56 vertical pixels to the Bench
  * Forecast, worth about one and a half employee rows.
  *
- * Navigation items are `body-medium`, 32px tall, radius-md, with a 16px Lucide
+ * Navigation items are `small`, 32px tall, radius-md, with a 16px Lucide
  * icon. The active item takes `bg-selected` with `text-brand`. Counts appear as
  * a right-aligned `micro` figure in `text-tertiary`, and only where the count
  * implies an action the person should take.
@@ -149,7 +149,7 @@ export function Sidebar({
                       aria-current={active ? "page" : undefined}
                       className={cx(
                         "flex h-8 w-full items-center gap-2 rounded-md px-2",
-                        "font-ui text-body-medium motion-fast transition-colors",
+                        "font-ui text-small motion-fast transition-colors",
                         // FDN-18: a neutral fill, not brand. Which page you are
                         // on is location, not selection, and brand is reserved
                         // to the today line, primary actions and focus rings.

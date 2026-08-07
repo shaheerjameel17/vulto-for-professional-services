@@ -33,7 +33,7 @@ This produces the governing rule of the whole system, which every other decision
 
 > **The interface is deliberately color-starved so that money is the only thing on screen with a hue.**
 
-Ninety percent of any Roster screen is neutral. The warm half of the color wheel — amber and red — is reserved exclusively for cost, idleness and failure. The cool half is available for small categorical markers such as project dots, never large fills. The brand color appears at most twice per screen. There are no decorative gradients anywhere in this product, no glass, no blur, no decorative depth, and no color used because a surface looked empty. A gradient used only to communicate a horizontal scroll boundary is the sole exception and carries no decorative color.
+Ninety percent of any Roster screen is neutral. Amber is the product brand and the signature color for cost and idleness; red remains reserved for failure. The cool half is available for small categorical markers such as project dots, never large fills. Brand appears at most twice per screen and always has a job: the primary action, current focus or Today. There are no decorative gradients anywhere in this product, no glass, no blur, no decorative depth, and no color used because a surface looked empty. A gradient used only to communicate a horizontal scroll boundary is the sole exception and carries no decorative color.
 
 When a designer or an engineer wants to add color, the question is not "does this look better" but "is this about money going wrong". If it is not, it is neutral.
 
@@ -43,7 +43,7 @@ When a designer or an engineer wants to add color, the question is not "does thi
 
 ### Neutral ramp
 
-Zinc, cool-neutral, chosen because it sits under Indigo without the palette drifting toward navy, and because a warm gray would compete with amber at exactly the moment amber needs to win.
+Zinc, cool-neutral, chosen because its near-black and near-white values stay quiet beneath amber without drifting warm and competing with the product signal.
 
 | Token | Hex | Token | Hex |
 |---|---|---|---|
@@ -57,15 +57,15 @@ Zinc, cool-neutral, chosen because it sits under Indigo without the palette drif
 
 ### Brand
 
-Indigo. `brand-500` `#6366F1` is the anchor, per founder decision.
+Amber. `brand-500` `#F59E0B` is the anchor, per founder decision after the prototype's second dark-mode calibration.
 
 | Token | Hex | Token | Hex |
 |---|---|---|---|
-| `brand-50` | `#EEF2FF` | `brand-500` | `#6366F1` |
-| `brand-100` | `#E0E7FF` | `brand-600` | `#4F46E5` |
-| `brand-200` | `#C7D2FE` | `brand-700` | `#4338CA` |
-| `brand-300` | `#A5B4FC` | `brand-800` | `#3730A3` |
-| `brand-400` | `#818CF8` | `brand-900` | `#312E81` |
+| `brand-50` | `#FFFBEB` | `brand-500` | `#F59E0B` |
+| `brand-100` | `#FEF3C7` | `brand-600` | `#D97706` |
+| `brand-200` | `#FDE68A` | `brand-700` | `#B45309` |
+| `brand-300` | `#FCD34D` | `brand-800` | `#92400E` |
+| `brand-400` | `#FBBF24` | `brand-900` | `#78350F` |
 
 **Brand color is rationed.** It marks exactly three things: the primary action on a screen, the current selection or focus, and the today line on the Bench Forecast. It is never a background fill for a large region, never a heading color, and never used to indicate status. A screen showing brand color in four places has three too many.
 
@@ -100,17 +100,16 @@ Projects on the Bench Forecast and the Capacity Planner need distinguishable mar
 
 Assigned deterministically by hashing the Project's UUID, so a project is the same color on every device and for every user without storing a color on the node.
 
-**Three exclusions, and the palette is what remains.**
+**Two exclusions, and the palette is what remains.**
 
 | Excluded | Protects |
 |---|---|
 | The warm arc — red through yellow | `attention`, which is to say money |
 | Green and teal | `success` |
-| **The brand's own hue band** | The brand. A project marker must never read as a brand element |
 
-The third exclusion is the one that took rendering to find. Indigo 500 sits at hue 239°, and two categorical tokens sat inside its band — one at 258° and one at 271°. On screen they did not read as arbitrary project colors; they read as though the interface were trying to say something. Excluding roughly 225°–280° is what closes that.
+The brand now sits inside the already-excluded warm arc. That makes the old separate brand-hue exclusion redundant while preserving its purpose: a project marker still cannot be confused with product identity or a cost signal.
 
-**The consequence is that eight tokens cannot come from hue alone.** What survives all three exclusions is about four distinguishable hue families — cyan, sky, blue and fuchsia — plus a hue-neutral slate. The remaining tokens are lightness steps within those families, and that is a deliberate consequence of the exclusions rather than a shortage of imagination.
+**The consequence is that eight tokens cannot come from hue alone.** What survives the exclusions is about four distinguishable hue families — cyan, sky, blue and fuchsia — plus a hue-neutral slate. The remaining tokens are lightness steps within those families, and that is a deliberate consequence of the exclusions rather than a shortage of imagination.
 
 **Categorical values may differ per theme,** like the semantic hues above and for the same reason: the same small dot must remain distinguishable against both neutral surfaces. A 600-level value in light and a 400-level value in dark holds a consistent weight in both.
 
@@ -120,20 +119,20 @@ Components reference these, never raw ramp values. This is what makes theming a 
 
 | Token | Light | Dark |
 |---|---|---|
-| `bg-canvas` | `#EFEFF0` | `neutral-950` |
-| `bg-surface` | `neutral-0` | `neutral-900` |
-| `bg-raised` | `neutral-0` | `neutral-800` |
-| `bg-subtle` | `#F9F9FA` | `neutral-800` |
-| `bg-hover` | `neutral-100` | `neutral-800` |
-| `bg-selected` | `brand-50` | `brand-900` |
-| `border-default` | `neutral-200` | `neutral-800` |
-| `border-strong` | `neutral-300` | `neutral-700` |
-| `border-focus` | `brand-500` | `brand-400` |
+| `bg-canvas` | `#EFEFF0` | `#09090A` |
+| `bg-surface` | `neutral-0` | `#1A1A1B` |
+| `bg-raised` | `neutral-0` | `#1A1A1B` |
+| `bg-subtle` | `#F9F9FA` | `#111112` |
+| `bg-hover` | `neutral-100` | `#222223` |
+| `bg-selected` | `brand-50` | `#2A2115` |
+| `border-default` | `neutral-200` | `#2A2A2B` |
+| `border-strong` | `neutral-300` | `#3F3F42` |
+| `border-focus` | `brand-600` | `brand-400` |
 | `text-primary` | `neutral-900` | `neutral-50` |
 | `text-secondary` | `neutral-600` | `neutral-400` |
 | `text-tertiary` | `neutral-400` | `neutral-500` |
-| `text-inverse` | `neutral-0` | `neutral-950` |
-| `text-brand` | `brand-600` | `brand-400` |
+| `text-inverse` | `neutral-0` | `neutral-0` |
+| `text-brand` | `brand-700` | `brand-400` |
 
 Dark mode is a first-class theme, not an inversion. It is likely the majority mode for this audience and is specified with the same care as light. Theme preference is stored per user per device, defaults to system, and never syncs — a founder on a laptop at night and a phone at breakfast should not have to agree with themselves.
 

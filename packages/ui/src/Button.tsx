@@ -20,7 +20,7 @@ type Size = "sm" | "md" | "lg";
 const VARIANT: Record<Variant, string> = {
   // FINDING F21: VPS-D002 states "Hover is `bg-hover`" for all four variants.
   // `bg-hover` is neutral-100/neutral-800, so applying it to `primary` turns
-  // an indigo button gray on hover. brand-700 is used here provisionally.
+  // an amber button gray on hover. brand-700 is used here provisionally.
   primary: "bg-brand-600 text-text-inverse hover:bg-brand-700",
   secondary:
     "bg-bg-surface border border-border-default text-text-primary hover:bg-bg-hover",
@@ -29,10 +29,10 @@ const VARIANT: Record<Variant, string> = {
   danger: "bg-bg-surface border border-danger text-danger hover:bg-bg-hover",
 };
 
-const SIZE: Record<Size, string> = {
-  sm: "h-button-sm px-2",
-  md: "h-button-md px-3",
-  lg: "h-button-lg px-3",
+const SIZE: Record<Size, { label: string; icon: string }> = {
+  sm: { label: "h-button-sm px-2", icon: "size-button-sm" },
+  md: { label: "h-button-md px-3", icon: "size-button-md" },
+  lg: { label: "h-button-lg px-3", icon: "size-button-lg" },
 };
 
 export type ButtonProps = {
@@ -69,7 +69,6 @@ export function Button({
       disabled={disabled || loading}
       className={cx(
         "inline-flex items-center justify-center gap-2 rounded-full",
-        !children && "aspect-square px-0",
         "font-ui text-body-medium whitespace-nowrap",
         // No elevation change on hover. VPS-D001: hover is bg-hover and that
         // is the whole vocabulary.
@@ -78,7 +77,7 @@ export function Button({
         // original variant colors intact preserves the control's hierarchy.
         "disabled:cursor-not-allowed disabled:opacity-40",
         VARIANT[variant],
-        SIZE[size],
+        children ? SIZE[size].label : SIZE[size].icon,
         solidDanger,
       )}
       {...rest}

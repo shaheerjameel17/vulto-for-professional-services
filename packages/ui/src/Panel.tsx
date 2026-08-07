@@ -102,7 +102,7 @@ export function Panel({
             ) : null}
           </div>
         </div>
-        <button type="button" onClick={onClose} aria-label="Close panel" title="Close panel · Escape" className="flex h-button-sm w-button-sm shrink-0 items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-primary"><X className="size-icon" /></button>
+        <button type="button" onClick={onClose} aria-label="Close panel" title="Close panel · Escape" className="flex size-button-sm shrink-0 items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-primary"><X className="size-icon" /></button>
       </div>
       <div className="flex-1 p-4">{children}</div>
     </aside>

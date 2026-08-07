@@ -34,6 +34,7 @@ export type StatProps = {
   /** VPS-D004's suppressed-aggregate state, per VPS-A004's k-anonymity rule. */
   suppressedReason?: string;
   className?: string;
+  valueClassName?: string;
 };
 
 export function Stat({
@@ -45,6 +46,7 @@ export function Stat({
   delta,
   suppressedReason,
   className,
+  valueClassName,
 }: StatProps) {
   /*
    * FINDING F9 pressure: VPS-D002 specifies `micro` in `text-tertiary` for a
@@ -66,7 +68,7 @@ export function Stat({
     </div>
   ) : (
     <div className="flex items-baseline gap-2">
-      <Text variant={scale} className="text-text-primary">
+      <Text variant={scale} className={valueClassName ?? "text-text-primary"}>
         {value}
       </Text>
       {denominator ? (

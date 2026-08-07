@@ -18,7 +18,7 @@
   --vt-bg-raised: #ffffff; /* neutral-0 */
   --vt-bg-subtle: #f9f9fa;
   --vt-bg-hover: #efeff1;
-  --vt-bg-selected: #eef2ff; /* brand-50 */
+  --vt-bg-selected: #fffbeb; /* brand-50 */
   --vt-bg-active: #e6e6e9;
   --vt-bg-scrim: rgb(9 9 11 / 0.36);
 
@@ -38,12 +38,12 @@
   --vt-segment-active: #ffffff; /* neutral-0 */
   --vt-border-default: #e7e7e9;
   --vt-border-strong: #d4d4d8; /* neutral-300 */
-  --vt-border-focus: #6366f1; /* brand-500 */
+  --vt-border-focus: #d97706; /* brand-600 */
   --vt-text-primary: #18181b; /* neutral-900 */
   --vt-text-secondary: #52525b; /* neutral-600 */
   --vt-text-tertiary: #a1a1aa; /* neutral-400 */
   --vt-text-inverse: #ffffff; /* neutral-0 */
-  --vt-text-brand: #4f46e5; /* brand-600 */
+  --vt-text-brand: #b45309; /* brand-700 */
 
   /* Semantic hues — VPS-D001. Three, deliberately no fourth. */
   --vt-success: #059669;
@@ -99,33 +99,33 @@
 
 :root[data-theme="dark"] {
   /* VPS-D001, dark column. A first-class theme, not an inversion. */
-  --vt-bg-canvas: #09090b; /* neutral-950 */
-  --vt-bg-surface: #18181b; /* neutral-900 */
-  --vt-bg-raised: #27272a; /* neutral-800 */
-  --vt-bg-subtle: #27272a; /* neutral-800 */
-  --vt-bg-hover: #27272a; /* neutral-800 */
-  --vt-bg-selected: #312e81; /* brand-900 */
-  --vt-bg-active: #27272a; /* neutral-800 */
-  --vt-bg-scrim: rgb(9 9 11 / 0.64);
+  --vt-bg-canvas: #09090a;
+  --vt-bg-surface: #1a1a1b;
+  --vt-bg-raised: #1a1a1b;
+  --vt-bg-subtle: #111112;
+  --vt-bg-hover: #222223;
+  --vt-bg-selected: #2a2115;
+  --vt-bg-active: #1a1a1b;
+  --vt-bg-scrim: rgb(9 9 10 / 0.64);
 
-  --vt-segment-track: #18181b; /* neutral-900 */
-  --vt-segment-active: #3f3f46; /* neutral-700 */
-  --vt-border-default: #27272a; /* neutral-800 */
-  --vt-border-strong: #3f3f46; /* neutral-700 */
-  --vt-border-focus: #818cf8; /* brand-400 */
+  --vt-segment-track: #1a1a1b;
+  --vt-segment-active: #2a2a2b;
+  --vt-border-default: #2a2a2b;
+  --vt-border-strong: #3f3f42;
+  --vt-border-focus: #fbbf24; /* brand-400 */
   --vt-text-primary: #fafafa; /* neutral-50 */
   --vt-text-secondary: #a1a1aa; /* neutral-400 */
   --vt-text-tertiary: #71717a; /* neutral-500 */
-  --vt-text-inverse: #09090b; /* neutral-950 */
-  --vt-text-brand: #818cf8; /* brand-400 */
+  --vt-text-inverse: #ffffff;
+  --vt-text-brand: #fbbf24; /* brand-400 */
 
   --vt-success: #10b981;
   --vt-attention: #f59e0b;
   --vt-danger: #ef4444;
 
-  --vt-avatar-fallback: #27272a; /* neutral-800 */
+  --vt-avatar-fallback: #2a2a2b;
 
-  --vt-nonworking-fill: #232327;
+  --vt-nonworking-fill: #202021;
 
   --vt-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.4);
 }
@@ -191,7 +191,7 @@
 }
 
 :root[data-theme="dark"] {
-  --vt-bench-rest: #d69a4a;
+  --vt-bench-rest: #dba158;
   --vt-bench-fill: #fbbf24; /* amber-400 */
   --vt-bench-figure: #09090b; /* neutral-950 — 11.92:1 */
 }
@@ -220,9 +220,9 @@
  *   green and teal        protects `success`
  *   the brand's hue band  a project bar must not read as a brand element
  *
- * Indigo 500 sits at hue 239°. The retired `cat-2` (#8B5CF6) was 258° and
- * `cat-6` (#A855F7) was 271°, both inside that band. Excluding roughly
- * 225°–280° is what closes F34.
+ * The brand is now amber and is already protected by the warm-arc exclusion.
+ * Project markers remain on the cool arc, where they cannot read as either
+ * brand or cost.
  *
  * THE CONSEQUENCE IS WORTH STATING. After all three exclusions the cool arc
  * supports about four distinguishable hue families — cyan near 192°, sky near

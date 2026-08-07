@@ -1328,3 +1328,17 @@ Timeline rows are 48px while assignment and bench bars remain 20px. Every horizo
 Resting bench is `#FFCCA1` in light mode and strengthens on row hover. Timeline tooltips use structured Project/Company/Allocation/Ends or Bench time/Unrecovered/Range rows with semantic icons and overlay elevation. Bars in the first two people rows open their tooltips below, preserving the date header. Assignment labels remain neutral but become sticky at the frozen edge and naturally clip under the existing scroll-boundary fade.
 
 The forecast panel now presents an XL avatar beside its three-line identity block, places the employee code below role, uses a circular close target, labels Next rolloff explicitly, and renders workspace-stable colored skill pills. The People status treatment remains a semantic pill.
+
+## FDN-37 — dark surface calibration and pointer-led timeline inspection
+
+The dark theme now has the same three-level surface hierarchy as the settled light theme instead of collapsing inset, controls, bars, and borders onto one value. Canvas and sidebar resolve to `#09090A`, the workspace inset to `#111112`, and raised controls, assignment bars, table headers, and the contextual panel to `#1A1A1B`. Hover and border tokens sit above those values at `#222223` and `#2A2A2B`, which keeps the People filters, rounded table header, page-header boundary, contextual panel, and neutral assignment bars visibly distinct without adding new containers.
+
+Amber is now the product brand ramp. The primary action and leading unrecovered figure use that ramp with white action text; Today remains the fixed brand line and date pill. The three summary figures use the same 15px tabular size and weight so the title remains the local hierarchy peak, while money leads by hue rather than by an unrelated size jump.
+
+The timeline's secondary date marker is no longer a fixed fixture date. A neutral inspection line and date pill follow the pointer across the timeline, exposing exact dates contextually while Today remains fixed. Grouped date labels are explicitly non-wrapping, preserving exactly two header rows at 30, 90, and 180 days.
+
+Assignment names and categorical dots, plus bench figures, now move with a horizontally clipped bar. Their offset is clamped between the bar's own leading and trailing edges, so content never escapes its bar and disappears naturally as the bar leaves the viewport. Rich bar tooltips wrap their values and use collision-aware sticky placement with a 12px viewport boundary.
+
+The sidebar is 216px with `small` navigation labels, returning 24px to the workspace without removing identity. Icon-only Buttons use explicit square geometry, making the forecast filter a true circle. Badge shape is now an explicit component property, so People statuses and skill tags remain pills without relying on conflicting radius utilities.
+
+**Verified from rendered output.** Dark-mode root tokens read back as `#09090A`, `#111112`, and `#1A1A1B`; assignment bars resolved to `rgb(26, 26, 27)` against the `rgb(17, 17, 18)` inset. People status and filter controls measured `9999px` radii, the filter Button measured 24 × 24px, the header divider resolved to `rgb(42, 42, 43)`, and the Add person action rendered amber with white text. The pointer produced a neutral date pill and line at the hovered day. The 30-, 90-, and 180-day label rows each measured 20px with no overflow. After a 720px horizontal scroll, assignment and bench labels were still inside their own bar bounds; a right-edge rich tooltip remained 12px inside the viewport.

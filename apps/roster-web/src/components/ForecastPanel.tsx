@@ -136,7 +136,8 @@ export function ForecastPanel({
               <Badge
                 key={skill}
                 tone="neutral"
-                className={`rounded-full ${skillColor(skill)}`}
+                shape="pill"
+                className={skillColor(skill)}
               >
                 {skill}
               </Badge>

@@ -40,6 +40,8 @@ export type BadgeProps = {
   intensity?: "subtle" | "solid";
   /** Renders the dashed treatment: a placeholder for something not present. */
   dashed?: boolean;
+  /** Statuses and tags use the pill treatment; compact metadata keeps radius-sm. */
+  shape?: "default" | "pill";
   children?: ReactNode;
   className?: string;
 };
@@ -48,13 +50,15 @@ export function Badge({
   tone = "neutral",
   intensity = "subtle",
   dashed = false,
+  shape = "default",
   children,
   className,
 }: BadgeProps) {
   return (
     <span
       className={cx(
-        "inline-flex h-badge items-center rounded-sm px-2",
+        "inline-flex h-badge items-center px-2",
+        shape === "pill" ? "rounded-full" : "rounded-sm",
         "font-ui text-label whitespace-nowrap",
         intensity === "subtle" ? SUBTLE[tone] : SOLID[tone],
         dashed && "border border-dashed border-current",

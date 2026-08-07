@@ -92,7 +92,7 @@ export function Table<T>({
   return (
     <div className={cx(!directory && "overflow-hidden rounded-md border border-border-default")}>
       <table className="w-full border-collapse">
-        <thead className={cx("sticky top-0 z-10", directory ? "bg-bg-active" : "bg-bg-surface")}>
+        <thead className={cx("sticky top-0 z-10", directory ? "bg-transparent" : "bg-bg-surface")}>
           <tr>
             {columns.map((column) => (
               <th
@@ -100,7 +100,7 @@ export function Table<T>({
                 scope="col"
                 style={column.width ? { width: column.width } : undefined}
                 className={cx(
-                  directory ? "h-control px-cell first:rounded-l-md last:rounded-r-md" : "h-8 border-b border-border-default px-cell",
+                  directory ? "h-control bg-bg-active px-cell first:rounded-l-md last:rounded-r-md" : "h-8 border-b border-border-default px-cell",
                   column.align === "right" ? "text-right" : "text-left",
                 )}
               >

@@ -31,7 +31,7 @@ Three regions, fixed for the life of the product.
 ┌────────────┬──────────────────────────────────────────┬─────────────┐
 │            │  Page header      title · actions        │             │
 │  Sidebar   ├──────────────────────────────────────────┤   Panel     │
-│   240px    │                                          │   360px     │
+│   216px    │                                          │   360px     │
 │            │  Content                                 │  contextual │
 │            │                                          │             │
 │            │                                          │             │
@@ -44,11 +44,11 @@ There is no top-level global header bar. The horizontal band across the top of m
 
 ### Sidebar
 
-240px, `bg-canvas`, 1px right border, collapsible to 48px icons via `Cmd+\`.
+216px, `bg-canvas`, no persistent right border, collapsible to 48px icons via `Cmd+\`.
 
 Workspace trigger at the top, showing name and entity where [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] has more than one. It opens one popover containing the current user's identity and role, the device-local theme preference, workspace settings for Owner and Admin roles, workspace switching, and sign out. Account controls are not duplicated at the foot. Navigation sits beneath, grouped by role relevance rather than by feature taxonomy — a Team Member and an Owner see genuinely different sidebars, because a navigation listing eleven sections a person cannot open is a navigation that teaches them to ignore it.
 
-Navigation items are `body-medium`, 32px tall, `radius-md`, with a 16px Lucide icon. The active item takes `bg-selected` with `text-brand`. Counts appear as a right-aligned `micro` figure in `text-tertiary`, and only where the count implies an action the person should take.
+Navigation items are `small`, 32px tall, `radius-md`, with a 16px Lucide icon. The active item takes `bg-active` with `text-primary`. Counts appear as a right-aligned `micro` figure in `text-tertiary`, and only where the count implies an action the person should take.
 
 At the foot: the sync status indicator only. It remains visible because sync health is workspace state rather than a menu preference.
 

@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import type { CategoricalToken } from "@vulto/tokens";
 import { Building2, CalendarDays, CircleDollarSign, Clock3, FolderKanban } from "lucide-react";
 import { cx } from "./cx";
@@ -96,8 +103,6 @@ export type TimelineProps = {
   onSelectRow?: (rowId: string) => void;
   /** Bumped by the caller to scroll today into view, per VRS-F005's `T`. */
   scrollToTodayNonce?: number;
-  /** A neutral schedule reference keeps a second date available without a grid. */
-  referenceDateIndex?: number;
 };
 
 /** FDN-33: project identity is a dot inside an otherwise neutral bar. */
@@ -120,10 +125,10 @@ export function Timeline({
   selectedRowId,
   onSelectRow,
   scrollToTodayNonce,
-  referenceDateIndex,
 }: TimelineProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const [hoveredBench, setHoveredBench] = useState<TimelineBenchRegion>();
+  const [cursorDateIndex, setCursorDateIndex] = useState<number>();
   const trackWidth = days.length * dayWidth;
 
   /*
@@ -178,7 +183,38 @@ export function Timeline({
       month.style.transform = target === start ? "" : `translateX(${target - start}px)`;
       month.style.visibility = visible ? "visible" : "hidden";
     });
+
+    /*
+     * A bar label follows the visible leading edge while horizontal scrolling
+     * clips the bar. The transform is clamped to the bar's own width, so the
+     * dot and text never escape the bar and disappear naturally with it.
+     */
+    node.querySelectorAll<HTMLElement>("[data-timeline-scroll-item]").forEach((bar) => {
+      const label = bar.querySelector<HTMLElement>("[data-timeline-scroll-label]");
+      if (!label) return;
+      const start = Number(bar.dataset.timelineStart ?? 0);
+      const maximum = Math.max(0, bar.clientWidth - label.offsetWidth);
+      const offset = Math.min(maximum, Math.max(0, x - start));
+      label.style.transform = offset === 0 ? "" : `translateX(${offset}px)`;
+    });
   }, [trackWidth]);
+
+  const trackCursor = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const node = scroller.current;
+      if (!node) return;
+      const labelWidth =
+        node.querySelector<HTMLElement>("[data-timeline-label]")?.offsetWidth ?? 0;
+      const pointerX = event.clientX - node.getBoundingClientRect().left - labelWidth;
+      if (pointerX < 0) {
+        setCursorDateIndex(undefined);
+        return;
+      }
+      const index = Math.floor((node.scrollLeft + pointerX) / dayWidth);
+      setCursorDateIndex(index >= 0 && index < days.length ? index : undefined);
+    },
+    [dayWidth, days.length],
+  );
 
   useEffect(() => {
     const node = scroller.current;
@@ -201,6 +237,8 @@ export function Timeline({
     <div
       ref={scroller}
       onScroll={onScroll}
+      onPointerMove={trackCursor}
+      onPointerLeave={() => setCursorDateIndex(undefined)}
       // FDN-16: flat. The workspace is now the raised surface, and a bordered
       // canvas inside a bordered inset panel is the nested card VPS-D002
       // forbids.
@@ -268,9 +306,9 @@ export function Timeline({
                   className="relative z-10 flex shrink-0 flex-col items-center justify-center"
                 >
                   {day.headerLabel ? (
-                    <Text variant="micro" className="text-text-tertiary">
+                    <Text variant="micro" className="whitespace-nowrap text-text-tertiary">
                       {index === todayIndex ? (
-                        <span className="inline-flex h-badge items-center rounded-full bg-brand-500 px-2 text-text-inverse">
+                        <span className="inline-flex h-badge items-center rounded-full bg-brand-600 px-2 text-neutral-0">
                           {day.date.slice(8, 10)}
                         </span>
                       ) : day.headerLabel}
@@ -289,20 +327,19 @@ export function Timeline({
                 style={{ left: todayIndex * dayWidth + dayWidth / 2 }}
               />
             ) : null}
-            {referenceDateIndex !== undefined && referenceDateIndex >= 0 ? (
+            {cursorDateIndex !== undefined && cursorDateIndex !== todayIndex ? (
               <>
                 <span
                   aria-hidden
                   className="absolute bottom-0 z-20 size-dot -translate-x-1/2 translate-y-1/2 rounded-full bg-border-strong"
-                  style={{ left: referenceDateIndex * dayWidth + dayWidth / 2 }}
+                  style={{ left: cursorDateIndex * dayWidth + dayWidth / 2 }}
                 />
-                <Text
-                  variant="micro"
-                  className="absolute -top-1 z-20 -translate-x-1/2 whitespace-nowrap text-text-secondary"
-                  style={{ left: referenceDateIndex * dayWidth + dayWidth / 2 }}
+                <span
+                  className="pointer-events-none absolute bottom-0 z-20 inline-flex h-badge -translate-x-1/2 items-center rounded-full bg-bg-active px-2 font-ui text-micro text-text-primary"
+                  style={{ left: cursorDateIndex * dayWidth + dayWidth / 2 }}
                 >
-                  {formatHeaderDate(days[referenceDateIndex]?.date)}
-                </Text>
+                  {days[cursorDateIndex]?.date.slice(8, 10)}
+                </span>
               </>
             ) : null}
           </div>
@@ -422,13 +459,13 @@ export function Timeline({
                   />
                 ))}
 
-                {/* A secondary, neutral reference date makes schedule context
-                  * available without making the date header a third row. */}
-                {referenceDateIndex !== undefined && referenceDateIndex >= 0 ? (
+                {/* The neutral inspection line follows the pointer and exposes
+                  * an exact date without adding persistent grid structure. */}
+                {cursorDateIndex !== undefined && cursorDateIndex !== todayIndex ? (
                   <span
                     aria-hidden
-                    className="absolute top-0 bottom-0 z-0 w-px bg-border-strong"
-                    style={{ left: referenceDateIndex * dayWidth + dayWidth / 2 }}
+                    className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-border-strong"
+                    style={{ left: cursorDateIndex * dayWidth + dayWidth / 2 }}
                   />
                 ) : null}
 
@@ -469,16 +506,22 @@ function Bar({
     <Tooltip side={tooltipSide} content={<BarTooltip bar={bar} />}>
       <div
         style={style}
+        data-timeline-bar
+        data-timeline-scroll-item
+        data-timeline-start={bar.start * dayWidth}
         className={cx(
-          "absolute top-1/2 flex h-bar -translate-y-1/2 items-center gap-2 overflow-hidden rounded-md border bg-bg-raised px-2",
+          "absolute top-1/2 h-bar -translate-y-1/2 overflow-hidden rounded-md border bg-bg-raised",
           bar.ghost ? "border-dashed border-border-strong" : "border-border-default",
         )}
       >
         <span
-          aria-hidden
-          className={cx("size-dot shrink-0 rounded-full", DOT[bar.colorToken])}
-        />
-        <span className="sticky left-2 min-w-0">
+          data-timeline-scroll-label
+          className="absolute inset-y-0 left-0 flex w-max max-w-full items-center gap-2 px-2"
+        >
+          <span
+            aria-hidden
+            className={cx("size-dot shrink-0 rounded-full", DOT[bar.colorToken])}
+          />
           <Text variant="small" className="block truncate text-text-primary">
             {bar.label}
           </Text>
@@ -521,22 +564,31 @@ function BenchRegion({
     <Tooltip side={tooltipSide} content={<BenchTooltip region={region} />}>
       <div
         style={{ left: region.start * dayWidth, width }}
+        data-timeline-scroll-item
+        data-timeline-start={region.start * dayWidth}
         onMouseEnter={() => onHoverChange(region)}
         onMouseLeave={() => onHoverChange(undefined)}
-        className="absolute top-1/2 flex h-bench-bar -translate-y-1/2 items-center overflow-hidden rounded-md bg-bench-rest px-2 motion-fast transition-colors group-hover:bg-bench"
+        className="absolute top-1/2 h-bench-bar -translate-y-1/2 overflow-hidden rounded-md bg-bench-rest motion-fast transition-colors group-hover:bg-bench"
       >
-        {showCost ? (
-          <Text variant="numeric-medium" className="truncate text-bench-figure">
-            {region.costLabel}
-          </Text>
-        ) : null}
-        {/* Weight, not hue: the day count is the same color as the figure and a
-          * lighter weight, because it is the same kind of fact stated smaller.
-          * This is why `numeric` must stay at 400 — see F40. */}
-        {showCount ? (
-          <Text variant="numeric" className="truncate text-bench-figure">
-            {region.workingDays}d
-          </Text>
+        {showCost || showCount ? (
+          <span
+            data-timeline-scroll-label
+            className="absolute inset-y-0 left-0 flex w-max max-w-full items-center px-2"
+          >
+            {showCost ? (
+              <Text variant="numeric-medium" className="truncate text-bench-figure">
+                {region.costLabel}
+              </Text>
+            ) : null}
+            {/* Weight, not hue: the day count is the same color as the figure
+              * and a lighter weight, because it is the same kind of fact stated
+              * smaller. This is why `numeric` stays at 400 — see F40. */}
+            {showCount ? (
+              <Text variant="numeric" className="truncate text-bench-figure">
+                {region.workingDays}d
+              </Text>
+            ) : null}
+          </span>
         ) : null}
       </div>
     </Tooltip>
@@ -554,12 +606,12 @@ function DetailRow({
 }) {
   const Icon = icon;
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex items-start gap-2">
       <Icon className="size-icon shrink-0 text-text-tertiary" />
-      <Text variant="small" className="text-text-secondary">
+      <Text variant="small" className="shrink-0 text-text-secondary">
         {label}:
       </Text>
-      <Text variant="small" className="min-w-0 truncate text-text-primary">
+      <Text variant="small" className="min-w-0 break-words text-text-primary">
         {value}
       </Text>
     </div>
@@ -568,7 +620,7 @@ function DetailRow({
 
 function BarTooltip({ bar }: { bar: TimelineBar }) {
   return (
-    <div className="flex min-w-tooltip flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <DetailRow icon={FolderKanban} label="Project" value={bar.label} />
       <DetailRow
         icon={Building2}
@@ -587,7 +639,7 @@ function BarTooltip({ bar }: { bar: TimelineBar }) {
 
 function BenchTooltip({ region }: { region: TimelineBenchRegion }) {
   return (
-    <div className="flex min-w-tooltip flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <DetailRow
         icon={Clock3}
         label="Bench time"
@@ -601,15 +653,6 @@ function BenchTooltip({ region }: { region: TimelineBenchRegion }) {
       <DetailRow icon={CalendarDays} label="Range" value={region.title ?? "Bench period"} />
     </div>
   );
-}
-
-function formatHeaderDate(date?: string) {
-  if (!date) return "";
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  }).format(new Date(`${date}T00:00:00Z`));
 }
 
 function formatBenchRange(days: TimelineDay[], region: TimelineBenchRegion) {

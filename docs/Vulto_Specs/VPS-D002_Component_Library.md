@@ -64,7 +64,7 @@ Labels sit above, `label` token, `text-secondary`. Helper text sits below at `sm
 
 ### Badge
 
-`radius-sm`, `label` token, `2` horizontal padding, 20px height. Two intensities: `subtle`, a tinted background at 10% of the hue with text at full strength, used for status; and `solid`, used only for counts.
+`radius-sm`, `label` token, `2` horizontal padding, 20px height. Statuses and skill tags take `radius-full`; compact metadata badges retain `radius-sm`. Two intensities: `subtle`, a tinted background at 10% of the hue with text at full strength, used for status; and `solid`, used only for counts.
 
 Status badges take their color from the semantic tokens exclusively. A badge is never `brand`.
 
@@ -90,7 +90,7 @@ Row height is 32px per [[VPS-D001_Design_Foundations|VPS-D001]]. Header row uses
 
 The divergence is therefore a Timeline affordance rather than a change to row hover generally, and no other surface may adopt the border treatment without the same two conditions holding.
 
-The People directory is the intentional sparse variant: it sits directly on an inset `bg-subtle` workspace, has a `bg-active` rounded header strip, no container or row dividers, 40px rows, and a `bg-raised` row hover. Its filter and visible-column controls are white pills; an active filter shows an indigo dot and an explicit clear affordance rather than repeating selected values in the toolbar.
+The People directory is the intentional sparse variant: it sits directly on an inset `bg-subtle` workspace, has a `bg-active` rounded header strip, no container or row dividers, 40px rows, and a `bg-raised` row hover. Its filter and visible-column controls are raised pills; an active filter shows a brand dot and an explicit clear affordance rather than repeating selected values in the toolbar.
 
 Numeric columns are right-aligned and set in `mono`. Text columns are left-aligned. There is no center alignment anywhere in this product.
 
@@ -105,11 +105,11 @@ The Bench Forecast canvas, owned in behavior by [[VRS-F005_The_Bench_Forecast|VR
 - Fixed left column, 220px, holding avatar, name, human-readable employee code and role. All three text facts remain present at every timeline width. It has no persistent boundary; the identity group is a rounded `bg-hover` target on hover and `bg-selected` on selection.
 - Scrollable right region, horizontally virtualised, showing the configured window. Where it passes beneath the left column it fades over roughly 24px, per the scroll-boundary exception in [[VPS-D001_Design_Foundations|VPS-D001]].
 - Per-person non-working-day columns resolve from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] and appear only while that row is hovered, because a workspace can contain divergent calendars.
-- Date labels are adaptive in exactly two visual rows: a month band above daily labels at 30 days, seven-day ranges at 90 days, and fortnight anchors at 180 days. Persistent daily gridlines and header/row dividers are absent; the Today line carries the scan structure. A secondary neutral reference line may expose a scheduled date without adding another header row.
+- Date labels are adaptive in exactly two visual rows: a month band above daily labels at 30 days, seven-day ranges at 90 days, and fortnight anchors at 180 days. Range labels never wrap. Persistent daily gridlines and header/row dividers are absent; the Today line carries the scan structure. A secondary neutral inspection line follows the pointer and exposes the exact date under it without adding another header row.
 - **Assignment bar:** neutral `bg-raised` with `border-default`, `radius-md`, 20px height, project name inside at `small` `text-primary` truncating with ellipsis. A 6px `cat-n` dot assigned by project hash carries project identity.
 - **Ghost bar:** same neutral geometry with a 1px dashed `border-strong`, per the dashed-border rule; its project dot follows the same hash.
 - **Bench region:** muted theme-specific amber at rest, strengthening to `attention` when its row is hovered; `radius-md`, 20px height, with the accumulated cost in `numeric-medium`. Hovering a region highlights its exact range in the sticky date header and shows the start/end dates there. The signature element defined in [[VPS-D001_Design_Foundations|VPS-D001]].
-- **Today line:** 1px `brand-500`, full height, above bars, with an 8px dot at the top edge. Today's header date is a `brand-500` pill with `text-inverse`; this is one signal, not an additional use of brand. A separate neutral reference date uses `border-strong` and never competes with Today.
+- **Today line:** 1px `brand-500`, full height, above bars, with an 8px dot at the top edge. Today's header date is a `brand-600` pill with white text; this is one signal, not an additional use of brand. A separate pointer-driven inspection date uses `border-strong` and never competes with Today.
 
 ### Chart
 

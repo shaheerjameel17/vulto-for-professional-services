@@ -182,15 +182,15 @@ export default function BenchForecastPage() {
             />
 
             {/*
-              * FDN-17. Three figures, money largest.
+              * FDN-17. Three compact figures at one size; money leads by hue.
               *
               * The hierarchy was inverted: utilization held a 32px `display`
               * figure while the unrecovered total sat at 13px in a subtitle, on
               * a screen whose entire thesis is that money is what matters.
               *
-              * The money figure is NOT amber. If amber appears in the chrome it
-              * stops meaning this specific gap, so size carries the hierarchy
-              * and the hue stays exclusive to the timeline.
+              * The three values share geometry so the group scans as one row.
+              * The unrecovered total takes the now-amber brand treatment,
+              * connecting the summary to the bench regions it totals.
               */}
             <div className="flex items-end gap-10">
               {canSeeCompensation ? (
@@ -200,19 +200,20 @@ export default function BenchForecastPage() {
                   scale="numeric-md"
                   labelPlacement="below"
                   className="items-end text-right"
+                  valueClassName="text-text-brand"
                 />
               ) : null}
               <Stat
                 label="People with bench time"
                 value={`${forecast.benchedCount} of ${forecast.cohortSize}`}
-                scale="numeric"
+                scale="numeric-md"
                 labelPlacement="below"
                 className="items-end text-right"
               />
               <Stat
                 label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
                 value={`${forecast.utilization}%`}
-                scale="numeric"
+                scale="numeric-md"
                 labelPlacement="below"
                 className="items-end text-right"
               />
@@ -236,7 +237,6 @@ export default function BenchForecastPage() {
               rows={forecast.rows}
               todayIndex={forecast.todayIndex}
               dayWidth={DAY_WIDTH[horizon]}
-              referenceDateIndex={forecast.days.findIndex((day) => day.date === "2026-08-17")}
               selectedRowId={selectedId}
               onSelectRow={setSelectedId}
               scrollToTodayNonce={todayNonce}

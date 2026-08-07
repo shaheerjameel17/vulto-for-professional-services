@@ -182,12 +182,12 @@ export default function PeoplePage() {
       header: "Type",
       sortable: true,
       sortValue: (row) => row.employmentType,
-      render: (row) => <Badge tone="neutral" className="rounded-full">{row.employmentType}</Badge>,
+      render: (row) => <Badge tone="neutral" shape="pill">{row.employmentType}</Badge>,
     },
     {
       key: "status",
       header: "Status",
-      render: () => <Badge tone="success" className="rounded-full">Active</Badge>,
+      render: () => <Badge tone="success" shape="pill">Active</Badge>,
     },
     {
       key: "manager",

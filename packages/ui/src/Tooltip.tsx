@@ -50,7 +50,10 @@ export function Tooltip({
         <RadixTooltip.Content
           side={side}
           sideOffset={6}
-          collisionPadding={8}
+          avoidCollisions
+          collisionPadding={12}
+          sticky="always"
+          hideWhenDetached
           className={cx(
             "z-50 max-w-tooltip rounded-md px-2 py-1",
             "elevation-overlay",
