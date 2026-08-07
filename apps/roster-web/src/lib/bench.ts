@@ -132,7 +132,7 @@ export function buildForecast(
     return {
       date,
       isWorking: day.isWorking,
-      label: String(Number(date.slice(8, 10))),
+      headerLabel: horizonLabel(dates, index, horizon),
       monthLabel: isMonthStart ? MONTHS[month] : undefined,
       note: holidayName("uk", date) ?? date,
     };
@@ -245,6 +245,7 @@ export function buildForecast(
       referenceLabel: employee.employeeCode,
       ghost: employee.employeeType === "Ghost",
       badge: employee.employeeType === "Ghost" ? "Ghost" : undefined,
+      workingDayStates: dates.map((date) => workingDay(employee.entityId, date).isWorking),
       bars,
       bench,
       benchWorkingDays,
@@ -272,6 +273,20 @@ export function buildForecast(
     benchedCount: realRows.filter((row) => row.benchWorkingDays > 0).length,
     costHorizonDays: COST_HORIZON_DAYS,
   };
+}
+
+function horizonLabel(dates: string[], index: number, horizon: Horizon): string | undefined {
+  const date = dates[index]!;
+  const day = String(Number(date.slice(8, 10)));
+  if (horizon === 30) return day;
+  if (horizon === 90 && index % 7 === 0) {
+    const end = dates[Math.min(index + 6, dates.length - 1)]!;
+    return `${day}–${Number(end.slice(8, 10))}`;
+  }
+  if (horizon === 180 && index % 14 === 0) {
+    return `${day} ${MONTHS[Number(date.slice(5, 7)) - 1]!.slice(0, 3)}`;
+  }
+  return undefined;
 }
 
 function clamp(date: string, dates: string[]): string {

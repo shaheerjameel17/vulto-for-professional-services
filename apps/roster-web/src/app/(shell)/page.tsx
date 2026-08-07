@@ -114,7 +114,7 @@ export default function BenchForecastPage() {
           * VPS-D004's page header is 56px and a `display` figure with a `micro`
           * denominator does not fit inside it — the arithmetic decided this.
           */}
-        <div className="flex shrink-0 items-center justify-between gap-6 border-b border-border-default px-6 py-3">
+        <div className="flex shrink-0 items-center justify-between gap-8 border-b border-border-default px-4 py-2">
           <div className="flex items-center gap-2">
             <ToggleGroup<string>
               label="Horizon"
@@ -145,7 +145,7 @@ export default function BenchForecastPage() {
             </Tooltip>
           </div>
 
-          <div className="flex items-center gap-6">
+          <div className="flex items-center gap-8">
             {/* Prototype furniture: VRS-F005's restricted state is one of the
               * things worth looking at, and this is the only way to see it. */}
             <ToggleGroup<ViewerRole>
@@ -169,7 +169,7 @@ export default function BenchForecastPage() {
               * stops meaning this specific gap, so size carries the hierarchy
               * and the hue stays exclusive to the timeline.
               */}
-            <div className="flex items-end gap-6">
+            <div className="flex items-end gap-8">
               {canSeeCompensation ? (
                 <Stat
                   label={`Unrecovered · next ${forecast.costHorizonDays} days`}
@@ -202,7 +202,7 @@ export default function BenchForecastPage() {
                 <button
                   type="button"
                   aria-label="What the amber means"
-                  className="mb-1 rounded-md p-1 text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-secondary"
+                  className="mb-1 rounded-full p-1 text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-secondary"
                 >
                   <Icon icon={Info} />
                 </button>
@@ -221,7 +221,7 @@ export default function BenchForecastPage() {
           /* FDN-17: the two-line legend is gone, which returns its height to
             * rows. On a screen where vertical space is people visible, that was
             * the worst trade in the layout. */
-          <div className="flex min-h-0 flex-1 flex-col px-6 pb-6">
+          <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
             <Timeline
               days={forecast.days}
               rows={forecast.rows}

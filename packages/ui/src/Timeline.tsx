@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { CategoricalToken } from "@vulto/tokens";
 import { cx } from "./cx";
 import { Avatar } from "./Avatar";
@@ -39,8 +39,8 @@ const SCROLL_FADE_PX = 24;
 export type TimelineDay = {
   date: string;
   isWorking: boolean;
-  /** Day of month, e.g. "6". */
-  label: string;
+  /** Adaptive date label, present only at the chosen horizon's cadence. */
+  headerLabel?: string;
   /** Set on the first day of a month, e.g. "August". */
   monthLabel?: string;
   /** Holiday name, where the index resolved one. */
@@ -76,6 +76,8 @@ export type TimelineRow = {
   referenceLabel?: string;
   ghost?: boolean;
   badge?: string;
+  /** Resolved per employee from the working-day index; never inferred here. */
+  workingDayStates: boolean[];
   bars: TimelineBar[];
   bench: TimelineBenchRegion[];
 };
@@ -114,6 +116,7 @@ export function Timeline({
   scrollToTodayNonce,
 }: TimelineProps) {
   const scroller = useRef<HTMLDivElement>(null);
+  const [hoveredBench, setHoveredBench] = useState<TimelineBenchRegion>();
   const trackWidth = days.length * dayWidth;
 
   /*
@@ -216,7 +219,15 @@ export function Timeline({
               * rather than inside a day cell, so a 12px column does not clip
               * "September". */}
             <div className="relative h-4">
-              {days.map((day, index) =>
+              {hoveredBench ? (
+                <Text
+                  variant="micro"
+                  className="absolute top-1 whitespace-nowrap text-text-secondary"
+                  style={{ left: hoveredBench.start * dayWidth + 2 }}
+                >
+                  {formatBenchRange(days, hoveredBench)}
+                </Text>
+              ) : days.map((day, index) =>
                 day.monthLabel ? (
                   <Text
                     key={`month-${day.date}`}
@@ -231,23 +242,29 @@ export function Timeline({
               )}
             </div>
             <div className="flex">
-              {days.map((day) => (
+              {days.map((day, index) => {
+                const highlighted =
+                  hoveredBench !== undefined &&
+                  index >= hoveredBench.start &&
+                  index < hoveredBench.start + hoveredBench.span;
+                return (
                 <div
                   key={day.date}
                   title={day.note ?? day.date}
                   style={{ width: dayWidth }}
                   className={cx(
                     "relative flex shrink-0 flex-col items-center justify-end pb-1",
-                    !day.isWorking && "bg-nonworking",
+                    highlighted && "bg-bg-active",
                   )}
                 >
-                  {dayWidth >= 18 ? (
-                    <Text variant="micro" className="text-text-tertiary">
-                      {day.label}
+                  {day.headerLabel ? (
+                    <Text variant="micro" className={highlighted ? "text-text-primary" : "text-text-tertiary"}>
+                      {day.headerLabel}
                     </Text>
                   ) : null}
                 </div>
-              ))}
+                );
+              })}
             </div>
             {/* The 6px dot at the top edge of the today line. The only
               * brand-colored element on the canvas. VPS-D002. */}
@@ -303,7 +320,7 @@ export function Timeline({
               />
               <div
                 className={cx(
-                  "sticky left-0 z-10 flex w-timeline-label shrink-0 items-center gap-2",
+                  "sticky left-0 z-10 flex w-timeline-label shrink-0 items-start gap-2 pt-1",
                   // The sticky column needs its own fill or the track shows
                   // through as it scrolls beneath. It is now unconditional.
                   "border-r border-border-default bg-bg-surface px-cell",
@@ -311,7 +328,7 @@ export function Timeline({
               >
                 <Avatar
                   name={row.primaryLabel}
-                  size="md"
+                  size="sm"
                   dashed={row.ghost}
                 />
                 <span className="min-w-0 flex-1">
@@ -362,14 +379,13 @@ export function Timeline({
                   * as one gesture.
                   */}
                 <div className="absolute inset-0 flex">
-                  {days.map((day) => (
+                  {days.map((_, index) => (
                     <div
-                      key={day.date}
+                      key={days[index]!.date}
                       style={{ width: dayWidth }}
                       className={cx(
                         "shrink-0 motion-fast transition-colors",
-                        !day.isWorking &&
-                          "bg-nonworking-rest group-hover:bg-nonworking",
+                        !row.workingDayStates[index] && "group-hover:bg-nonworking",
                       )}
                     />
                   ))}
@@ -381,6 +397,7 @@ export function Timeline({
                     key={region.id}
                     region={region}
                     dayWidth={dayWidth}
+                    onHoverChange={setHoveredBench}
                   />
                 ))}
 
@@ -419,7 +436,7 @@ function Bar({ bar, dayWidth }: { bar: TimelineBar; dayWidth: number }) {
       <div
         style={style}
         className={cx(
-          "absolute top-1/2 flex h-bar -translate-y-1/2 items-center gap-2 overflow-hidden rounded-md border bg-bg-subtle px-2",
+          "absolute top-1/2 flex h-bar -translate-y-1/2 items-center gap-2 overflow-hidden rounded-md border bg-bg-raised px-2",
           bar.ghost ? "border-dashed border-border-strong" : "border-border-default",
         )}
       >
@@ -452,9 +469,11 @@ function Bar({ bar, dayWidth }: { bar: TimelineBar; dayWidth: number }) {
 function BenchRegion({
   region,
   dayWidth,
+  onHoverChange,
 }: {
   region: TimelineBenchRegion;
   dayWidth: number;
+  onHoverChange: (region: TimelineBenchRegion | undefined) => void;
 }) {
   const width = region.span * dayWidth;
   const showCost = region.costLabel !== undefined && width >= COST_MIN_WIDTH;
@@ -464,7 +483,9 @@ function BenchRegion({
     <Tooltip content={region.title ?? `${region.workingDays} working days`}>
       <div
         style={{ left: region.start * dayWidth, width }}
-        className="absolute top-1/2 flex h-bench-bar -translate-y-1/2 items-center overflow-hidden rounded-md bg-bench px-2"
+        onMouseEnter={() => onHoverChange(region)}
+        onMouseLeave={() => onHoverChange(undefined)}
+        className="absolute top-1/2 flex h-bench-bar -translate-y-1/2 items-center overflow-hidden rounded-md bg-bench-rest px-2 motion-fast transition-colors group-hover:bg-bench"
       >
         {showCost ? (
           <Text variant="numeric-medium" className="truncate text-bench-figure">
@@ -482,4 +503,16 @@ function BenchRegion({
       </div>
     </Tooltip>
   );
+}
+
+function formatBenchRange(days: TimelineDay[], region: TimelineBenchRegion) {
+  const start = days[region.start]?.date;
+  const end = days[region.start + region.span - 1]?.date;
+  if (!start || !end) return "Bench range";
+  const format = (date: string) => {
+    const month = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" })
+      .format(new Date(`${date}T00:00:00Z`));
+    return `${month} ${Number(date.slice(8, 10))}`;
+  };
+  return `${format(start)}–${format(end)}`;
 }

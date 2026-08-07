@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto Roster Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-07]]"
 Product Phase:
   - MVP
 Feature Type:
@@ -93,15 +93,15 @@ One screen, occupying Content and Panel. It is exempt from the 1440px content ma
 
 **Left column, 220px, fixed.** Avatar, name at `body-medium`, human-readable employee code at `micro`, and role at `label` in `text-secondary`. These facts remain present at every timeline width; density must not remove identity. Ghost rows show a role title in place of a name, a `GHOST-nnn` code, and the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]]. The code is a workspace-scoped operational identifier, never the graph UUID.
 
-**Timeline region**, horizontally virtualised. Non-working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] render `bg-subtle`, so a UAE agency sees its Friday-Saturday weekend and a six-day Pakistani agency sees only Sunday.
+**Timeline region**, horizontally virtualized. At rest it has no generic non-working-day band: calendars belong to people, not to a workspace. When a row is hovered, non-working days resolved for that employee through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] appear as a quiet contextual shade. Date labels are daily at 30 days, week ranges at 90 days, and fortnight anchors at 180 days. Hovering a bench region highlights its exact range and dates in the sticky header.
 
-**Assignment bar.** Neutral `bg-subtle` with `border-default`, `radius-md`, 20px height, and the project name inside at `small` `text-primary`, truncating with ellipsis. A 6px `cat-n` dot assigned by project hash identifies the project without allowing assignment color to compete with bench amber.
+**Assignment bar.** Neutral `bg-raised` with `border-default`, `radius-md`, 20px height, and the project name inside at `small` `text-primary`, truncating with ellipsis. A 6px `cat-n` dot assigned by project hash identifies the project without allowing assignment color to compete with bench amber.
 
-**Bench region.** Solid theme-specific `attention`, `radius-md`, 20px high. Left-aligned inside it, in `numeric-medium`, the accumulated unrecovered cost. This is the signature element. It does not animate or pulse — the restraint of everything around it is what makes it land.
+**Bench region.** Muted theme-specific amber at rest, strengthening to `attention` with the row hover, `radius-md`, 20px high. Left-aligned inside it, in `numeric-medium`, the accumulated unrecovered cost. This is the signature element. It does not animate or pulse — the restraint of everything around it is what makes it land.
 
 **Today line.** 1px `brand-500`, full height, above bars, with a 6px dot at the top edge. The only brand-colored element on the canvas.
 
-**Summary row**, sticky at the top: agency-wide utilization as a single `display` figure, with the filtered cohort size beside it at `micro` so a percentage is never shown without its denominator.
+**Summary row**, sticky at the top: compact figures with unrecovered cost leading, followed by cohort size and utilization. A percentage is never shown without its denominator.
 
 ### Components
 

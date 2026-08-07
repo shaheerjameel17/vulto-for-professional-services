@@ -68,7 +68,8 @@ export function Button({
       type="button"
       disabled={disabled || loading}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-md",
+        "inline-flex items-center justify-center gap-2 rounded-full",
+        !children && "aspect-square px-0",
         "font-ui text-body-medium whitespace-nowrap",
         // No elevation change on hover. VPS-D001: hover is bg-hover and that
         // is the whole vocabulary.

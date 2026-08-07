@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-07]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -42,7 +42,7 @@ Four variants, three sizes. There is exactly one `primary` button on any screen 
 | `ghost` | none | none | `text-secondary` | Toolbar and inline actions |
 | `danger` | `bg-surface` | `danger` | `danger` | Destructive; fills solid only on confirmation |
 
-Sizes `sm` 24px, `md` 28px, `lg` 32px, matching control heights in [[VPS-D001_Design_Foundations|VPS-D001]]. Hover is `bg-hover`; there is no elevation change. Disabled is 40% opacity with `cursor: not-allowed`, never a color change. Loading replaces the label with a spinner at the same width, so the button never resizes.
+Sizes `sm` 24px, `md` 28px, `lg` 32px, matching control heights in [[VPS-D001_Design_Foundations|VPS-D001]]. Buttons are `radius-full`; icon-only Buttons are circular. Fields, cards, panels and dialogs retain their documented radii. Hover is `bg-hover`; there is no elevation change. Disabled is 40% opacity with `cursor: not-allowed`, never a color change. Loading replaces the label with a spinner at the same width, so the button never resizes.
 
 Every button label is an active verb naming what happens: **Assign**, **Approve**, **Send for signature**. Never **Submit**, never **OK**. The label persists through the flow — a button reading **Publish** produces a toast reading **Published**.
 
@@ -103,10 +103,11 @@ The Bench Forecast canvas, owned in behavior by [[VRS-F005_The_Bench_Forecast|VR
 - Fixed left column, 220px, holding avatar, name, human-readable employee code and role, with its own right border. All three text facts remain present at every timeline width.
 - Scrollable right region, horizontally virtualised, showing the configured window. Where it passes beneath the left column it fades over roughly 24px, per the scroll-boundary exception in [[VPS-D001_Design_Foundations|VPS-D001]].
 - **Row hover and selection are a border around the whole row**, spanning the left column and the track as one object — hover in `border-strong`, selection in `brand-500`. Not a background fill; see the Table's note above for why the two differ.
-- Day columns; non-working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] render with `bg-subtle`.
-- **Assignment bar:** neutral `bg-subtle` with `border-default`, `radius-md`, 20px height, project name inside at `small` `text-primary` truncating with ellipsis. A 6px `cat-n` dot assigned by project hash carries project identity.
+- The sticky header does not shade a generic calendar. Per-person non-working-day columns resolve from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] and appear only while that row is hovered, because a workspace can contain divergent calendars. The row hover border and this contextual shade arrive together.
+- Date labels are adaptive: daily at 30 days, seven-day ranges at 90 days, and fortnight anchors at 180 days. Persistent daily gridlines are absent; month bands, the frozen-column boundary, and the Today line carry the scan structure.
+- **Assignment bar:** neutral `bg-raised` with `border-default`, `radius-md`, 20px height, project name inside at `small` `text-primary` truncating with ellipsis. A 6px `cat-n` dot assigned by project hash carries project identity.
 - **Ghost bar:** same neutral geometry with a 1px dashed `border-strong`, per the dashed-border rule; its project dot follows the same hash.
-- **Bench region:** solid theme-specific `attention`, `radius-md`, 20px height, with the accumulated cost in `numeric-medium`. The signature element defined in [[VPS-D001_Design_Foundations|VPS-D001]].
+- **Bench region:** muted theme-specific amber at rest, strengthening to `attention` when its row is hovered; `radius-md`, 20px height, with the accumulated cost in `numeric-medium`. Hovering a region highlights its exact range in the sticky date header and shows the start/end dates there. The signature element defined in [[VPS-D001_Design_Foundations|VPS-D001]].
 - **Today line:** 1px `brand-500`, full height, above bars, with a 6px dot at the top edge. The only brand-colored element on the canvas.
 
 ### Chart

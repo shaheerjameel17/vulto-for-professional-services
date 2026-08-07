@@ -13,13 +13,13 @@
   /* F38: neutral-100, not neutral-50. Against neutral-0 the old value gave
    * 1.04:1, so the inset workspace panel was carried entirely by its border and
    * the canvas it sits on was not perceptible. Dark was already at 1.12:1. */
-  --vt-bg-canvas: #f4f4f5; /* neutral-100 */
+  --vt-bg-canvas: #f7f7f8;
   --vt-bg-surface: #ffffff; /* neutral-0 */
   --vt-bg-raised: #ffffff; /* neutral-0 */
-  --vt-bg-subtle: #f4f4f5; /* neutral-100 */
-  --vt-bg-hover: #f4f4f5; /* neutral-100 */
+  --vt-bg-subtle: #f3f3f4;
+  --vt-bg-hover: #efeff1;
   --vt-bg-selected: #eef2ff; /* brand-50 */
-  --vt-bg-active: #e4e4e7; /* neutral-200 — FDN-18, one step off the canvas */
+  --vt-bg-active: #e6e6e9;
   --vt-bg-scrim: rgb(9 9 11 / 0.36);
 
   /*
@@ -34,9 +34,9 @@
    * in dark those two are both neutral-800 — see F10, still open — and the
    * inversion would have collapsed.
    */
-  --vt-segment-track: #f4f4f5; /* neutral-100 */
+  --vt-segment-track: #f3f3f4;
   --vt-segment-active: #ffffff; /* neutral-0 */
-  --vt-border-default: #e4e4e7; /* neutral-200 */
+  --vt-border-default: #e7e7e9;
   --vt-border-strong: #d4d4d8; /* neutral-300 */
   --vt-border-focus: #6366f1; /* brand-500 */
   --vt-text-primary: #18181b; /* neutral-900 */
@@ -74,7 +74,6 @@
    *
    * Neither value is expressible in VPS-D001's ramp — see Findings F19.
    */
-  --vt-nonworking-rest: #fafafa;
   --vt-nonworking-fill: #f5f5f6;
 
   /* Elevation — VPS-D001. Only `overlay` casts a shadow. */
@@ -126,7 +125,6 @@
 
   --vt-avatar-fallback: #27272a; /* neutral-800 */
 
-  --vt-nonworking-rest: #1c1c20;
   --vt-nonworking-fill: #232327;
 
   --vt-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.4);
@@ -187,11 +185,13 @@
  * near-black field needs more luminance to carry the same perceived weight.
  */
 :root {
+  --vt-bench-rest: #f7cf83;
   --vt-bench-fill: #f59e0b; /* amber-500 */
   --vt-bench-figure: #09090b; /* neutral-950 — 9.26:1 */
 }
 
 :root[data-theme="dark"] {
+  --vt-bench-rest: #d99b25;
   --vt-bench-fill: #fbbf24; /* amber-400 */
   --vt-bench-figure: #09090b; /* neutral-950 — 11.92:1 */
 }

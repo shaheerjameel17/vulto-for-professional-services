@@ -1229,6 +1229,40 @@ Evidence is `artifacts/prototype-findings/fdn-33-bench-light.png`,
 
 ---
 
+## FDN-34 — second visual calibration: restraint is a system property
+
+The first density pass retained too much visual weight in the light canvas,
+typography, and Bench chrome. The settled product is now quieter and more
+compact without removing another fact: Inter is the one product face, tabular
+figures retain stable numeric scanning, page titles use `h2` at 18/24, and
+supporting interface copy steps down to 13/18 or below. Text Buttons are pills
+and icon-only Buttons are circular; fields, cards, panels, and dialogs retain
+their structural radii.
+
+Light canvas and interaction tokens are softened toward an almost-white,
+Linear-like neutral field. Assignment bars use `bg-raised` so they are white
+with a restrained border in light mode, while their project identity remains a
+6px categorical dot. Bench amber is intentionally muted at rest and returns to
+the signature `attention` weight only when the row is being inspected.
+
+The timeline no longer presents a single workspace calendar as if it applied to
+every person. It has no resting off-day shading; a row's materialized working
+calendar appears only with row hover. Daily labels remain at 30 days, but the
+90-day view labels seven-day ranges and the 180-day view labels fortnight
+anchors. Hovering a bench region replaces month labels with its exact start/end
+range and highlights the matching sticky header cells. The persistent grid is
+therefore reduced to its actual jobs: month orientation, the frozen identity
+boundary, and the Today line.
+
+**Verified from rendered output.** Light resolves `bg-canvas` to `#f7f7f8`,
+bench rest to `#f7cf83`, the 48px page header and 36px timeline rows remain
+stable, and no resting off-day cell remains in the timeline. On real pointer
+hover a bench region resolved to the stronger amber, its 23 matching day cells
+were highlighted in the sticky header, and the header stated the exact range.
+The same timeline structure was then checked after switching themes.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.

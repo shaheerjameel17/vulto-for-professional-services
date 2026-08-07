@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-07]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -145,35 +145,29 @@ All text meets WCAG AA — 4.5:1 for body, 3:1 for text above 18px and for inter
 
 ## Typography
 
-Three faces, three jobs, no overlap.
+One product face, with two figure modes.
 
-**Plus Jakarta Sans** — display and headings. Its geometric-humanist letterforms carry personality at 20px and above, which is the only place personality belongs in an operational tool. Weights 600, 700, 800.
-
-**Manrope** — interface and body. The workhorse. Chosen because this product lives at 13 and 14 pixels in dense tables, and Manrope's open apertures and slightly narrow set width survive that density better than the display face would. Weights 400, 500, 600, 700.
-
-**Geist Mono** — numbers that must be compared, identifiers, code, and any figure a person will read as money. Selected over JetBrains Mono for its narrower, more neutral forms, which sit correctly beside a geometric sans rather than announcing themselves as a terminal typeface. Weights 400, 500.
-
-The mono face carries a specific responsibility. Every currency figure, every percentage, every day count and every duration in this product is set in Geist Mono with tabular figures. A column of costs whose digits do not align is a column that cannot be scanned, and scanning is the entire point of the Bench Forecast. Where the sans faces render numerals — labels, prose — `font-feature-settings: "tnum" 1` is applied globally rather than per component.
+**Inter Variable** carries headings, interface, body and figures. It is compact enough for a professional operational tool without giving numbers a terminal voice. Numeric tokens enable tabular figures, so aligned data keeps stable digit widths without introducing a separate mono family.
 
 ### Scale
 
-Base is 14px, not 16. This is a professional tool used for hours by people who want more on screen, and 16px base would cost roughly two rows of the Bench Forecast per viewport.
+Base is 13px, not 16. The prototype showed the earlier 14px scale spending too much vertical and visual weight on repeated interface chrome. The denser scale keeps every operational fact visible without creating a second product density.
 
 | Token | Size / Line | Face | Weight | Use |
 |---|---|---|---|---|
-| `display` | 32 / 36 | Jakarta | 700 | The utilization percentage, the single number on a dashboard |
-| `h1` | 24 / 30 | Jakarta | 700 | Page title |
-| `h2` | 20 / 26 | Jakarta | 600 | Section heading |
-| `h3` | 16 / 22 | Manrope | 600 | Card and panel heading |
-| `body` | 14 / 20 | Manrope | 400 | Default |
-| `body-medium` | 14 / 20 | Manrope | 500 | Emphasis within body, table primary cell |
-| `small` | 13 / 18 | Manrope | 400 | Table secondary cell, helper text |
-| `label` | 12 / 16 | Manrope | 500 | Form labels, badges |
-| `micro` | 11 / 14 | Manrope | 600 | Column headers, eyebrows. Uppercase, `letter-spacing: 0.04em` |
-| `mono` | 13 / 18 | Geist Mono | 400 | Figures, IDs |
-| `mono-medium` | 13 / 18 | Geist Mono | 500 | A figure that must outweigh a label beside it at the same size |
-| `mono-md` | 16 / 22 | Geist Mono | 500 | A supporting figure in a group, where another figure leads |
-| `mono-lg` | 20 / 26 | Geist Mono | 600 | Accumulated cost figures, the bench number |
+| `display` | 32 / 40 | Inter | 640 | The single leading figure on a dashboard |
+| `h1` | 22 / 28 | Inter | 600 | Page title |
+| `h2` | 18 / 24 | Inter | 600 | Section heading |
+| `h3` | 15 / 20 | Inter | 600 | Card and panel heading |
+| `body` | 13 / 18 | Inter | 400 | Default |
+| `body-medium` | 13 / 18 | Inter | 500 | Emphasis within body, table primary cell |
+| `small` | 12 / 16 | Inter | 400 | Table secondary cell, helper text |
+| `label` | 11 / 14 | Inter | 500 | Form labels, badges |
+| `micro` | 11 / 14 | Inter | 560 | Column headers, eyebrows. Uppercase, `letter-spacing: 0.04em` |
+| `numeric` | 12 / 16 | Inter tabular | 400 | Figures and IDs |
+| `numeric-medium` | 12 / 16 | Inter tabular | 500 | A figure that must outweigh a label beside it at the same size |
+| `numeric-md` | 15 / 20 | Inter tabular | 500 | A supporting figure in a group |
+| `numeric-lg` | 18 / 24 | Inter tabular | 600 | The leading figure in a summary group |
 
 Letter-spacing is `-0.01em` at `h2` and above, `0` at body sizes. Uppercase is permitted at `micro` only.
 
@@ -211,10 +205,10 @@ This is a flat product. That is an instruction about execution, not a license fo
 | Token | Value | Use |
 |---|---|---|
 | `radius-sm` | 4px | Badges, chips, inline elements |
-| `radius-md` | 6px | **Default.** Buttons, inputs, cards, bars |
+| `radius-md` | 6px | **Default.** Inputs, cards, bars |
 | `radius-lg` | 8px | Modals, popovers, the contextual panel |
 | `radius-xl` | 12px | The inset workspace panel |
-| `radius-full` | 9999px | Avatars, pills, status dots |
+| `radius-full` | 9999px | Avatars, pills, status dots, and Buttons |
 
 ### The concentric rule
 
