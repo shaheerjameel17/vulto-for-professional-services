@@ -40,8 +40,6 @@ export default function RootLayout({
     <html
       lang="en"
       data-theme="light"
-      data-density="comfortable"
-      data-cat-palette="current"
       className={inter.variable}
       suppressHydrationWarning
     >

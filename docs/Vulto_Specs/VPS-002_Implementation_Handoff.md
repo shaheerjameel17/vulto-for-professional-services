@@ -83,7 +83,7 @@ A 14px base with 32px rows is either obviously right or obviously wrong within t
 Static. Mock data. No backend, no state persistence, no authentication.
 
 - The application shell per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] — sidebar, page header, contextual panel
-- Both themes, at both densities
+- Both themes at the one information-preserving product density settled by [[VPS-D001_Design_Foundations|VPS-D001]]
 - **The Bench Forecast**, with real-shaped data: fifteen people, assignment bars, ghost rows, bench regions with cost figures, the today line
 - **An employee profile**, showing the tab structure and the structurally-absent compensation section
 - **The timesheet grid**, with the keyboard model working — `Tab`, natural language entry, `Cmd+Enter`

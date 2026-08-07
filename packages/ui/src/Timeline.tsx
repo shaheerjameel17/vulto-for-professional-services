@@ -72,6 +72,8 @@ export type TimelineRow = {
   id: string;
   primaryLabel: string;
   secondaryLabel: string;
+  /** Human-readable business identifier, never the graph UUID. */
+  referenceLabel?: string;
   ghost?: boolean;
   badge?: string;
   bars: TimelineBar[];
@@ -90,33 +92,16 @@ export type TimelineProps = {
   scrollToTodayNonce?: number;
 };
 
-/*
- * FDN-12. The bar's fill is quiet and opaque; the hue lives in a 2px left
- * edge. `bar-cat-n` mixes the categorical token with the surface at the
- * candidate percentage rather than layering an alpha, so nothing beneath a bar
- * shows through.
- */
-const FILL: Record<CategoricalToken, string> = {
-  "cat-1": "bar-cat-1",
-  "cat-2": "bar-cat-2",
-  "cat-3": "bar-cat-3",
-  "cat-4": "bar-cat-4",
-  "cat-5": "bar-cat-5",
-  "cat-6": "bar-cat-6",
-  "cat-7": "bar-cat-7",
-  "cat-8": "bar-cat-8",
-};
-
-/** The 2px left edge, and the dashed border a Ghost bar carries instead. */
-const EDGE: Record<CategoricalToken, string> = {
-  "cat-1": "border-cat-1",
-  "cat-2": "border-cat-2",
-  "cat-3": "border-cat-3",
-  "cat-4": "border-cat-4",
-  "cat-5": "border-cat-5",
-  "cat-6": "border-cat-6",
-  "cat-7": "border-cat-7",
-  "cat-8": "border-cat-8",
+/** FDN-33: project identity is a dot inside an otherwise neutral bar. */
+const DOT: Record<CategoricalToken, string> = {
+  "cat-1": "bg-cat-1",
+  "cat-2": "bg-cat-2",
+  "cat-3": "bg-cat-3",
+  "cat-4": "bg-cat-4",
+  "cat-5": "bg-cat-5",
+  "cat-6": "bg-cat-6",
+  "cat-7": "bg-cat-7",
+  "cat-8": "bg-cat-8",
 };
 
 export function Timeline({
@@ -217,7 +202,7 @@ export function Timeline({
         <div className="sticky top-0 z-40 flex bg-bg-surface">
           <div
             data-timeline-label
-            className="sticky left-0 z-50 flex w-timeline-label-narrow shrink-0 items-end border-r border-b border-border-default bg-bg-surface px-cell pb-1 xl:w-timeline-label"
+            className="sticky left-0 z-50 flex w-timeline-label shrink-0 items-end border-r border-b border-border-default bg-bg-surface px-cell pb-1"
           >
             <Text variant="micro" className="text-text-tertiary">
               Person
@@ -318,10 +303,10 @@ export function Timeline({
               />
               <div
                 className={cx(
-                  "sticky left-0 z-10 flex w-timeline-label-narrow shrink-0 items-center gap-2",
+                  "sticky left-0 z-10 flex w-timeline-label shrink-0 items-center gap-2",
                   // The sticky column needs its own fill or the track shows
                   // through as it scrolls beneath. It is now unconditional.
-                  "border-r border-border-default bg-bg-surface px-cell xl:w-timeline-label",
+                  "border-r border-border-default bg-bg-surface px-cell",
                 )}
               >
                 <Avatar
@@ -330,26 +315,22 @@ export function Timeline({
                   dashed={row.ghost}
                 />
                 <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 items-baseline gap-1">
+                    <Text
+                      variant="body-medium"
+                      className="min-w-0 flex-1 truncate text-text-primary"
+                    >
+                      {row.primaryLabel}
+                    </Text>
+                    {row.referenceLabel ? (
+                      <Text variant="micro" className="shrink-0 text-text-tertiary">
+                        {row.referenceLabel}
+                      </Text>
+                    ) : null}
+                  </span>
                   <Text
-                    variant="body-medium"
-                    className="truncate text-text-primary"
-                  >
-                    {row.primaryLabel}
-                  </Text>
-                  {/*
-                    * F28. The role line appears at comfortable density only.
-                    *
-                    * At compact the Bench Forecast row is 36px and this stack
-                    * was 38px — `body-medium` at 14/20 above `small` at 13/18 —
-                    * so the role bled into the next row and the whole column
-                    * read as misaligned against the bars.
-                    *
-                    * VRS-F005's separate rule still applies: the role line also
-                    * drops below 1280px regardless of density.
-                    */}
-                  <Text
-                    variant="small"
-                    className="hidden truncate text-text-secondary xl:comfortable:block"
+                    variant="label"
+                    className="block truncate text-text-secondary"
                   >
                     {row.secondaryLabel}
                   </Text>
@@ -438,16 +419,14 @@ function Bar({ bar, dayWidth }: { bar: TimelineBar; dayWidth: number }) {
       <div
         style={style}
         className={cx(
-          "absolute top-1/2 flex h-bar -translate-y-1/2 items-center overflow-hidden rounded-md px-2",
-          FILL[bar.colorToken],
-          EDGE[bar.colorToken],
-          // A Ghost carries a dashed border on all four sides, per VRS-F007's
-          // dashed-border rule. A real assignment carries the 2px left edge.
-          bar.ghost ? "border border-dashed" : "border-l-2",
+          "absolute top-1/2 flex h-bar -translate-y-1/2 items-center gap-2 overflow-hidden rounded-md border bg-bg-subtle px-2",
+          bar.ghost ? "border-dashed border-border-strong" : "border-border-default",
         )}
       >
-        {/* text-primary, not text-inverse. A theme-flipping label over a fill
-          * that does not flip was never going to hold contrast on eight hues. */}
+        <span
+          aria-hidden
+          className={cx("size-dot shrink-0 rounded-full", DOT[bar.colorToken])}
+        />
         <Text variant="small" className="truncate text-text-primary">
           {bar.label}
         </Text>

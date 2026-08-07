@@ -1,14 +1,11 @@
 /*
  * Runtime tokens — the values that change without a rebuild.
  *
- * Theme and density are resolved here, once, as data attributes on the root
- * element. Nothing downstream asks which theme or density it is in: a
- * component references `--vt-bg-surface` and gets the right answer. Writing
- * the two modes as separate class sets would mean writing every component
- * twice, and VPS-D001's claim that dark mode is first-class would become
- * false the first time someone forgot a branch.
+ * Theme is resolved here, once, as a data attribute on the root element.
+ * Nothing downstream asks which theme it is in: a component references
+ * `--vt-bg-surface` and gets the right answer.
  *
- * Values: VPS-D001 (semantic surface tokens, density), VPS-D003 (motion).
+ * Values: VPS-D001 (semantic surface tokens and geometry), VPS-D003 (motion).
  */
 
 :root {
@@ -136,21 +133,12 @@
 }
 
 /*
- * Density — VPS-D001. Two modes, because a five-person studio and a
- * hundred-and-fifty-person agency are looking at genuinely different
- * amounts of information.
+ * FDN-33. One information-preserving product density. Browser zoom remains
+ * available as an accessibility mechanism; product geometry is not a user
+ * preference and no mode is allowed to hide useful content.
  */
 
-:root,
-:root[data-density="comfortable"] {
-  --vt-row-height: 40px;
-  --vt-timeline-row-height: 44px;
-  --vt-control-height: 32px;
-  --vt-cell-padding: 12px; /* space-3 */
-  --vt-bar-height: 24px; /* VPS-D002, Timeline */
-}
-
-:root[data-density="compact"] {
+:root {
   --vt-row-height: 32px;
   --vt-timeline-row-height: 36px;
   --vt-control-height: 28px;
@@ -215,16 +203,8 @@
 }
 
 /*
- * Assignment bar. The hue moves to a 2px left edge and the fill goes quiet.
- *
- * `--vt-bar-mix` is mixed opaquely with `--vt-bar-base` rather than layered
- * as an alpha, so nothing beneath a bar can show through it either. The mix
- * runs higher in dark, where a low mix against near-black goes muddy before
- * it goes quiet.
- *
- *   hairline  no hue in the fill at all. Hue lives only in the edge
- *   wash      a low tint, still legibly the project's color
- *   tint      the loudest of the three, and still far below the old bar
+ * Assignment bars are neutral. Project identity is carried by a categorical
+ * dot inside the bar, leaving amber as the only large field of color.
  */
 
 /*
@@ -345,11 +325,3 @@
  * beneath a bar shows through it. The mix runs higher in dark, where a low mix
  * against near-black goes muddy before it goes quiet.
  */
-:root {
-  --vt-bar-mix: 34%;
-  --vt-bar-base: var(--vt-bg-surface);
-}
-
-:root[data-theme="dark"] {
-  --vt-bar-mix: 42%;
-}

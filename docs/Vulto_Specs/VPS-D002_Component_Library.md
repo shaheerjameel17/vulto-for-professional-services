@@ -48,7 +48,7 @@ Every button label is an active verb naming what happens: **Assign**, **Approve*
 
 ### Input, Select, Textarea, DatePicker
 
-28px height at compact, 32px comfortable. 1px `border-default`, `radius-md`, `bg-surface`. Focus is a 2px `border-focus` ring at 2px offset, never an inner glow.
+28px height. 1px `border-default`, `radius-md`, `bg-surface`. Focus is a 2px `border-focus` ring at 2px offset, never an inner glow.
 
 Labels sit above, `label` token, `text-secondary`. Helper text sits below at `small`. Error state turns the border `danger` and replaces helper text with the error, which states what is wrong and how to fix it: *"Start date must fall before the assignment ends"*, not *"Invalid date"*.
 
@@ -58,7 +58,7 @@ Labels sit above, `label` token, `text-secondary`. Helper text sits below at `sm
 
 ### Checkbox, Radio, Switch, Toggle Group
 
-16px controls. `Switch` is reserved for settings that take effect immediately; anything requiring a save uses `Checkbox`. `Toggle Group` handles small mutually exclusive sets — density mode, timeline zoom, and Tabs, below — and replaces a select where there are three or fewer options.
+16px controls. `Switch` is reserved for settings that take effect immediately; anything requiring a save uses `Checkbox`. `Toggle Group` handles small mutually exclusive sets — timeline zoom, appearance theme, and Tabs, below — and replaces a select where there are three or fewer options.
 
 **Segmented controls, as a class.** A track at `bg-subtle`-equivalent depth with `1` internal padding; the active segment raised onto its own fill at `bg-raised`-equivalent depth, `radius-full`, with a weight change from `body` to `body-medium` alongside the fill. Neutral throughout — brand marks selection only where [[VPS-D001_Design_Foundations|VPS-D001]] says it does, and which segment is currently set is not that. `Toggle Group` and `Tabs` are two components from this one treatment, not two treatments that happen to coincide: a `Toggle Group` sets a value; `Tabs` switches which view of an object is shown; both are a small mutually exclusive set sharing a track, and a screen that shows one as pills and the other underlined has one inconsistency where the rule was meant to prevent it.
 
@@ -84,7 +84,7 @@ One icon set throughout: **Lucide**, 16px default, 1.5px stroke, `currentColor`.
 
 The most-used component in the product and the one most worth getting right.
 
-Row heights per density from [[VPS-D001_Design_Foundations|VPS-D001]]. Header row uses `micro`, uppercase, `text-tertiary`, with a 1px bottom `border-default`. Rows have no separators — separation comes from row hover and alignment alone, which keeps a hundred-row table from reading as a grid of cages.
+Row height is 32px per [[VPS-D001_Design_Foundations|VPS-D001]]. Header row uses `micro`, uppercase, `text-tertiary`, with a 1px bottom `border-default`. Rows have no separators — separation comes from row hover and alignment alone, which keeps a hundred-row table from reading as a grid of cages.
 
 **Row hover is `bg-hover`, and this is deliberately not what the Timeline does.** The Timeline expresses hover and selection as a border around the whole row instead, for two reasons that do not apply here. A Timeline row spans a frozen person column and a horizontally scrolling track, and a fill leaves those two halves reading as separate objects at exactly the join that matters. And a Timeline row contains quiet opaque bars whose fill is mixed against the surface, so a row-level fill puts them on a backdrop they were not mixed against. A Table row has neither property: it has no frozen column and no opaque fills inside it, so `bg-hover` breaks nothing and remains correct.
 
@@ -100,13 +100,13 @@ Behavior: sticky header, column sort on header click, keyboard row navigation pe
 
 The Bench Forecast canvas, owned in behavior by [[VRS-F005_The_Bench_Forecast|VRS-F005]] and in appearance here. Also used by [[VRS-F051_Team_Capacity_Planner|VRS-F051]] and [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]].
 
-- Fixed left column, 220px, holding avatar, name and role, with its own right border.
+- Fixed left column, 220px, holding avatar, name, human-readable employee code and role, with its own right border. All three text facts remain present at every timeline width.
 - Scrollable right region, horizontally virtualised, showing the configured window. Where it passes beneath the left column it fades over roughly 24px, per the scroll-boundary exception in [[VPS-D001_Design_Foundations|VPS-D001]].
 - **Row hover and selection are a border around the whole row**, spanning the left column and the track as one object — hover in `border-strong`, selection in `brand-500`. Not a background fill; see the Table's note above for why the two differ.
 - Day columns; non-working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] render with `bg-subtle`.
-- **Assignment bar:** filled `cat-n` by project hash, `radius-md`, height 20px compact / 24px comfortable, label inside at `small` `text-inverse` truncating with ellipsis.
-- **Ghost bar:** same geometry, 1px dashed border in `cat-n`, 12% fill, per the dashed-border rule.
-- **Bench region:** flat `attention` at 12% fill, no border, with the accumulated cost in `mono-lg`. The signature element defined in [[VPS-D001_Design_Foundations|VPS-D001]].
+- **Assignment bar:** neutral `bg-subtle` with `border-default`, `radius-md`, 20px height, project name inside at `small` `text-primary` truncating with ellipsis. A 6px `cat-n` dot assigned by project hash carries project identity.
+- **Ghost bar:** same neutral geometry with a 1px dashed `border-strong`, per the dashed-border rule; its project dot follows the same hash.
+- **Bench region:** solid theme-specific `attention`, `radius-md`, 20px height, with the accumulated cost in `numeric-medium`. The signature element defined in [[VPS-D001_Design_Foundations|VPS-D001]].
 - **Today line:** 1px `brand-500`, full height, above bars, with a 6px dot at the top edge. The only brand-colored element on the canvas.
 
 ### Chart
@@ -199,7 +199,7 @@ Non-negotiable and applied at component level so that no feature has to remember
 - `prefers-reduced-motion` removes all transitions, per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]].
 - Modals and panels trap focus and restore it to the trigger on close.
 - Tables use real table semantics with scope on headers, not a grid of divs.
-- Minimum target size 24px at compact density, which is why no control is smaller.
+- Minimum target size 24px at the product density, which is why no control is smaller.
 
 ---
 

@@ -242,6 +242,7 @@ export function buildForecast(
         employee.employeeType === "Ghost"
           ? `${employee.jobTitle} · planned`
           : employee.jobTitle,
+      referenceLabel: employee.employeeCode,
       ghost: employee.employeeType === "Ghost",
       badge: employee.employeeType === "Ghost" ? "Ghost" : undefined,
       bars,

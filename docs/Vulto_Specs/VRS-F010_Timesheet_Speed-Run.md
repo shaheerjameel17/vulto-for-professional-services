@@ -96,7 +96,7 @@ Clearing takes one click for the overwhelming majority, which are honest mistake
 
 **The grid** is a Table with a fixed left column of 200px holding the row label — project name and client at `small`, or the category chips for the non-billable row. Day columns are equal width, headed with the weekday abbreviation at `micro` uppercase and the date beneath at `small`. Today's column carries a 1px `brand-500` top border, the same marker the Bench Forecast uses.
 
-Cells are 32px tall at compact density, right-aligned, `mono`. An empty cell shows nothing — not a zero, not a placeholder — because a grid pre-filled with zeros is a grid where nothing looks like something.
+Cells are 32px tall at the product density, right-aligned, `numeric`. An empty cell shows nothing — not a zero, not a placeholder — because a grid pre-filled with zeros is a grid where nothing looks like something.
 
 The running total row is `bg-subtle`, sticky at the bottom of the grid, with figures in `mono-lg`. The compliance line sits beneath it in `small`, turning `attention` when logged billable falls below target with two working days remaining.
 

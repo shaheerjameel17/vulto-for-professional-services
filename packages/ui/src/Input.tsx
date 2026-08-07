@@ -4,7 +4,7 @@ import { cx } from "./cx";
 import { Text } from "./Text";
 
 /*
- * VPS-D002. 28px height at compact, 32px comfortable. 1px border-default,
+ * VPS-D002. 28px height at the single product density. 1px border-default,
  * radius-md, bg-surface. Focus is a 2px border-focus ring at 2px offset,
  * never an inner glow.
  *

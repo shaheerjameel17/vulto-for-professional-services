@@ -9,7 +9,7 @@ import { Text } from "./Text";
 /*
  * VPS-D002. The most-used component in the product.
  *
- * Row heights per density. Header row at `micro`, uppercase, `text-tertiary`,
+ * 32px rows. Header row at `micro`, uppercase, `text-tertiary`,
  * 1px bottom border-default. Rows carry no separators — separation is
  * `bg-hover` and alignment alone. Numeric columns right-aligned in `numeric`;
  * text columns left-aligned; no center alignment anywhere.

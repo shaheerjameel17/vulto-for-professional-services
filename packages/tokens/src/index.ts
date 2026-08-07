@@ -83,10 +83,6 @@ export function categoricalTokenForId(id: string): CategoricalToken {
   return CATEGORICAL_TOKENS[index]!;
 }
 
-/** VPS-D001's two density modes. Workspace default, per-user override. */
-export const DENSITIES = ["compact", "comfortable"] as const;
-export type Density = (typeof DENSITIES)[number];
-
 /** VPS-D001: dark is a first-class theme. `system` is the default. */
 export const THEMES = ["light", "dark", "system"] as const;
 export type ThemePreference = (typeof THEMES)[number];

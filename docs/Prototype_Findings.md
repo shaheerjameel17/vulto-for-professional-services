@@ -1190,6 +1190,45 @@ component or breakpoint exception.
 
 ---
 
+## FDN-33 — one information-preserving density and one workspace menu
+
+The two-density model is retired. Browser zoom and product density solve
+different technical problems, but the prototype demonstrated that Vulto did
+not need two product modes: Compact removed the person's designation while
+Comfortable spent four to eight pixels per repeated row without adding a fact.
+The settled geometry takes the denser values — 32px table rows, 36px timeline
+rows, 28px controls and `2` cell padding — and adjusts the timeline typography
+so name, designation and a human-readable employee code remain present.
+No `data-density` attribute or user preference remains.
+
+The sidebar now has one workspace trigger at the top. Its popover contains the
+current account and role, Auto/Light/Dark theme, role-gated Settings, workspace
+switching and sign out. The footer contains sync status only. This removes the
+competing top workspace and bottom account menus and makes the company name the
+single route into workspace administration.
+
+The page header is 48px with an `h2` title. This retains title hierarchy while
+bringing repeated shell chrome closer to the scale of the rest of the product.
+
+Assignment bars are neutral `bg-subtle` with a token border. A 6px
+categorical dot assigned from the Project UUID carries project identity;
+bench time remains the only large colored field. The employee column now shows
+`EMP-nnn` beside the name and the full designation beneath it. This is a
+workspace-scoped operational code, not the graph UUID. Ghosts use
+`GHOST-nnn` under the same contract.
+
+**Verified from rendered output.** The document had no density attribute; the
+page header measured 48px, a table row 32px, a forecast row 36px and a control
+28px. In Light, an assignment resolved to `rgb(244, 244, 245)` with a
+categorical dot while bench resolved to `rgb(245, 158, 11)`. In Dark, the
+assignment resolved to `rgb(39, 39, 42)` while bench resolved to
+`rgb(251, 191, 36)`. People, Profile and Timesheets were checked with the same
+shared shell, and no Compact or Comfortable control remained.
+Evidence is `artifacts/prototype-findings/fdn-33-bench-light.png`,
+`fdn-33-bench-dark.png` and `fdn-33-workspace-menu-light.png`.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.
@@ -1213,7 +1252,7 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 | F5 | Restricted bench region drops the figure and keeps the day count. No border, no lock icon, no "Visible to" copy — `VPS-D004`'s Restricted treatment does not apply to a region that is itself fully visible |
 | F6 | No figure at all for an unauthorized viewer. The `billing_rate_default` fallback is deleted |
 | F7 | Timeline rows carry no separator, matching Table |
-| F8 | Two bands: the 56px page header, then a summary row beneath it |
+| F8 | Two bands: the 48px page header, then a summary row beneath it |
 | F21 | `primary` hover is `brand-700` |
 | F22 | Badge neutral tone is `bg-subtle` with `text-secondary` |
 | F24 | Page header title and subtitle are inline on a shared baseline |
@@ -1221,12 +1260,12 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 | F27 | Annual working days counted from the working-day index |
 | F29 | Bench region fills the row height |
 | F30 | Utilization is covered working days weighted by `billable_percentage` over total working days |
-| F28 | The role line appears at comfortable density only. VRS-F005's separate rule still drops it below 1280px regardless |
+| F28 | Superseded by FDN-33: name, employee code and role remain present at every desktop timeline width |
 | F36 | Cost horizon of 45 days. A region beginning inside it is costed in full; beyond it, days and no figure. The header total states the window |
 | FDN-11 | `display` moves to 32/40; tracking −0.022 / −0.02 / −0.015em above 20px, zero below; weights 640 / 600 / 560 where the variable font is used |
-| FDN-12 | Bar fill carries three candidates pending a choice |
-| F20 | Comfortable is the workspace default density, per FDN-16 |
-| FDN-15 | Bench amber `#F59E0B` light / `#FBBF24` dark; two height variants pending a choice; `mono-lg` weight 500 → 600 |
+| FDN-12 | Settled by FDN-33: neutral assignment fill with one categorical project dot |
+| F20 | Superseded by FDN-33: one information-preserving density, no preference |
+| FDN-15 | Bench amber `#F59E0B` light / `#FBBF24` dark; height matches the 20px assignment bar; `numeric-medium` at 500 |
 | FDN-16 | Workspace inset at space-3 with `radius-lg`; row hover `border-strong`, selection `brand-500`; segmented controls at `radius-full`, Buttons unchanged |
 
 ---

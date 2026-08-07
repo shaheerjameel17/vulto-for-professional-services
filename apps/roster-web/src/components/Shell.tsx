@@ -13,7 +13,7 @@ import {
 } from "@vulto/ui";
 import { GOTO, NAV_GROUPS } from "../nav";
 import { searchCommandPalette } from "../fixtures/command-palette";
-import { AppearanceControls } from "./AppearanceControls";
+import { WorkspaceMenuContent } from "./WorkspaceMenuContent";
 import { PanelContext } from "./panel-context";
 
 /*
@@ -96,9 +96,8 @@ export function Shell({ children }: { children: ReactNode }) {
             activeHref={pathname}
             collapsed={collapsed}
             onNavigate={(href) => router.push(href)}
-            appearanceControls={<AppearanceControls />}
+            workspaceMenu={<WorkspaceMenuContent canManageWorkspace />}
             syncStatus="Synced"
-            userName="Shaheer Jameel"
           />
         }
       >

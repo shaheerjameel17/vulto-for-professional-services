@@ -12,7 +12,6 @@ import {
   Text,
 } from "@vulto/ui";
 import { TYPE_TOKENS } from "@vulto/tokens";
-import { CandidateStrip } from "../../../components/CandidateStrip";
 
 /*
  * The token proof sheet.
@@ -128,20 +127,9 @@ export default function FoundationsPage() {
     <>
       <PageHeader
         title="Foundations"
-        subtitle="VPS-D001 rendered. Toggle theme and density at the sidebar foot."
+        subtitle="VPS-D001 rendered. Theme is available from the workspace menu."
       />
       <Content>
-        <Section title="Candidates to choose from">
-          <Text variant="small" className="mb-4 text-text-secondary">
-            FDN-20. Switch between them at the sidebar foot to see each one
-            across the whole Forecast. A palette is judged as a field, not as a
-            row of chips: what matters is whether fifteen rows stay
-            distinguishable from each other and stay subordinate to the amber.
-            The amber bars are included for exactly that reason.
-          </Text>
-          <CandidateStrip />
-        </Section>
-
         <Section title="Type scale">
           <Text variant="small" className="mb-4 text-text-secondary">
             FDN-29. Inter Variable carries the whole product. Figures use its
@@ -335,15 +323,14 @@ export default function FoundationsPage() {
           </div>
         </Section>
 
-        <Section title="Density">
+        <Section title="Product geometry">
           <Text variant="small" className="mb-4 text-text-secondary">
-            The bars below are sized from the density tokens. Toggle Compact and
-            Comfortable at the sidebar foot and watch them change — nothing here
-            branches on density.
+            FDN-33 settles one information-preserving density. Browser zoom is
+            the accessibility mechanism; product geometry does not hide fields.
           </Text>
           <div className="flex flex-col gap-4">
             <div>
-              <Text variant="micro" className="text-text-tertiary">Table row · 32 / 40</Text>
+              <Text variant="micro" className="text-text-tertiary">Table row · 32</Text>
               <div className="mt-1 flex flex-col rounded-md border border-border-default bg-bg-surface">
                 {["Priya Sharma", "Omar Farooq", "Hannah Weiss"].map((name) => (
                   <div
@@ -356,18 +343,20 @@ export default function FoundationsPage() {
               </div>
             </div>
             <div>
-              <Text variant="micro" className="text-text-tertiary">Bench Forecast row · 36 / 44</Text>
+              <Text variant="micro" className="text-text-tertiary">Bench Forecast row · 36</Text>
               <div className="mt-1 flex flex-col rounded-md border border-border-default bg-bg-surface">
                 {["Priya Sharma", "Omar Farooq"].map((name) => (
                   <div key={name} className="flex h-timeline-row items-center px-cell">
                     <Text variant="body-medium" className="w-20 shrink-0 text-text-primary">{name}</Text>
-                    <div className="h-bar flex-1 rounded-md bg-cat-1" />
+                    <div className="flex h-bar flex-1 items-center gap-2 rounded-md border border-border-default bg-bg-subtle px-2">
+                      <span className="size-dot rounded-full bg-cat-1" />
+                    </div>
                   </div>
                 ))}
               </div>
             </div>
             <div>
-              <Text variant="micro" className="text-text-tertiary">Control height · 28 / 32</Text>
+              <Text variant="micro" className="text-text-tertiary">Control height · 28</Text>
               <div className="mt-1 flex gap-2">
                 <Button variant="secondary">Assign</Button>
                 <Button variant="primary">Approve</Button>

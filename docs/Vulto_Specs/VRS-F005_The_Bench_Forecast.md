@@ -91,13 +91,13 @@ One screen, occupying Content and Panel. It is exempt from the 1440px content ma
                         ▲ today
 ```
 
-**Left column, 220px, fixed.** Avatar, name at `body-medium`, role at `small` in `text-secondary`. Ghost rows show a role title in place of a name with the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]].
+**Left column, 220px, fixed.** Avatar, name at `body-medium`, human-readable employee code at `micro`, and role at `label` in `text-secondary`. These facts remain present at every timeline width; density must not remove identity. Ghost rows show a role title in place of a name, a `GHOST-nnn` code, and the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]]. The code is a workspace-scoped operational identifier, never the graph UUID.
 
 **Timeline region**, horizontally virtualised. Non-working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] render `bg-subtle`, so a UAE agency sees its Friday-Saturday weekend and a six-day Pakistani agency sees only Sunday.
 
-**Assignment bar.** Filled `cat-n` by project hash, `radius-md`, 20px compact and 24px comfortable, project name inside at `small` `text-inverse`, truncating with ellipsis.
+**Assignment bar.** Neutral `bg-subtle` with `border-default`, `radius-md`, 20px height, and the project name inside at `small` `text-primary`, truncating with ellipsis. A 6px `cat-n` dot assigned by project hash identifies the project without allowing assignment color to compete with bench amber.
 
-**Bench region.** Flat `attention` at 12% fill, no border, no pattern. Left-aligned inside it, in `mono-lg`, the accumulated unrecovered cost. This is the signature element. It does not animate, pulse or draw attention conventionally — the restraint of everything around it is what makes it land.
+**Bench region.** Solid theme-specific `attention`, `radius-md`, 20px high. Left-aligned inside it, in `numeric-medium`, the accumulated unrecovered cost. This is the signature element. It does not animate or pulse — the restraint of everything around it is what makes it land.
 
 **Today line.** 1px `brand-500`, full height, above bars, with a 6px dot at the top edge. The only brand-colored element on the canvas.
 
@@ -131,7 +131,7 @@ Timeline and Panel per [[VPS-D002_Component_Library|VPS-D002]]. Filters are a ro
 
 ### Responsive
 
-Below 1280px the left column narrows to 160px and drops the role line. Below 1024px the timeline becomes a vertical per-person list showing current assignment, next rolloff and bench cost — a summary, not a timeline, because a Gantt chart on a phone is a Gantt chart nobody reads.
+The left column remains 220px through the desktop timeline because name, code and role are operational identity, not optional decoration; the timeline scrolls rather than removing them. Below 1024px the timeline becomes a vertical per-person list showing current assignment, next rolloff and bench cost — a summary, not a timeline, because a Gantt chart on a phone is a Gantt chart nobody reads.
 
 ---
 

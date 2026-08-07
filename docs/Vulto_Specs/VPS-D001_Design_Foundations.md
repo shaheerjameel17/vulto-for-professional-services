@@ -33,7 +33,7 @@ This produces the governing rule of the whole system, which every other decision
 
 > **The interface is deliberately color-starved so that money is the only thing on screen with a hue.**
 
-Ninety percent of any Roster screen is neutral. The warm half of the color wheel — amber and red — is reserved exclusively for cost, idleness and failure. The cool half is available for categorical data such as project bars. The brand color appears at most twice per screen. There are no gradients anywhere in this product, no glass, no blur, no decorative depth, and no color used because a surface looked empty.
+Ninety percent of any Roster screen is neutral. The warm half of the color wheel — amber and red — is reserved exclusively for cost, idleness and failure. The cool half is available for small categorical markers such as project dots, never large fills. The brand color appears at most twice per screen. There are no decorative gradients anywhere in this product, no glass, no blur, no decorative depth, and no color used because a surface looked empty. A gradient used only to communicate a horizontal scroll boundary is the sole exception and carries no decorative color.
 
 When a designer or an engineer wants to add color, the question is not "does this look better" but "is this about money going wrong". If it is not, it is neutral.
 
@@ -89,7 +89,7 @@ There is no separate "warning" hue. Soft, non-financial cautions — a probation
 
 ### Categorical
 
-Project bars on the Bench Forecast and the Capacity Planner need distinguishable colors that carry no semantic weight. They are drawn exclusively from the cool half of the wheel, which is the system rule that keeps them from ever being mistaken for a cost signal.
+Projects on the Bench Forecast and the Capacity Planner need distinguishable markers that carry no semantic weight. Assignment bars stay neutral; a 6px project dot inside each bar carries the categorical token. The tokens are drawn exclusively from the cool half of the wheel, which keeps them from ever being mistaken for a cost signal while preserving amber as the only large field of color.
 
 | Token | Hex | Token | Hex |
 |---|---|---|---|
@@ -106,13 +106,13 @@ Assigned deterministically by hashing the Project's UUID, so a project is the sa
 |---|---|
 | The warm arc — red through yellow | `attention`, which is to say money |
 | Green and teal | `success` |
-| **The brand's own hue band** | The brand. A project bar must never read as a brand element |
+| **The brand's own hue band** | The brand. A project marker must never read as a brand element |
 
 The third exclusion is the one that took rendering to find. Indigo 500 sits at hue 239°, and two categorical tokens sat inside its band — one at 258° and one at 271°. On screen they did not read as arbitrary project colors; they read as though the interface were trying to say something. Excluding roughly 225°–280° is what closes that.
 
 **The consequence is that eight tokens cannot come from hue alone.** What survives all three exclusions is about four distinguishable hue families — cyan, sky, blue and fuchsia — plus a hue-neutral slate. The remaining tokens are lightness steps within those families, and that is a deliberate consequence of the exclusions rather than a shortage of imagination.
 
-**Categorical values differ per theme,** like the semantic hues above and for the same reason: a project bar is an opaque mix against its surface, so one source value comes out pastel against white and saturated against near-black. A 600-level value in light and a 400-level value in dark holds a consistent weight in both.
+**Categorical values may differ per theme,** like the semantic hues above and for the same reason: the same small dot must remain distinguishable against both neutral surfaces. A 600-level value in light and a 400-level value in dark holds a consistent weight in both.
 
 ### Semantic surface tokens
 
@@ -187,16 +187,16 @@ Four-pixel base unit. The full permitted set, and nothing between:
 
 Component padding uses `2` and `3`. Space between related elements uses `2`. Space between groups uses `4` or `6`. Space between page sections uses `8`. A value of `5` or above inside a component is almost always a sign that something should be a separate component.
 
-### Density
+### Product geometry
 
-Two modes, workspace default with a per-user override, because a five-person studio and a hundred-and-fifty-person agency are looking at genuinely different amounts of information.
+One information-preserving density. Product density is not an appearance preference: a second mode made the same interface expose different facts, while browser zoom already provides a device-level scale control. No screen may hide a role, identifier or other useful field to become denser.
 
-| | Compact | Comfortable |
-|---|---|---|
-| Table row height | 32px | 40px |
-| Bench Forecast row height | 36px | 44px |
-| Control height | 28px | 32px |
-| Cell padding | `2` | `3` |
+| Element | Value |
+|---|---|
+| Table row height | 32px |
+| Bench Forecast row height | 36px |
+| Control height | 28px |
+| Cell padding | `2` |
 
 ---
 

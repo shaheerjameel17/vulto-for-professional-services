@@ -6,7 +6,7 @@ import { cx } from "./cx";
 import { Tooltip } from "./Tooltip";
 
 /*
- * VPS-D002. Handles small mutually exclusive sets — density mode, timeline
+ * VPS-D002. Handles small mutually exclusive sets — appearance theme, timeline
  * zoom — and replaces a Select where there are three or fewer options.
  *
  * Radix supplies the keyboard interaction and ARIA wiring that VPS-D002's

@@ -40,21 +40,21 @@ Three regions, fixed for the life of the product.
 └────────────┴──────────────────────────────────────────┴─────────────┘
 ```
 
-There is no top-level global header bar. The horizontal band across the top of most business software carries a logo, a search field and an avatar, and in this product all three live elsewhere: the workspace identity in the sidebar, search behind `Cmd+K`, and the user menu at the sidebar's foot. Removing it returns roughly 56 vertical pixels to the Bench Forecast, which is worth about one and a half employee rows.
+There is no top-level global header bar. The horizontal band across the top of most business software carries a logo, a search field and an avatar, and in this product all three live elsewhere: workspace and account controls behind the workspace trigger in the sidebar, and search behind `Cmd+K`. Removing it returns vertical space to the Bench Forecast.
 
 ### Sidebar
 
 240px, `bg-canvas`, 1px right border, collapsible to 48px icons via `Cmd+\`.
 
-Workspace switcher at the top, showing name and entity where [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] has more than one. Navigation beneath, grouped by role relevance rather than by feature taxonomy — a Team Member and an Owner see genuinely different sidebars, because a navigation listing eleven sections a person cannot open is a navigation that teaches them to ignore it.
+Workspace trigger at the top, showing name and entity where [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] has more than one. It opens one popover containing the current user's identity and role, the device-local theme preference, workspace settings for Owner and Admin roles, workspace switching, and sign out. Account controls are not duplicated at the foot. Navigation sits beneath, grouped by role relevance rather than by feature taxonomy — a Team Member and an Owner see genuinely different sidebars, because a navigation listing eleven sections a person cannot open is a navigation that teaches them to ignore it.
 
 Navigation items are `body-medium`, 32px tall, `radius-md`, with a 16px Lucide icon. The active item takes `bg-selected` with `text-brand`. Counts appear as a right-aligned `micro` figure in `text-tertiary`, and only where the count implies an action the person should take.
 
-At the foot: the sync status indicator, the density and theme controls, and the user menu.
+At the foot: the sync status indicator only. It remains visible because sync health is workspace state rather than a menu preference.
 
 ### Page header
 
-56px, containing the page title at `h1`, an optional `small` subtitle carrying the most useful context for that screen, and a right-aligned action slot with at most one `primary` button. Breadcrumbs appear only where a screen is genuinely nested more than one level, which in this product is rare.
+48px, containing the page title at `h2`, an optional `small` subtitle carrying the most useful context for that screen, and a right-aligned action slot with at most one `primary` button. Breadcrumbs appear only where a screen is genuinely nested more than one level, which in this product is rare.
 
 ### Content
 

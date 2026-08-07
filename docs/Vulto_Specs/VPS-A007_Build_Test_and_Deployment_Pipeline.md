@@ -179,7 +179,7 @@ Playwright against a preview deployment, covering the journeys that would be cat
 
 ### 8. Accessibility
 
-Automated checks against [[VPS-D002_Component_Library|VPS-D002]]'s floor on every rendered surface: focus visibility, target size at compact density, contrast against both themes, and full keyboard operability. **[[VRS-F029_Careers_Site_and_Job_Distribution|VRS-F029]]'s public careers page is tested separately and to a stricter standard**, since a public page carries a legal obligation an internal screen does not.
+Automated checks against [[VPS-D002_Component_Library|VPS-D002]]'s floor on every rendered surface: focus visibility, target size at the product geometry, contrast against both themes, and full keyboard operability. **[[VRS-F029_Careers_Site_and_Job_Distribution|VRS-F029]]'s public careers page is tested separately and to a stricter standard**, since a public page carries a legal obligation an internal screen does not.
 
 ---
 

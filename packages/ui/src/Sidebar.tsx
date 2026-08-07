@@ -1,7 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import type { LucideIcon } from "lucide-react";
+import * as RadixPopover from "@radix-ui/react-popover";
+import { ChevronDown, type LucideIcon } from "lucide-react";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
 import { Text } from "./Text";
@@ -45,10 +46,9 @@ export type SidebarProps = {
   activeHref: string;
   collapsed: boolean;
   onNavigate: (href: string) => void;
-  /** Density and theme controls, whose state lives in the app. */
-  appearanceControls: ReactNode;
+  /** Account, appearance and workspace actions shown from the top trigger. */
+  workspaceMenu: ReactNode;
   syncStatus: string;
-  userName: string;
 };
 
 export function Sidebar({
@@ -58,9 +58,8 @@ export function Sidebar({
   activeHref,
   collapsed,
   onNavigate,
-  appearanceControls,
+  workspaceMenu,
   syncStatus,
-  userName,
 }: SidebarProps) {
   return (
     <TooltipProvider>
@@ -75,33 +74,51 @@ export function Sidebar({
         collapsed ? "w-sidebar-collapsed" : "w-sidebar",
       )}
     >
-      {/* Workspace switcher */}
-      <button
-        type="button"
-        className={cx(
-          "flex h-page-header shrink-0 items-center gap-2 px-3",
-          "text-left motion-fast transition-colors hover:bg-bg-hover",
-        )}
-      >
-        <span
-          aria-hidden
-          className="flex size-5 shrink-0 items-center justify-center rounded-sm bg-brand-600 font-ui text-micro text-text-inverse"
-        >
-          {workspaceName.slice(0, 1)}
-        </span>
-        {collapsed ? null : (
-          <span className="min-w-0 flex-1">
-            <Text variant="body-medium" className="truncate text-text-primary">
-              {workspaceName}
-            </Text>
-            {entityName ? (
-              <Text variant="small" className="truncate text-text-secondary">
-                {entityName}
-              </Text>
-            ) : null}
-          </span>
-        )}
-      </button>
+      {/* FDN-33: one workspace menu owns account, appearance and settings. */}
+      <RadixPopover.Root>
+        <RadixPopover.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`Open ${workspaceName} menu`}
+            className={cx(
+              "flex h-page-header shrink-0 items-center gap-2 rounded-md px-3",
+              "text-left motion-fast transition-colors hover:bg-bg-hover",
+            )}
+          >
+            <span
+              aria-hidden
+              className="flex size-5 shrink-0 items-center justify-center rounded-sm bg-brand-600 font-ui text-micro text-text-inverse"
+            >
+              {workspaceName.slice(0, 1)}
+            </span>
+            {collapsed ? null : (
+              <>
+                <span className="min-w-0 flex-1">
+                  <Text variant="body-medium" className="truncate text-text-primary">
+                    {workspaceName}
+                  </Text>
+                  {entityName ? (
+                    <Text variant="label" className="truncate text-text-secondary">
+                      {entityName}
+                    </Text>
+                  ) : null}
+                </span>
+                <Icon icon={ChevronDown} className="shrink-0 text-text-tertiary" />
+              </>
+            )}
+          </button>
+        </RadixPopover.Trigger>
+        <RadixPopover.Portal>
+          <RadixPopover.Content
+            align="start"
+            sideOffset={4}
+            collisionPadding={8}
+            className="z-50 w-tooltip rounded-lg border border-border-default bg-bg-raised p-2 elevation-overlay"
+          >
+            {workspaceMenu}
+          </RadixPopover.Content>
+        </RadixPopover.Portal>
+      </RadixPopover.Root>
 
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {groups.map((group) => (
@@ -171,42 +188,16 @@ export function Sidebar({
         ))}
       </div>
 
-      {/* Foot: sync status, density and theme controls, user menu. VPS-D004. */}
+      {/* FDN-33: sync is the only persistent footer status. */}
       <div className="shrink-0 border-t border-border-default p-2">
-        {collapsed ? null : (
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center gap-2 px-1">
-              <span
-                aria-hidden
-                className="size-2 rounded-full bg-success"
-              />
-              <Text variant="small" className="text-text-secondary">
-                {syncStatus}
-              </Text>
-            </div>
-            {appearanceControls}
-          </div>
-        )}
-        <button
-          type="button"
-          className={cx(
-            "mt-2 flex h-8 w-full items-center gap-2 rounded-md px-2",
-            "motion-fast transition-colors hover:bg-bg-hover",
-            collapsed && "justify-center px-0",
-          )}
-        >
-          <span
-            aria-hidden
-            className="flex size-5 shrink-0 items-center justify-center rounded-full bg-avatar-fallback font-ui text-micro text-text-secondary"
-          >
-            {userName.slice(0, 1)}
-          </span>
+        <div className={cx("flex items-center gap-2 px-1", collapsed && "justify-center px-0")}>
+          <span aria-hidden className="size-2 rounded-full bg-success" />
           {collapsed ? null : (
-            <Text variant="body" className="truncate text-text-primary">
-              {userName}
+            <Text variant="small" className="text-text-secondary">
+              {syncStatus}
             </Text>
           )}
-        </button>
+        </div>
       </div>
     </nav>
     </TooltipProvider>

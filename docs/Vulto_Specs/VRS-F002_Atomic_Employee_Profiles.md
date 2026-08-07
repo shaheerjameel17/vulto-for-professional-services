@@ -121,6 +121,8 @@ Directory drops `entity`, then `department`, then `employment type` below 1280px
 
 ```
 employee_id:                 UUID v4
+employee_code:               string, required, unique within workspace — short
+                             human-readable operational identifier; never a UUID
 workspace_id:                UUID, FK to Workspace
 user_id:                     UUID, nullable — null until invitation accepted
 employee_type:               enum: Employee, Ghost — default Employee; Ghost per VRS-F007

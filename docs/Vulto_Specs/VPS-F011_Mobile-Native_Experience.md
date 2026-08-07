@@ -101,7 +101,7 @@ Leave, payslips and documents per [[VRS-F050_Employee_Self-Service_Portal|VRS-F0
 
 **The design system applies unchanged**, per [[VPS-D001_Design_Foundations|VPS-D001]]. Same tokens, same typefaces, same amber reserved for money going wrong. A phone app that looks like a different product is a phone app people trust differently.
 
-**Density defaults to comfortable on mobile** regardless of the workspace setting, since a 32px control at compact density is below the 44px touch target both platforms require.
+**Mobile touch geometry is not inherited from desktop.** Desktop has one product density, while native mobile controls remain at least 44px because both platforms require a reliable touch target.
 
 **The home screen differs by role and is not configurable.** An Owner opens to the Forecast; a Manager to their queue; an employee to this week's timesheet. The premise is that the right landing surface is known, not left to a preference nobody sets.
 
@@ -265,7 +265,7 @@ The local graph is encrypted at rest with the platform's own secure storage, key
 
 **The platform decisions move to [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]].** React Native, Loro's native bindings and native SQLite are stack decisions, and this document consumes them rather than making them — which is also why the passkey gap the previous version found is already closed in [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]].
 
-**Density defaults to comfortable on mobile regardless of the workspace setting.** A 32px control at compact density is below both platforms' minimum touch target, and inheriting a desktop preference would ship a control people cannot reliably hit.
+**Native mobile controls remain at least 44px.** Desktop's one product density is not a mobile geometry contract, and shrinking native controls to match it would ship targets people cannot reliably hit.
 
 **The widget carries two numbers.** A widget with six figures is one nobody reads at a glance, and the glance is the entire point of a widget.
 

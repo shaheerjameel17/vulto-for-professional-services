@@ -3,7 +3,7 @@ import { cx } from "./cx";
 import { Text } from "./Text";
 
 /*
- * VPS-D004. 56px, containing the page title at `h1`, an optional `small`
+ * VPS-D004 as corrected by FDN-33. 48px, containing the page title at `h2`, an optional `small`
  * subtitle carrying the most useful context for that screen, and a
  * right-aligned action slot with at most one `primary` button.
  *
@@ -30,12 +30,12 @@ export function PageHeader({
     <header
       className={cx(
         "flex h-page-header shrink-0 items-center justify-between gap-4",
-        "border-b border-border-default px-6",
+        "border-b border-border-default px-4",
         className,
       )}
     >
       <div className="flex min-w-0 items-baseline gap-3">
-        <Text variant="h1" className="truncate text-text-primary">
+        <Text variant="h2" className="truncate text-text-primary">
           {title}
         </Text>
         {subtitle ? (
