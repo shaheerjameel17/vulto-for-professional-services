@@ -42,6 +42,8 @@ export type TableProps<T> = {
   rows: T[];
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
+  /** Controlled selection for J/K-driven experience surfaces. */
+  selectedRowKey?: string;
   emptyState?: ReactNode;
 };
 
@@ -52,6 +54,7 @@ export function Table<T>({
   rows,
   rowKey,
   onRowClick,
+  selectedRowKey,
   emptyState,
 }: TableProps<T>) {
   const [sort, setSort] = useState<SortState>(null);
@@ -124,13 +127,18 @@ export function Table<T>({
           </tr>
         </thead>
         <tbody>
-          {sortedRows.map((row) => (
+          {sortedRows.map((row) => {
+            const key = rowKey(row);
+            const selected = selectedRowKey === key;
+            return (
             <tr
-              key={rowKey(row)}
+              key={key}
+              aria-selected={selected || undefined}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               className={cx(
-                "h-row",
+                "h-row motion-fast transition-colors",
                 onRowClick && "cursor-pointer hover:bg-bg-hover",
+                selected && "bg-bg-selected",
               )}
             >
               {columns.map((column) => (
@@ -145,7 +153,8 @@ export function Table<T>({
                 </td>
               ))}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>

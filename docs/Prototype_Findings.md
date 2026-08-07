@@ -1152,6 +1152,44 @@ signoff on the actual chord in Chrome.
 
 ---
 
+## FDN-6 — the manager queue is one age-ordered list, not grouped stacks
+
+The Manager Dashboard composes seven obligations from seven notional source
+features, plus the four Team at a Glance cards from `VRS-F049`. The queue is
+strictly age-ordered across source and type: 19, 12, 8, 6, 4, 2 and 1 days.
+Category counts for Approvals, Alerts and Requests sit above it, and each row
+carries its originating feature as a neutral Badge. That preserves the useful
+part of the specification's “grouped sections” requirement without violating
+its stronger rule that an old leave request must outrank a new alert. Separate
+physical section stacks cannot satisfy both rules at once; the specification
+should describe category summaries around one flat age-ordered queue.
+
+No feature component was invented. The screen composes PageHeader, ToggleGroup,
+Card, Table, Badge, InlineAlert, Button, Stat and Text. The only shared-library
+extension is controlled row selection on Table, because this is the first
+screen that needs the `J`/`K` behavior `VPS-D002` already assigns to Table. The
+escalated strain signal uses the existing attention InlineAlert inside its row;
+successful actions use the success variant above the still-current queue.
+
+**Verified in the browser.** The rendered waiting values were read in strict
+descending order. A real `J` keypress moved selection from the 19-day item to
+the 12-day item across source types; Enter removed that selected item, reduced
+the queue to six and selected the next-oldest row. After reload, `E` handled the
+selected informational alert through a real keypress. The Clear fixture state
+showed *Nothing waiting on you.* while Team at a Glance remained rendered.
+At 900px the overview was collapsed behind its toggle and opened on demand.
+Light/Comfortable and Dark/Compact were read from the root attributes and
+captured as `fdn-6-manager-queue-light.png` and
+`fdn-6-manager-queue-dark-compact.png`.
+
+The first five-column table pass was too compressed at the 1280px boundary:
+the alert became a column of single words. Source and subject now sit with the
+item they qualify, leaving Waiting, Needs Your Action and Action as the three
+load-bearing columns. This is a content-hierarchy correction, not a new
+component or breakpoint exception.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.
@@ -1197,5 +1235,5 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 
 - **The working-day rule holds.** `apps/roster-web/src/fixtures/calendar.ts` is the only file that inspects a date's weekday, and it exists as the stand-in for `VRS-F004`'s materialization worker. Every consumer reads the index. Two divergent entity calendars — London Monday–Friday, Karachi Monday–Friday plus a four-hour Saturday — so a weekend assumption anywhere is visible on screen.
 - **Off-token values do not compile.** Tailwind's default color, spacing, radius, type, shadow, blur and breakpoint scales are cleared before `VPS-D001`'s are declared. Verified: `bg-red-500`, `p-7`, `shadow-lg`, `blur-sm`, `rounded-xl`, `gap-9`, `font-bold` and `max-w-md` all produce no CSS; the token equivalents all do.
-- **Tooltip, Input, Tabs, Table, Select, MultiSelect and Dialog are built.** `Table` implements sticky header, click-to-sort and hover only — checkbox row selection, keyboard row navigation and virtualisation above 100 rows are all in `VPS-D002` but unbuilt, since no screen composing it needs any of the three yet. **Chart, Toast, Progress, Textarea, DatePicker, Radio, Switch, Breadcrumb and Pagination are still not built.** Checkbox behavior exists inside `MultiSelect`, but it is not yet exposed as a standalone library component. None of the remaining components is needed by a screen built so far; each arrives with the screen that composes it. The profile's date fields still use `Input`'s own shell because the calendar affordance is not what that screen exists to test.
+- **Tooltip, Input, Tabs, Table, Select, MultiSelect, Dialog and Command Palette are built.** `Table` implements sticky header, click-to-sort, hover and controlled selection paint. The Manager queue composes `useShortcuts` with that controlled state for J/K movement; checkbox row selection and virtualization above 100 rows remain unbuilt because no prototype screen needs either. **Chart, Toast, Progress, Textarea, DatePicker, Radio, Switch, Breadcrumb and Pagination are still not built.** Checkbox behavior exists inside `MultiSelect`, but it is not yet exposed as a standalone library component. None of the remaining components is needed by a screen built so far; each arrives with the screen that composes it. The profile's date fields still use `Input`'s own shell because the calendar affordance is not what that screen exists to test.
 - **The good-news empty state is implemented but unreachable** with the current fixture, since somebody always has bench time in this data.
