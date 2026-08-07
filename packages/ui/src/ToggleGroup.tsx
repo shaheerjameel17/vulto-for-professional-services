@@ -26,6 +26,8 @@ export type ToggleGroupProps<T extends string> = {
   options: ToggleGroupOption<T>[];
   onChange: (value: T) => void;
   className?: string;
+  trackClassName?: string;
+  activeClassName?: string;
 };
 
 export function ToggleGroup<T extends string>({
@@ -34,6 +36,8 @@ export function ToggleGroup<T extends string>({
   options,
   onChange,
   className,
+  trackClassName,
+  activeClassName,
 }: ToggleGroupProps<T>) {
   return (
     <RadixToggleGroup.Root
@@ -54,6 +58,7 @@ export function ToggleGroup<T extends string>({
         // so the control now separates by fill, weight and color together.
         "inline-flex items-center rounded-full border border-border-default",
         "bg-segment-track p-1",
+        trackClassName,
         className,
       )}
     >
@@ -89,7 +94,7 @@ export function ToggleGroup<T extends string>({
                 // FDN-18 took brand out of here; three neutral channels
                 // replace it. Inactive: lighter weight and secondary color.
                 active
-                  ? "bg-segment-active text-body-medium text-text-primary"
+                  ? cx("bg-segment-active text-body-medium text-text-primary", activeClassName)
                   : "text-body text-text-secondary hover:text-text-primary",
               )}
             >

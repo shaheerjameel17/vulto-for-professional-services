@@ -1299,7 +1299,7 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 | FDN-11 | `display` moves to 32/40; tracking −0.022 / −0.02 / −0.015em above 20px, zero below; weights 640 / 600 / 560 where the variable font is used |
 | FDN-12 | Settled by FDN-33: neutral assignment fill with one categorical project dot |
 | F20 | Superseded by FDN-33: one information-preserving density, no preference |
-| FDN-15 | Bench amber `#F59E0B` light / `#FBBF24` dark; height matches the 20px assignment bar; `numeric-medium` at 500 |
+| FDN-15 | Superseded in FDN-36: bench rest is `#FFCCA1` light / `#D69A4A` dark, strengthening on hover; height matches the 20px assignment bar; `numeric-medium` at 500 |
 | FDN-16 | Workspace inset at space-3 with `radius-lg`; row hover `border-strong`, selection `brand-500`; segmented controls at `radius-full`, Buttons unchanged |
 
 ---
@@ -1310,7 +1310,7 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 
 The workspace inset now uses `bg-subtle`, preserving a visible distinction from the canvas while letting white raised assignment bars, filters and the contextual panel read as operational objects rather than faint outlines. The workspace retains `radius-xl`; it is deliberately not made pill-shaped simply because controls inside it are pills.
 
-The Bench Forecast now has 40px rows, no persistent header or frozen-column dividers, a rounded identity hover target, a single-row adaptive header at the 90- and 180-day horizons, and an 8px Today marker whose date is a brand pill. Bench ranges highlight as one rounded header pill. Resting bench amber is pastel in light and materially quieter than hover in dark. The panel overlays above sticky timeline paint at narrow widths and uses overlay elevation; it includes the selected person's avatar and operational code.
+The Bench Forecast now has 48px rows, no persistent header or frozen-column dividers, a rounded identity hover target, a two-row adaptive header at every horizon, and an 8px Today marker whose date is a brand pill. Bench ranges highlight as one rounded header pill. Resting bench amber is pastel in light and materially quieter than hover in dark. The panel overlays above sticky timeline paint at narrow widths and uses overlay elevation; it includes the selected person's avatar and operational code.
 
 People now composes the sparse `Table` variant: white filter pills, active filter dot-plus-clear treatment, a searchable visible-column chooser, code column, an active header strip, and divider-free 40px rows. The behavior belongs in `MultiSelect` and `Table`, not only in the People page.
 
@@ -1318,3 +1318,13 @@ People now composes the sparse `Table` variant: white filter pills, active filte
 - **Off-token values do not compile.** Tailwind's default color, spacing, radius, type, shadow, blur and breakpoint scales are cleared before `VPS-D001`'s are declared. Verified: `bg-red-500`, `p-7`, `shadow-lg`, `blur-sm`, `rounded-xl`, `gap-9`, `font-bold` and `max-w-md` all produce no CSS; the token equivalents all do.
 - **Tooltip, Input, Tabs, Table, Select, MultiSelect, Dialog and Command Palette are built.** `Table` implements sticky header, click-to-sort, hover and controlled selection paint. The Manager queue composes `useShortcuts` with that controlled state for J/K movement; checkbox row selection and virtualization above 100 rows remain unbuilt because no prototype screen needs either. **Chart, Toast, Progress, Textarea, DatePicker, Radio, Switch, Breadcrumb and Pagination are still not built.** Checkbox behavior exists inside `MultiSelect`, but it is not yet exposed as a standalone library component. None of the remaining components is needed by a screen built so far; each arrives with the screen that composes it. The profile's date fields still use `Input`'s own shell because the calendar affordance is not what that screen exists to test.
 - **The good-news empty state is implemented but unreachable** with the current fixture, since somebody always has bench time in this data.
+
+## FDN-36 — Linear-calibrated Bench hierarchy, timeline metadata, and contextual detail
+
+The light shell now uses `#EFEFF0` for its canvas and sidebar and `#F9F9FA` for the workspace inset. This makes white raised controls and assignment bars legible without reintroducing container borders. The Bench Forecast title remains the local hierarchy peak; the horizon, filters, Today control, viewer selector, and all three summary figures sit below it.
+
+Timeline rows are 48px while assignment and bench bars remain 20px. Every horizon has a two-row date header: months plus dates at 30 days, and months plus grouped ranges at 90 and 180 days. Bench hover ranges are vertically centered pills; the brand Today marker is paired with a quieter neutral reference date, so the timeline can retain schedule context without persistent grids.
+
+Resting bench is `#FFCCA1` in light mode and strengthens on row hover. Timeline tooltips use structured Project/Company/Allocation/Ends or Bench time/Unrecovered/Range rows with semantic icons and overlay elevation. Bars in the first two people rows open their tooltips below, preserving the date header. Assignment labels remain neutral but become sticky at the frozen edge and naturally clip under the existing scroll-boundary fade.
+
+The forecast panel now presents an XL avatar beside its three-line identity block, places the employee code below role, uses a circular close target, labels Next rolloff explicitly, and renders workspace-stable colored skill pills. The People status treatment remains a semantic pill.

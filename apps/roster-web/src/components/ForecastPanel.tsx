@@ -39,6 +39,25 @@ const BURNOUT: Record<string, string> = {
   "emp-02": "Committed above 100% for six of the last eight weeks.",
 };
 
+const SKILL_COLORS = [
+  "bg-cat-1/10 text-cat-1",
+  "bg-cat-2/10 text-cat-2",
+  "bg-cat-3/10 text-cat-3",
+  "bg-cat-4/10 text-cat-4",
+  "bg-cat-5/10 text-cat-5",
+  "bg-cat-6/10 text-cat-6",
+  "bg-cat-7/10 text-cat-7",
+  "bg-cat-8/10 text-cat-8",
+];
+
+function skillColor(skill: string) {
+  const hash = Array.from(skill).reduce(
+    (total, character) => total + character.charCodeAt(0),
+    0,
+  );
+  return SKILL_COLORS[hash % SKILL_COLORS.length]!;
+}
+
 export function ForecastPanel({
   row,
   canSeeCompensation,
@@ -93,7 +112,7 @@ export function ForecastPanel({
         )}
         {row.nextRolloff ? (
           <Text variant="small" className="text-text-secondary">
-            Next rolloff {row.nextRolloff}
+            Next rolloff: {row.nextRolloff}
           </Text>
         ) : null}
       </div>
@@ -114,7 +133,11 @@ export function ForecastPanel({
           </Text>
           <div className="flex flex-wrap gap-1">
             {skills.map((skill) => (
-              <Badge key={skill} tone="neutral">
+              <Badge
+                key={skill}
+                tone="neutral"
+                className={`rounded-full ${skillColor(skill)}`}
+              >
                 {skill}
               </Badge>
             ))}

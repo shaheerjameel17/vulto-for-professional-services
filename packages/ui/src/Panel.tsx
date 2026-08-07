@@ -4,7 +4,6 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cx } from "./cx";
 import { Avatar } from "./Avatar";
-import { Button } from "./Button";
 import { Text } from "./Text";
 
 /*
@@ -77,33 +76,33 @@ export function Panel({
     >
       <div className="flex items-start justify-between gap-2 px-4 py-3">
         <div className="flex min-w-0 items-start gap-2">
-          {avatarName ? <Avatar name={avatarName} size="sm" dashed={dashedAvatar} /> : null}
+          {avatarName ? (
+            <Avatar
+              name={avatarName}
+              size="xl"
+              dashed={dashedAvatar}
+              className="size-timeline-row"
+            />
+          ) : null}
           <div className="min-w-0">
             <div className="flex min-w-0 items-baseline gap-1">
               <Text variant="h3" className="truncate text-text-primary">
                 {title}
               </Text>
-              {referenceLabel ? (
-                <Text variant="micro" className="shrink-0 text-text-tertiary">
-                  {referenceLabel}
-                </Text>
-              ) : null}
             </div>
             {subtitle ? (
               <Text variant="small" className="truncate text-text-secondary">
                 {subtitle}
               </Text>
             ) : null}
+            {referenceLabel ? (
+              <Text variant="micro" className="block text-text-tertiary">
+                {referenceLabel}
+              </Text>
+            ) : null}
           </div>
         </div>
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={X}
-          onClick={onClose}
-          aria-label="Close panel"
-          title="Close panel · Escape"
-        />
+        <button type="button" onClick={onClose} aria-label="Close panel" title="Close panel · Escape" className="flex h-button-sm w-button-sm shrink-0 items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-primary"><X className="size-icon" /></button>
       </div>
       <div className="flex-1 p-4">{children}</div>
     </aside>

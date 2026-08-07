@@ -135,7 +135,6 @@ export function buildForecast(
       headerLabel: horizonLabel(dates, index, horizon),
       monthLabel: isMonthStart ? MONTHS[month] : undefined,
       note: holidayName("uk", date) ?? date,
-      compactHeader: horizon !== 30,
     };
   });
 
@@ -225,6 +224,9 @@ export function buildForecast(
           colorToken: categoricalTokenForId(assignment.projectId),
           ghost: employee.employeeType === "Ghost",
           title: `${label} · ${project?.clientName ?? ""} · ${percentage}% · ends ${assignment.endDate}`,
+          clientName: project?.clientName,
+          percentage,
+          endDate: assignment.endDate,
         };
       })
       .filter((bar): bar is NonNullable<typeof bar> => bar !== null);
@@ -282,10 +284,11 @@ function horizonLabel(dates: string[], index: number, horizon: Horizon): string 
   if (horizon === 30) return day;
   if (horizon === 90 && index % 7 === 0) {
     const end = dates[Math.min(index + 6, dates.length - 1)]!;
-    return `${MONTHS[Number(date.slice(5, 7)) - 1]!.slice(0, 3)} ${day}–${Number(end.slice(8, 10))}`;
+    return `${day}–${Number(end.slice(8, 10))}`;
   }
   if (horizon === 180 && index % 14 === 0) {
-    return `${MONTHS[Number(date.slice(5, 7)) - 1]!.slice(0, 3)} ${day}`;
+    const end = dates[Math.min(index + 13, dates.length - 1)]!;
+    return `${day}–${Number(end.slice(8, 10))}`;
   }
   return undefined;
 }

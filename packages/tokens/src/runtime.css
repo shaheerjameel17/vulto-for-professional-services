@@ -13,10 +13,10 @@
   /* F38: neutral-100, not neutral-50. Against neutral-0 the old value gave
    * 1.04:1, so the inset workspace panel was carried entirely by its border and
    * the canvas it sits on was not perceptible. Dark was already at 1.12:1. */
-  --vt-bg-canvas: #f7f7f8;
+  --vt-bg-canvas: #efeff0;
   --vt-bg-surface: #ffffff; /* neutral-0 */
   --vt-bg-raised: #ffffff; /* neutral-0 */
-  --vt-bg-subtle: #f3f3f4;
+  --vt-bg-subtle: #f9f9fa;
   --vt-bg-hover: #efeff1;
   --vt-bg-selected: #eef2ff; /* brand-50 */
   --vt-bg-active: #e6e6e9;
@@ -138,7 +138,7 @@
 
 :root {
   --vt-row-height: 32px;
-  --vt-timeline-row-height: 40px;
+  --vt-timeline-row-height: 48px;
   --vt-control-height: 28px;
   --vt-cell-padding: 8px; /* space-2 */
   --vt-bar-height: 20px; /* VPS-D002, Timeline */
@@ -185,13 +185,13 @@
  * near-black field needs more luminance to carry the same perceived weight.
  */
 :root {
-  --vt-bench-rest: #f8d89b;
+  --vt-bench-rest: #ffcca1;
   --vt-bench-fill: #f59e0b; /* amber-500 */
   --vt-bench-figure: #09090b; /* neutral-950 — 9.26:1 */
 }
 
 :root[data-theme="dark"] {
-  --vt-bench-rest: #b7791f;
+  --vt-bench-rest: #d69a4a;
   --vt-bench-fill: #fbbf24; /* amber-400 */
   --vt-bench-figure: #09090b; /* neutral-950 — 11.92:1 */
 }

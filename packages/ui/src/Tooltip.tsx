@@ -60,14 +60,14 @@ export function Tooltip({
             "motion-fast transition-opacity",
           )}
         >
-          <span className="flex items-baseline gap-2">
-            <span className="min-w-0">{content}</span>
+          <div className="flex items-start gap-2">
+            <div className="min-w-0">{content}</div>
             {shortcut ? (
               <span className="shrink-0 font-ui text-numeric text-text-tertiary">
                 {shortcut}
               </span>
             ) : null}
-          </span>
+          </div>
         </RadixTooltip.Content>
       </RadixTooltip.Portal>
     </RadixTooltip.Root>

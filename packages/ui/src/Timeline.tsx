@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import type { CategoricalToken } from "@vulto/tokens";
+import { Building2, CalendarDays, CircleDollarSign, Clock3, FolderKanban } from "lucide-react";
 import { cx } from "./cx";
 import { Avatar } from "./Avatar";
 import { Badge } from "./Badge";
@@ -45,8 +46,6 @@ export type TimelineDay = {
   monthLabel?: string;
   /** Holiday name, where the index resolved one. */
   note?: string;
-  /** Compact horizons carry all date context in their one header row. */
-  compactHeader?: boolean;
 };
 
 export type TimelineBar = {
@@ -58,6 +57,9 @@ export type TimelineBar = {
   /** VRS-F007: dashed border in cat-n at 12% fill, per the dashed-border rule. */
   ghost?: boolean;
   title?: string;
+  clientName?: string;
+  percentage?: number;
+  endDate?: string;
 };
 
 export type TimelineBenchRegion = {
@@ -94,6 +96,8 @@ export type TimelineProps = {
   onSelectRow?: (rowId: string) => void;
   /** Bumped by the caller to scroll today into view, per VRS-F005's `T`. */
   scrollToTodayNonce?: number;
+  /** A neutral schedule reference keeps a second date available without a grid. */
+  referenceDateIndex?: number;
 };
 
 /** FDN-33: project identity is a dot inside an otherwise neutral bar. */
@@ -116,11 +120,11 @@ export function Timeline({
   selectedRowId,
   onSelectRow,
   scrollToTodayNonce,
+  referenceDateIndex,
 }: TimelineProps) {
   const scroller = useRef<HTMLDivElement>(null);
   const [hoveredBench, setHoveredBench] = useState<TimelineBenchRegion>();
   const trackWidth = days.length * dayWidth;
-  const compactHeader = days[0]?.compactHeader ?? false;
 
   /*
    * FDN-19/31. The fades at the boundaries of the horizontally scrolling
@@ -205,7 +209,7 @@ export function Timeline({
       <div className="min-w-max">
         {/* Column header. Sticky vertically so it survives the row scroll, and
           * above the row hover outline, which is z-20. */}
-        <div className="sticky top-0 z-30 flex bg-bg-surface">
+        <div className="sticky top-0 z-30 flex bg-transparent">
           <div
             data-timeline-label
             className="sticky left-0 z-40 flex w-timeline-label shrink-0 items-end bg-bg-subtle px-cell pb-1"
@@ -221,7 +225,7 @@ export function Timeline({
             {/* Month labels get their own band. Positioned against the track
               * rather than inside a day cell, so a 12px column does not clip
               * "September". */}
-            {!compactHeader ? <div className="relative h-4">
+            <div className="relative h-4">
               {hoveredBench ? (
                 <Text
                   variant="micro"
@@ -243,12 +247,12 @@ export function Timeline({
                   </Text>
                 ) : null,
               )}
-            </div> : null}
+            </div>
             <div className="relative flex">
               {hoveredBench ? (
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute bottom-1 top-0 rounded-full bg-bg-active"
+                  className="pointer-events-none absolute inset-y-0 rounded-full bg-bg-active"
                   style={{
                     left: hoveredBench.start * dayWidth + 2,
                     width: Math.max(0, hoveredBench.span * dayWidth - 4),
@@ -261,9 +265,7 @@ export function Timeline({
                   key={day.date}
                   title={day.note ?? day.date}
                   style={{ width: dayWidth }}
-                  className={cx(
-                    "relative z-10 flex shrink-0 flex-col items-center justify-end pb-1",
-                  )}
+                  className="relative z-10 flex shrink-0 flex-col items-center justify-center"
                 >
                   {day.headerLabel ? (
                     <Text variant="micro" className="text-text-tertiary">
@@ -287,12 +289,28 @@ export function Timeline({
                 style={{ left: todayIndex * dayWidth + dayWidth / 2 }}
               />
             ) : null}
+            {referenceDateIndex !== undefined && referenceDateIndex >= 0 ? (
+              <>
+                <span
+                  aria-hidden
+                  className="absolute bottom-0 z-20 size-dot -translate-x-1/2 translate-y-1/2 rounded-full bg-border-strong"
+                  style={{ left: referenceDateIndex * dayWidth + dayWidth / 2 }}
+                />
+                <Text
+                  variant="micro"
+                  className="absolute -top-1 z-20 -translate-x-1/2 whitespace-nowrap text-text-secondary"
+                  style={{ left: referenceDateIndex * dayWidth + dayWidth / 2 }}
+                >
+                  {formatHeaderDate(days[referenceDateIndex]?.date)}
+                </Text>
+              </>
+            ) : null}
           </div>
         </div>
 
         {/* Rows. No separators — separation comes from hover and alignment
           * alone, matching Table. VPS-D002. */}
-        {rows.map((row) => {
+        {rows.map((row, rowIndex) => {
           const selected = row.id === selectedRowId;
           return (
             <div
@@ -389,14 +407,30 @@ export function Timeline({
                     key={region.id}
                     region={region}
                     dayWidth={dayWidth}
+                    tooltipSide={rowIndex < 2 ? "bottom" : "top"}
                     onHoverChange={setHoveredBench}
                   />
                 ))}
 
                 {/* Assignment bars. */}
                 {row.bars.map((bar) => (
-                  <Bar key={bar.id} bar={bar} dayWidth={dayWidth} />
+                  <Bar
+                    key={bar.id}
+                    bar={bar}
+                    dayWidth={dayWidth}
+                    tooltipSide={rowIndex < 2 ? "bottom" : "top"}
+                  />
                 ))}
+
+                {/* A secondary, neutral reference date makes schedule context
+                  * available without making the date header a third row. */}
+                {referenceDateIndex !== undefined && referenceDateIndex >= 0 ? (
+                  <span
+                    aria-hidden
+                    className="absolute top-0 bottom-0 z-0 w-px bg-border-strong"
+                    style={{ left: referenceDateIndex * dayWidth + dayWidth / 2 }}
+                  />
+                ) : null}
 
                 {/* The today line, drawn per row so it needs no knowledge of
                   * the label column's responsive width. Above bars. */}
@@ -417,14 +451,22 @@ export function Timeline({
   );
 }
 
-function Bar({ bar, dayWidth }: { bar: TimelineBar; dayWidth: number }) {
+function Bar({
+  bar,
+  dayWidth,
+  tooltipSide,
+}: {
+  bar: TimelineBar;
+  dayWidth: number;
+  tooltipSide: "top" | "bottom";
+}) {
   const style: CSSProperties = {
     left: bar.start * dayWidth,
     width: bar.span * dayWidth,
   };
 
   return (
-    <Tooltip content={bar.title ?? bar.label}>
+    <Tooltip side={tooltipSide} content={<BarTooltip bar={bar} />}>
       <div
         style={style}
         className={cx(
@@ -436,9 +478,11 @@ function Bar({ bar, dayWidth }: { bar: TimelineBar; dayWidth: number }) {
           aria-hidden
           className={cx("size-dot shrink-0 rounded-full", DOT[bar.colorToken])}
         />
-        <Text variant="small" className="truncate text-text-primary">
-          {bar.label}
-        </Text>
+        <span className="sticky left-2 min-w-0">
+          <Text variant="small" className="block truncate text-text-primary">
+            {bar.label}
+          </Text>
+        </span>
       </div>
     </Tooltip>
   );
@@ -461,10 +505,12 @@ function Bar({ bar, dayWidth }: { bar: TimelineBar; dayWidth: number }) {
 function BenchRegion({
   region,
   dayWidth,
+  tooltipSide,
   onHoverChange,
 }: {
   region: TimelineBenchRegion;
   dayWidth: number;
+  tooltipSide: "top" | "bottom";
   onHoverChange: (region: TimelineBenchRegion | undefined) => void;
 }) {
   const width = region.span * dayWidth;
@@ -472,7 +518,7 @@ function BenchRegion({
   const showCount = !showCost && width >= COUNT_MIN_WIDTH;
 
   return (
-    <Tooltip content={region.title ?? `${region.workingDays} working days`}>
+    <Tooltip side={tooltipSide} content={<BenchTooltip region={region} />}>
       <div
         style={{ left: region.start * dayWidth, width }}
         onMouseEnter={() => onHoverChange(region)}
@@ -495,6 +541,75 @@ function BenchRegion({
       </div>
     </Tooltip>
   );
+}
+
+function DetailRow({
+  icon,
+  label,
+  value,
+}: {
+  icon: typeof Building2;
+  label: string;
+  value: string;
+}) {
+  const Icon = icon;
+  return (
+    <div className="flex items-center gap-2">
+      <Icon className="size-icon shrink-0 text-text-tertiary" />
+      <Text variant="small" className="text-text-secondary">
+        {label}:
+      </Text>
+      <Text variant="small" className="min-w-0 truncate text-text-primary">
+        {value}
+      </Text>
+    </div>
+  );
+}
+
+function BarTooltip({ bar }: { bar: TimelineBar }) {
+  return (
+    <div className="flex min-w-tooltip flex-col gap-2">
+      <DetailRow icon={FolderKanban} label="Project" value={bar.label} />
+      <DetailRow
+        icon={Building2}
+        label="Company"
+        value={bar.clientName ?? "Unassigned client"}
+      />
+      <DetailRow
+        icon={CircleDollarSign}
+        label="Allocation"
+        value={`${bar.percentage ?? 100}%`}
+      />
+      <DetailRow icon={CalendarDays} label="Ends" value={bar.endDate ?? "—"} />
+    </div>
+  );
+}
+
+function BenchTooltip({ region }: { region: TimelineBenchRegion }) {
+  return (
+    <div className="flex min-w-tooltip flex-col gap-2">
+      <DetailRow
+        icon={Clock3}
+        label="Bench time"
+        value={`${region.workingDays} working days`}
+      />
+      <DetailRow
+        icon={CircleDollarSign}
+        label="Unrecovered"
+        value={region.costLabel ?? "Outside the 45-day cost horizon"}
+      />
+      <DetailRow icon={CalendarDays} label="Range" value={region.title ?? "Bench period"} />
+    </div>
+  );
+}
+
+function formatHeaderDate(date?: string) {
+  if (!date) return "";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(`${date}T00:00:00Z`));
 }
 
 function formatBenchRange(days: TimelineDay[], region: TimelineBenchRegion) {

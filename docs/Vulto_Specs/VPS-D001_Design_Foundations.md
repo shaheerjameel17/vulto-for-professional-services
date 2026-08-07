@@ -120,10 +120,10 @@ Components reference these, never raw ramp values. This is what makes theming a 
 
 | Token | Light | Dark |
 |---|---|---|
-| `bg-canvas` | `neutral-100` | `neutral-950` |
+| `bg-canvas` | `#EFEFF0` | `neutral-950` |
 | `bg-surface` | `neutral-0` | `neutral-900` |
 | `bg-raised` | `neutral-0` | `neutral-800` |
-| `bg-subtle` | `neutral-100` | `neutral-800` |
+| `bg-subtle` | `#F9F9FA` | `neutral-800` |
 | `bg-hover` | `neutral-100` | `neutral-800` |
 | `bg-selected` | `brand-50` | `brand-900` |
 | `border-default` | `neutral-200` | `neutral-800` |
@@ -188,7 +188,7 @@ One information-preserving density. Product density is not an appearance prefere
 | Element | Value |
 |---|---|
 | Table row height | 32px |
-| Bench Forecast row height | 40px |
+| Bench Forecast row height | 48px |
 | Control height | 28px |
 | Cell padding | `2` |
 

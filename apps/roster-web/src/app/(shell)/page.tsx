@@ -109,7 +109,26 @@ export default function BenchForecastPage() {
       {/* FDN-17: the subtitle is gone. The figures it carried are the band's
         * job now, and at `small` in a header they were the smallest statement of
         * the most important fact on the screen. */}
-      <PageHeader title="Bench Forecast" />
+      <PageHeader
+        title="Bench Forecast"
+        titleAccessory={
+          <Tooltip
+            side="bottom"
+            content={
+              <div className="flex max-w-tooltip flex-col gap-2">
+                <Text variant="body-medium">Bench Forecast</Text>
+                <Text variant="small" className="text-text-secondary">
+                  Amber shows periods without an active assignment. Cost is counted from each person&apos;s working calendar for the next {forecast.costHorizonDays} days.
+                </Text>
+              </div>
+            }
+          >
+            <button type="button" aria-label="About the Bench Forecast" className="flex size-icon items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-secondary">
+              <Icon icon={Info} />
+            </button>
+          </Tooltip>
+        }
+      />
 
       <Content fullBleed>
         {/*
@@ -117,7 +136,7 @@ export default function BenchForecastPage() {
           * VPS-D004's page header is 56px and a `display` figure with a `micro`
           * denominator does not fit inside it — the arithmetic decided this.
           */}
-        <div className="flex shrink-0 items-center justify-between gap-8 border-b border-border-default px-4 py-2">
+        <div className="flex shrink-0 items-center justify-between gap-8 px-4 pb-3 pt-2">
           <div className="flex items-center gap-2">
             <ToggleGroup<string>
               label="Horizon"
@@ -128,17 +147,20 @@ export default function BenchForecastPage() {
                 { value: "90", label: "90", shortcut: "2" },
                 { value: "180", label: "180", shortcut: "3" },
               ]}
+              trackClassName="bg-bg-raised"
+              activeClassName="bg-bg-active"
             />
             {/* VPS-D003: single-letter shortcuts are documented on hover of the
               * control they trigger, which is how they are discovered without a
               * manual. Now through VPS-D002's Tooltip rather than the browser's
               * own box. */}
             <Tooltip content="Filter the cohort" shortcut="F">
-              <Button ref={filtersRef} variant="ghost" icon={SlidersHorizontal} aria-label="Filter the cohort" />
+              <Button ref={filtersRef} size="sm" variant="secondary" icon={SlidersHorizontal} aria-label="Filter the cohort" />
             </Tooltip>
             <Tooltip content="Scroll today into view" shortcut="T">
               <Button
                 variant="ghost"
+                size="sm"
                 onClick={() => setTodayNonce((value) => value + 1)}
               >
                 Today
@@ -170,12 +192,12 @@ export default function BenchForecastPage() {
               * stops meaning this specific gap, so size carries the hierarchy
               * and the hue stays exclusive to the timeline.
               */}
-            <div className="flex items-end gap-8">
+            <div className="flex items-end gap-10">
               {canSeeCompensation ? (
                 <Stat
                   label={`Unrecovered · next ${forecast.costHorizonDays} days`}
                   value={formatMoney(forecast.totalBenchCost)}
-                  scale="numeric-lg"
+                  scale="numeric-md"
                   labelPlacement="below"
                   className="items-end text-right"
                 />
@@ -183,31 +205,17 @@ export default function BenchForecastPage() {
               <Stat
                 label="People with bench time"
                 value={`${forecast.benchedCount} of ${forecast.cohortSize}`}
-                scale="numeric-md"
+                scale="numeric"
                 labelPlacement="below"
                 className="items-end text-right"
               />
               <Stat
                 label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
                 value={`${forecast.utilization}%`}
-                scale="numeric-md"
+                scale="numeric"
                 labelPlacement="below"
                 className="items-end text-right"
               />
-              {/* FDN-17: the legend became this. An amber bar with £3,938
-                * written inside it explains itself. */}
-              <Tooltip
-                content="Amber is bench time — a period with no assignment. The figure inside is unrecovered salary cost, counted in working days from each person's own calendar. A gap beginning within 45 days carries its cost; beyond that it shows days only, because being unassigned five months out is a plan rather than a loss."
-                side="bottom"
-              >
-                <button
-                  type="button"
-                  aria-label="What the amber means"
-                  className="mb-1 rounded-full p-1 text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-secondary"
-                >
-                  <Icon icon={Info} />
-                </button>
-              </Tooltip>
             </div>
           </div>
         </div>
@@ -228,6 +236,7 @@ export default function BenchForecastPage() {
               rows={forecast.rows}
               todayIndex={forecast.todayIndex}
               dayWidth={DAY_WIDTH[horizon]}
+              referenceDateIndex={forecast.days.findIndex((day) => day.date === "2026-08-17")}
               selectedRowId={selectedId}
               onSelectRow={setSelectedId}
               scrollToTodayNonce={todayNonce}

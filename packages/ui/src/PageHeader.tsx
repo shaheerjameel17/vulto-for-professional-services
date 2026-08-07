@@ -17,6 +17,7 @@ export type PageHeaderProps = {
   title: string;
   subtitle?: string;
   actions?: ReactNode;
+  titleAccessory?: ReactNode;
   className?: string;
 };
 
@@ -24,6 +25,7 @@ export function PageHeader({
   title,
   subtitle,
   actions,
+  titleAccessory,
   className,
 }: PageHeaderProps) {
   return (
@@ -38,6 +40,7 @@ export function PageHeader({
         <Text variant="h2" className="truncate text-text-primary">
           {title}
         </Text>
+        {titleAccessory}
         {subtitle ? (
           <Text variant="small" className="truncate text-text-secondary">
             {subtitle}
