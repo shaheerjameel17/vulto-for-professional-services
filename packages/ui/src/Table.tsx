@@ -35,6 +35,7 @@ export type TableColumn<T> = {
   render: (row: T) => ReactNode;
   /** Reserves a fixed width so short columns don't stretch to fill space. */
   width?: string;
+  cellClassName?: string;
 };
 
 export type TableProps<T> = {
@@ -45,7 +46,10 @@ export type TableProps<T> = {
   /** Controlled selection for J/K-driven experience surfaces. */
   selectedRowKey?: string;
   emptyState?: ReactNode;
-  appearance?: "default" | "directory";
+  appearance?: "default" | "directory" | "queue";
+  /** Offset used when another sticky control band sits above the table. */
+  stickyHeaderClassName?: string;
+  rowClassName?: string;
 };
 
 type SortState = { key: string; direction: "asc" | "desc" } | null;
@@ -58,6 +62,8 @@ export function Table<T>({
   selectedRowKey,
   emptyState,
   appearance = "default",
+  stickyHeaderClassName,
+  rowClassName,
 }: TableProps<T>) {
   const [sort, setSort] = useState<SortState>(null);
 
@@ -88,11 +94,12 @@ export function Table<T>({
   }
 
   const directory = appearance === "directory";
+  const insetHeader = appearance !== "default";
 
   return (
-    <div className={cx(!directory && "overflow-hidden rounded-md border border-border-default")}>
+    <div className={cx(!insetHeader && "overflow-hidden rounded-md border border-border-default")}>
       <table className="w-full border-collapse">
-        <thead className={cx("sticky top-0 z-10", directory ? "bg-transparent" : "bg-bg-surface")}>
+        <thead className={cx("sticky top-0 z-10", insetHeader ? "bg-transparent" : "bg-bg-surface", stickyHeaderClassName)}>
           <tr>
             {columns.map((column) => (
               <th
@@ -100,7 +107,7 @@ export function Table<T>({
                 scope="col"
                 style={column.width ? { width: column.width } : undefined}
                 className={cx(
-                  directory ? "h-control bg-bg-active px-cell first:rounded-l-md last:rounded-r-md" : "h-8 border-b border-border-default px-cell",
+                  insetHeader ? "h-control bg-bg-active px-cell first:rounded-l-md last:rounded-r-md" : "h-8 border-b border-border-default px-cell",
                   column.align === "right" ? "text-right" : "text-left",
                 )}
               >
@@ -139,9 +146,10 @@ export function Table<T>({
               aria-selected={selected || undefined}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
               className={cx(
-                directory ? "h-timeline-row motion-fast transition-colors" : "h-row motion-fast transition-colors",
-                onRowClick && "cursor-pointer hover:bg-bg-raised",
-                selected && "bg-bg-selected",
+                directory ? "h-timeline-row motion-fast transition-colors" : appearance === "queue" ? "motion-fast transition-colors" : "motion-fast transition-colors",
+                onRowClick && "cursor-pointer hover:bg-bg-hover",
+                selected && "bg-bg-active",
+                rowClassName,
               )}
             >
               {columns.map((column) => (
@@ -150,6 +158,7 @@ export function Table<T>({
                   className={cx(
                     "px-cell",
                     column.align === "right" ? "text-right" : "text-left",
+                    column.cellClassName,
                   )}
                 >
                   {column.render(row)}

@@ -100,7 +100,7 @@
    * layout sizes, not spacing — see Prototype_Findings F19: VPS-D001
    * claims authority over every size but its space set cannot express
    * them, and the shell documents introduce them directly. */
-  --spacing-sidebar: 216px; /* VPS-D004 */
+  --spacing-sidebar: 200px; /* FDN-38: denser shell, corrected from VPS-D004 */
   --spacing-sidebar-collapsed: 48px; /* VPS-D004 */
   --spacing-panel: 360px; /* VPS-D004, VPS-D002 */
   --spacing-page-header: 48px; /* VPS-D004, corrected by FDN-33 */

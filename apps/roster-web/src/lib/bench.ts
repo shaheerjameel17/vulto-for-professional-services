@@ -108,6 +108,7 @@ export type Forecast = {
 export function buildForecast(
   horizon: Horizon,
   canSeeCompensation: boolean,
+  employeeIds?: ReadonlySet<string>,
 ): Forecast {
   const windowStart = addDays(TODAY, -LEAD_IN_DAYS);
   const dates: string[] = [];
@@ -138,7 +139,11 @@ export function buildForecast(
     };
   });
 
-  const rows: ForecastRow[] = EMPLOYEES.map((employee) => {
+  const scopedEmployees = employeeIds
+    ? EMPLOYEES.filter((employee) => employeeIds.has(employee.employeeId))
+    : EMPLOYEES;
+
+  const rows: ForecastRow[] = scopedEmployees.map((employee) => {
     const assignments = ASSIGNMENTS.filter(
       (assignment) =>
         assignment.employeeId === employee.employeeId &&

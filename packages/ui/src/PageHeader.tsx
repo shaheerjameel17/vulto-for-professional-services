@@ -36,7 +36,7 @@ export function PageHeader({
         className,
       )}
     >
-      <div className="flex min-w-0 items-baseline gap-3">
+      <div className="flex min-w-0 items-center gap-3">
         <Text variant="h2" className="truncate text-text-primary">
           {title}
         </Text>

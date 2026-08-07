@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { Input, Text, cx } from "@vulto/ui";
+import { CurrencySelect, DatePicker, Input, PhoneInput, Text, currencyLabel, cx } from "@vulto/ui";
 
 /*
  * FDN-24. VRS-F002's keyboard table assigns `E` to open an edit and
@@ -30,7 +30,7 @@ export type EditableFieldProps = {
   label: string;
   value: string;
   onCommit?: (value: string) => void;
-  type?: "text" | "email" | "number" | "date";
+  type?: "text" | "email" | "number" | "date" | "phone" | "currency";
   prefix?: ReactNode;
   suffix?: ReactNode;
   helperText?: string;
@@ -73,8 +73,8 @@ export function EditableField({
     setEditing(true);
   }
 
-  function commit() {
-    onCommit?.(draft);
+  function commit(next = draft) {
+    onCommit?.(next);
     setEditing(false);
   }
 
@@ -99,6 +99,58 @@ export function EditableField({
   }
 
   if (editing) {
+    if (type === "date") {
+      return (
+        <DatePicker
+          label={label}
+          value={draft}
+          onChange={setDraft}
+          onCommit={commit}
+          onCancel={discard}
+          inputRef={inputRef}
+          helperText={helperText}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              commit();
+            }
+          }}
+        />
+      );
+    }
+
+    if (type === "phone") {
+      return (
+        <PhoneInput
+          label={label}
+          value={draft}
+          onChange={setDraft}
+          onCommit={() => commit()}
+          onCancel={discard}
+          inputRef={inputRef}
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+              event.preventDefault();
+              commit();
+            }
+          }}
+        />
+      );
+    }
+
+    if (type === "currency") {
+      return (
+        <CurrencySelect
+          label={label}
+          value={draft}
+          onChange={(next) => {
+            setDraft(next);
+            commit(next);
+          }}
+        />
+      );
+    }
+
     return (
       <Input
         ref={inputRef}
@@ -113,7 +165,7 @@ export function EditableField({
         max={max}
         onStepValue={setDraft}
         onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
+        onBlur={() => commit()}
         onKeyDown={(e) => {
           if (type === "number" && e.key === "ArrowUp") {
             e.preventDefault();
@@ -134,7 +186,7 @@ export function EditableField({
   }
 
   const fieldClass = cx(
-    "h-control rounded-md border border-border-default bg-bg-subtle",
+    "h-control rounded-md border border-border-default bg-bg-surface",
     "motion-fast transition-colors",
     !readOnly && "hover:border-border-strong hover:bg-bg-hover",
     !readOnly && "focus-visible:outline focus-visible:outline-2",
@@ -148,7 +200,7 @@ export function EditableField({
         variant={type === "number" ? "numeric" : "body"}
         className="truncate text-text-primary"
       >
-        {value || placeholder}
+        {type === "currency" ? currencyLabel(value) : value || placeholder}
       </Text>
       {suffix !== undefined ? (
         <Text variant="small" className="shrink-0 pl-2 text-text-tertiary">

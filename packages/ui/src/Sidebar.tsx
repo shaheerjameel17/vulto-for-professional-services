@@ -81,7 +81,7 @@ export function Sidebar({
             type="button"
             aria-label={`Open ${workspaceName} menu`}
             className={cx(
-              "flex h-page-header shrink-0 items-center gap-2 rounded-md px-3",
+              "mt-3 flex h-page-header shrink-0 items-center gap-2 rounded-md px-3",
               "text-left motion-fast transition-colors hover:bg-bg-hover",
             )}
           >
@@ -149,7 +149,7 @@ export function Sidebar({
                       aria-current={active ? "page" : undefined}
                       className={cx(
                         "flex h-8 w-full items-center gap-2 rounded-md px-2",
-                        "font-ui text-small motion-fast transition-colors",
+                        "font-ui text-label motion-fast transition-colors",
                         // FDN-18: a neutral fill, not brand. Which page you are
                         // on is location, not selection, and brand is reserved
                         // to the today line, primary actions and focus rings.

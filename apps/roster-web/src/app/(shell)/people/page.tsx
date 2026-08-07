@@ -229,7 +229,7 @@ export default function PeoplePage() {
         }
       />
       <Content>
-        <div className="mt-6 flex flex-wrap items-center gap-2">
+        <div className="sticky top-0 z-30 flex h-12 flex-wrap items-center gap-2 bg-bg-subtle">
           <MultiSelect<EntityId>
             label="Entity"
             allLabel="All entities"
@@ -267,12 +267,13 @@ export default function PeoplePage() {
           </InlineAlert>
         ) : null}
 
-        <div className="mt-4">
+        <div className="pt-1">
           <Table
             columns={columns}
             rows={filteredRows}
             rowKey={(row) => row.employee.employeeId}
             appearance="directory"
+            stickyHeaderClassName="top-12"
             onRowClick={(row) => router.push(`/people/${row.employee.employeeId}`)}
             emptyState={
               <Text variant="body" className="text-text-secondary">

@@ -22,9 +22,9 @@ import type { EmployeeProfile } from "../../lib/profile";
 export function ProfileHeader({ profile }: { profile: EmployeeProfile }) {
   return (
     <div className="flex items-start justify-between gap-4 pb-6">
-      <div className="flex items-center gap-4">
-        <Avatar name={profile.fullName} size="xl" />
-        <div className="flex flex-col gap-1">
+      <div className="flex items-start gap-4">
+        <Avatar name={profile.fullName} size="identity" />
+        <div className="flex min-h-12 flex-col justify-center">
           <div className="flex items-center gap-2">
             <Text variant="h1" className="text-text-primary">
               {profile.preferredName ?? profile.fullName}

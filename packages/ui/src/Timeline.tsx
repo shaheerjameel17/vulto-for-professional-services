@@ -203,14 +203,14 @@ export function Timeline({
     (event: ReactPointerEvent<HTMLDivElement>) => {
       const node = scroller.current;
       if (!node) return;
-      const labelWidth =
-        node.querySelector<HTMLElement>("[data-timeline-label]")?.offsetWidth ?? 0;
-      const pointerX = event.clientX - node.getBoundingClientRect().left - labelWidth;
+      const track = node.querySelector<HTMLElement>("[data-timeline-track-header]");
+      if (!track) return;
+      const pointerX = event.clientX - track.getBoundingClientRect().left;
       if (pointerX < 0) {
         setCursorDateIndex(undefined);
         return;
       }
-      const index = Math.floor((node.scrollLeft + pointerX) / dayWidth);
+      const index = Math.floor(pointerX / dayWidth);
       setCursorDateIndex(index >= 0 && index < days.length ? index : undefined);
     },
     [dayWidth, days.length],
@@ -247,7 +247,7 @@ export function Timeline({
       <div className="min-w-max">
         {/* Column header. Sticky vertically so it survives the row scroll, and
           * above the row hover outline, which is z-20. */}
-        <div className="sticky top-0 z-30 flex bg-transparent">
+        <div className="sticky top-0 z-30 flex bg-bg-subtle pb-2">
           <div
             data-timeline-label
             className="sticky left-0 z-40 flex w-timeline-label shrink-0 items-end bg-bg-subtle px-cell pb-1"
@@ -257,13 +257,14 @@ export function Timeline({
             </Text>
           </div>
           <div
+            data-timeline-track-header
             className="scroll-boundary-fade relative shrink-0"
             style={{ width: trackWidth }}
           >
             {/* Month labels get their own band. Positioned against the track
               * rather than inside a day cell, so a 12px column does not clip
               * "September". */}
-            <div className="relative h-4">
+            <div className="relative h-5">
               {hoveredBench ? (
                 <Text
                   variant="micro"
@@ -286,7 +287,7 @@ export function Timeline({
                 ) : null,
               )}
             </div>
-            <div className="relative flex">
+            <div className="relative flex h-6 items-center">
               {hoveredBench ? (
                 <span
                   aria-hidden
@@ -303,15 +304,17 @@ export function Timeline({
                   key={day.date}
                   title={day.note ?? day.date}
                   style={{ width: dayWidth }}
-                  className="relative z-10 flex shrink-0 flex-col items-center justify-center"
+                  className="relative z-10 flex shrink-0 items-center justify-center"
                 >
-                  {day.headerLabel ? (
+                  {index === todayIndex ? (
                     <Text variant="micro" className="whitespace-nowrap text-text-tertiary">
-                      {index === todayIndex ? (
-                        <span className="inline-flex h-badge items-center rounded-full bg-brand-600 px-2 text-neutral-0">
-                          {day.date.slice(8, 10)}
-                        </span>
-                      ) : day.headerLabel}
+                      <span className="inline-flex h-badge items-center rounded-full bg-brand-600 px-2 text-neutral-0">
+                        {day.date.slice(8, 10)}
+                      </span>
+                    </Text>
+                  ) : day.headerLabel ? (
+                    <Text variant="micro" className="whitespace-nowrap text-text-tertiary">
+                      {day.headerLabel}
                     </Text>
                   ) : null}
                 </div>
@@ -331,7 +334,7 @@ export function Timeline({
               <>
                 <span
                   aria-hidden
-                  className="absolute bottom-0 z-20 size-dot -translate-x-1/2 translate-y-1/2 rounded-full bg-border-strong"
+                  className="absolute bottom-0 z-20 size-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-border-strong"
                   style={{ left: cursorDateIndex * dayWidth + dayWidth / 2 }}
                 />
                 <span

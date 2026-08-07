@@ -19,6 +19,8 @@ import {
 import { buildForecast, DAY_WIDTH, formatMoney, type Horizon } from "../../lib/bench";
 import { usePanel } from "../../components/panel-context";
 import { ForecastPanel } from "../../components/ForecastPanel";
+import { EMPLOYEES } from "../../fixtures/roster";
+import { profileFor } from "../../fixtures/profiles";
 
 /*
  * VRS-F005 — The Bench Forecast.
@@ -39,6 +41,7 @@ import { ForecastPanel } from "../../components/ForecastPanel";
 
 /** Prototype furniture. The only way to see the restricted state (F5, F6). */
 type ViewerRole = "owner" | "manager";
+const MANAGER_VIEWER_NAME = "Omar Farooq";
 
 export default function BenchForecastPage() {
   const [horizon, setHorizon] = useState<Horizon>(90);
@@ -51,9 +54,24 @@ export default function BenchForecastPage() {
 
   const canSeeCompensation = role === "owner";
 
+  const managerReportIds = useMemo(
+    () => new Set(
+      EMPLOYEES.filter(
+        (employee) =>
+          employee.employeeType === "Employee" &&
+          profileFor(employee.employeeId)?.managerName === MANAGER_VIEWER_NAME,
+      ).map((employee) => employee.employeeId),
+    ),
+    [],
+  );
+
   const forecast = useMemo(
-    () => buildForecast(horizon, canSeeCompensation),
-    [horizon, canSeeCompensation],
+    () => buildForecast(
+      horizon,
+      canSeeCompensation,
+      role === "manager" ? managerReportIds : undefined,
+    ),
+    [horizon, canSeeCompensation, role, managerReportIds],
   );
 
   const selected = forecast.rows.find((row) => row.id === selectedId);
@@ -123,7 +141,7 @@ export default function BenchForecastPage() {
               </div>
             }
           >
-            <button type="button" aria-label="About the Bench Forecast" className="flex size-icon items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-secondary">
+            <button type="button" aria-label="About the Bench Forecast" className="flex size-button-md items-center justify-center rounded-full bg-bg-surface text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-secondary">
               <Icon icon={Info} />
             </button>
           </Tooltip>
@@ -136,7 +154,7 @@ export default function BenchForecastPage() {
           * VPS-D004's page header is 56px and a `display` figure with a `micro`
           * denominator does not fit inside it — the arithmetic decided this.
           */}
-        <div className="flex shrink-0 items-center justify-between gap-8 px-4 pb-3 pt-2">
+        <div className="flex shrink-0 items-center justify-between gap-8 border-b border-border-default px-4 pb-4 pt-2">
           <div className="flex items-center gap-2">
             <ToggleGroup<string>
               label="Horizon"
@@ -155,7 +173,7 @@ export default function BenchForecastPage() {
               * manual. Now through VPS-D002's Tooltip rather than the browser's
               * own box. */}
             <Tooltip content="Filter the cohort" shortcut="F">
-              <Button ref={filtersRef} size="sm" variant="secondary" icon={SlidersHorizontal} aria-label="Filter the cohort" />
+              <Button ref={filtersRef} size="md" variant="secondary" icon={SlidersHorizontal} aria-label="Filter the cohort" />
             </Tooltip>
             <Tooltip content="Scroll today into view" shortcut="T">
               <Button
@@ -171,15 +189,18 @@ export default function BenchForecastPage() {
           <div className="flex items-center gap-8">
             {/* Prototype furniture: VRS-F005's restricted state is one of the
               * things worth looking at, and this is the only way to see it. */}
-            <ToggleGroup<ViewerRole>
-              label="Viewing as"
-              value={role}
-              onChange={setRole}
-              options={[
-                { value: "owner", label: "Owner" },
-                { value: "manager", label: "Manager" },
-              ]}
-            />
+            <div className="flex items-center gap-2">
+              <Text variant="micro" className="text-text-tertiary">Prototype viewer</Text>
+              <ToggleGroup<ViewerRole>
+                label="Viewing as"
+                value={role}
+                onChange={setRole}
+                options={[
+                  { value: "owner", label: "Owner" },
+                  { value: "manager", label: "Manager" },
+                ]}
+              />
+            </div>
 
             {/*
               * FDN-17. Three compact figures at one size; money leads by hue.
@@ -204,15 +225,15 @@ export default function BenchForecastPage() {
                 />
               ) : null}
               <Stat
-                label="People with bench time"
-                value={`${forecast.benchedCount} of ${forecast.cohortSize}`}
+                label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
+                value={`${forecast.utilization}%`}
                 scale="numeric-md"
                 labelPlacement="below"
                 className="items-end text-right"
               />
               <Stat
-                label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
-                value={`${forecast.utilization}%`}
+                label="People with bench time"
+                value={`${forecast.benchedCount} of ${forecast.cohortSize}`}
                 scale="numeric-md"
                 labelPlacement="below"
                 className="items-end text-right"
@@ -231,7 +252,7 @@ export default function BenchForecastPage() {
           /* FDN-17: the two-line legend is gone, which returns its height to
             * rows. On a screen where vertical space is people visible, that was
             * the worst trade in the layout. */
-          <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
+          <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-2">
             <Timeline
               days={forecast.days}
               rows={forecast.rows}

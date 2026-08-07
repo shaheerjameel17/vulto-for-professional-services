@@ -56,7 +56,7 @@ export function AppShell({ sidebar, panel, children }: AppShellProps) {
          * keeps its full width and the Panel is drawn over it.
          */}
         {panel ? (
-          <div className="absolute inset-y-1 right-1 z-50 flex elevation-overlay 2xl:static 2xl:my-1 2xl:mr-1 2xl:z-auto 2xl:shadow-none">
+          <div className="absolute inset-y-1 right-1 z-50 flex overflow-hidden rounded-lg elevation-overlay 2xl:static 2xl:my-1 2xl:mr-1 2xl:z-auto 2xl:shadow-none">
             {panel}
           </div>
         ) : null}

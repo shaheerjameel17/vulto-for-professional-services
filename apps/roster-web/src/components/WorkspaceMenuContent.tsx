@@ -46,7 +46,6 @@ export function WorkspaceMenuContent({
             { value: "light", label: "Light" },
             { value: "dark", label: "Dark" },
           ]}
-          className="w-full"
         />
       </div>
 

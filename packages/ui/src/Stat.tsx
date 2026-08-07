@@ -35,6 +35,7 @@ export type StatProps = {
   suppressedReason?: string;
   className?: string;
   valueClassName?: string;
+  deltaClassName?: string;
 };
 
 export function Stat({
@@ -47,6 +48,7 @@ export function Stat({
   suppressedReason,
   className,
   valueClassName,
+  deltaClassName,
 }: StatProps) {
   /*
    * FINDING F9 pressure: VPS-D002 specifies `micro` in `text-tertiary` for a
@@ -83,7 +85,11 @@ export function Stat({
     delta && !suppressedReason ? (
       <Text
         variant="small"
-        className={delta.tone === "success" ? "text-success" : "text-attention"}
+        className={cx(
+          "font-medium",
+          delta.tone === "success" ? "text-success" : "text-attention",
+          deltaClassName,
+        )}
       >
         {delta.text}
       </Text>

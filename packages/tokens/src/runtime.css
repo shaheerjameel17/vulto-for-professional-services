@@ -138,7 +138,7 @@
 
 :root {
   --vt-row-height: 32px;
-  --vt-timeline-row-height: 48px;
+  --vt-timeline-row-height: 52px;
   --vt-control-height: 28px;
   --vt-cell-padding: 8px; /* space-2 */
   --vt-bar-height: 20px; /* VPS-D002, Timeline */

@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { AlertTriangle, CheckCircle2, Inbox } from "lucide-react";
 import {
+  Avatar,
   Badge,
   Button,
   Card,
@@ -12,10 +14,12 @@ import {
   Table,
   Text,
   ToggleGroup,
+  Icon,
   cx,
   useShortcuts,
   type TableColumn,
 } from "@vulto/ui";
+import { EMPLOYEES } from "../../../fixtures/roster";
 import {
   MANAGER_QUEUE,
   type ManagerQueueItem,
@@ -23,6 +27,22 @@ import {
 } from "../../../fixtures/manager-dashboard";
 
 type QueueMode = "active" | "clear";
+
+const KIND_META = {
+  Approval: { icon: CheckCircle2, tone: "success" as const },
+  Alert: { icon: AlertTriangle, tone: "attention" as const },
+  Request: { icon: Inbox, tone: "neutral" as const },
+};
+
+const SOURCE_TONE: Record<string, "success" | "attention" | "danger" | "neutral"> = {
+  "Workload strain": "attention",
+  Performance: "success",
+  Leave: "success",
+  Onboarding: "neutral",
+  Timesheets: "attention",
+  Capacity: "danger",
+  Recruiting: "neutral",
+};
 
 export default function ManagerDashboardPage() {
   const [items, setItems] = useState(MANAGER_QUEUE);
@@ -80,6 +100,7 @@ export default function ManagerDashboardPage() {
       key: "waiting",
       header: "Waiting",
       width: "104px",
+      cellClassName: "align-top pt-3",
       render: (item) => (
         <div>
           <Text variant="numeric-medium" className="text-text-primary">
@@ -95,22 +116,29 @@ export default function ManagerDashboardPage() {
       key: "item",
       header: "Needs your action",
       render: (item) => (
-        <div className="py-2">
-          <Text variant="body-medium" className="text-text-primary">
-            {item.title}
-          </Text>
-          <div className="mt-1 flex flex-wrap items-center gap-2">
-            <Badge>{item.source}</Badge>
-            <Text variant="small" className="text-text-secondary">
-              {item.subject}
-            </Text>
+        <div className="py-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={SOURCE_TONE[item.source] ?? "neutral"} shape="pill">{item.source}</Badge>
+            <Text variant="body-medium" className="text-text-primary">{item.title}</Text>
+          </div>
+          <div className="mt-2 flex items-center gap-2">
+            {(() => {
+              const employee = EMPLOYEES.find((candidate) => candidate.fullName === item.subject);
+              return employee ? (
+                <>
+                  <Avatar name={employee.fullName} size="sm" />
+                  <Text variant="small" className="text-text-secondary">{employee.fullName}</Text>
+                  <Text variant="micro" className="text-text-tertiary">{employee.employeeCode}</Text>
+                </>
+              ) : <Text variant="small" className="text-text-secondary">{item.subject}</Text>;
+            })()}
           </div>
           {item.escalated ? (
-            <InlineAlert tone="attention" className="mt-2">
-              Escalated · {item.context}
-            </InlineAlert>
+            <div className="mt-2 rounded-md border-l-2 border-attention bg-bg-subtle px-3 py-2">
+              <Text variant="small" className="text-text-secondary">Escalated · {item.context}</Text>
+            </div>
           ) : (
-            <Text variant="small" className="mt-1 text-text-secondary">
+            <Text variant="small" className="mt-2 block text-text-secondary">
               {item.context}
             </Text>
           )}
@@ -122,6 +150,7 @@ export default function ManagerDashboardPage() {
       header: "Action",
       align: "right",
       width: "104px",
+      cellClassName: "align-top pt-3",
       render: (item) => (
         <span onClick={(event) => event.stopPropagation()}>
           <Button size="sm" onClick={() => resolveItem(item)}>
@@ -153,19 +182,20 @@ export default function ManagerDashboardPage() {
         }
       />
       <Content>
-        <div className="grid gap-6 py-6 xl:grid-cols-3">
+        <div className="grid gap-6 pb-6 pt-8 xl:grid-cols-3">
           <Card
             title="Needs Your Action"
-            action={<Badge intensity="solid">{visibleItems.length}</Badge>}
+            action={<Badge intensity="solid" tone="attention" shape="circle">{visibleItems.length}</Badge>}
             className="min-w-0 xl:col-span-2"
           >
             <div className="mb-4 flex flex-wrap items-center gap-3">
               {counts.map(({ kind, count }) => (
                 <div key={kind} className="flex items-center gap-2">
+                  <Icon icon={KIND_META[kind].icon} className={kind === "Approval" ? "text-success" : kind === "Alert" ? "text-attention" : "text-cat-1"} />
                   <Text variant="small" className="text-text-secondary">
                     {kind}s
                   </Text>
-                  <Badge intensity="solid">{count}</Badge>
+                  <Badge intensity="solid" tone={KIND_META[kind].tone} shape="circle">{count}</Badge>
                 </div>
               ))}
               <Text variant="small" className="text-text-tertiary">
@@ -185,6 +215,8 @@ export default function ManagerDashboardPage() {
               rowKey={(item) => item.id}
               selectedRowKey={selectedId}
               onRowClick={(item) => setSelectedId(item.id)}
+              appearance="queue"
+              rowClassName="hover:bg-bg-hover"
               emptyState={
                 <div className="rounded-md border border-border-default bg-bg-subtle px-4 py-8 text-center">
                   <Text variant="h3" className="text-text-primary">

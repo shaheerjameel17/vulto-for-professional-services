@@ -54,6 +54,8 @@ Labels sit above, `label` token, `text-secondary`. Helper text sits below at `sm
 
 `DatePicker` respects the workspace working calendar from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]: non-working days render at `text-tertiary` and are visually distinct from disabled days, because a Friday that is a weekend in Dubai and a working day in Karachi is a fact the picker must express.
 
+The picker accepts typed ISO dates and exposes month and year Selects, previous/next month controls, and a calendar grid. Phone entry uses the same field shell with a country-and-dial-code Select followed by a national-number input; the person enters no country code twice. Currency selection shows the currency symbol and ISO code. It does not show a country flag because a currency is not owned by one country.
+
 **The affix contract.** A currency symbol, a unit or a percentage sign is a prefix or suffix, never freehand text inside the value. It is laid out as a sibling of the field's own input element within the same bordered container — never positioned over it — so reserving its space is a property of the layout, not a padding value chosen to dodge whatever the browser happens to render in that corner. `small`, `text-tertiary`. A numeric input carrying an affix suppresses the browser's native step spinner; an unaffixed numeric input keeps it. This exists because Roster prices almost everything — rates, hours, percentages, currency, across the payroll cluster alone — and every one of those fields needs this contract to hold.
 
 ### Checkbox, Radio, Switch, Toggle Group
@@ -70,7 +72,7 @@ Status badges take their color from the semantic tokens exclusively. A badge is 
 
 ### Avatar
 
-`radius-full`, sizes 20/24/32/40. Falls back to initials on `neutral-200` / `neutral-800` when no image exists, never to a generic silhouette. `AvatarGroup` overlaps at -8px and truncates to a `+n` chip after four.
+`radius-full`, sizes 20/24/32/40, plus a 48px identity size reserved for the employee profile header. Falls back to initials on `neutral-200` / `neutral-800` when no image exists, never to a generic silhouette. `AvatarGroup` overlaps at -8px and truncates to a `+n` chip after four.
 
 ### Icon
 
@@ -90,9 +92,9 @@ Row height is 32px per [[VPS-D001_Design_Foundations|VPS-D001]]. Header row uses
 
 The divergence is therefore a Timeline affordance rather than a change to row hover generally, and no other surface may adopt the border treatment without the same two conditions holding.
 
-The People directory is the intentional sparse variant: it sits directly on an inset `bg-subtle` workspace, has a `bg-active` rounded header strip, no container or row dividers, 40px rows, and a `bg-raised` row hover. Its filter and visible-column controls are raised pills; an active filter shows a brand dot and an explicit clear affordance rather than repeating selected values in the toolbar.
+The People directory is the intentional sparse variant: it sits directly on an inset `bg-subtle` workspace, has a `bg-active` rounded header strip, no container or row dividers, 52px rows, and a `bg-hover` row hover. Its filter and visible-column controls are raised pills; an active filter shows a brand dot and an explicit clear affordance rather than repeating selected values in the toolbar. The filter band and table header both remain sticky, with one token step of space between their surfaces.
 
-Numeric columns are right-aligned and set in `mono`. Text columns are left-aligned. There is no center alignment anywhere in this product.
+Numeric columns are right-aligned and use Inter tabular numerals. Text columns are left-aligned. There is no center alignment anywhere in this product.
 
 Behavior: sticky header, column sort on header click, keyboard row navigation per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], row selection via checkbox column, and virtualised rendering above 100 rows. Sorting and filtering run against the local SQLite index and never round-trip.
 

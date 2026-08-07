@@ -123,7 +123,7 @@ Timeline and Panel per [[VPS-D002_Component_Library|VPS-D002]]. Filters are a ro
 | State | Treatment |
 |---|---|
 | Syncing | Skeleton rows at correct row height, so the layout does not shift on arrival |
-| Restricted | A Manager sees every row but no compensation-derived figure. The bench cost region renders without its cost figure rather than being hidden — the fact of bench time is operational, its cost is not universally readable |
+| Restricted | A Manager sees direct reports only and no compensation-derived figure. Every aggregate is recomputed from that same direct-report cohort. The bench cost region renders without its cost figure rather than being hidden — the fact of bench time is operational, its cost is not universally readable |
 | Aged out | Not applicable. The forecast window is always inside the retention window |
 | Empty | *No one is assigned in this window.* with **Create an assignment** |
 | Empty, good news | Where no employee has bench time, the summary states *Nobody is on the bench in the next 90 days* plainly, rather than treating absence as a deficiency |
@@ -179,7 +179,7 @@ Rejection is the default. [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]] cat
 
 The Pitch exclusion is part of this computation rather than applied downstream. A person pursuing new business is not idle; the days they spend doing it are covered, and a forecast that painted them amber would train users to ignore the color that matters most.
 
-Accumulated cost for a bench region is `bench working days × daily cost`, where daily cost derives from the employee's compensation where the viewer is authorized for it, and from `billing_rate_default` otherwise. Working day counts come from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], never from a local weekday calculation.
+Accumulated cost for a bench region is `bench working days × daily cost`, where daily cost derives from the employee's compensation only where the viewer is authorized for it. An unauthorized viewer receives no currency figure and no `billing_rate_default` substitute. Working day counts come from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], never from a local weekday calculation.
 
 **[[VRS-F012_Revenue_Gap_Alert|VRS-F012]] consumes this computation; it does not supply it.** That feature owns whether a bench period warrants an escalating alert. This feature owns the fact that the period exists and what it costs. The distinction is the difference between a statement of fact and a judgement about it, and separating them means the amber region works from the moment this feature ships rather than waiting seven features for an alerting engine.
 

@@ -65,7 +65,7 @@ export function Panel({
     <aside
       aria-label={title}
       className={cx(
-        "flex w-panel shrink-0 flex-col overflow-y-auto",
+        "flex w-panel shrink-0 flex-col overflow-hidden",
         // FDN-19: an inset within the inset. `radius-lg` is the workspace's
         // `radius-xl` minus the space-1 gap around it, per VPS-D001's concentric
         // rule. It carries a border on all four sides now that it no longer
@@ -104,7 +104,7 @@ export function Panel({
         </div>
         <button type="button" onClick={onClose} aria-label="Close panel" title="Close panel · Escape" className="flex size-button-sm shrink-0 items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-primary"><X className="size-icon" /></button>
       </div>
-      <div className="flex-1 p-4">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
     </aside>
   );
 }

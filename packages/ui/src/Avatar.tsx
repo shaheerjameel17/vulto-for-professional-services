@@ -7,13 +7,14 @@ import { cx } from "./cx";
  * never to a generic silhouette.
  */
 
-type Size = "sm" | "md" | "lg" | "xl";
+type Size = "sm" | "md" | "lg" | "xl" | "identity";
 
 const SIZE: Record<Size, string> = {
   sm: "size-avatar-sm",
   md: "size-avatar-md",
   lg: "size-avatar-lg",
   xl: "size-avatar-xl",
+  identity: "size-12",
 };
 
 /** `micro` below 32px, `label` at and above it, so initials stay legible. */
@@ -22,6 +23,7 @@ const TYPE: Record<Size, string> = {
   md: "text-micro",
   lg: "text-label",
   xl: "text-body-medium",
+  identity: "text-body-medium",
 };
 
 function initials(name: string): string {

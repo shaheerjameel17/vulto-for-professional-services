@@ -96,7 +96,7 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
               <EditableField label="Contract end date" type="date" value={profile.contractEndDate} readOnly />
             ) : null}
             <EditableField label="Email" type="email" value={fields.email} onCommit={commit("email")} />
-            <EditableField label="Phone" value={fields.phone} onCommit={commit("phone")} />
+            <EditableField label="Phone" type="phone" value={fields.phone} onCommit={commit("phone")} />
             <div className="grid grid-cols-2 gap-4">
               <EditableField label="Timezone" value={fields.timezone} onCommit={commit("timezone")} />
               <EditableField label="Location" value={fields.location} onCommit={commit("location")} />
@@ -158,7 +158,7 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
       </div>
 
       {profile.compensation ? (
-        <Section title="Compensation">
+        <Section title="Compensation" className="mt-12">
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
             <EditableField
               label="Base amount"
@@ -176,6 +176,7 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
             />
             <EditableField
               label="Currency"
+              type="currency"
               value={fields.compensationCurrency}
               onCommit={commit("compensationCurrency")}
             />

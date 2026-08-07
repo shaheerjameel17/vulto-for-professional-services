@@ -55,7 +55,7 @@ export function Tooltip({
           sticky="always"
           hideWhenDetached
           className={cx(
-            "z-50 max-w-tooltip rounded-md px-2 py-1",
+            "z-50 max-w-tooltip rounded-md px-3 py-2",
             "elevation-overlay",
             "font-ui text-small text-text-primary",
             // Popovers, dropdowns and tooltips fade in at motion-fast with no
