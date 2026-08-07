@@ -1116,6 +1116,42 @@ Dark/Compact under `artifacts/prototype-findings/fdn-31-*`.
 
 ---
 
+## FDN-5 — one global, grouped command palette
+
+The command palette now sits at shell level, so there is one search and command
+surface for every prototype route. Its mock local index contains commands,
+people, skill matches, projects, clients, documents and policies in the fixed
+order from `VPS-F002`. An empty query gives a quiet prompt; a query with no
+matches gives only the specified honest message. Skill-match delegation is
+deliberately skill-shaped: searching a person's name or job title does not fan
+out every skill they hold.
+
+The shared component owns the 640px overlay surface, 15% viewport anchor,
+grouped rows and keyboard selection. The app owns transient mock results and
+navigation. `Enter` navigates when a prototype destination exists;
+`Cmd+Enter` opens the selected result in the contextual Panel without leaving
+the current screen. Unsupported document and policy destinations open in the
+Panel rather than pretending those out-of-scope screens exist.
+
+**Verified in the browser.** At a 1280×720 viewport the surface measured 640px
+wide at y=108px, exactly the specified 15% anchor, and the search input held
+focus as soon as the dialog rendered. Five Arrow Down keypresses crossed from
+People into Skill matches; a real `Cmd+Enter` opened the selected skill match
+in the Panel, and a real `Enter` navigated from the Timesheets command to
+`/timesheets`. `figma` returned only three ranked skill-match rows, while a
+known-absent query returned the exact no-matches copy and zero options. The
+dark selected row resolves to the theme's `bg-selected` token and remains
+unambiguous; evidence is `fdn-5-command-palette-dark.png`.
+
+The in-app browser reserves `Cmd+K` before the page receives it, so that one
+chord could not be driven directly in this automation pass. The same global
+shortcut listener was exercised through `Cmd+\\`, which collapsed the sidebar
+from 240px to 48px, and the palette's remaining keyboard path was driven
+directly. This is a browser-driver limitation, not a substitute for founder
+signoff on the actual chord in Chrome.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.

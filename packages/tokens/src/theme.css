@@ -108,6 +108,8 @@
   --spacing-timeline-label: 220px; /* VPS-D002, VRS-F005 */
   --spacing-timeline-label-narrow: 160px; /* VRS-F005, below 1280px */
   --spacing-palette: 640px; /* VPS-D002 */
+  --spacing-palette-offset: 15vh; /* VPS-D002, VPS-F002 */
+  --spacing-palette-results: 480px; /* six to eight grouped rows at design center */
   --spacing-icon: 16px; /* VPS-D002 */
   --spacing-dot: 6px; /* VPS-D002, the today line's dot. Not in D001's set. */
   --spacing-badge: 20px; /* VPS-D002 */

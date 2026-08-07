@@ -1,9 +1,18 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { AppShell, Sidebar, useShortcuts } from "@vulto/ui";
+import {
+  AppShell,
+  CommandPalette,
+  Panel,
+  Sidebar,
+  Text,
+  useShortcuts,
+  type CommandPaletteResult,
+} from "@vulto/ui";
 import { GOTO, NAV_GROUPS } from "../nav";
+import { searchCommandPalette } from "../fixtures/command-palette";
 import { AppearanceControls } from "./AppearanceControls";
 import { PanelContext } from "./panel-context";
 
@@ -20,9 +29,17 @@ export function Shell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [panel, setPanel] = useState<ReactNode>(null);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [paletteQuery, setPaletteQuery] = useState("");
+  const paletteResults = useMemo(
+    () => searchCommandPalette(paletteQuery),
+    [paletteQuery],
+  );
 
   useShortcuts({
     chords: {
+      // VPS-F002 owns the one global search surface in the suite.
+      k: () => setPaletteOpen(true),
       // VPS-D003: Cmd+\ toggles the sidebar.
       "\\": () => setCollapsed((value) => !value),
     },
@@ -31,7 +48,41 @@ export function Shell({ children }: { children: ReactNode }) {
     ),
     // Escape dismisses the topmost layer: panel, then modal, then palette.
     onEscape: () => setPanel(null),
+    // Radix owns keyboard behavior while the palette is topmost, including
+    // Escape. This prevents one keypress from also closing a panel beneath it.
+    enabled: !paletteOpen,
   });
+
+  function setCommandPaletteOpen(open: boolean) {
+    setPaletteOpen(open);
+    if (!open) setPaletteQuery("");
+  }
+
+  function openPaletteResult(
+    result: CommandPaletteResult,
+    destination: "page" | "panel",
+  ) {
+    setCommandPaletteOpen(false);
+
+    if (destination === "page" && result.href) {
+      setPanel(null);
+      router.push(result.href);
+      return;
+    }
+
+    setPanel(
+      <Panel
+        open
+        title={result.name}
+        subtitle={result.type}
+        onClose={() => setPanel(null)}
+      >
+        <Text variant="body" className="text-text-secondary">
+          {result.context}
+        </Text>
+      </Panel>,
+    );
+  }
 
   return (
     <PanelContext.Provider value={{ panel, setPanel }}>
@@ -53,6 +104,14 @@ export function Shell({ children }: { children: ReactNode }) {
       >
         {children}
       </AppShell>
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setCommandPaletteOpen}
+        query={paletteQuery}
+        onQueryChange={setPaletteQuery}
+        results={paletteResults}
+        onSelect={openPaletteResult}
+      />
     </PanelContext.Provider>
   );
 }

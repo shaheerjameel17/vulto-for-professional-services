@@ -40,6 +40,13 @@ export { Tooltip, TooltipProvider, type TooltipProps } from "./Tooltip";
 
 export { useShortcuts, type ShortcutMap } from "./useShortcuts";
 export {
+  CommandPalette,
+  COMMAND_PALETTE_GROUPS,
+  type CommandPaletteProps,
+  type CommandPaletteGroup,
+  type CommandPaletteResult,
+} from "./CommandPalette";
+export {
   Timeline,
   type TimelineProps,
   type TimelineDay,

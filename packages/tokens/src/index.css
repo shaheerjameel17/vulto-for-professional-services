@@ -191,3 +191,22 @@
   transition-timing-function: var(--ease-vulto);
   transition-duration: var(--vt-motion-base);
 }
+
+/* VPS-D003: the command palette fades and scales from 98% at motion-base.
+ * The animation belongs to the surface inside Radix's positioned focus scope,
+ * so it never replaces the transform used to center the dialog itself. */
+@keyframes command-palette-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@utility command-palette-enter {
+  animation: command-palette-in var(--vt-motion-base) var(--ease-vulto);
+  transform-origin: top center;
+}
