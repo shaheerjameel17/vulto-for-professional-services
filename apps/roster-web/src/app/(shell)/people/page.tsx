@@ -58,6 +58,8 @@ type DirectoryRow = {
   contractedHours?: number;
 };
 
+type DirectoryColumnKey = "code" | "role" | "department" | "entity" | "type" | "status" | "manager" | "hours";
+
 const ENTITY_FILTERS: { value: EntityId; label: string; keywords: string }[] = [
   { value: "uk", label: ENTITY_NAMES.uk, keywords: "UK London" },
   { value: "pk", label: ENTITY_NAMES.pk, keywords: "PK Pakistan Karachi" },
@@ -70,10 +72,24 @@ const TYPE_FILTERS: { value: EmploymentType; label: string }[] = [
   { value: "Intern", label: "Intern" },
 ];
 
+const COLUMN_OPTIONS: { value: DirectoryColumnKey; label: string }[] = [
+  { value: "code", label: "Employee code" },
+  { value: "role", label: "Role" },
+  { value: "department", label: "Department" },
+  { value: "entity", label: "Entity" },
+  { value: "type", label: "Employment type" },
+  { value: "status", label: "Status" },
+  { value: "manager", label: "Reports to" },
+  { value: "hours", label: "Hours per week" },
+];
+
 export default function PeoplePage() {
   const router = useRouter();
   const [entityFilter, setEntityFilter] = useState<EntityId[]>([]);
   const [typeFilter, setTypeFilter] = useState<EmploymentType[]>([]);
+  const [visibleColumns, setVisibleColumns] = useState<DirectoryColumnKey[]>(
+    COLUMN_OPTIONS.map((column) => column.value),
+  );
   const [addPersonOpen, setAddPersonOpen] = useState(false);
   const [lastCreated, setLastCreated] = useState<NewPersonDraft | null>(null);
 
@@ -101,7 +117,7 @@ export default function PeoplePage() {
     return true;
   });
 
-  const columns: TableColumn<DirectoryRow>[] = [
+  const allColumns: TableColumn<DirectoryRow>[] = [
     {
       key: "name",
       header: "Name",
@@ -115,6 +131,18 @@ export default function PeoplePage() {
           </Text>
         </div>
       ),
+    },
+    {
+      key: "code",
+      header: "Code",
+      sortable: true,
+      sortValue: (row) => row.employee.employeeCode,
+      render: (row) => (
+        <Text variant="micro" className="numeric-tabular text-text-tertiary">
+          {row.employee.employeeCode}
+        </Text>
+      ),
+      width: "104px",
     },
     {
       key: "role",
@@ -154,12 +182,12 @@ export default function PeoplePage() {
       header: "Type",
       sortable: true,
       sortValue: (row) => row.employmentType,
-      render: (row) => <Badge tone="neutral">{row.employmentType}</Badge>,
+      render: (row) => <Badge tone="neutral" className="rounded-full">{row.employmentType}</Badge>,
     },
     {
       key: "status",
       header: "Status",
-      render: () => <Badge tone="success">Active</Badge>,
+      render: () => <Badge tone="success" className="rounded-full">Active</Badge>,
     },
     {
       key: "manager",
@@ -186,6 +214,9 @@ export default function PeoplePage() {
       width: "96px",
     },
   ];
+  const columns = allColumns.filter(
+    (column) => column.key === "name" || visibleColumns.includes(column.key as DirectoryColumnKey),
+  );
 
   return (
     <>
@@ -207,6 +238,7 @@ export default function PeoplePage() {
             options={ENTITY_FILTERS}
             searchable
             searchPlaceholder="Search entities"
+            appearance="filter"
           />
           <MultiSelect<EmploymentType>
             label="Employment type"
@@ -214,6 +246,17 @@ export default function PeoplePage() {
             value={typeFilter}
             onChange={setTypeFilter}
             options={TYPE_FILTERS}
+            appearance="filter"
+          />
+          <MultiSelect<DirectoryColumnKey>
+            label="Columns"
+            allLabel="All columns"
+            value={visibleColumns}
+            onChange={setVisibleColumns}
+            options={COLUMN_OPTIONS}
+            searchable
+            searchPlaceholder="Search columns"
+            appearance="filter"
           />
         </div>
 
@@ -229,6 +272,7 @@ export default function PeoplePage() {
             columns={columns}
             rows={filteredRows}
             rowKey={(row) => row.employee.employeeId}
+            appearance="directory"
             onRowClick={(row) => router.push(`/people/${row.employee.employeeId}`)}
             emptyState={
               <Text variant="body" className="text-text-secondary">

@@ -188,7 +188,7 @@ One information-preserving density. Product density is not an appearance prefere
 | Element | Value |
 |---|---|
 | Table row height | 32px |
-| Bench Forecast row height | 36px |
+| Bench Forecast row height | 40px |
 | Control height | 28px |
 | Cell padding | `2` |
 

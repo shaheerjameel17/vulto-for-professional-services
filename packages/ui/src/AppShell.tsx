@@ -36,7 +36,7 @@ export function AppShell({ sidebar, panel, children }: AppShellProps) {
        */}
       {/* FDN-19: `radius-xl`. The concentric rule in VPS-D001 derives every
         * nested radius from this one. */}
-      <div className="relative m-3 flex min-w-0 flex-1 rounded-xl border border-border-default bg-bg-surface">
+      <div className="relative m-3 flex min-w-0 flex-1 rounded-xl border border-border-default bg-bg-subtle">
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
           {children}
         </div>
@@ -56,7 +56,7 @@ export function AppShell({ sidebar, panel, children }: AppShellProps) {
          * keeps its full width and the Panel is drawn over it.
          */}
         {panel ? (
-          <div className="absolute inset-y-1 right-1 z-30 flex 2xl:static 2xl:my-1 2xl:mr-1 2xl:z-auto">
+          <div className="absolute inset-y-1 right-1 z-50 flex elevation-overlay 2xl:static 2xl:my-1 2xl:mr-1 2xl:z-auto 2xl:shadow-none">
             {panel}
           </div>
         ) : null}

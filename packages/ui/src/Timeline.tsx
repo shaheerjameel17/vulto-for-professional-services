@@ -45,6 +45,8 @@ export type TimelineDay = {
   monthLabel?: string;
   /** Holiday name, where the index resolved one. */
   note?: string;
+  /** Compact horizons carry all date context in their one header row. */
+  compactHeader?: boolean;
 };
 
 export type TimelineBar = {
@@ -118,6 +120,7 @@ export function Timeline({
   const scroller = useRef<HTMLDivElement>(null);
   const [hoveredBench, setHoveredBench] = useState<TimelineBenchRegion>();
   const trackWidth = days.length * dayWidth;
+  const compactHeader = days[0]?.compactHeader ?? false;
 
   /*
    * FDN-19/31. The fades at the boundaries of the horizontally scrolling
@@ -202,23 +205,23 @@ export function Timeline({
       <div className="min-w-max">
         {/* Column header. Sticky vertically so it survives the row scroll, and
           * above the row hover outline, which is z-20. */}
-        <div className="sticky top-0 z-40 flex bg-bg-surface">
+        <div className="sticky top-0 z-30 flex bg-bg-surface">
           <div
             data-timeline-label
-            className="sticky left-0 z-50 flex w-timeline-label shrink-0 items-end border-r border-b border-border-default bg-bg-surface px-cell pb-1"
+            className="sticky left-0 z-40 flex w-timeline-label shrink-0 items-end bg-bg-subtle px-cell pb-1"
           >
             <Text variant="micro" className="text-text-tertiary">
               Person
             </Text>
           </div>
           <div
-            className="scroll-boundary-fade relative shrink-0 border-b border-border-default"
+            className="scroll-boundary-fade relative shrink-0"
             style={{ width: trackWidth }}
           >
             {/* Month labels get their own band. Positioned against the track
               * rather than inside a day cell, so a 12px column does not clip
               * "September". */}
-            <div className="relative h-4">
+            {!compactHeader ? <div className="relative h-4">
               {hoveredBench ? (
                 <Text
                   variant="micro"
@@ -240,26 +243,35 @@ export function Timeline({
                   </Text>
                 ) : null,
               )}
-            </div>
-            <div className="flex">
+            </div> : null}
+            <div className="relative flex">
+              {hoveredBench ? (
+                <span
+                  aria-hidden
+                  className="pointer-events-none absolute bottom-1 top-0 rounded-full bg-bg-active"
+                  style={{
+                    left: hoveredBench.start * dayWidth + 2,
+                    width: Math.max(0, hoveredBench.span * dayWidth - 4),
+                  }}
+                />
+              ) : null}
               {days.map((day, index) => {
-                const highlighted =
-                  hoveredBench !== undefined &&
-                  index >= hoveredBench.start &&
-                  index < hoveredBench.start + hoveredBench.span;
                 return (
                 <div
                   key={day.date}
                   title={day.note ?? day.date}
                   style={{ width: dayWidth }}
                   className={cx(
-                    "relative flex shrink-0 flex-col items-center justify-end pb-1",
-                    highlighted && "bg-bg-active",
+                    "relative z-10 flex shrink-0 flex-col items-center justify-end pb-1",
                   )}
                 >
                   {day.headerLabel ? (
-                    <Text variant="micro" className={highlighted ? "text-text-primary" : "text-text-tertiary"}>
-                      {day.headerLabel}
+                    <Text variant="micro" className="text-text-tertiary">
+                      {index === todayIndex ? (
+                        <span className="inline-flex h-badge items-center rounded-full bg-brand-500 px-2 text-text-inverse">
+                          {day.date.slice(8, 10)}
+                        </span>
+                      ) : day.headerLabel}
                     </Text>
                   ) : null}
                 </div>
@@ -271,7 +283,7 @@ export function Timeline({
             {todayIndex >= 0 ? (
               <span
                 aria-hidden
-                className="absolute bottom-0 size-dot -translate-x-1/2 translate-y-1/2 rounded-full bg-brand-500"
+                className="absolute bottom-0 z-20 size-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-brand-500"
                 style={{ left: todayIndex * dayWidth + dayWidth / 2 }}
               />
             ) : null}
@@ -292,71 +304,51 @@ export function Timeline({
               onClick={() => onSelectRow?.(row.id)}
               className="group relative flex h-timeline-row cursor-default"
             >
-              {/*
-                * FDN-16. Hover and selection are a border on the whole row
-                * rather than a background fill, so the person column and the
-                * timeline read as one object.
-                *
-                * Drawn as an overlay rather than an outline on the row itself
-                * because the sticky label column paints its own background over
-                * anything the row draws beneath it, which would have broken the
-                * border exactly where the two halves meet.
-                *
-                * This is also what closes F37 by construction: no row-level
-                * fill exists any more, so a quiet bar's opaque mix against
-                * `bg-surface` is always mixing against what is actually behind
-                * it. Selection had to move too — hover alone would have left
-                * `bg-selected` breaking the same bars.
-                */}
-              <span
-                aria-hidden
-                className={cx(
-                  "pointer-events-none absolute inset-0 z-20 rounded-md border",
-                  "motion-fast transition-colors",
-                  selected
-                    ? "border-brand-500"
-                    : "border-transparent group-hover:border-border-strong",
-                )}
-              />
               <div
                 className={cx(
-                  "sticky left-0 z-10 flex w-timeline-label shrink-0 items-start gap-2 pt-1",
+                  "sticky left-0 z-10 flex w-timeline-label shrink-0 items-center bg-bg-subtle px-cell",
                   // The sticky column needs its own fill or the track shows
                   // through as it scrolls beneath. It is now unconditional.
-                  "border-r border-border-default bg-bg-surface px-cell",
                 )}
               >
-                <Avatar
-                  name={row.primaryLabel}
-                  size="sm"
-                  dashed={row.ghost}
-                />
-                <span className="min-w-0 flex-1">
-                  <span className="flex min-w-0 items-baseline gap-1">
-                    <Text
-                      variant="body-medium"
-                      className="min-w-0 flex-1 truncate text-text-primary"
-                    >
-                      {row.primaryLabel}
-                    </Text>
-                    {row.referenceLabel ? (
-                      <Text variant="micro" className="shrink-0 text-text-tertiary">
-                        {row.referenceLabel}
+                <div
+                  className={cx(
+                    "flex w-full items-start gap-2 rounded-md px-2 py-1 motion-fast transition-colors",
+                    selected ? "bg-bg-selected" : "group-hover:bg-bg-hover",
+                  )}
+                >
+                  <Avatar
+                    name={row.primaryLabel}
+                    size="sm"
+                    dashed={row.ghost}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-baseline gap-1">
+                      <Text
+                        variant="body-medium"
+                        className="min-w-0 flex-1 truncate text-text-primary"
+                      >
+                        {row.primaryLabel}
                       </Text>
-                    ) : null}
+                      {row.referenceLabel ? (
+                        <Text variant="micro" className="shrink-0 text-text-tertiary">
+                          {row.referenceLabel}
+                        </Text>
+                      ) : null}
+                    </span>
+                    <Text
+                      variant="label"
+                      className="block truncate text-text-secondary"
+                    >
+                      {row.secondaryLabel}
+                    </Text>
                   </span>
-                  <Text
-                    variant="label"
-                    className="block truncate text-text-secondary"
-                  >
-                    {row.secondaryLabel}
-                  </Text>
-                </span>
-                {row.badge ? (
-                  <Badge tone="neutral" dashed={row.ghost}>
-                    {row.badge}
-                  </Badge>
-                ) : null}
+                  {row.badge ? (
+                    <Badge tone="neutral" dashed={row.ghost}>
+                      {row.badge}
+                    </Badge>
+                  ) : null}
+                </div>
               </div>
 
               {/* FDN-19/31: the track carries the scroll-boundary mask, so

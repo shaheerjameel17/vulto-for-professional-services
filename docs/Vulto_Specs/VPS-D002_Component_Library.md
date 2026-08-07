@@ -90,6 +90,8 @@ Row height is 32px per [[VPS-D001_Design_Foundations|VPS-D001]]. Header row uses
 
 The divergence is therefore a Timeline affordance rather than a change to row hover generally, and no other surface may adopt the border treatment without the same two conditions holding.
 
+The People directory is the intentional sparse variant: it sits directly on an inset `bg-subtle` workspace, has a `bg-active` rounded header strip, no container or row dividers, 40px rows, and a `bg-raised` row hover. Its filter and visible-column controls are white pills; an active filter shows an indigo dot and an explicit clear affordance rather than repeating selected values in the toolbar.
+
 Numeric columns are right-aligned and set in `mono`. Text columns are left-aligned. There is no center alignment anywhere in this product.
 
 Behavior: sticky header, column sort on header click, keyboard row navigation per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], row selection via checkbox column, and virtualised rendering above 100 rows. Sorting and filtering run against the local SQLite index and never round-trip.
@@ -100,15 +102,14 @@ Behavior: sticky header, column sort on header click, keyboard row navigation pe
 
 The Bench Forecast canvas, owned in behavior by [[VRS-F005_The_Bench_Forecast|VRS-F005]] and in appearance here. Also used by [[VRS-F051_Team_Capacity_Planner|VRS-F051]] and [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]].
 
-- Fixed left column, 220px, holding avatar, name, human-readable employee code and role, with its own right border. All three text facts remain present at every timeline width.
+- Fixed left column, 220px, holding avatar, name, human-readable employee code and role. All three text facts remain present at every timeline width. It has no persistent boundary; the identity group is a rounded `bg-hover` target on hover and `bg-selected` on selection.
 - Scrollable right region, horizontally virtualised, showing the configured window. Where it passes beneath the left column it fades over roughly 24px, per the scroll-boundary exception in [[VPS-D001_Design_Foundations|VPS-D001]].
-- **Row hover and selection are a border around the whole row**, spanning the left column and the track as one object — hover in `border-strong`, selection in `brand-500`. Not a background fill; see the Table's note above for why the two differ.
-- The sticky header does not shade a generic calendar. Per-person non-working-day columns resolve from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] and appear only while that row is hovered, because a workspace can contain divergent calendars. The row hover border and this contextual shade arrive together.
-- Date labels are adaptive: daily at 30 days, seven-day ranges at 90 days, and fortnight anchors at 180 days. Persistent daily gridlines are absent; month bands, the frozen-column boundary, and the Today line carry the scan structure.
+- Per-person non-working-day columns resolve from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] and appear only while that row is hovered, because a workspace can contain divergent calendars.
+- Date labels are adaptive: daily with month band at 30 days, inline seven-day ranges at 90 days, and inline fortnight anchors at 180 days. Persistent daily gridlines and header/row dividers are absent; the Today line carries the scan structure.
 - **Assignment bar:** neutral `bg-raised` with `border-default`, `radius-md`, 20px height, project name inside at `small` `text-primary` truncating with ellipsis. A 6px `cat-n` dot assigned by project hash carries project identity.
 - **Ghost bar:** same neutral geometry with a 1px dashed `border-strong`, per the dashed-border rule; its project dot follows the same hash.
 - **Bench region:** muted theme-specific amber at rest, strengthening to `attention` when its row is hovered; `radius-md`, 20px height, with the accumulated cost in `numeric-medium`. Hovering a region highlights its exact range in the sticky date header and shows the start/end dates there. The signature element defined in [[VPS-D001_Design_Foundations|VPS-D001]].
-- **Today line:** 1px `brand-500`, full height, above bars, with a 6px dot at the top edge. The only brand-colored element on the canvas.
+- **Today line:** 1px `brand-500`, full height, above bars, with an 8px dot at the top edge. Today's header date is a `brand-500` pill with `text-inverse`; this is one signal, not an additional use of brand.
 
 ### Chart
 

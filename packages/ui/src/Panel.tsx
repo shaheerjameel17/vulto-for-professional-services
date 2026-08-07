@@ -3,6 +3,7 @@
 import { useEffect, useRef, type ReactNode } from "react";
 import { X } from "lucide-react";
 import { cx } from "./cx";
+import { Avatar } from "./Avatar";
 import { Button } from "./Button";
 import { Text } from "./Text";
 
@@ -28,6 +29,9 @@ export type PanelProps = {
   open: boolean;
   title: string;
   subtitle?: string;
+  avatarName?: string;
+  referenceLabel?: string;
+  dashedAvatar?: boolean;
   onClose: () => void;
   children: ReactNode;
 };
@@ -36,6 +40,9 @@ export function Panel({
   open,
   title,
   subtitle,
+  avatarName,
+  referenceLabel,
+  dashedAvatar,
   onClose,
   children,
 }: PanelProps) {
@@ -68,16 +75,26 @@ export function Panel({
         "motion-base transition-[opacity,transform]",
       )}
     >
-      <div className="flex items-start justify-between gap-2 border-b border-border-default px-4 py-3">
-        <div className="min-w-0">
-          <Text variant="h3" className="truncate text-text-primary">
-            {title}
-          </Text>
-          {subtitle ? (
-            <Text variant="small" className="truncate text-text-secondary">
-              {subtitle}
-            </Text>
-          ) : null}
+      <div className="flex items-start justify-between gap-2 px-4 py-3">
+        <div className="flex min-w-0 items-start gap-2">
+          {avatarName ? <Avatar name={avatarName} size="sm" dashed={dashedAvatar} /> : null}
+          <div className="min-w-0">
+            <div className="flex min-w-0 items-baseline gap-1">
+              <Text variant="h3" className="truncate text-text-primary">
+                {title}
+              </Text>
+              {referenceLabel ? (
+                <Text variant="micro" className="shrink-0 text-text-tertiary">
+                  {referenceLabel}
+                </Text>
+              ) : null}
+            </div>
+            {subtitle ? (
+              <Text variant="small" className="truncate text-text-secondary">
+                {subtitle}
+              </Text>
+            ) : null}
+          </div>
         </div>
         <Button
           variant="ghost"

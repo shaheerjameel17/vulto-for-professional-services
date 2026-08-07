@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-07]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -63,6 +63,8 @@ Fluid width with a 1440px maximum, `6` horizontal padding. The Bench Forecast an
 ### Panel
 
 The 360px contextual surface specified in [[VPS-D002_Component_Library|VPS-D002]]. Opens on selection, persists across selections within a screen, closes on `Escape`. Panel state is remembered per screen for the session, so a user who works with the panel open is not made to reopen it each time they navigate.
+
+The workspace inset is `bg-subtle`; page headers, controls, assignment bars and contextual panels use `bg-surface` or `bg-raised` within it. Below the side-by-side breakpoint the Panel overlays the timeline at the highest application layer and takes `overlay` elevation, so sticky timeline dates cannot paint over it. At the wider side-by-side layout it returns to raised elevation.
 
 ---
 

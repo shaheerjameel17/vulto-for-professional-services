@@ -66,6 +66,9 @@ export default function BenchForecastPage() {
           open
           title={selected.primaryLabel}
           subtitle={selected.secondaryLabel}
+          avatarName={selected.primaryLabel}
+          referenceLabel={selected.referenceLabel}
+          dashedAvatar={selected.ghost}
           onClose={() => setSelectedId(undefined)}
         >
           <ForecastPanel row={selected} canSeeCompensation={canSeeCompensation} />
@@ -131,9 +134,7 @@ export default function BenchForecastPage() {
               * manual. Now through VPS-D002's Tooltip rather than the browser's
               * own box. */}
             <Tooltip content="Filter the cohort" shortcut="F">
-              <Button ref={filtersRef} variant="ghost" icon={SlidersHorizontal}>
-                Filters
-              </Button>
+              <Button ref={filtersRef} variant="ghost" icon={SlidersHorizontal} aria-label="Filter the cohort" />
             </Tooltip>
             <Tooltip content="Scroll today into view" shortcut="T">
               <Button

@@ -2,7 +2,7 @@
 
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
-import { Check, ChevronDown, Search } from "lucide-react";
+import { Check, ChevronDown, Search, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
@@ -29,6 +29,8 @@ export type MultiSelectProps<T extends string> = {
   onChange: (value: T[]) => void;
   searchable?: boolean;
   searchPlaceholder?: string;
+  /** A compact white filter pill that exposes state as a dot and clear action. */
+  appearance?: "default" | "filter";
 };
 
 export function MultiSelect<T extends string>({
@@ -39,6 +41,7 @@ export function MultiSelect<T extends string>({
   onChange,
   searchable = false,
   searchPlaceholder = "Search",
+  appearance = "default",
 }: MultiSelectProps<T>) {
   const [query, setQuery] = useState("");
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -72,26 +75,40 @@ export function MultiSelect<T extends string>({
     optionRefs.current[next]?.focus();
   }
 
+  const filterAppearance = appearance === "filter";
+  const hasActiveFilter = value.length > 0 && !allSelected;
+
   return (
     <RadixPopover.Root onOpenChange={(open) => !open && setQuery("")}>
-      <RadixPopover.Trigger asChild>
-        <button
-          type="button"
-          aria-label={`${label}: ${summary}`}
-          className={cx(
-            "inline-flex h-control items-center gap-2 rounded-md border",
-            "border-border-default bg-bg-surface px-3",
-            "font-ui text-body text-text-primary",
-            "motion-fast transition-colors hover:border-border-strong hover:bg-bg-hover",
-            "focus-visible:outline focus-visible:outline-2",
-            "focus-visible:outline-border-focus focus-visible:outline-offset-2",
-          )}
-        >
-          <span className="text-text-secondary">{label}</span>
-          <span className="text-body-medium">{summary}</span>
-          <Icon icon={ChevronDown} className="text-text-tertiary" />
-        </button>
-      </RadixPopover.Trigger>
+      <div className={cx(filterAppearance && "inline-flex h-control items-center rounded-full bg-bg-raised")}>
+        <RadixPopover.Trigger asChild>
+          <button
+            type="button"
+            aria-label={`${label}: ${summary}`}
+            className={cx(
+              "inline-flex h-control items-center gap-2 font-ui text-body text-text-primary",
+              filterAppearance ? "rounded-full px-3 hover:bg-bg-hover" : "rounded-md border border-border-default bg-bg-surface px-3 hover:border-border-strong hover:bg-bg-hover",
+              "motion-fast transition-colors focus-visible:outline focus-visible:outline-2",
+              "focus-visible:outline-border-focus focus-visible:outline-offset-2",
+            )}
+          >
+            {filterAppearance && hasActiveFilter ? <span aria-hidden className="size-dot rounded-full bg-brand-500" /> : null}
+            <span className={filterAppearance ? "text-text-primary" : "text-text-secondary"}>{label}</span>
+            {!filterAppearance ? <span className="text-body-medium">{summary}</span> : null}
+            <Icon icon={ChevronDown} className="text-text-tertiary" />
+          </button>
+        </RadixPopover.Trigger>
+        {filterAppearance && hasActiveFilter ? (
+          <button
+            type="button"
+            aria-label={`Clear ${label.toLowerCase()} filter`}
+            onClick={() => onChange([])}
+            className="flex size-control items-center justify-center rounded-full text-text-tertiary hover:bg-bg-hover hover:text-text-primary"
+          >
+            <Icon icon={X} />
+          </button>
+        ) : null}
+      </div>
 
       <RadixPopover.Portal>
         <RadixPopover.Content

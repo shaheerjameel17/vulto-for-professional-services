@@ -135,6 +135,7 @@ export function buildForecast(
       headerLabel: horizonLabel(dates, index, horizon),
       monthLabel: isMonthStart ? MONTHS[month] : undefined,
       note: holidayName("uk", date) ?? date,
+      compactHeader: horizon !== 30,
     };
   });
 
@@ -281,10 +282,10 @@ function horizonLabel(dates: string[], index: number, horizon: Horizon): string 
   if (horizon === 30) return day;
   if (horizon === 90 && index % 7 === 0) {
     const end = dates[Math.min(index + 6, dates.length - 1)]!;
-    return `${day}–${Number(end.slice(8, 10))}`;
+    return `${MONTHS[Number(date.slice(5, 7)) - 1]!.slice(0, 3)} ${day}–${Number(end.slice(8, 10))}`;
   }
   if (horizon === 180 && index % 14 === 0) {
-    return `${day} ${MONTHS[Number(date.slice(5, 7)) - 1]!.slice(0, 3)}`;
+    return `${MONTHS[Number(date.slice(5, 7)) - 1]!.slice(0, 3)} ${day}`;
   }
   return undefined;
 }

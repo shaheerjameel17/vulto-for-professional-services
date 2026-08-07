@@ -1306,6 +1306,14 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 
 ## Notes on the build, not findings
 
+## FDN-35 — surface hierarchy and contextual controls
+
+The workspace inset now uses `bg-subtle`, preserving a visible distinction from the canvas while letting white raised assignment bars, filters and the contextual panel read as operational objects rather than faint outlines. The workspace retains `radius-xl`; it is deliberately not made pill-shaped simply because controls inside it are pills.
+
+The Bench Forecast now has 40px rows, no persistent header or frozen-column dividers, a rounded identity hover target, a single-row adaptive header at the 90- and 180-day horizons, and an 8px Today marker whose date is a brand pill. Bench ranges highlight as one rounded header pill. Resting bench amber is pastel in light and materially quieter than hover in dark. The panel overlays above sticky timeline paint at narrow widths and uses overlay elevation; it includes the selected person's avatar and operational code.
+
+People now composes the sparse `Table` variant: white filter pills, active filter dot-plus-clear treatment, a searchable visible-column chooser, code column, an active header strip, and divider-free 40px rows. The behavior belongs in `MultiSelect` and `Table`, not only in the People page.
+
 - **The working-day rule holds.** `apps/roster-web/src/fixtures/calendar.ts` is the only file that inspects a date's weekday, and it exists as the stand-in for `VRS-F004`'s materialization worker. Every consumer reads the index. Two divergent entity calendars — London Monday–Friday, Karachi Monday–Friday plus a four-hour Saturday — so a weekend assumption anywhere is visible on screen.
 - **Off-token values do not compile.** Tailwind's default color, spacing, radius, type, shadow, blur and breakpoint scales are cleared before `VPS-D001`'s are declared. Verified: `bg-red-500`, `p-7`, `shadow-lg`, `blur-sm`, `rounded-xl`, `gap-9`, `font-bold` and `max-w-md` all produce no CSS; the token equivalents all do.
 - **Tooltip, Input, Tabs, Table, Select, MultiSelect, Dialog and Command Palette are built.** `Table` implements sticky header, click-to-sort, hover and controlled selection paint. The Manager queue composes `useShortcuts` with that controlled state for J/K movement; checkbox row selection and virtualization above 100 rows remain unbuilt because no prototype screen needs either. **Chart, Toast, Progress, Textarea, DatePicker, Radio, Switch, Breadcrumb and Pagination are still not built.** Checkbox behavior exists inside `MultiSelect`, but it is not yet exposed as a standalone library component. None of the remaining components is needed by a screen built so far; each arrives with the screen that composes it. The profile's date fields still use `Input`'s own shell because the calendar affordance is not what that screen exists to test.
