@@ -73,6 +73,9 @@ export function Button({
         // No elevation change on hover. VPS-D001: hover is bg-hover and that
         // is the whole vocabulary.
         "motion-fast transition-colors",
+        // VPS-D002: disabled changes opacity and cursor only. Keeping the
+        // original variant colors intact preserves the control's hierarchy.
+        "disabled:cursor-not-allowed disabled:opacity-40",
         VARIANT[variant],
         SIZE[size],
         solidDanger,

@@ -1037,6 +1037,56 @@ value was introduced.
 
 ---
 
+## FDN-4 — Timesheet speed-run prototype
+
+The weekly entry surface now follows `VRS-F010` rather than behaving like a
+generic seven-day spreadsheet. Its columns come from the resolved calendar
+fixture, its rows represent two active assignments, a staffed pitch and the
+standing Non-billable category, and the current fixture deliberately uses
+Karachi's six-day week. That made the special case visible in the product:
+typing `fd` in Saturday's cell resolves to 4 hours while `fd` and `hd` on an
+eight-hour day resolve to 8 and 4 respectively. No screen code inspects a
+weekday or computes a weekend.
+
+The natural parser accepts decimals, `fd`, `hd` and one-operation addition or
+subtraction. `Tab` and `Shift+Tab` move row-major, arrows move geometrically,
+`Cmd+D` copies the current cell's resolved value into the remaining cells on
+that row, and brackets change week. The `Cmd+D` behavior is the founder-approved
+correction recorded on FDN-9: the old specification phrase “from the cell
+above” is incompatible with “fill the rest of the row.”
+
+**The speed run used real browser keypresses.** Two billable rows were filled to
+44 hours, including the four-hour Saturday, and submitted with `Cmd+Enter` in
+1.395 seconds. Submission changed every entry surface to read-only, exposed the
+success Badge and Unlock action, and the confirmation check was fully transparent
+at 1,000ms. `Cmd+D`, `Tab`, arrows, brackets and `Cmd+Enter` were each exercised
+through the same native browser keypress path. The direct `Cmd+Enter` limitation
+from the earlier profile round did not recur.
+
+The 24-hour boundary was also driven through the browser: 20 hours and 5 hours
+on Monday produced “Mon would total 25h. A day cannot exceed 24h.” and disabled
+submission. Light/Compact and Dark/Comfortable were read from the applied root
+attributes, not inferred from the controls. Compact rows measured 33px including
+their 1px separator, matching the 32px cell requirement.
+
+Responsive verification used the real page inside temporary 900px and 700px
+browsing contexts. At 900px the 200px work label and exactly three 128px day
+columns are visible, with the full 968px six-day grid horizontally scrollable.
+At 700px the Table is absent and the six-day Toggle Group plus four vertical
+Cards with explicit numeric steppers are present. Submit week is absent at the
+start of Monday and appears on the final working day as specified. The day strip
+is directly interactive. The available browser driver synthesizes mouse drag
+rather than touch, so swipe is verified through the touch-handler path rather
+than a genuine touch event.
+
+This screen exposed one pre-existing shared-component omission: `Button` had no
+disabled treatment even though `VPS-D002` specifies 40% opacity and a
+not-allowed cursor without changing variant color. The shared component now
+implements that contract, so the disabled Submit week state reads correctly on
+every surface.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.

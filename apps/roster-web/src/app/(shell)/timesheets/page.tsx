@@ -1,5 +1,5 @@
-import { NotInPrototype } from "../../../components/NotInPrototype";
+import { TimesheetScreen } from "../../../components/timesheet/TimesheetScreen";
 
 export default function Page() {
-  return <NotInPrototype title="Timesheets" step="Step 4 — the grid per VRS-F010." />;
+  return <TimesheetScreen />;
 }

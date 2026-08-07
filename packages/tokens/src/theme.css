@@ -119,6 +119,9 @@
   --spacing-button-md: 28px; /* VPS-D002 */
   --spacing-button-lg: 32px; /* VPS-D002 */
   --spacing-filter-list: 240px; /* FDN-30 */
+  --spacing-timesheet-label: 200px; /* VRS-F010 */
+  --spacing-timesheet-day: 128px; /* FDN-4, three-column intermediate view */
+  --spacing-timesheet-grid: 968px; /* 200px + six 128px day columns */
 
   --container-*: initial;
   --container-content: 1440px; /* VPS-D004 */

@@ -30,6 +30,10 @@ export type WorkingDay = {
   hours: number;
 };
 
+export type WorkingWeekDay = WorkingDay & {
+  date: string;
+};
+
 /** VRS-F004's `working_week` JSON: keyed by ISO weekday 1–7. */
 type WorkingWeek = Record<number, { isWorking: boolean; hours: number }>;
 
@@ -52,6 +56,12 @@ const WORKING_WEEK: Record<EntityId, WorkingWeek> = {
     6: { isWorking: true, hours: 4 },
     7: { isWorking: false, hours: 0 },
   },
+};
+
+/** VRS-F004's first working day for the fixture's entity calendar. */
+const WEEK_START_ISO_DAY: Record<EntityId, number> = {
+  uk: 1,
+  pk: 1,
 };
 
 /** Holidays, per entity. A Sindh holiday does not remove a London working day. */
@@ -131,6 +141,25 @@ const ABSENT: WorkingDay = { isWorking: false, hours: 0 };
  */
 export function workingDay(entity: EntityId, date: string): WorkingDay {
   return INDEX[entity].get(date) ?? ABSENT;
+}
+
+/**
+ * VRS-F010's column source. Consumers receive working days already resolved;
+ * they never infer a week boundary or inspect a date's weekday themselves.
+ */
+export function workingWeek(
+  entity: EntityId,
+  anchorDate: string,
+): WorkingWeekDay[] {
+  const anchorWeekday = isoWeekday(anchorDate);
+  const weekStart = WEEK_START_ISO_DAY[entity];
+  const distanceFromStart = (anchorWeekday - weekStart + 7) % 7;
+  const firstDate = addDays(anchorDate, -distanceFromStart);
+
+  return Array.from({ length: 7 }, (_, offset) => {
+    const date = addDays(firstDate, offset);
+    return { date, ...workingDay(entity, date) };
+  }).filter((day) => day.isWorking);
 }
 
 export function holidayName(
