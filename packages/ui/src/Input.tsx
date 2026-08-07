@@ -1,3 +1,4 @@
+import { ChevronDown, ChevronUp } from "lucide-react";
 import type { InputHTMLAttributes, ReactNode, Ref } from "react";
 import { cx } from "./cx";
 import { Text } from "./Text";
@@ -32,6 +33,11 @@ import { Text } from "./Text";
  * taken its own flex share. The `no-spinner` utility is applied on top of
  * that, since a numeric field carrying an affix has no room to gain a
  * spinner back if the browser ever reserves space for one anyway.
+ *
+ * FDN-28 replaces that suppressed browser spinner with explicit shared
+ * controls. They are siblings of the input and its affixes, so they reserve
+ * space rather than drawing over a unit. Arrow keys remain native to the
+ * focused number input; pointer controls use `onStepValue`.
  */
 
 export type InputProps = {
@@ -40,6 +46,7 @@ export type InputProps = {
   error?: string;
   prefix?: ReactNode;
   suffix?: ReactNode;
+  onStepValue?: (value: string) => void;
   ref?: Ref<HTMLInputElement>;
   // `HTMLAttributes` already declares an RDFa `prefix?: string`, which
   // intersects silently with the richer `ReactNode` prop above unless
@@ -52,21 +59,47 @@ export function Input({
   error,
   prefix,
   suffix,
+  onStepValue,
   id,
   type,
   ref,
+  value,
+  min,
+  max,
+  step = 1,
   ...rest
 }: InputProps) {
   const inputId = id ?? `input-${label.replace(/\s+/g, "-").toLowerCase()}`;
   const hasAffix = prefix !== undefined || suffix !== undefined;
+  const showStepper = type === "number";
+
+  function stepValue(direction: -1 | 1) {
+    if (!onStepValue) return;
+    const amount = Number(step) || 1;
+    const current = Number(value ?? 0);
+    const base = Number.isFinite(current) ? current : 0;
+    let next = base + direction * amount;
+    if (min !== undefined) next = Math.max(next, Number(min));
+    if (max !== undefined) next = Math.min(next, Number(max));
+    const decimals = String(amount).split(".")[1]?.length ?? 0;
+    onStepValue(String(Number(next.toFixed(decimals))));
+  }
 
   return (
     <div className="flex flex-col gap-1">
-      <label htmlFor={inputId}>
-        <Text variant="label" className="text-text-secondary">
-          {label}
-        </Text>
-      </label>
+      {/* FDN-26: the label IS the flex item, not a <label> wrapping one.
+       * Nesting Text a level deeper left it non-blockified — its own
+       * text-label line-height (16px) was overridden by the wrapping
+       * <label>'s ambient line-height (20px), which is what produced the
+       * vertical shift every EditableField reflow traced back to. */}
+      <Text
+        as="label"
+        htmlFor={inputId}
+        variant="label"
+        className="text-text-secondary"
+      >
+        {label}
+      </Text>
       <div
         className={cx(
           "flex h-control items-center rounded-md border bg-bg-surface",
@@ -87,6 +120,10 @@ export function Input({
           ref={ref}
           id={inputId}
           type={type}
+          value={value}
+          min={min}
+          max={max}
+          step={step}
           className={cx(
             "h-full min-w-0 flex-1 rounded-md bg-transparent",
             "font-ui text-body text-text-primary",
@@ -95,7 +132,9 @@ export function Input({
             suffix !== undefined ? "pr-1" : "pr-3",
             // Suppressing the native spinner is scoped to affixed number
             // inputs, per VPS-D002 — an unaffixed one keeps it.
-            type === "number" && hasAffix && "no-spinner",
+            type === "number" &&
+              (hasAffix || showStepper) &&
+              "no-spinner numeric-tabular",
           )}
           {...rest}
         />
@@ -104,6 +143,32 @@ export function Input({
             <Text variant="small" className="text-text-tertiary">
               {suffix}
             </Text>
+          </span>
+        ) : null}
+        {showStepper ? (
+          <span className="flex h-full w-button-sm shrink-0 flex-col border-l border-border-default">
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={`Increase ${label}`}
+              disabled={!onStepValue}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => stepValue(1)}
+              className="flex min-h-0 flex-1 items-center justify-center text-text-tertiary hover:bg-bg-hover hover:text-text-primary disabled:opacity-40"
+            >
+              <ChevronUp className="size-3" />
+            </button>
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={`Decrease ${label}`}
+              disabled={!onStepValue}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => stepValue(-1)}
+              className="flex min-h-0 flex-1 items-center justify-center border-t border-border-default text-text-tertiary hover:bg-bg-hover hover:text-text-primary disabled:opacity-40"
+            >
+              <ChevronDown className="size-3" />
+            </button>
           </span>
         ) : null}
       </div>

@@ -63,7 +63,7 @@ export function Tooltip({
           <span className="flex items-baseline gap-2">
             <span className="min-w-0">{content}</span>
             {shortcut ? (
-              <span className="shrink-0 font-mono text-mono text-text-tertiary">
+              <span className="shrink-0 font-ui text-numeric text-text-tertiary">
                 {shortcut}
               </span>
             ) : null}

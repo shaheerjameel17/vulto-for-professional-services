@@ -76,7 +76,7 @@ export function ForecastPanel({
               * F36: the figure covers the cost horizon, and says so. */}
             {canSeeCompensation && row.costedBenchWorkingDays > 0 ? (
               <>
-                <Text variant="mono-lg" className="text-text-primary">
+                <Text variant="numeric-lg" className="text-text-primary">
                   {formatMoney(row.benchCost)}
                 </Text>
                 {/* Only worth saying where the two differ. "22 of those 22

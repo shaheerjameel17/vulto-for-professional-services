@@ -118,6 +118,7 @@
   --spacing-button-sm: 24px; /* VPS-D002 */
   --spacing-button-md: 28px; /* VPS-D002 */
   --spacing-button-lg: 32px; /* VPS-D002 */
+  --spacing-filter-list: 240px; /* FDN-30 */
 
   --container-*: initial;
   --container-content: 1440px; /* VPS-D004 */
@@ -125,11 +126,12 @@
 
   /* ---- Typography ------------------------------------------------- */
   /*
-   * FDN-11. Two faces, two jobs.
+   * FDN-29. One product face, with two figure modes.
    *
-   * Inter Variable carries display, interface and body. Geist Mono carries
-   * every figure a person will read as money. Plus Jakarta Sans and Manrope
-   * are both retired.
+   * Inter Variable carries display, interface, body and figures. Numeric
+   * tokens turn on tabular numerals so aligned data keeps stable digit widths
+   * without introducing a separate monospace voice. Geist Mono, Plus Jakarta
+   * Sans and Manrope are retired from the product.
    *
    * Inter is loaded as a variable font, not as static cuts, which is what
    * makes the intermediate weights below available — `micro` at 560 and the
@@ -143,7 +145,6 @@
   --font-*: initial;
   --font-weight-*: initial;
   --font-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
   /*
    * Base is 14px, not 16. VPS-D001: a 16px base would cost roughly two rows
@@ -214,10 +215,10 @@
   --text-micro--font-weight: 560;
   --text-micro--letter-spacing: 0.04em;
 
-  --text-mono: 13px;
-  --text-mono--line-height: 18px;
-  --text-mono--font-weight: 400;
-  --text-mono--letter-spacing: 0;
+  --text-numeric: 13px;
+  --text-numeric--line-height: 18px;
+  --text-numeric--font-weight: 400;
+  --text-numeric--letter-spacing: 0;
 
   /*
    * FDN-15 adds a twelfth type token, which is a design system change rather
@@ -225,13 +226,13 @@
    *
    * The bench figure has to be heavier than an assignment bar's label, by
    * weight rather than by hue. At the `match` height there is no room to also
-   * be larger, so this is `mono` at 500 against the label's Inter 400. It
+   * be larger, so this is `numeric` at 500 against the label's Inter 400. It
    * follows VPS-D001's existing `body` / `body-medium` naming exactly.
    */
-  --text-mono-medium: 13px;
-  --text-mono-medium--line-height: 18px;
-  --text-mono-medium--font-weight: 500;
-  --text-mono-medium--letter-spacing: 0;
+  --text-numeric-medium: 13px;
+  --text-numeric-medium--line-height: 18px;
+  --text-numeric-medium--font-weight: 500;
+  --text-numeric-medium--letter-spacing: 0;
 
   /*
    * FDN-20's thirteenth token. A supporting figure in a group: large enough to
@@ -239,17 +240,16 @@
    *
    * 16px is `h3`'s step on the size ladder, so this adds no new size.
    */
-  --text-mono-md: 16px;
-  --text-mono-md--line-height: 22px;
-  --text-mono-md--font-weight: 500;
-  --text-mono-md--letter-spacing: 0;
+  --text-numeric-md: 16px;
+  --text-numeric-md--line-height: 22px;
+  --text-numeric-md--font-weight: 500;
+  --text-numeric-md--letter-spacing: 0;
 
-  /* Weight 600 so the leading figure outweighs whatever sits beside it. Geist
-   * Mono is loaded variable, so 600 is a real weight. */
-  --text-mono-lg: 20px;
-  --text-mono-lg--line-height: 26px;
-  --text-mono-lg--font-weight: 600;
-  --text-mono-lg--letter-spacing: 0;
+  /* Weight 600 so the leading figure outweighs whatever sits beside it. */
+  --text-numeric-lg: 20px;
+  --text-numeric-lg--line-height: 26px;
+  --text-numeric-lg--font-weight: 600;
+  --text-numeric-lg--letter-spacing: 0;
 
   /* ---- Elevation -------------------------------------------------- */
   /* Three levels, only the third uses a shadow. Nothing else in this
@@ -297,6 +297,7 @@
   --color-bg-subtle: var(--vt-bg-subtle);
   --color-bg-hover: var(--vt-bg-hover);
   --color-bg-selected: var(--vt-bg-selected);
+  --color-bg-scrim: var(--vt-bg-scrim);
 
   --color-border-default: var(--vt-border-default);
   --color-border-strong: var(--vt-border-strong);

@@ -174,7 +174,7 @@ export default function BenchForecastPage() {
                 <Stat
                   label={`Unrecovered · next ${forecast.costHorizonDays} days`}
                   value={formatMoney(forecast.totalBenchCost)}
-                  scale="mono-lg"
+                  scale="numeric-lg"
                   labelPlacement="below"
                   className="items-end text-right"
                 />
@@ -182,14 +182,14 @@ export default function BenchForecastPage() {
               <Stat
                 label="People with bench time"
                 value={`${forecast.benchedCount} of ${forecast.cohortSize}`}
-                scale="mono-md"
+                scale="numeric-md"
                 labelPlacement="below"
                 className="items-end text-right"
               />
               <Stat
                 label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
                 value={`${forecast.utilization}%`}
-                scale="mono-md"
+                scale="numeric-md"
                 labelPlacement="below"
                 className="items-end text-right"
               />

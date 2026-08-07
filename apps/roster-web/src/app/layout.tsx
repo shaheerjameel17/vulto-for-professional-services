@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
-import { Geist_Mono, Inter } from "next/font/google";
+import { Inter } from "next/font/google";
 import { AppearanceProvider } from "./appearance";
 import "./globals.css";
 
 /*
- * FDN-11. Two faces, two jobs.
+ * FDN-29. One product face, with two numeric modes.
  *
- * Inter carries display, interface and body; Geist Mono carries the figures.
+ * Inter carries display, interface, body and figures. Product figures use its
+ * tabular OpenType numerals so columns still align without inheriting a
+ * developer-tool voice from a separate monospace family.
  *
  * Inter is loaded as a variable font — no `weight` array, which is what makes
  * next/font serve the variable file rather than static cuts. The token scale
@@ -21,15 +23,6 @@ import "./globals.css";
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
-  display: "swap",
-});
-
-// Also variable, as of FDN-15: `mono-lg` now asks for 600 so the bench figure
-// is heavier than the assignment label beside it, and the static pair of cuts
-// did not include it.
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-geist-mono",
   display: "swap",
 });
 
@@ -49,7 +42,7 @@ export default function RootLayout({
       data-theme="light"
       data-density="comfortable"
       data-cat-palette="current"
-      className={`${inter.variable} ${geistMono.variable}`}
+      className={inter.variable}
       suppressHydrationWarning
     >
       <body>

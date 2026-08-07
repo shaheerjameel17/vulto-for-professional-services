@@ -883,6 +883,160 @@ is now written down instead of left to be rediscovered per component.
 
 ---
 
+## FDN-26 and FDN-27
+
+### FDN-26 — the reflow had two independent causes, not one
+
+The read state and the Input it becomes didn't occupy the same box, and
+measuring in the browser (`getBoundingClientRect` on `Reporting & schedule`
+and `Department`, before/after opening Job title) found the shift was two
+separate bugs stacked on top of each other, not the single horizontal one
+the ticket described.
+
+**Horizontal — 13px.** `EditableField`'s read div used `px-3 -mx-3`, a
+pad-in/negative-margin-out pair that nets to a 0px inset so the value text
+sits flush with its label. `Input`'s box is a real 1px border with the
+`<input>` itself carrying `pl-3`, an inset of `1 + 12 = 13px`. Fixed by
+replacing `-mx-3` with a matching `border border-transparent` on the read
+div — same padding, same border width, box model now identical, only the
+paint (transparent vs. `border-border-default`) changes on transition.
+
+**Vertical — 4px, and not where it looked.** Every field's label row grew
+4px taller in edit mode, which is what actually pushed `Department` and
+`Reporting & schedule` down. Traced to `Input.tsx`: it wrapped its label
+`Text` in a native `<label>` element — `<label><Text variant="label">…`.
+`EditableField`'s read state renders that same `Text` as a direct child of
+a `flex` container, which blockifies it (a flex item is always blockified,
+whatever tag it is) and lets its own `text-label` line-height (16px) govern
+its box. Nested one level inside the `<label>`, the `Text` span is no
+longer the flex item — the `<label>` is — so the span stays genuinely
+`display: inline`, and the line box that actually renders defers to the
+label's own (unstyled, ambient) font metrics, 20px, rather than the 16px
+`text-label` sets. Fixed in `Input.tsx` by making the label itself the flex
+item — `<Text as="label" htmlFor={inputId} variant="label">` — rather than
+nesting a `Text` inside a separate `<label>` wrapper. `Text` gained an
+`htmlFor` prop for this. No component wraps `Input`'s label this way
+elsewhere, so this was the only call site.
+
+**Verified by measurement, not by looking, per the ticket.** Zero delta on
+both reference points, opening Job title, Contracted hours (suffixed) and
+Frequency (Compensation section), in both Comfortable and Compact density.
+Before/after screenshots at the same scroll position confirm it visually
+too — see the round's report.
+
+### FDN-27 — the toggle was not broken
+
+Read the mechanism end to end — `AppearanceControls` → `setTheme` → the
+`AppearanceProvider` context → the `useEffect` that writes `data-theme` on
+`<html>` → `packages/tokens/src/runtime.css`'s `:root[data-theme="dark"]`
+block — and every name matches across every hop. No stray `.dark` class, no
+`dark:` Tailwind variant anywhere, no `localStorage` (confirmed clean
+against CLAUDE.md's rule too). Clicking Light in a fresh session flips
+`data-theme` to `"light"` and the whole UI repaints correctly, immediately,
+every time.
+
+**The false report traces to how the previous session drove the browser,
+not to the code.** Screenshot-pixel coordinates were being passed to a
+click action without being scaled to the real viewport — an 800×450
+screenshot clicked against a 1280×720 page, roughly a 1.6× mismatch. A
+click aimed at the Light toggle by screenshot coordinates lands on empty
+space instead, the toggle never actually gets clicked, `data-theme` never
+changes, and every screenshot that session took was dark — which is
+indistinguishable from "the toggle does nothing" unless you check the DOM
+attribute directly rather than trusting that the click landed.
+
+**Reproduced twice this round, as a check on the theory rather than an
+assumption.** A raw screenshot-coordinate click against this exact build
+failed to open a field for editing on the first attempt today, for the
+identical reason. Clicking by element reference, or by coordinates read
+back from a fresh same-resolution screenshot, worked every time. This is
+the same category of tooling caveat as F46 and the `Cmd+Enter` note below —
+worth recording so the next session doesn't re-diagnose working code as
+broken because of how it was driven.
+
+**`Cmd+Enter` re-attempted, per the round's ask.** Still reproduces exactly
+as FDN-24 logged it: a `keydown` listener on the field sees `key: ""`,
+`code: ""`, `metaKey: false` for the synthesized Return regardless of the
+modifier requested. Confirmed still a tooling gap, not new evidence about
+the component — Escape and Blur remain the two paths verified directly.
+
+No code changed for FDN-27. Shell (Bench Forecast), People and the profile
+are now captured in light mode — see the round's report.
+
+---
+
+## FDN-28 through FDN-30 — profile containment, numeric voice, scalable People controls
+
+### FDN-28 — contained profile fields and explicit numeric stepping
+
+The rendered profile proved FDN-24's borderless paint too sparse even though
+its edit-on-demand interaction was sound. Every fact now occupies a restrained
+`bg-subtle` field surface with a hairline `border-default`; editable fields
+strengthen that paint on hover and focus, while read-only facts retain the same
+contained treatment without looking disabled. This supersedes only FDN-24's
+paint decision. Its read/edit model and FDN-26's identical box-model contract
+remain in force across every profile field.
+
+Numeric fields now use explicit up/down controls rather than relying on a
+browser-owned spinner. The controls are siblings of the value and unit, reserve
+their own space, and work in both read and edit states. Arrow Up/Down changes
+the value from the keyboard; the controls enforce the same step, minimum and
+maximum rules. This keeps the affordance visible without allowing it to overlap
+`hrs/wk` or `GBP/day`.
+
+**Measured in the browser.** Opening Job title produced a 0px delta for the
+field's x, y, width and height, the fixed `Reporting & schedule` reference
+point, and the profile scroll position in both Comfortable (32px field) and
+Compact (28px field) density. Compact was deliberately tested at `scrollTop:
+220`, so the result also covers focus behavior away from the top of the page.
+The evidence pair was captured at the same scroll position in each density.
+Light and dark field paint was read from the applied theme and captured.
+
+**Keyboard verification improved this round.** A real browser `Meta+Enter`
+keypress committed both a text edit and a stepped numeric edit, closing the
+input and leaving the committed read value. The earlier empty-`e.key` tooling
+limitation did not reproduce through the browser's DOM keypress path. Arrow Up
+also stepped the focused numeric editor before that commit.
+
+### FDN-29 — Inter tabular numerals replace the technical monospace voice
+
+Geist Mono made operational figures feel like code. Product figures now use
+Inter with `font-variant-numeric: tabular-nums`; monospace is reserved for
+genuine code or shortcut notation. The type tokens and shared `Text` variant
+were renamed from `mono*` semantics to `numeric*`, and the prototype call sites
+were audited so the old product-figure treatment cannot linger behind an old
+class name.
+
+**Verified from rendered output.** The Bench Forecast exposes 25 tabular-number
+nodes; the sampled `£46,016` resolves to `Inter, "Inter Fallback", ui-sans-serif,
+system-ui, sans-serif` with `font-variant-numeric: tabular-nums`. The People
+hours column and profile numeric fields resolve to the same family and variant.
+This supersedes the Geist Mono portion of FDN-11, not its scale, tracking or
+weight decisions.
+
+### FDN-30 — People filters scale, and Add person has a clear home
+
+Entity and employment-type pills did not scale beyond the two-entity fixture.
+Both are now shared multi-select popovers. Entity includes search; both show
+checkbox choices, selected counts and a clear action. Selection is a union
+inside each filter and an intersection between filters. The filter bar stays
+compact as entities and employment types grow instead of expanding laterally.
+
+`+ Add person` is the People page's primary header action. It opens a real
+shared dialog with the minimum prototype fields, required-field validation and
+an in-session success alert; it deliberately does not persist or simulate a
+backend. Browser verification covered the full 15-row directory, a Karachi
+search yielding one entity choice, the PK entity narrowing to five people,
+PK plus Full time and Part time narrowing to four, and a successful modal
+submission.
+
+The shared component work introduces `MultiSelect`, `Select` and `Dialog` in
+`packages/ui`. Two token-owned values were added for the work: the filter-list
+height and semantic scrim color. No feature-local component or arbitrary visual
+value was introduced.
+
+---
+
 ## Closed by founder decision during this build
 
 **F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.
@@ -928,5 +1082,5 @@ Each is marked in the code at the point it applies, and each is a look-at-it que
 
 - **The working-day rule holds.** `apps/roster-web/src/fixtures/calendar.ts` is the only file that inspects a date's weekday, and it exists as the stand-in for `VRS-F004`'s materialization worker. Every consumer reads the index. Two divergent entity calendars — London Monday–Friday, Karachi Monday–Friday plus a four-hour Saturday — so a weekend assumption anywhere is visible on screen.
 - **Off-token values do not compile.** Tailwind's default color, spacing, radius, type, shadow, blur and breakpoint scales are cleared before `VPS-D001`'s are declared. Verified: `bg-red-500`, `p-7`, `shadow-lg`, `blur-sm`, `rounded-xl`, `gap-9`, `font-bold` and `max-w-md` all produce no CSS; the token equivalents all do.
-- **Tooltip, Input, Tabs and Table are built.** `Table` implements sticky header, click-to-sort and hover only — checkbox row selection, keyboard row navigation and virtualisation above 100 rows are all in `VPS-D002` but unbuilt, since no screen composing it needs any of the three yet. **Chart, Modal, Toast, Progress, Select, Textarea, DatePicker, Checkbox, Radio, Switch, Breadcrumb and Pagination are still not built.** None is needed by a screen built so far; each arrives with the screen that composes it. The profile's date and numeric fields stand in for DatePicker and Select with `Input`'s own shell — the distinct dropdown and calendar affordances aren't built, since that interaction isn't what the profile screen exists to test.
+- **Tooltip, Input, Tabs, Table, Select, MultiSelect and Dialog are built.** `Table` implements sticky header, click-to-sort and hover only — checkbox row selection, keyboard row navigation and virtualisation above 100 rows are all in `VPS-D002` but unbuilt, since no screen composing it needs any of the three yet. **Chart, Toast, Progress, Textarea, DatePicker, Radio, Switch, Breadcrumb and Pagination are still not built.** Checkbox behavior exists inside `MultiSelect`, but it is not yet exposed as a standalone library component. None of the remaining components is needed by a screen built so far; each arrives with the screen that composes it. The profile's date fields still use `Input`'s own shell because the calendar affordance is not what that screen exists to test.
 - **The good-news empty state is implemented but unreachable** with the current fixture, since somebody always has bench time in this data.

@@ -23,6 +23,7 @@
   --vt-bg-hover: #f4f4f5; /* neutral-100 */
   --vt-bg-selected: #eef2ff; /* brand-50 */
   --vt-bg-active: #e4e4e7; /* neutral-200 — FDN-18, one step off the canvas */
+  --vt-bg-scrim: rgb(9 9 11 / 0.36);
 
   /*
    * Segmented controls, FDN-20.
@@ -107,6 +108,7 @@
   --vt-bg-hover: #27272a; /* neutral-800 */
   --vt-bg-selected: #312e81; /* brand-900 */
   --vt-bg-active: #27272a; /* neutral-800 */
+  --vt-bg-scrim: rgb(9 9 11 / 0.64);
 
   --vt-segment-track: #18181b; /* neutral-900 */
   --vt-segment-active: #3f3f46; /* neutral-700 */

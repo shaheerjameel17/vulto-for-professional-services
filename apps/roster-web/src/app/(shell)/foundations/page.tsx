@@ -97,15 +97,17 @@ const TYPE_SPEC: Record<string, string> = {
   small: "13 / 18 · Inter 400",
   label: "12 / 16 · Inter 500",
   micro: "11 / 14 · Inter 560 · +0.04em",
-  mono: "13 / 18 · Geist Mono 400",
-  "mono-medium": "13 / 18 · Geist Mono 500 · FDN-15, the twelfth token",
-  "mono-lg": "20 / 26 · Geist Mono 600",
+  numeric: "13 / 18 · Inter 400 · tabular figures",
+  "numeric-medium": "13 / 18 · Inter 500 · tabular figures",
+  "numeric-md": "16 / 22 · Inter 500 · tabular figures",
+  "numeric-lg": "20 / 26 · Inter 600 · tabular figures",
 };
 
 const SAMPLE: Record<string, string> = {
-  mono: "£4,200 · 12 days · 76%",
-  "mono-medium": "£4,200",
-  "mono-lg": "£18,400",
+  numeric: "£4,200 · 12 days · 76%",
+  "numeric-medium": "£4,200",
+  "numeric-md": "76%",
+  "numeric-lg": "£18,400",
 };
 
 function Swatch({ className, label }: { className: string; label: string }) {
@@ -142,10 +144,11 @@ export default function FoundationsPage() {
 
         <Section title="Type scale">
           <Text variant="small" className="mb-4 text-text-secondary">
-            FDN-11. Two faces: Inter Variable for everything except figures,
-            Geist Mono for those. Line heights re-derived against Inter&rsquo;s
-            1.21em content box, which moved exactly one of them —{" "}
-            <code className="font-mono text-mono">display</code>, from 36 to 40.
+            FDN-29. Inter Variable carries the whole product. Figures use its
+            tabular numeral feature for alignment without changing typeface.
+            Line heights remain derived against Inter&rsquo;s 1.21em content box,
+            which moved exactly one of them —{" "}
+            <code className="font-ui text-numeric">display</code>, from 36 to 40.
             Tracking derived from Inter&rsquo;s own metric curve and applied
             above 20px only.
           </Text>
@@ -190,9 +193,9 @@ export default function FoundationsPage() {
 
           <div className="mt-4">
             <InlineAlert tone="attention">
-              Finding F10 — in dark mode <code className="font-mono text-mono">bg-raised</code>,{" "}
-              <code className="font-mono text-mono">bg-subtle</code> and{" "}
-              <code className="font-mono text-mono">bg-hover</code> are all
+              Finding F10 — in dark mode <code className="font-ui text-numeric">bg-raised</code>,{" "}
+              <code className="font-ui text-numeric">bg-subtle</code> and{" "}
+              <code className="font-ui text-numeric">bg-hover</code> are all
               neutral-800. Switch to Dark and compare the three swatches above:
               hover is invisible inside any overlay surface.
             </InlineAlert>
@@ -287,7 +290,7 @@ export default function FoundationsPage() {
                 <Text variant="micro" className="w-10 shrink-0 text-text-tertiary">
                   {item.token}
                 </Text>
-                <Text variant="mono" className="w-12 shrink-0 text-text-tertiary">
+                <Text variant="numeric" className="w-12 shrink-0 text-text-tertiary">
                   {item.px}px
                 </Text>
                 <div className={`h-2 rounded-sm bg-brand-500 ${item.className}`} />
@@ -411,7 +414,7 @@ export default function FoundationsPage() {
                 <Stat
                   label="Next 90 days"
                   value="£42,800"
-                  scale="mono-lg"
+                  scale="numeric-lg"
                   delta={{ text: "+£6,200 vs last week", tone: "attention" }}
                 />
               </Card>

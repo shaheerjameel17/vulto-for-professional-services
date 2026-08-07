@@ -126,6 +126,9 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
                 value={fields.contractedHours}
                 onCommit={commit("contractedHours")}
                 suffix="hrs/wk"
+                min={0}
+                max={80}
+                step={1}
               />
               <EditableField
                 label="Billing rate"
@@ -133,6 +136,8 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
                 value={fields.billingRateDefault}
                 onCommit={commit("billingRateDefault")}
                 suffix="GBP/day"
+                min={0}
+                step={10}
                 helperText="Tier 0 — what the agency charges."
               />
             </div>
@@ -143,6 +148,9 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
                 value={fields.billabilityTargetOverride}
                 onCommit={commit("billabilityTargetOverride")}
                 suffix="%"
+                min={0}
+                max={100}
+                step={5}
               />
             ) : null}
           </div>
@@ -158,6 +166,8 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
               value={fields.compensationBaseAmount}
               onCommit={commit("compensationBaseAmount")}
               suffix={fields.compensationCurrency}
+              min={0}
+              step={1000}
             />
             <EditableField
               label="Frequency"

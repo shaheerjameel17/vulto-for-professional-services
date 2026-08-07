@@ -28,7 +28,7 @@ import { Tooltip, TooltipProvider } from "./Tooltip";
 
 /**
  * Below this width the cost figure cannot be shown without truncating it, so it
- * is suppressed instead. Sized for `mono-medium`, which FDN-15 settled on.
+ * is suppressed instead. Sized for `numeric-medium`, which FDN-15 settled on.
  */
 const COST_MIN_WIDTH = 72;
 /** Below this the day count does not fit either, and nothing is shown. */
@@ -444,15 +444,15 @@ function BenchRegion({
         className="absolute top-1/2 flex h-bench-bar -translate-y-1/2 items-center overflow-hidden rounded-md bg-bench px-2"
       >
         {showCost ? (
-          <Text variant="mono-medium" className="truncate text-bench-figure">
+          <Text variant="numeric-medium" className="truncate text-bench-figure">
             {region.costLabel}
           </Text>
         ) : null}
         {/* Weight, not hue: the day count is the same color as the figure and a
           * lighter weight, because it is the same kind of fact stated smaller.
-          * This is why `mono` must stay at 400 — see F40. */}
+          * This is why `numeric` must stay at 400 — see F40. */}
         {showCount ? (
-          <Text variant="mono" className="truncate text-bench-figure">
+          <Text variant="numeric" className="truncate text-bench-figure">
             {region.workingDays}d
           </Text>
         ) : null}

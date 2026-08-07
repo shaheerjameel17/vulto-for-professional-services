@@ -2,7 +2,7 @@ import { cx } from "./cx";
 import { Text } from "./Text";
 
 /*
- * VPS-D002. A single figure with a label. `display` or `mono-lg` for the
+ * VPS-D002. A single figure with a label. `display` or `numeric-lg` for the
  * value, `micro` uppercase for the label, and an optional delta in `small`
  * with `success` or `attention`.
  *
@@ -18,12 +18,12 @@ export type StatProps = {
   label: string;
   value: string;
   /**
-   * `display` for a dashboard's single number, `mono-lg` for a figure.
+   * `display` for a dashboard's single number, `numeric-lg` for a figure.
    *
-   * FDN-17 adds `mono`, for the subordinate figures in a group where one figure
+   * FDN-17 adds `numeric`, for subordinate figures in a group where one figure
    * carries the hierarchy and the others support it.
    */
-  scale?: "display" | "mono-lg" | "mono-md" | "mono";
+  scale?: "display" | "numeric-lg" | "numeric-md" | "numeric";
   /**
    * FDN-17: the label sits below the value where the value leads a group. Above
    * remains the default, which is what every other Stat in the product does.

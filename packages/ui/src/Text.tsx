@@ -9,17 +9,16 @@ import { cx } from "./cx";
  * weight and a tracking value. The four are never assembled by hand at a call
  * site: a feature asks for `body` and gets all four.
  *
- * FDN-11 reduced the face pairing to two. Inter carries display, interface and
- * body; Geist Mono carries every figure a person will read as money. Which of
- * the two a token uses is the only face decision left, so it is a predicate
- * rather than a map.
+ * FDN-29 removes the separate product monospace face. Inter carries every
+ * role; numeric tokens add tabular figures so columns align without making
+ * workforce and commercial data look like code.
  */
 
-const MONO_TOKENS = new Set<TypeToken>([
-  "mono",
-  "mono-medium",
-  "mono-md",
-  "mono-lg",
+const NUMERIC_TOKENS = new Set<TypeToken>([
+  "numeric",
+  "numeric-medium",
+  "numeric-md",
+  "numeric-lg",
 ]);
 
 const SIZE: Record<TypeToken, string> = {
@@ -32,10 +31,10 @@ const SIZE: Record<TypeToken, string> = {
   small: "text-small",
   label: "text-label",
   micro: "text-micro",
-  mono: "text-mono",
-  "mono-medium": "text-mono-medium",
-  "mono-md": "text-mono-md",
-  "mono-lg": "text-mono-lg",
+  numeric: "text-numeric",
+  "numeric-medium": "text-numeric-medium",
+  "numeric-md": "text-numeric-md",
+  "numeric-lg": "text-numeric-lg",
 };
 
 /** VPS-D001: uppercase is permitted at `micro` only. */
@@ -53,10 +52,10 @@ const DEFAULT_ELEMENT: Record<TypeToken, ElementType> = {
   small: "p",
   label: "span",
   micro: "span",
-  mono: "span",
-  "mono-medium": "span",
-  "mono-md": "span",
-  "mono-lg": "span",
+  numeric: "span",
+  "numeric-medium": "span",
+  "numeric-md": "span",
+  "numeric-lg": "span",
 };
 
 export type TextProps = {
@@ -66,6 +65,8 @@ export type TextProps = {
   children?: ReactNode;
   title?: string;
   id?: string;
+  /** Only meaningful with `as="label"`. */
+  htmlFor?: string;
   /**
    * Geometry only — an absolute offset a token cannot express, such as a
    * timeline month label positioned against its track. Never colors, sizes or
@@ -85,7 +86,8 @@ export function Text({
   return (
     <Component
       className={cx(
-        MONO_TOKENS.has(variant) ? "font-mono" : "font-ui",
+        "font-ui",
+        NUMERIC_TOKENS.has(variant) && "numeric-tabular",
         SIZE[variant],
         CASING[variant],
         className,

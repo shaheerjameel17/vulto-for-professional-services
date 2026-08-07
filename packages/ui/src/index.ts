@@ -8,6 +8,13 @@ export { Avatar, type AvatarProps } from "./Avatar";
 export { Skeleton, type SkeletonProps } from "./Skeleton";
 export { InlineAlert, type InlineAlertProps } from "./InlineAlert";
 export { Input, type InputProps } from "./Input";
+export { Select, type SelectProps, type SelectOption } from "./Select";
+export {
+  MultiSelect,
+  type MultiSelectProps,
+  type MultiSelectOption,
+} from "./MultiSelect";
+export { Dialog, type DialogProps } from "./Dialog";
 export { Tabs, TabPanel, type TabsProps, type TabItem } from "./Tabs";
 export { Card, type CardProps } from "./Card";
 export { Table, type TableProps, type TableColumn } from "./Table";

@@ -172,6 +172,12 @@
   -moz-appearance: textfield;
 }
 
+/* FDN-29. Stable digit widths without switching product data to a monospace
+ * face. Kept as one utility so the OpenType contract cannot drift by callsite. */
+@utility numeric-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Motion. VPS-D003 — three durations, one decelerating curve. */
 @utility motion-fast {
   transition-timing-function: var(--ease-vulto);

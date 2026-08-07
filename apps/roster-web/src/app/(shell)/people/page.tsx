@@ -2,19 +2,29 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import {
   Avatar,
   Badge,
+  Button,
   Content,
+  InlineAlert,
+  MultiSelect,
   PageHeader,
   Table,
   Text,
-  ToggleGroup,
   type TableColumn,
 } from "@vulto/ui";
 import { EMPLOYEES, type Employee } from "../../../fixtures/roster";
-import { profileFor } from "../../../fixtures/profiles";
+import {
+  profileFor,
+  type EmploymentType,
+} from "../../../fixtures/profiles";
 import { ENTITY_NAMES, type EntityId } from "../../../fixtures/calendar";
+import {
+  AddPersonDialog,
+  type NewPersonDraft,
+} from "../../../components/people/AddPersonDialog";
 
 /*
  * FDN-25 — VRS-F002's People directory, per VPS-D002's Table.
@@ -48,14 +58,12 @@ type DirectoryRow = {
   contractedHours?: number;
 };
 
-const ENTITY_FILTERS: { value: "all" | EntityId; label: string }[] = [
-  { value: "all", label: "All entities" },
-  { value: "uk", label: "UK" },
-  { value: "pk", label: "PK" },
+const ENTITY_FILTERS: { value: EntityId; label: string; keywords: string }[] = [
+  { value: "uk", label: ENTITY_NAMES.uk, keywords: "UK London" },
+  { value: "pk", label: ENTITY_NAMES.pk, keywords: "PK Pakistan Karachi" },
 ];
 
-const TYPE_FILTERS: { value: "all" | string; label: string }[] = [
-  { value: "all", label: "All types" },
+const TYPE_FILTERS: { value: EmploymentType; label: string }[] = [
   { value: "FullTime", label: "Full time" },
   { value: "PartTime", label: "Part time" },
   { value: "Contractor", label: "Contractor" },
@@ -64,8 +72,10 @@ const TYPE_FILTERS: { value: "all" | string; label: string }[] = [
 
 export default function PeoplePage() {
   const router = useRouter();
-  const [entityFilter, setEntityFilter] = useState<"all" | EntityId>("all");
-  const [typeFilter, setTypeFilter] = useState<"all" | string>("all");
+  const [entityFilter, setEntityFilter] = useState<EntityId[]>([]);
+  const [typeFilter, setTypeFilter] = useState<EmploymentType[]>([]);
+  const [addPersonOpen, setAddPersonOpen] = useState(false);
+  const [lastCreated, setLastCreated] = useState<NewPersonDraft | null>(null);
 
   const rows: DirectoryRow[] = useMemo(
     () =>
@@ -83,8 +93,11 @@ export default function PeoplePage() {
   );
 
   const filteredRows = rows.filter((row) => {
-    if (entityFilter !== "all" && row.employee.entityId !== entityFilter) return false;
-    if (typeFilter !== "all" && row.employmentType !== typeFilter) return false;
+    if (entityFilter.length > 0 && !entityFilter.includes(row.employee.entityId)) return false;
+    if (
+      typeFilter.length > 0 &&
+      !typeFilter.includes(row.employmentType as EmploymentType)
+    ) return false;
     return true;
   });
 
@@ -166,7 +179,7 @@ export default function PeoplePage() {
       sortable: true,
       sortValue: (row) => row.contractedHours ?? 0,
       render: (row) => (
-        <Text variant="mono" className="text-text-primary">
+        <Text variant="numeric" className="text-text-primary">
           {row.contractedHours ?? "—"}
         </Text>
       ),
@@ -176,22 +189,40 @@ export default function PeoplePage() {
 
   return (
     <>
-      <PageHeader title="People" />
+      <PageHeader
+        title="People"
+        actions={
+          <Button variant="primary" icon={Plus} onClick={() => setAddPersonOpen(true)}>
+            Add person
+          </Button>
+        }
+      />
       <Content>
-        <div className="mt-6 flex items-center gap-2">
-          <ToggleGroup<"all" | EntityId>
+        <div className="mt-6 flex flex-wrap items-center gap-2">
+          <MultiSelect<EntityId>
             label="Entity"
+            allLabel="All entities"
             value={entityFilter}
             onChange={setEntityFilter}
             options={ENTITY_FILTERS}
+            searchable
+            searchPlaceholder="Search entities"
           />
-          <ToggleGroup<"all" | string>
+          <MultiSelect<EmploymentType>
             label="Employment type"
+            allLabel="All types"
             value={typeFilter}
             onChange={setTypeFilter}
             options={TYPE_FILTERS}
           />
         </div>
+
+        {lastCreated ? (
+          <InlineAlert tone="success" className="mt-4">
+            {lastCreated.fullName} was added to this prototype session. Reloading
+            clears the mock change.
+          </InlineAlert>
+        ) : null}
 
         <div className="mt-4">
           <Table
@@ -207,6 +238,11 @@ export default function PeoplePage() {
           />
         </div>
       </Content>
+      <AddPersonDialog
+        open={addPersonOpen}
+        onOpenChange={setAddPersonOpen}
+        onCreate={setLastCreated}
+      />
     </>
   );
 }

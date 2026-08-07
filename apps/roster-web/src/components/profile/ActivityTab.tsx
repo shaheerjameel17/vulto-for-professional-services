@@ -21,7 +21,7 @@ export function ActivityTab({ profile }: { profile: EmployeeProfile }) {
               : "flex gap-4 py-3"
           }
         >
-          <Text variant="mono" className="w-24 shrink-0 text-text-tertiary">
+          <Text variant="numeric" className="w-24 shrink-0 text-text-tertiary">
             {entry.date}
           </Text>
           <Text variant="body" className="text-text-primary">
