@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto Roster Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-10]]"
 Product Phase:
   - Scale
 Feature Type:
@@ -63,7 +63,9 @@ This is the answer to a question nothing else answers: not what happened, not wh
 
 ### Screen
 
-Content region, reached at `G` then `T`, and from the single daily prompt [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] sends per the reader's own timezone.
+Content region. **The briefing is what Home renders at the start of a reader's day**, not a destination of its own — reached at `G` then `H` per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s role-aware Home, and from the single daily prompt [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] sends per the reader's own timezone.
+
+An earlier revision claimed `G` then `T`, which belongs to Timesheets. A briefing that is read once a day and then not returned to is the clearest case of the placement test in `VPS-D004`: it is the surface a person lands on, not a place they navigate back to.
 
 ### Layout
 

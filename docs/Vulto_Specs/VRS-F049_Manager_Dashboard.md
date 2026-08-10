@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto Roster Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-10]]"
 Product Phase:
   - Post-MVP
 Feature Type:
@@ -67,7 +67,11 @@ One view in two tiers.
 
 ### Screen
 
-Content region, no Panel. Reached at `G` then `D`.
+Content region, no Panel. **This feature is the Manager's Home**, not a separate destination.
+
+[[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] resolves Home per role — employee self-service for a Team Member, this action queue for a Manager, the operational overview for administrative roles — so the surface specified here is what Home renders for someone with direct reports. It is reached at `G` then `H`, with the rest of the navigation map and its role filtering owned by `VPS-D004`.
+
+Earlier revisions of this document gave the feature its own sidebar destination at `G` then `D`. That binding now belongs to Development, and a twelfth-destination Manager Dashboard was exactly the feature-register-as-navigation failure the placement test in `VPS-D004` exists to prevent. The screen did not change; only where a person reaches it did.
 
 ### Layout
 
@@ -99,7 +103,7 @@ Content region, no Panel. Reached at `G` then `D`.
 
 ### Keyboard
 
-`G` `D` opens the dashboard. `J`/`K` move between items across section boundaries. `Enter` performs the primary action. `E` marks an item handled where it is informational.
+`G` `H` opens Home, which for a Manager is this queue. `J`/`K` move between items across section boundaries. `Enter` performs the primary action. `E` marks an item handled where it is informational. The global table in [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]] owns every `G` binding; this document restates only the one that reaches this surface.
 
 ### System states
 

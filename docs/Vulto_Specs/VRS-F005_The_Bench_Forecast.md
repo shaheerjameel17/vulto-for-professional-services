@@ -101,6 +101,8 @@ One screen, occupying Content and Panel. It is exempt from the 1440px content ma
 
 **Assignment bar.** Neutral `bg-raised` with `border-default`, `radius-md`, 20px height, and the project name inside at `small` `text-primary`, truncating with ellipsis. A 6px `cat-n` dot assigned by project hash identifies the project without allowing assignment color to compete with bench amber.
 
+**Hash collisions past eight projects are accepted, with reasoning.** Eight categorical tokens hashed against Project UUIDs will collide in any real workspace, and no widening of the palette avoids it — [[VPS-D001_Design_Foundations|VPS-D001]] records that the exclusions protecting `attention` and `success` leave roughly four distinguishable cool hue families. The collision is tolerable here because the dot is not the identifier: every assignment bar carries the project name, and the dot is a redundant scanning aid that makes a row's shape memorable. Two same-colored dots on one row cost recognition speed, not correctness. This would not be acceptable if color were load-bearing — a chart keyed only by a legend must widen its palette or add a second channel rather than inherit this decision.
+
 **Bench region.** Muted theme-specific amber at rest, strengthening to `attention` with the row hover, `radius-md`, 20px high. Left-aligned inside it, in `numeric-medium`, the accumulated unrecovered cost. The cost is suppressed when the region is too narrow to contain it; the working-day count appears only at 44px or wider. This is the signature element. It does not animate or pulse — the restraint of everything around it is what makes it land.
 
 **Today line.** 1px `brand-500`, full height, above bars, with an 8px dot at the top edge. The only persistent brand-colored element on the canvas.
@@ -110,6 +112,10 @@ One screen, occupying Content and Panel. It is exempt from the 1440px content ma
 ### Components
 
 Timeline and Panel per [[VPS-D002_Component_Library|VPS-D002]]. Filters are a row of Selects and a Toggle Group for the horizon. There is no primary button on this screen — the Bench Forecast is a place you look, not a place you do things, and the actions it leads to belong to the Panel.
+
+**What a Manager sees is their direct reports, not the agency with figures suppressed.** Every row and every aggregate — the unrecovered total, the count of people with bench time, the utilization figure — is recomputed from the manager's cohort rather than computed agency-wide and then filtered for display. A manager's utilization number is their team's utilization; it is not the firm's number with rows hidden. [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s role matrix carries the same scope, and a Team Member does not receive this destination at all.
+
+**The prototype's Owner/Manager switcher is scaffolding and is not a product requirement.** No such control exists in the product: role comes from the signed-in person and is enforced by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]. It is recorded here because the two mechanisms are not equivalent and the difference has security consequences. The prototype's switcher fakes a permission by declining to render data the device already holds. The product enforces the same permission by never syncing that data to the device — which is why this document can state that WellnessTriggerEvent never appears for any role including Owner, and that the Panel implements no suppression logic for it. Any prototype or demo carrying such a switcher must mark it visibly as scaffolding, so that no one reads it as evidence that permissions are a rendering concern.
 
 ### Keyboard
 
