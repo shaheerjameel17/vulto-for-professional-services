@@ -118,17 +118,15 @@ SQLite FTS5 virtual tables, one per searchable node type, indexing **identifying
 
 **The table below is a registry, not a fixed list.** Each application registers its own searchable node types here, per [[VPS-000_Documentation_Standard|VPS-000]]'s Standing Rule 7. Roster's registration is the initial one; [[Vulto Projects]] adds Project, Deliverable and Client when it ships.
 
-| Node type | Indexed fields |
+| Node type | Indexed fields | Registered by |
 |---|---|
-| Employee | `full_name`, `preferred_name`, `job_title` |
-| Project | `name` |
-| Client | `name` |
-| Skill | `name`, `category` |
-| Document | `file_name` |
-| Policy | `title` |
-
-| Deliverable | `title` | [[Vulto Projects]] |
+| Employee | `full_name`, `preferred_name`, `job_title` | Vulto Roster |
+| Skill | `name`, `category` | Vulto Roster |
+| Document | `file_name` | Vulto Roster |
+| Policy | `title` | Vulto Roster |
+| Client | `name` | [[Vulto Projects]] |
 | Project | `name` | [[Vulto Projects]] |
+| Deliverable | `title` | [[Vulto Projects]] |
 
 These tables are maintained by triggers on the same content tables [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s materialization already populates — part of that existing pipeline, not a separate reindex job on its own schedule.
 
@@ -266,7 +264,7 @@ search.query(text, limit?) -> {
 
 - Full-text search inside document bodies or contract content — materially harder, and would need to reckon with encrypted content specifically. Not attempted
 - Typo-tolerant fuzzy matching beyond prefix and substring — a reasonable later enhancement
-- Search history, recent searches or personalised ranking — stateless per query
+- Search history, recent searches or personalized ranking — stateless per query
 - Cross-workspace search — each workspace's index is separate and there is no cross-tenant query surface
 - Saved searches or alerts on a query — [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] handles anything that needs to reach a person
 

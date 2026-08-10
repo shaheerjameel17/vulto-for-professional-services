@@ -288,7 +288,7 @@ document.archive(documentId) -> { success }
 ## Security Considerations
 
 - **The provenance-inheritance mechanism is this document's central contribution**, not any specific feature. Every future feature filing a document derived from sensitive data inherits the protection by calling `createFromSource` correctly, rather than needing to classify its own output.
-- **A direct upload's tier is chosen by the uploading HR Admin, not inferred**, since there is no source to inherit from. `uploadSensitive` exists so that a human judgement — *this scanned document is sensitive even though nothing forced it to be* — has a real path rather than being stuck at Tier 0 or requiring a workaround.
+- **A direct upload's tier is chosen by the uploading HR Admin, not inferred**, since there is no source to inherit from. `uploadSensitive` exists so that a human judgment — *this scanned document is sensitive even though nothing forced it to be* — has a real path rather than being stuck at Tier 0 or requiring a workaround.
 - **`storage_reference` is opaque, never a guessable path**, consistent with [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s requirement that object keys carry no human-readable subject matter.
 - **The category enum is itself a small disclosure.** A document categorized WorkAuthorization implies something about a person's immigration status even where the file is unreadable. Categories are visible only to roles who can already see the document exists, which for an elevated-tier document is the same set who can open it.
 

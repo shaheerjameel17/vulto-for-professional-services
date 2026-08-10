@@ -84,7 +84,7 @@ Without this, those needs go unmet or get stuffed into a free-text field never m
 
 ### Layout and components
 
-**Custom fields** is a Table: label, node type, field type Badge, fill rate, active. Above it, the budget stated plainly in `mono`: **7 of 10 used.**
+**Custom fields** is a Table: label, node type, field type Badge, fill rate, active. Above it, the budget stated plainly in `numeric`: **7 of 10 used.**
 
 That counter is the feature's most important element. A cap discovered at the moment of rejection is a cap that feels arbitrary; a cap visible from the first field created is a budget somebody spends deliberately.
 

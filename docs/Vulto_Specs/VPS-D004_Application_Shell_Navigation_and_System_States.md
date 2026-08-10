@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-08-07]]"
+Date: "[[2026-08-08]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -46,15 +46,69 @@ There is no top-level global header bar. The horizontal band across the top of m
 
 200px, `bg-canvas`, no persistent right border, collapsible to 48px icons via `Cmd+\`.
 
-Workspace trigger at the top, showing name and entity where [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] has more than one. It opens one popover containing the current user's identity and role, the device-local theme preference, workspace settings for Owner and Admin roles, workspace switching, and sign out. Account controls are not duplicated at the foot. Navigation sits beneath, grouped by role relevance rather than by feature taxonomy — a Team Member and an Owner see genuinely different sidebars, because a navigation listing eleven sections a person cannot open is a navigation that teaches them to ignore it.
+Workspace trigger at the top, showing name and entity where [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] has more than one. It opens one popover containing the current user's identity and role, the device-local theme preference, workspace settings for Owner and Admin roles, workspace switching, and sign out. Account controls are not duplicated at the foot. Navigation sits beneath, grouped by role relevance rather than by feature taxonomy — a Team Member and an Owner see genuinely different sidebars, because a navigation listing destinations a person cannot open is a navigation that teaches them to ignore it.
 
-Navigation items are `label`, 32px tall, `radius-md`, with a 16px Lucide icon. The active item takes `bg-active` with `text-primary`. Counts appear as a right-aligned `micro` figure in `text-tertiary`, and only where the count implies an action the person should take.
+Navigation items are `label`, 32px tall, `radius-md`, with a 16px Lucide icon. The active item takes `bg-active` with `text-primary`. Counts appear as a right-aligned `micro` figure in `text-tertiary`, and only where the count implies an action the person should take. Group headers use `micro`, uppercase and `text-tertiary`; they render only when the role's navigation contains at least two non-empty groups, so a small role-specific sidebar is not divided for ceremony.
 
 At the foot: the sync status indicator only. It remains visible because sync health is workspace state rather than a menu preference.
 
+### Navigation architecture
+
+The sidebar contains **durable work areas, not features**. A feature earns a primary destination only when at least one role initiates work there weekly and the surface owns a multi-record collection. This prevents the feature register from becoming the navigation and gives future features an explicit placement test.
+
+Every surface is placed through this order:
+
+1. **Primary destination** — recurring work over a collection of records.
+2. **Sub-screen or contextual panel** — scoped to a person, entity, project, or record already owned by a primary destination.
+3. **Inbox** — event-driven work that begins because something needs the current user.
+4. **Workspace Settings** — behavior, roles, integrations, thresholds, imports, or policy controlled by an administrator.
+5. **Command palette** — rare direct lookup or navigation that does not deserve permanent space.
+
+The complete Owner navigation is fixed in this order:
+
+| Group | Destination | Owns |
+|---|---|---|
+| Overview | **Home** | The role-aware starting surface: employee self-service for Team Members, the action queue for Managers, and the relevant operational overview for administrative roles |
+| Overview | **Inbox** | Every event-driven action and notification, per [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] |
+| Planning | **Bench Forecast** | Named-person capacity, assignments, Ghost Resources, conflicts, revenue gaps, and contextual matching |
+| Planning | **Hiring** | Headcount, requisitions, candidates, interviews, offers, talent pools, referrals, and hiring checks |
+| People | **People** | Directory, employee profile, organizational chart, contractors, skills matrix, and person-scoped facts |
+| People | **Development** | Reviews, career paths, goals, certifications, and training |
+| People | **People Ops** | Onboarding, departures, contracts, documents, assets, policies, right-to-work records, and formal cases |
+| Work | **Timesheets** | Time entry and classification. Utilization pulse remains contextual to a person and appears in Reports as an aggregate |
+| Work | **Leave** | Personal requests, team approvals, balances, and policy interpretation |
+| Work | **Expenses** | Personal submission and manager approval |
+| Finance & insight | **Payroll** | Payroll, rate cards, compensation changes and bands, tax, currencies, contractor invoices, and disbursement |
+| Finance & insight | **Reports** | Capacity planning, people analytics, intelligence, retention, hiring quality, costs, benchmarks, and exports |
+
+Workspace Settings, reached from the workspace trigger, owns members and roles, entities and calendars, workspace configuration, setup and import, integrations and API access, custom fields, data governance, retention, and erasure. Search remains behind `Cmd/Ctrl + K`. Mobile shell behavior, sync, audit, encryption, notifications, and the suite graph bridge are platform capabilities rather than destinations.
+
+**Sub-screen placement is stable even when a feature grows.** Billable versus non-billable pulse is a profile fact and a Reports aggregate, not a thirteenth destination. Assets are person-scoped in the profile and managed as a register within People Ops. Policies are administered in People Ops and acknowledged from Home or Inbox. The same rule applies to every future feature.
+
+### Role filtering
+
+The Owner sees the complete map above. Every other role receives a subset in the same order; empty groups disappear. Composite roles receive the union. The navigation is permission-filtered before rendering, so it never exposes a destination only to replace it with a permission wall.
+
+| Destination | Team Member | Manager | HR Admin | Finance Admin | Owner |
+|---|:---:|:---:|:---:|:---:|:---:|
+| Home | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Inbox | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Bench Forecast | — | Direct reports | ✓ | ✓ | ✓ |
+| Hiring | — | ✓ | ✓ | — | ✓ |
+| People | ✓ | ✓ | ✓ | ✓ | ✓ |
+| Development | Own | Direct reports | ✓ | — | ✓ |
+| People Ops | — | — | ✓ | — | ✓ |
+| Timesheets | Own | Direct reports | ✓ | ✓ | ✓ |
+| Leave | Own | Direct reports | ✓ | Own | ✓ |
+| Expenses | Own | Direct reports | ✓ | ✓ | ✓ |
+| Payroll | — | — | — | ✓ | ✓ |
+| Reports | — | Team scope | ✓ | ✓ | ✓ |
+
+`Own`, `Direct reports`, and `Team scope` describe query scope, not separate screens. Permission enforcement remains exclusively in [[VPS-A004_Graph_Permission_Layer|VPS-A004]]; the sidebar consumes the resulting capabilities and never reimplements them.
+
 ### Page header
 
-48px, containing the page title at `h2`, an optional `small` subtitle carrying the most useful context for that screen, and a right-aligned action slot with at most one `primary` button. Breadcrumbs appear only where a screen is genuinely nested more than one level, which in this product is rare.
+48px, containing the page title at `h2`, an optional `small` subtitle carrying the most useful context for that screen, and a right-aligned action slot with at most one `primary` button. Title and subtitle share one baseline rather than stacking; the subtitle truncates before displacing the action. Breadcrumbs appear only where a screen is genuinely nested more than one level, which in this product is rare.
 
 ### Content
 

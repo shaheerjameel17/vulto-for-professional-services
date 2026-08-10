@@ -91,7 +91,7 @@ Approved overtime also exempts that week from re-flagging, so the same hours are
 
 Saving opens a Modal confirming that existing accrual is unaffected and the change applies forward — the same confirmation [[VRS-F006_Rate_Card_Engine|VRS-F006]] uses, for the same reason.
 
-**The overtime outcome** appears inside [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s flag clearance Panel as a Toggle Group of three: **Corrected**, **Normal for this person**, **Approved overtime**. Selecting the third shows the TOIL that will accrue, in `mono`, before confirmation. A manager approving overtime should see what it costs in future absence at the moment they approve it.
+**The overtime outcome** appears inside [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s flag clearance Panel as a Toggle Group of three: **Corrected**, **Normal for this person**, **Approved overtime**. Selecting the third shows the TOIL that will accrue, in `numeric`, before confirmation. A manager approving overtime should see what it costs in future absence at the moment they approve it.
 
 ### Keyboard
 

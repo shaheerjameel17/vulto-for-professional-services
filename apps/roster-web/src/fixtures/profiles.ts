@@ -36,7 +36,7 @@ export type ProfileCertification = {
 
 export type ProfileDocument = {
   name: string;
-  category: "Contract" | "ID" | "Certification" | "Policy Acknowledgement";
+  category: "Contract" | "ID" | "Certification" | "Policy Acknowledgment";
   uploadedAt: string;
 };
 
@@ -107,7 +107,7 @@ const PROFILES: Record<string, ProfileDetail> = {
     documents: [
       { name: "Employment Contract — Priya Sharma.pdf", category: "Contract", uploadedAt: "2022-03-10" },
       { name: "Right to Work — Passport.pdf", category: "ID", uploadedAt: "2022-03-10" },
-      { name: "Handbook Acknowledgement 2026.pdf", category: "Policy Acknowledgement", uploadedAt: "2026-01-08" },
+      { name: "Handbook Acknowledgment 2026.pdf", category: "Policy Acknowledgment", uploadedAt: "2026-01-08" },
     ],
     activity: [
       { date: "2026-08-01", description: "Rolled off Acme Rebrand" },

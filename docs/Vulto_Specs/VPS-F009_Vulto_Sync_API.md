@@ -100,7 +100,7 @@ Reached from [[VPS-F005_Workspace_Configuration_Console|VPS-F005]].
 
 That last column is the useful one. A silently failing integration is the most common failure of this kind of feature, and an agency discovers it when their accounting is a month behind.
 
-**The creation Modal** displays the key and secret in `mono` on a `raised` Card with a **Copy** action and a single unambiguous line: *This is the only time these will be shown.* The **Done** action is disabled until both have been copied or explicitly acknowledged.
+**The creation Modal** displays the key and secret in `numeric` on a `raised` Card with a **Copy** action and a single unambiguous line: *This is the only time these will be shown.* The **Done** action is disabled until both have been copied or explicitly acknowledged.
 
 **Tier 1 scopes are visually distinguished at selection**, with a plain note: *Delivered when an authorized device is next online, not instantly.* An integrator discovering eventual consistency after building against it has been misled by omission.
 

@@ -51,7 +51,7 @@ Any employee submits a referral from an open role, or unprompted: the person's n
 
 A Candidate is created at Applied with `source: Referral`, linked to the Referral record, and the recruiter sees where it came from and the referrer's note.
 
-The referrer receives an acknowledgement immediately, and a status update at each meaningful stage: screening, interview, offer, hired or closed. **Not the detail** — never a scorecard, never a rejection reason — but enough that they are not left wondering whether anything happened.
+The referrer receives an acknowledgment immediately, and a status update at each meaningful stage: screening, interview, offer, hired or closed. **Not the detail** — never a scorecard, never a rejection reason — but enough that they are not left wondering whether anything happened.
 
 ### The panel exclusion
 
@@ -219,7 +219,7 @@ interviewRound.checkReferralConflict(candidateId, panelistEmployeeIds)
 
 **GIVEN** an employee submits a referral
 **WHEN** it is saved
-**THEN** a Candidate exists at Applied with source Referral, linked to the Referral, and the referrer receives an immediate acknowledgement
+**THEN** a Candidate exists at Applied with source Referral, linked to the Referral, and the referrer receives an immediate acknowledgment
 
 ---
 

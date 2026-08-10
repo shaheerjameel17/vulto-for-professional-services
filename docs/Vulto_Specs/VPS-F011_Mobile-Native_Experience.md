@@ -105,7 +105,7 @@ Leave, payslips and documents per [[VRS-F050_Employee_Self-Service_Portal|VRS-F0
 
 **The home screen differs by role and is not configurable.** An Owner opens to the Forecast; a Manager to their queue; an employee to this week's timesheet. The premise is that the right landing surface is known, not left to a preference nobody sets.
 
-**The widget carries two numbers and nothing else** — bench headcount and accumulated cost, in `mono`, on `bg-surface`. A widget with six figures is a widget nobody reads at a glance, and the glance is the entire point.
+**The widget carries two numbers and nothing else** — bench headcount and accumulated cost, in `numeric`, on `bg-surface`. A widget with six figures is a widget nobody reads at a glance, and the glance is the entire point.
 
 **Timeline surfaces do not render as timelines.** The Bench Forecast becomes a vertical per-person list per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s responsive rule: current assignment, next rolloff, bench cost. A Gantt chart on a phone is a Gantt chart nobody reads.
 

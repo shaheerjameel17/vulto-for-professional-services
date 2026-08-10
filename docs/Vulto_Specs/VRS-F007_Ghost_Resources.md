@@ -47,7 +47,7 @@ With Ghost Resources the founder creates two rows, assigns them, and the forecas
 
 An Owner, HR Admin or Manager creates one from the Bench Forecast or the People directory. The form collects a role title, a projected start date, optional target skills using the same picker as [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]], an optional seniority level, an optional expected billing rate, and an optional link to an existing OpenRole.
 
-Both nodes write atomically. The row appears immediately, dashed and reduced-opacity per [[VPS-D001_Design_Foundations|VPS-D001]]'s dashed-border rule, with the role title where a name would be.
+Both nodes write atomically. The row appears immediately with the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]]'s placeholder rule, with the role title where a name would be. Opacity is unchanged so every label continues to meet the same contrast floor as a real employee.
 
 ### Assigning and tracking
 
@@ -76,7 +76,7 @@ Confirming runs the promotion transaction. The row transitions from placeholder 
 
 ### Layout and components
 
-**The Ghost row** is identical in geometry to a real employee row. Its left column shows the role title at `body-medium` and the seniority at `small`, with a `Ghost` Badge in `subtle` intensity. Bars render as Assignment bars with a 1px dashed border in `cat-n` at 12% fill — the same treatment [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] uses for aged-out data, and correctly so: both mean *expected, not here yet*.
+**The Ghost row** is identical in geometry to a real employee row. Its left column shows the role title at `body-medium` and the seniority at `small`, with a `Ghost` Badge in `subtle` intensity. Bars use the neutral Assignment-bar fill with a 1px dashed `border-strong`; the categorical project dot remains present. This is the same treatment [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] uses for aged-out data, and correctly so: both mean *expected, not here yet*.
 
 **Ghost detail** in the Panel: role, seniority, projected start, target skills as Badges, the linked OpenRole where present, notes, and the assignment list. Primary action **Promote to employee**; secondary **Link open role**; `danger` **Cancel**.
 
@@ -252,7 +252,7 @@ ghostResource.list(workspaceId, status?)        -> GhostResource[]
 
 - **Ghost Resources carry no elevated privacy concern.** Both node types are Tier 0. The only security-relevant behavior here is the promotion race handling, which is a data-integrity concern rather than a confidentiality one.
 - **A Ghost's expected billing rate follows the same tier rules as a real employee's.** A placeholder is not an exemption from [[VRS-F006_Rate_Card_Engine|VRS-F006]]'s treatment of rates.
-- **Promotion is audited** per [[VPS-F004_Silent_Audit_Log|VPS-F004]], because it converts a planning artefact into an employment record and both the timing and the actor matter afterwards.
+- **Promotion is audited** per [[VPS-F004_Silent_Audit_Log|VPS-F004]], because it converts a planning artifact into an employment record and both the timing and the actor matter afterwards.
 
 ---
 

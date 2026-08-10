@@ -25,13 +25,13 @@ This document is the single source of truth for this feature.
 
 Structured, multi-panelist interview rounds. An HR Admin creates a round, assigns panelists, and proposes candidate time slots. The candidate picks one through [[VRS-F030_Candidate_Portal|VRS-F030]]'s existing portal.
 
-**Each panelist submits their own independent scorecard afterwards** — a rating, strengths, concerns and a recommendation — rather than one person's notes standing in for the whole panel's judgement.
+**Each panelist submits their own independent scorecard afterwards** — a rating, strengths, concerns and a recommendation — rather than one person's notes standing in for the whole panel's judgment.
 
 ---
 
 ## Problem It Solves
 
-A single interviewer's notes and a single number collapse a panel's actual judgement into one impression, and say nothing about **where panelists disagreed** — which is frequently the most useful signal a hiring decision has. A unanimous Yes and a split between StrongYes and No are entirely different situations, and averaging them produces the same number.
+A single interviewer's notes and a single number collapse a panel's actual judgment into one impression, and say nothing about **where panelists disagreed** — which is frequently the most useful signal a hiring decision has. A unanimous Yes and a split between StrongYes and No are entirely different situations, and averaging them produces the same number.
 
 Scheduling by email — *does Tuesday at two work* — repeated per candidate per round, is slow and error-prone in a way a self-service picker is not. It is also where candidates are lost: a three-day exchange to find a slot is three days a competing offer has to land.
 
@@ -76,7 +76,7 @@ An HR Admin sees every submitted entry side by side, with disagreement visible a
 | Round setup | Panel, from the candidate record | Panelists and slots |
 | My interviews | Content | A panelist's own rounds and pending scorecards |
 | Scorecard | Panel | One panelist's submission |
-| Panel summary | Panel, from the candidate record | Everyone's judgement, side by side |
+| Panel summary | Panel, from the candidate record | Everyone's judgment, side by side |
 | Slot selection | Within [[VRS-F030_Candidate_Portal|VRS-F030]]'s portal | The candidate's choice |
 
 ### Layout and components
@@ -89,7 +89,7 @@ Each proposed slot renders with an inline conflict indicator: `success` where ev
 
 **The scorecard** is deliberately short: a 1–5 rating as a Toggle Group, strengths and concerns as Textareas, and a recommendation as four options — StrongYes, Yes, No, StrongNo — rendered as distinct Cards rather than a Select, because the choice deserves a moment's thought.
 
-Submission is final and the interface says so before confirming. A scorecard is a deliberate judgement, not a draft.
+Submission is final and the interface says so before confirming. A scorecard is a deliberate judgment, not a draft.
 
 **Panel summary** is a column per panelist, side by side: their rating, recommendation Badge, strengths and concerns in full. No average, no aggregate score, no consensus indicator.
 

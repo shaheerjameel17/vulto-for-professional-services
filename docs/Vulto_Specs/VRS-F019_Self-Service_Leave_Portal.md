@@ -88,7 +88,7 @@ Beneath, a Table of request history: dates, type, days, status Badge, decided by
 
 **Request leave** in the Panel: a Select for type, a DatePicker range respecting the working calendar per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], half-day Switches for start and end, and a reason Textarea.
 
-As dates are chosen, three things update live beneath the form: the working days consumed in `mono`, the resulting balance, and any warnings as Inline Alerts. Warnings render `attention`, never `danger` — nothing here has failed.
+As dates are chosen, three things update live beneath the form: the working days consumed in `numeric`, the resulting balance, and any warnings as Inline Alerts. Warnings render `attention`, never `danger` — nothing here has failed.
 
 The **Team Away** overlay renders inside the DatePicker itself: dates where a teammate is already approved carry a small avatar stack. Seeing that three colleagues are already off the week you were about to request is the kind of thing people would rather know before submitting than after being asked to reconsider.
 
@@ -154,7 +154,7 @@ Any overlapping Assignment is surfaced to the approving manager by name and rang
 
 ### Effect on utilization
 
-**Approved leave reduces expected hours in [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]].** A person on holiday for a week has zero available hours that week, and computing their utilization against a full week would show a collapse that is entirely an artefact of the denominator.
+**Approved leave reduces expected hours in [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]].** A person on holiday for a week has zero available hours that week, and computing their utilization against a full week would show a collapse that is entirely an artifact of the denominator.
 
 This closes the limitation [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]] names for the period before this feature exists.
 
@@ -254,7 +254,7 @@ teamCalendar.get(workspaceId, month, scope?)    -> { employeeId, dates, leaveTyp
 ---
 
 **GIVEN** an employee cancels a future-dated approved request
-**WHEN** cancelation is confirmed
+**WHEN** cancellation is confirmed
 **THEN** status becomes Canceled and the balance those days reserved is restored immediately
 
 ---
@@ -274,7 +274,7 @@ teamCalendar.get(workspaceId, month, scope?)    -> { employeeId, dates, leaveTyp
 ## Non-Functional Requirements
 
 - Balance display and warning checks return within 200ms from the local graph
-- Submission, cancelation and balance viewing function fully offline
+- Submission, cancellation and balance viewing function fully offline
 - A manager's pending list updates within 1 second of a new submission
 - The team calendar renders within 300ms for a month across 150 people
 

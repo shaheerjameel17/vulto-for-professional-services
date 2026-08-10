@@ -90,7 +90,7 @@ An Owner or HR Admin generates a hiring suggestion, creating a DraftHiringRecord
 
 A Table with skill categories as rows and quarters as columns, exempt from the content maximum since horizontal space here is time.
 
-Each cell is compact: **the gap as the primary figure** in `mono-lg`, supply and demand beneath in `mono` at `text-secondary`. A negative gap renders `attention`; positive renders neutral. Surplus capacity is not `success` — a bench you are paying for is not good news, and coloring it as such would contradict everything [[VRS-F005_The_Bench_Forecast|VRS-F005]] communicates.
+Each cell is compact: **the gap as the primary figure** in `numeric-lg`, supply and demand beneath in `numeric` at `text-secondary`. A negative gap renders `attention`; positive renders neutral. Surplus capacity is not `success` — a bench you are paying for is not good news, and coloring it as such would contradict everything [[VRS-F005_The_Bench_Forecast|VRS-F005]] communicates.
 
 Where the pipeline-weighted term is visible, demand renders as two values — *4 + 1.8* — the confirmed figure and the weighted addition, separated rather than summed. A founder deciding whether to hire needs to know how much of the demand is real and how much is a bet.
 

@@ -15,7 +15,7 @@ aliases:
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
 **Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (expected working hours — the denominator), [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] (the classification this feature reads), [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] (TimesheetEntry), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (aggregate disclosure control)
-**Blocks:** Nothing structurally. This reads and visualises.
+**Blocks:** Nothing structurally. This reads and visualizes.
 
 This document is the single source of truth for this feature.
 
@@ -84,7 +84,7 @@ Pitch hours are never folded into the billable figure in either direction. They 
 
 **The pulse bar** is the Progress and Pulse Bar component from [[VPS-D002_Component_Library|VPS-D002]], segmented: billable in `success`, non-billable in `neutral-400`, pitch in `cat-2`, unlogged as an unfilled remainder with a 1px dashed left edge per [[VPS-D001_Design_Foundations|VPS-D001]]'s dashed-border rule — because unlogged time is expected-but-not-present, which is exactly what that rule means.
 
-The target sits as a 1px `border-strong` tick, so *above or below target* is legible without reading a number. Beneath, in `mono`, the headline: *31h billable of 40h available · 78%*. Stating both figures rather than only the percentage is deliberate; a percentage without its denominator is a rumor, and this is the number the whole product is judged on.
+The target sits as a 1px `border-strong` tick, so *above or below target* is legible without reading a number. Beneath, in `numeric`, the headline: *31h billable of 40h available · 78%*. Stating both figures rather than only the percentage is deliberate; a percentage without its denominator is a rumor, and this is the number the whole product is judged on.
 
 **The dashboard** leads with a Stat: the aggregate in `display`, the delta beneath in `small` with the comparison period named explicitly. Beneath it, a bar Chart, one bar per employee, sorted descending, with the target as a horizontal reference line.
 
@@ -235,7 +235,7 @@ utilizationDashboard.getAgencyAggregate(workspaceId, weekStartDate?, filters?) -
 
 **GIVEN** a week containing a public holiday
 **WHEN** expected hours resolve
-**THEN** the holiday is excluded per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], and the employee is not penalised for a day the business was closed
+**THEN** the holiday is excluded per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], and the employee is not penalized for a day the business was closed
 
 ---
 

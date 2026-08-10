@@ -94,7 +94,7 @@ A calendar may define a reduced-hours period: a date range during which daily ho
 
 **Calendar detail** has three Sections.
 
-*Working week* is seven rows, one per weekday: a Switch for worked, and an Input for hours. Total weekly hours displays in `mono` beneath, updating live — the single figure that tells someone whether they have configured what they meant to.
+*Working week* is seven rows, one per weekday: a Switch for worked, and an Input for hours. Total weekly hours displays in `numeric` beneath, updating live — the single figure that tells someone whether they have configured what they meant to.
 
 *Holidays* is a Table: date, name, type Badge, applies-to, and a provisional Badge in `attention` where relevant. Grouped by year, defaulting to the current one. Primary action **Add holiday**, secondary **Import jurisdiction holidays**.
 
@@ -384,7 +384,7 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 **Provisional holidays are a first-class state.** No competing HR product handles lunar holiday confirmation, and in Vulto's primary markets every calendar is wrong for several days a year as a result. This is a small mechanism with disproportionate value in exactly the market this product is built for.
 
-**Recalculation on confirmation has three exemptions**, and each is a deliberate product judgement rather than a technical limit. Reopening a disbursed payroll to correct a holiday creates a worse problem than it solves. Silently adjusting someone's approved leave balance because a moon sighting moved is a decision a person should make. A signed contract was accurate when signed.
+**Recalculation on confirmation has three exemptions**, and each is a deliberate product judgment rather than a technical limit. Reopening a disbursed payroll to correct a holiday creates a worse problem than it solves. Silently adjusting someone's approved leave balance because a moon sighting moved is a decision a person should make. A signed contract was accurate when signed.
 
 **The working-day index is materialized rather than computed.** Naive evaluation cannot meet [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s render budget, and the Bench Forecast's whole proposition is that it appears instantly.
 

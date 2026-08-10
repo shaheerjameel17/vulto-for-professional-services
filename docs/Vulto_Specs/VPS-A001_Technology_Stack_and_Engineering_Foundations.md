@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-08]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -61,7 +61,7 @@ Four constraints produced this stack, and they are recorded because they are the
 | Surface | Language | Reasoning |
 |---|---|---|
 | `services/sync-engine` | Rust | Compiled native for the server, WASM for the client. One job: receive CRDT deltas, enforce permission-filtered relay per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], persist to Postgres, relay to authorized devices. No business logic |
-| `apps/web` | TypeScript | Consumes the sync engine's WASM build as an ordinary npm package. Never touches Rust |
+| `apps/roster-web` and every future application under `apps/` | TypeScript | Consumes the sync engine's WASM build as an ordinary npm package. Never touches Rust |
 | `services/api` | TypeScript | Auth, workspace management, billing, every feature's server-side logic |
 | Every future suite application | TypeScript | Shares the same sync engine and API conventions |
 
@@ -132,11 +132,11 @@ Passkeys and WebAuthn PRF are required rather than optional, because [[VPS-A003_
 
 Next.js App Router, confirmed by the founder.
 
-**Styling is Tailwind CSS, and this resolves what the earlier draft left open.** [[VPS-D001_Design_Foundations|VPS-D001]] now defines every color, size, space and radius in the product, so the styling layer's only job is to express those tokens. Tailwind's configuration is generated from the token definitions rather than maintained in parallel — one source, one direction of flow. Arbitrary values in class names are prohibited by lint rule; a value not in the token set is a design system change, not a component decision.
+**Styling is Tailwind CSS, and this resolves what the earlier draft left open.** [[VPS-D001_Design_Foundations|VPS-D001]] defines every reusable visual token, so the styling layer's only job is to express those tokens. Tailwind's default color, spacing, radius, typography, shadow, blur and breakpoint scales are deleted before Vulto's generated tokens are declared — the configuration does not extend the defaults. Arbitrary values in class names are prohibited by lint rule; a value not in the token set is a design system change, not a component decision.
 
 **Component primitives are Radix UI**, wrapped and styled in `packages/ui` per [[VPS-D002_Component_Library|VPS-D002]]. Radix supplies the accessibility behavior — focus trapping, keyboard interaction, ARIA wiring — that [[VPS-D002_Component_Library|VPS-D002]]'s accessibility floor requires and that is expensive and error-prone to build correctly. Individual primitives may be started from shadcn/ui's implementations, but the library is owned and versioned in this repository, never consumed as an external dependency, because a design system that can change underneath you is not a design system.
 
-**Typefaces** are self-hosted via `next/font`: Plus Jakarta Sans, Manrope and Geist Mono, per [[VPS-D001_Design_Foundations|VPS-D001]]. No external font CDN, both for latency and because a font request is a third-party beacon on every page of an HR product.
+**Inter Variable** is self-hosted via `next/font`, per [[VPS-D001_Design_Foundations|VPS-D001]]. No external font CDN, both for latency and because a font request is a third-party beacon on every page of an HR product.
 
 ---
 
@@ -226,7 +226,7 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 | A001-T06 | Loro merge processing and SQLite materialization MUST run in a dedicated Web Worker. The main thread MUST NOT import `wa-sqlite` or process deltas directly |
 | A001-T07 | The materialization worker MUST maintain a per-row sync-status marker distinguishing not-yet-synced, permission-denied and genuinely-empty as three states |
 | A001-T08 | `services/cross-tenant-aggregation` MUST NOT share a database, connection pool or process boundary with per-workspace data paths, and MUST receive only anonymized, pre-bucketed contributions |
-| A001-T09 | Tailwind configuration MUST be generated from `packages/tokens`. Arbitrary values in class names MUST fail lint |
+| A001-T09 | Tailwind configuration MUST be generated from `packages/tokens`; Tailwind's default visual scales MUST be deleted rather than extended, and arbitrary values in class names MUST fail lint |
 | A001-T10 | No feature MUST compute working days, weekends or holidays independently. All such arithmetic MUST call [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] |
 | A001-T11 | Authentication MUST support passkeys and WebAuthn PRF, required by [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 3 key recovery |
 | A001-T12 | Backend infrastructure MUST run on DigitalOcean and the frontend MUST deploy to Vercel unless superseded |

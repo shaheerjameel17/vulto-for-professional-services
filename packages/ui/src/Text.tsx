@@ -5,7 +5,7 @@ import { cx } from "./cx";
 /*
  * Typography, as a component rather than a set of classes.
  *
- * Each of VPS-D001's eleven type tokens bundles a size, a line height, a
+ * Each of VPS-D001's thirteen type tokens bundles a size, a line height, a
  * weight and a tracking value. The four are never assembled by hand at a call
  * site: a feature asks for `body` and gets all four.
  *

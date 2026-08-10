@@ -88,7 +88,7 @@ Each group is a stack of Sections, one per related cluster. A setting row is: la
 
 **Save is per Section, not per setting and not per page.** Per-setting saves make a coherent adjustment of three related thresholds into three separate audited events; a single page-level save makes it unclear what is pending.
 
-**Change history** is a Table at the foot of each group: setting, from, to, who, when. Values render in `mono`.
+**Change history** is a Table at the foot of each group: setting, from, to, who, when. Values render in `numeric`.
 
 ### Keyboard
 

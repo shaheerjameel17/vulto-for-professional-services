@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-08-07]]"
+Date: "[[2026-08-08]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -42,7 +42,7 @@ Four variants, three sizes. There is exactly one `primary` button on any screen 
 | `ghost` | none | none | `text-secondary` | Toolbar and inline actions |
 | `danger` | `bg-surface` | `danger` | `danger` | Destructive; fills solid only on confirmation |
 
-Sizes `sm` 24px, `md` 28px, `lg` 32px, matching control heights in [[VPS-D001_Design_Foundations|VPS-D001]]. Buttons are `radius-full`; icon-only Buttons are circular. Fields, cards, panels and dialogs retain their documented radii. Hover is `bg-hover`; there is no elevation change. Disabled is 40% opacity with `cursor: not-allowed`, never a color change. Loading replaces the label with a spinner at the same width, so the button never resizes.
+Sizes `sm` 24px, `md` 28px, `lg` 32px, matching control heights in [[VPS-D001_Design_Foundations|VPS-D001]]. Buttons are `radius-full`; icon-only Buttons are circular. Fields, cards, panels and dialogs retain their documented radii. Hover is variant-specific: `primary` strengthens to `brand-700`, while `secondary`, `ghost` and the pre-confirmation `danger` treatment take `bg-hover`. A confirming `danger` action is already solid and does not change fill on hover. There is no elevation change. Disabled is 40% opacity with `cursor: not-allowed`, never a color change. Loading replaces the label with a spinner at the same width, so the button never resizes.
 
 Every button label is an active verb naming what happens: **Assign**, **Approve**, **Send for signature**. Never **Submit**, never **OK**. The label persists through the flow — a button reading **Publish** produces a toast reading **Published**.
 
@@ -66,9 +66,9 @@ The picker accepts typed ISO dates and exposes month and year Selects, previous/
 
 ### Badge
 
-`radius-sm`, `label` token, `2` horizontal padding, 20px height. Statuses and skill tags take `radius-full`; compact metadata badges retain `radius-sm`. Two intensities: `subtle`, a tinted background at 10% of the hue with text at full strength, used for status; and `solid`, used only for counts.
+`radius-sm`, `label` token, `2` horizontal padding, 20px height. Statuses and skill tags take `radius-full`; compact metadata badges retain `radius-sm`. Two intensities: `subtle`, a 10% semantic tint with `text-primary`, used for status; and `solid`, used only for counts. The label supplies the meaning while the tint supplies a redundant cue, and the text pairing passes the contrast floor in both themes.
 
-Status badges take their color from the semantic tokens exclusively. A badge is never `brand`.
+Status badges take their color from the semantic tokens exclusively. A badge is never `brand`. Neutral metadata — employment type, skill, category, source — uses `bg-active` with `text-secondary`; it must never borrow a semantic hue merely to avoid looking plain.
 
 ### Avatar
 
@@ -86,17 +86,15 @@ One icon set throughout: **Lucide**, 16px default, 1.5px stroke, `currentColor`.
 
 The most-used component in the product and the one most worth getting right.
 
-Row height is 32px per [[VPS-D001_Design_Foundations|VPS-D001]]. Header row uses `micro`, uppercase, `text-tertiary`, with a 1px bottom `border-default`. Rows have no separators — separation comes from row hover and alignment alone, which keeps a hundred-row table from reading as a grid of cages.
+Row height is 32px per [[VPS-D001_Design_Foundations|VPS-D001]]. The header row is a rounded `bg-active` strip using `micro`, uppercase and `text-secondary`; it has no bottom divider. Rows have no separators — separation comes from row hover, spacing and alignment alone, which keeps a hundred-row table from reading as a grid of cages.
 
-**Row hover is `bg-hover`, and this is deliberately not what the Timeline does.** The Timeline expresses hover and selection as a border around the whole row instead, for two reasons that do not apply here. A Timeline row spans a frozen person column and a horizontally scrolling track, and a fill leaves those two halves reading as separate objects at exactly the join that matters. And a Timeline row contains quiet opaque bars whose fill is mixed against the surface, so a row-level fill puts them on a backdrop they were not mixed against. A Table row has neither property: it has no frozen column and no opaque fills inside it, so `bg-hover` breaks nothing and remains correct.
+**Row hover is `bg-hover`; the Timeline applies that fill only to its frozen identity group.** A Timeline row spans a frozen person column and a horizontally scrolling track, and a whole-row fill leaves those halves reading as separate objects at exactly the join that matters. The identity target therefore carries hover and selection while the track remains quiet.
 
-The divergence is therefore a Timeline affordance rather than a change to row hover generally, and no other surface may adopt the border treatment without the same two conditions holding.
-
-The People directory is the intentional sparse variant: it sits directly on an inset `bg-subtle` workspace, has a `bg-active` rounded header strip, no container or row dividers, 52px rows, and a `bg-hover` row hover. Its filter and visible-column controls are raised pills; an active filter shows a brand dot and an explicit clear affordance rather than repeating selected values in the toolbar. The filter band and table header both remain sticky, with one token step of space between their surfaces.
+The People directory is the intentional sparse variant: it sits directly on an inset `bg-subtle` workspace, has no container or row dividers, 52px rows, and a `bg-hover` row hover. Its filter and visible-column controls are raised pills; an active filter shows a brand dot and an explicit clear affordance rather than repeating selected values in the toolbar. The filter band and table header both remain sticky, with one token step of space between their surfaces.
 
 Numeric columns are right-aligned and use Inter tabular numerals. Text columns are left-aligned. There is no center alignment anywhere in this product.
 
-Behavior: sticky header, column sort on header click, keyboard row navigation per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], row selection via checkbox column, and virtualised rendering above 100 rows. Sorting and filtering run against the local SQLite index and never round-trip.
+Behavior: sticky header, column sort on header click, keyboard row navigation per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], row selection via checkbox column, and virtualized rendering above 100 rows. Sorting and filtering run against the local SQLite index and never round-trip.
 
 **Empty state** is an invitation, not an apology: a single line of `body` text naming what would appear here and a `secondary` button that creates the first one. No illustration, no icon, no empty box.
 
@@ -105,12 +103,12 @@ Behavior: sticky header, column sort on header click, keyboard row navigation pe
 The Bench Forecast canvas, owned in behavior by [[VRS-F005_The_Bench_Forecast|VRS-F005]] and in appearance here. Also used by [[VRS-F051_Team_Capacity_Planner|VRS-F051]] and [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]].
 
 - Fixed left column, 220px, holding avatar, name, human-readable employee code and role. All three text facts remain present at every timeline width. It has no persistent boundary; the identity group is a rounded `bg-hover` target on hover and `bg-selected` on selection.
-- Scrollable right region, horizontally virtualised, showing the configured window. Where it passes beneath the left column it fades over roughly 24px, per the scroll-boundary exception in [[VPS-D001_Design_Foundations|VPS-D001]].
+- Scrollable right region, horizontally virtualized, showing the configured window. Where it passes beneath the left column it fades over roughly 24px, per the scroll-boundary exception in [[VPS-D001_Design_Foundations|VPS-D001]].
 - Per-person non-working-day columns resolve from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] and appear only while that row is hovered, because a workspace can contain divergent calendars.
 - Date labels are adaptive in exactly two visual rows: a month band above daily labels at 30 days, seven-day ranges at 90 days, and fortnight anchors at 180 days. Range labels never wrap. Persistent daily gridlines and header/row dividers are absent; the Today line carries the scan structure. A secondary neutral inspection line follows the pointer and exposes the exact date under it without adding another header row.
 - **Assignment bar:** neutral `bg-raised` with `border-default`, `radius-md`, 20px height, project name inside at `small` `text-primary` truncating with ellipsis. A 6px `cat-n` dot assigned by project hash carries project identity.
 - **Ghost bar:** same neutral geometry with a 1px dashed `border-strong`, per the dashed-border rule; its project dot follows the same hash.
-- **Bench region:** muted theme-specific amber at rest, strengthening to `attention` when its row is hovered; `radius-md`, 20px height, with the accumulated cost in `numeric-medium`. Hovering a region highlights its exact range in the sticky date header and shows the start/end dates there. The signature element defined in [[VPS-D001_Design_Foundations|VPS-D001]].
+- **Bench region:** muted theme-specific amber at rest, strengthening to `attention` when its row is hovered; `radius-md`, 20px height, with the accumulated cost in `numeric-medium`. It deliberately matches the Assignment bar rather than filling the 48px row: the remaining vertical space separates people without making bench time visually heavier than assigned time. Hovering a region highlights its exact range in the sticky date header and shows the start/end dates there. The signature element defined in [[VPS-D001_Design_Foundations|VPS-D001]].
 - **Today line:** 1px `brand-500`, full height, above bars, with an 8px dot at the top edge. Today's header date is a `brand-600` pill with white text; this is one signal, not an additional use of brand. A separate pointer-driven inspection date uses `border-strong` and never competes with Today.
 
 ### Chart
@@ -121,7 +119,7 @@ Charts inherit the categorical palette. Gridlines are `border-default` at 50% op
 
 ### Stat
 
-A single figure with a label. `display` or `mono-lg` for the value, `micro` uppercase for the label, and an optional delta in `small` with `success` or `attention`. Deltas always state the comparison period explicitly — *"+4% vs last week"*, never a bare arrow.
+A single figure with a label. `display` or `numeric-lg` for the value, `micro` uppercase for the label, and an optional delta in `small` with `success` or `attention`. Deltas always state the comparison period explicitly — *"+4% vs last week"*, never a bare arrow.
 
 ### Progress and Pulse Bar
 
@@ -137,7 +135,7 @@ A horizontal bar showing consumption against a target. Fill is `success` below t
 
 ### Panel
 
-The right-hand contextual surface, 360px, full height, `raised`, with a 1px left border. Opens on row selection. Contains the Contextual Intelligence Panel in [[VRS-F005_The_Bench_Forecast|VRS-F005]] and the detail view in most list screens. Dismissible with `Escape` and by clicking the canvas.
+The right-hand contextual surface, 360px, full height, `raised`, with a 1px left border. Opens on row selection. Contains the Contextual Intelligence Panel in [[VRS-F005_The_Bench_Forecast|VRS-F005]] and the detail view in most list screens. Dismissible with `Escape` and by clicking the canvas. A Panel is contextual and non-modal: it does not trap focus, but closing it restores focus to the row or control that opened it.
 
 ### Modal
 
@@ -201,7 +199,7 @@ Non-negotiable and applied at component level so that no feature has to remember
 - Every icon-only control carries an accessible label.
 - Color is never the sole carrier of meaning; every semantic state pairs a hue with a word or a number.
 - `prefers-reduced-motion` removes all transitions, per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]].
-- Modals and panels trap focus and restore it to the trigger on close.
+- Modals trap focus. Panels remain non-modal and restore focus to the trigger on close.
 - Tables use real table semantics with scope on headers, not a grid of divs.
 - Minimum target size 24px at the product density, which is why no control is smaller.
 

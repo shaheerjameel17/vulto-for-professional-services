@@ -67,7 +67,7 @@ This lives in **its own clearly labeled area**, deliberately not folded into [[V
 
 ### Logging an entry
 
-A category describing what is going on — Workload, Personal Circumstance, Health, Relationship, Financial, Other — **entirely their own characterisation** — an optional private note, and optionally an intensity on their own scale.
+A category describing what is going on — Workload, Personal Circumstance, Health, Relationship, Financial, Other — **entirely their own characterization** — an optional private note, and optionally an intensity on their own scale.
 
 **Nothing here is reviewed, approved, or seen by anyone else, ever.**
 
@@ -186,7 +186,7 @@ Disclosure control per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], using `k_an
 
 `wellness_resource_text` and `wellness_resource_contact` on Workspace let an Owner configure their own EAP or counseling service, per [[VPS-F005_Workspace_Configuration_Console|VPS-F005]].
 
-**This feature additionally maintains a baseline crisis reference shown regardless of whether a workspace configured anything**, so an employee is never left with nothing. The specific wording, numbers and jurisdiction-appropriate resources are a content and localisation decision at implementation; **this document specifies only that a baseline must exist and must never depend on workspace configuration to appear.**
+**This feature additionally maintains a baseline crisis reference shown regardless of whether a workspace configured anything**, so an employee is never left with nothing. The specific wording, numbers and jurisdiction-appropriate resources are a content and localization decision at implementation; **this document specifies only that a baseline must exist and must never depend on workspace configuration to appear.**
 
 ### The one connection, and nothing else
 
@@ -314,7 +314,7 @@ wellnessAggregate.getTeamTrend(teamGrouping, month) -> {
 - **Any integration with [[VRS-F056_Proactive_Daily_Briefing|VRS-F056]]'s daily briefing** — a deliberate boundary. An absolute privacy layer does not surface through a cross-cutting briefing, even as a self-only nudge
 - **Folding this into [[VRS-F050_Employee_Self-Service_Portal|VRS-F050]]'s portal** — wellness earns its own entry point, not a tab beside a payslip
 - **Any machine-derived interpretation, scoring or pattern detection over an individual's entries** — this stores what an employee chooses to record; it does not analyze it on their behalf
-- **Specific crisis-resource content or jurisdiction-specific text** — a content and localisation decision at implementation. This document specifies only that a baseline must always exist
+- **Specific crisis-resource content or jurisdiction-specific text** — a content and localization decision at implementation. This document specifies only that a baseline must always exist
 - **Any counseling, therapy or treatment functionality** — a private log and a pointer, never the resource itself
 - **Narrowing the absolute Tier 3 rule under any configuration, for any role, including Owner** — permanently non-configurable
 

@@ -81,7 +81,7 @@ A small casual bulletin of whoever chose to post something that month, alongside
 
 **The prompt** is a Card with the month's question at `h2`, a Textarea, an optional mood selector as a small Toggle Group, and a **Share with the team** Switch.
 
-Enabling the Switch reveals a second Textarea, pre-filled with nothing, and a line: *This is what your colleagues will see. Your private response stays private.* **Pre-filling it with the private response would make republishing the default and sharing an act of omission**, which is exactly backwards for a feature whose entire premise is that privacy is the default.
+Enabling the Switch reveals a second Textarea, pre-filled with nothing, and a line: *This is what your colleagues will see. Your private response stays private.* **Pre-filling it with the private response would make republishing the default and sharing an act of omission**, which is exactly backward for a feature whose entire premise is that privacy is the default.
 
 **The bulletin** is a simple list of that month's shared moments — avatar, name, the shared text, the mood. Deliberately plain: no reactions, no comments, no count. **A bulletin with engagement metrics is a bulletin people perform for**, and the point is a small human moment rather than a small social platform.
 

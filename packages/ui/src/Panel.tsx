@@ -13,15 +13,9 @@ import { Text } from "./Text";
  *
  * Slides 16px horizontally while fading in, at `motion-base`, per VPS-D003.
  *
- * FINDING F25: VPS-D002's accessibility floor states that "modals and panels
- * trap focus and restore it to the trigger on close." A focus trap is wrong
- * here and cannot be implemented as written. VPS-D004 requires the panel be
- * dismissible "by clicking the canvas", and VRS-F005 requires `J`/`K` row
- * navigation keep working while it is open — the panel persists across
- * selections precisely so a user can move down the rows with it open. Trapping
- * focus would make the canvas unreachable by keyboard, which is the surface
- * the panel exists to annotate. Focus restoration on close is implemented;
- * the trap is not.
+ * FDN-14 settled the accessibility contract: this contextual panel is
+ * nonmodal, does not trap focus, and restores focus to its trigger on close.
+ * Canvas and J/K navigation therefore remain available while it is open.
  */
 
 export type PanelProps = {

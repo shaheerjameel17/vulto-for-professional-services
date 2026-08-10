@@ -1,27 +1,40 @@
 import {
+  BarChart3,
+  BriefcaseBusiness,
   CalendarClock,
   Clock,
+  GraduationCap,
+  HandCoins,
+  House,
   Inbox,
-  LayoutDashboard,
+  Landmark,
+  PlaneTakeoff,
+  UserRoundCog,
   Users,
 } from "lucide-react";
 import type { NavGroup } from "@vulto/ui";
 
 /*
- * Five destinations, two groups.
+ * FDN-39: the complete Owner navigation, grouped by user intent rather than
+ * by the sixty-seven-feature register. Role-filtered product builds take a
+ * subset of this fixed order; the static prototype deliberately renders the
+ * Owner view so the complete information architecture can be reviewed.
  *
- * VPS-D004 requires navigation be "grouped by role relevance rather than by
- * feature taxonomy" but names no groups and no items — see Findings F1. This
- * set is the founder's decision, and whether five items justify grouping at
- * all is itself recorded as F23.
- *
- * The shortcuts are VPS-D003's sequential `G` navigation, plus `G D` from
- * VRS-F049 — which VPS-D003's own global table omits (F13).
+ * Features scoped to a record remain sub-screens; event-driven work belongs
+ * in Inbox; workspace behavior belongs in Settings; rare lookup belongs in
+ * Cmd+K. The sidebar is therefore a map of durable work areas, not features.
  */
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    label: "Work",
+    label: "Overview",
+    items: [
+      { href: "/dashboard", label: "Home", icon: House, shortcut: "G H" },
+      { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: "G I", count: 7 },
+    ],
+  },
+  {
+    label: "Planning",
     items: [
       {
         href: "/",
@@ -29,36 +42,51 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: CalendarClock,
         shortcut: "G B",
       },
+      { href: "/hiring", label: "Hiring", icon: BriefcaseBusiness, shortcut: "G R" },
+    ],
+  },
+  {
+    label: "People",
+    items: [
       { href: "/people", label: "People", icon: Users, shortcut: "G P" },
+      { href: "/development", label: "Development", icon: GraduationCap, shortcut: "G D" },
+      { href: "/people-ops", label: "People Ops", icon: UserRoundCog, shortcut: "G O" },
+    ],
+  },
+  {
+    label: "Work",
+    items: [
       {
         href: "/timesheets",
         label: "Timesheets",
         icon: Clock,
         shortcut: "G T",
       },
+      { href: "/leave", label: "Leave", icon: PlaneTakeoff, shortcut: "G L" },
+      { href: "/expenses", label: "Expenses", icon: HandCoins, shortcut: "G E" },
     ],
   },
   {
-    label: "Waiting",
+    label: "Finance & insight",
     items: [
-      // Counts appear only where the count implies an action, per VPS-D004.
-      { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: "G I", count: 3 },
-      {
-        href: "/dashboard",
-        label: "Manager Dashboard",
-        icon: LayoutDashboard,
-        shortcut: "G D",
-        count: 7,
-      },
+      { href: "/payroll", label: "Payroll", icon: Landmark, shortcut: "G Y" },
+      { href: "/reports", label: "Reports", icon: BarChart3, shortcut: "G A" },
     ],
   },
 ];
 
 /** `G` sequences, keyed by their second letter. */
 export const GOTO: Record<string, string> = {
-  b: "/",
-  p: "/people",
-  t: "/timesheets",
+  h: "/dashboard",
   i: "/inbox",
-  d: "/dashboard",
+  b: "/",
+  r: "/hiring",
+  p: "/people",
+  d: "/development",
+  o: "/people-ops",
+  t: "/timesheets",
+  l: "/leave",
+  e: "/expenses",
+  y: "/payroll",
+  a: "/reports",
 };

@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (Standing Rule 1, which this feature resolves the exception to), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (**the cryptographic erasure mechanism, specified there and invoked here**), [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] (the job queue, and object storage lifecycle), [[VPS-F004_Silent_Audit_Log|VPS-F004]] (the audit log, and its pseudonymisation path), [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] (documents, whose blobs erasure destroys keys for), [[VPS-F005_Workspace_Configuration_Console|VPS-F005]] (where retention schedules are configured)
+**Depends On:** [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (Standing Rule 1, which this feature resolves the exception to), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (**the cryptographic erasure mechanism, specified there and invoked here**), [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] (the job queue, and object storage lifecycle), [[VPS-F004_Silent_Audit_Log|VPS-F004]] (the audit log, and its pseudonymization path), [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] (documents, whose blobs erasure destroys keys for), [[VPS-F005_Workspace_Configuration_Console|VPS-F005]] (where retention schedules are configured)
 **Blocks:** Nothing structurally. Several features depend on this one existing for their own retention to be lawful rather than indefinite.
 
 This document is the single source of truth for this feature.
@@ -106,7 +106,7 @@ Above it, a plain statement: *Next purge 14 March — 34 records across 3 classe
 
 **Requests** is a Table: type Badge, subject, received date, days remaining against the statutory response window, status. Sorted by days remaining ascending — a request approaching its deadline is the urgent one, and most jurisdictions set that window at thirty days.
 
-The Panel holds the request detail, the assembled data preview for an access request, and the fulfil or refuse action. Refusal requires a stated ground from a fixed set.
+The Panel holds the request detail, the assembled data preview for an access request, and the fulfill or refuse action. Refusal requires a stated ground from a fixed set.
 
 **Legal holds** is a short Table: scope, reason, placed by, placed date. Active holds render `attention` in the purge queue against every row they suspend.
 
@@ -196,7 +196,7 @@ records_affected:     JSON summary — classes and counts, never content
 
 **Documents** — blob key destruction per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]. The ciphertext remains in object storage until its own lifecycle expires it; it is unreadable from the moment the key is gone.
 
-**AuditEntry** — exempt. Pseudonymised per [[VPS-F004_Silent_Audit_Log|VPS-F004]] where the erased person appears as an actor. Erasing the record of who accessed a salary protects nothing, since the salary was erased separately; it only destroys the evidence.
+**AuditEntry** — exempt. Pseudonymized per [[VPS-F004_Silent_Audit_Log|VPS-F004]] where the erased person appears as an actor. Erasing the record of who accessed a salary protects nothing, since the salary was erased separately; it only destroys the evidence.
 
 ### What erasure cannot reach
 
@@ -247,7 +247,7 @@ erasureRequest.create(requestType, subjectId, receivedAt) -> {
 }
   // blockedBy names statutory retention or an active hold before review begins
 
-erasureRequest.fulfil(requestId)   -> { erased: { recordClass, count }[] }
+erasureRequest.fulfill(requestId)   -> { erased: { recordClass, count }[] }
 erasureRequest.refuse(requestId, ground, detail) -> { success }
 
 subjectAccess.assemble(subjectId) -> { export }
@@ -266,7 +266,7 @@ workspace.export(workspaceId)     -> { archiveUrl }
 | G01 | RetentionPolicy and ErasureRequest carry the schemas above |
 | G02 | Erasure destroys key material per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] and never deletes a node, an edge or a row. [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Standing Rule 1 holds |
 | G03 | Retention counts from `trigger_event`, never from record creation |
-| G04 | AuditEntry is exempt from erasure. An erased actor is pseudonymised per [[VPS-F004_Silent_Audit_Log|VPS-F004]] |
+| G04 | AuditEntry is exempt from erasure. An erased actor is pseudonymized per [[VPS-F004_Silent_Audit_Log|VPS-F004]] |
 | G05 | Aggregate contribution nodes carry no identifying link and are not erased. Team-level history survives |
 | G06 | The purge runs in two phases fourteen days apart, with a notification phase preceding execution |
 | G07 | A legal hold suspends purge and erasure entirely for everything in scope, and overrides an erasure request with the requester informed |
@@ -305,7 +305,7 @@ workspace.export(workspaceId)     -> { archiveUrl }
 
 **GIVEN** an erasure request for a former employee with payroll records under a six-year statutory obligation
 **WHEN** the request is assessed
-**THEN** the payroll records are named as blocked before review begins, and fulfilment is partial with the ground stated to the requester
+**THEN** the payroll records are named as blocked before review begins, and fulfillment is partial with the ground stated to the requester
 
 ---
 
@@ -323,7 +323,7 @@ workspace.export(workspaceId)     -> { archiveUrl }
 
 **GIVEN** the same erasure
 **WHEN** [[VPS-F004_Silent_Audit_Log|VPS-F004]]'s log is consulted
-**THEN** their entries persist with the actor pseudonymised, and a record that erasure occurred exists
+**THEN** their entries persist with the actor pseudonymized, and a record that erasure occurred exists
 
 ---
 
@@ -396,5 +396,5 @@ workspace.export(workspaceId)     -> { archiveUrl }
 
 - [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — the cryptographic erasure mechanism this feature invokes
 - [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] — Standing Rule 1, and the exception resolved here
-- [[VPS-F004_Silent_Audit_Log|VPS-F004]] — the audit log, exempt and pseudonymised
+- [[VPS-F004_Silent_Audit_Log|VPS-F004]] — the audit log, exempt and pseudonymized
 - [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] — whose subject access rights route through this feature

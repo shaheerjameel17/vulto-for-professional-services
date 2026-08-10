@@ -146,7 +146,7 @@ dismissal_detail:          text, nullable
 
 ### Trigger conditions
 
-**A won Pitch triggers unconditionally.** Every pitch reaching Won produces a suggestion, deliberately liberal rather than guessing whether hiring is warranted. That judgement belongs to the person reviewing it, not to a heuristic here.
+**A won Pitch triggers unconditionally.** Every pitch reaching Won produces a suggestion, deliberately liberal rather than guessing whether hiring is warranted. That judgment belongs to the person reviewing it, not to a heuristic here.
 
 **A SkillGap triggers at High or Critical only.** A Low or Medium gap is frequently resolved by existing capacity shifting before it becomes urgent, and suggesting a hire for every one of them would train people to dismiss the list unread.
 

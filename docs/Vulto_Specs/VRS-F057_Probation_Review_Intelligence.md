@@ -33,7 +33,7 @@ What it adds is the context a manager or HR Admin sees at the moment they are ab
 
 **The gap.** By the time a ninety-day probation decision comes due, [[VRS-F039_Performance_Review_Cycle|VRS-F039]]'s first formal review cycle frequently has not run — there is often no structured assessment on record at all for a hire this new.
 
-A manager forming a probation judgement has been relying on memory of the last three months, which is exactly the failure this feature exists to prevent. **Nothing in this product let a manager write down an observation as it happened.** ProbationCheckIn exists precisely so the context available at decision time is not limited to whatever they still remember.
+A manager forming a probation judgment has been relying on memory of the last three months, which is exactly the failure this feature exists to prevent. **Nothing in this product let a manager write down an observation as it happened.** ProbationCheckIn exists precisely so the context available at decision time is not limited to whatever they still remember.
 
 **The one place this needed [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]].** Noticing that several independently mild concerns — an overdue onboarding task, a timesheet anomaly, a flagged note — are all true of the same probationary employee at once is exactly the compounding pattern Standing Rule 7 reserves for that feature alone.
 

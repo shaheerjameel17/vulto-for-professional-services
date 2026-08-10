@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto Roster Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-10]]"
 Product Phase:
   - MVP
 Feature Type:
@@ -70,14 +70,14 @@ Setting an end date and confirming offboarding is one deliberate action. It sets
 | Screen | Shell region | Purpose |
 |---|---|---|
 | People directory | Content + Panel | The list, and the fastest path to any person |
-| Employee profile | Content + Panel | The full record |
+| Employee profile | Content | The full record |
 | Create employee | Modal | Required fields only |
 
 ### Layout and components
 
 **People directory** is a Table per [[VPS-D002_Component_Library|VPS-D002]]: avatar, name, job title, department, employment type Badge, status Badge, entity. Row selection opens the Panel with a profile summary; `Enter` opens the full profile. Filters sit above the table as a Toggle Group for status and Selects for department and entity. Primary action is **Add person**.
 
-The directory must render 150 employees within 200ms from the local graph, which requires virtualisation above 100 rows per [[VPS-D002_Component_Library|VPS-D002]].
+The directory must render 150 employees within 200ms from the local graph, which requires virtualization above 100 rows per [[VPS-D002_Component_Library|VPS-D002]].
 
 **Employee profile** uses Tabs — Overview, Skills, Documents, Activity — with identity fixed above them: avatar at 48px, name at `h1`, job title and department at `small` in `text-secondary`, status Badge, and the actions menu right-aligned. The avatar height matches the combined identity block so the two read as one unit.
 
@@ -86,6 +86,8 @@ Overview is a two-column Section layout. Employment fields left, reporting line 
 Compensation fields render as a distinct Section with a lock affordance, visible only to authorized roles. For everyone else the Section is **structurally absent**, not disabled — per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s sensitive-restricted treatment, since the existence of a compensation figure is unremarkable but its value is not.
 
 `J` and `K` move between profiles without returning to the directory, per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], which is what makes reviewing a team of thirty a scan rather than a navigation exercise.
+
+**The profile is Content-only, and deliberately has no Panel.** A Panel is the contextual detail of a record selected in a collection; the profile is already that detail surface, so a Panel over it would be the detail of a detail. The Skills, Documents and Activity tabs do contain collections, but opening a Panel from one would put a third level of nesting inside a screen a person reaches by selecting from the directory Panel already. Where a document needs previewing, [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] owns that surface and it is a Modal. This is recorded because an earlier revision listed the profile as *Content + Panel* without ever saying what the Panel would show, and the prototype confirmed nothing was missing without one.
 
 **Create employee** is a Modal rather than a Panel, deliberately: it is a short flow that should not be abandoned halfway, and a half-created person is worse than none.
 
@@ -309,7 +311,7 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 - Payroll calculation and anything computed from compensation — [[VRS-F062_Payroll_Engine_Core|VRS-F062]]. This document owns the raw fields, not what is derived from them
 - Performance history — [[VRS-F039_Performance_Review_Cycle|VRS-F039]]
 - Background check results — [[VRS-F035_Background_Check_Integration|VRS-F035]]
-- Org chart visualisation — [[VRS-F037_Dynamic_Org_Chart|VRS-F037]]. The `managed_by` edge is established here; the chart is not
+- Org chart visualization — [[VRS-F037_Dynamic_Org_Chart|VRS-F037]]. The `managed_by` edge is established here; the chart is not
 - Custom fields — [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]]
 - Ghost Resource creation — [[VRS-F007_Ghost_Resources|VRS-F007]]. The `employee_type` field is defined here; the creation flow is not
 - Working calendar and pattern definition — [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]

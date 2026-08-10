@@ -33,7 +33,7 @@ This correlates structured records across features — an interview rating and a
 
 ## What It Is
 
-A closed-loop analysis connecting the hiring pipeline to what actually happened afterward: whether interview ratings predict later performance, which sources produce better outcomes, whether specific panelists' judgement tracks with reality, and — new in this revision — **how the pipeline itself performs**.
+A closed-loop analysis connecting the hiring pipeline to what actually happened afterward: whether interview ratings predict later performance, which sources produce better outcomes, whether specific panelists' judgment tracks with reality, and — new in this revision — **how the pipeline itself performs**.
 
 ---
 
@@ -61,7 +61,7 @@ Average subsequent performance by source — direct, referral, careers site, tal
 
 ### Panelist calibration
 
-Whether a panelist's ratings, averaged across every candidate they assessed who was hired, track with those hires' actual performance. **This evaluates a specific person's judgement**, which is why it sits at the narrowest visibility in the feature.
+Whether a panelist's ratings, averaged across every candidate they assessed who was hired, track with those hires' actual performance. **This evaluates a specific person's judgment**, which is why it sits at the narrowest visibility in the feature.
 
 ### Pipeline performance
 
@@ -171,7 +171,7 @@ hiringQuality.getPipelinePerformance(workspaceId, periodMonths?) -> {
 |---|---|
 | G01 | This feature introduces no node type or edge type. Every figure traces existing relationships |
 | G02 | Every breakdown passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control before any average is computed |
-| G03 | Panelist calibration is Owner and HR Admin only. A permission decision made because the analysis evaluates a specific employee's judgement, not because the data is more protected than the other analyzes |
+| G03 | Panelist calibration is Owner and HR Admin only. A permission decision made because the analysis evaluates a specific employee's judgment, not because the data is more protected than the other analyzes |
 | G04 | This feature reasons about correlations between structured records, never combining already-interpreted alerts. It remains outside Standing Rule 7 |
 | G05 | Pipeline duration figures count working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] |
 | G06 | Rejection reason distribution reads [[VRS-F028_Recruitment_Pipeline|VRS-F028]]'s structured enum only. Free-text detail is never analyzed |
@@ -245,13 +245,13 @@ hiringQuality.getPipelinePerformance(workspaceId, periodMonths?) -> {
 - **Panelist calibration is the one analysis evaluating a specific employee** rather than a process or an outcome in the abstract, and its narrower visibility reflects that directly. The other three are workspace-level process quality; this one is kept narrow for a different reason, stated rather than left looking like an inconsistency.
 - **The unified disclosure control matters more here than elsewhere.** A source breakdown and a panelist breakdown over the same small hire set are differenceable against each other, and the private per-feature threshold this feature previously carried would have caught neither.
 - **Rejection reasons are analyzed as a structured enum only.** The free-text detail a recruiter wrote is a private assessment of a specific person and is never aggregated, never charted, and never read by this feature.
-- **A calibration table is a record of colleagues' judgement quality.** It is genuinely useful and it is also the sort of artefact that changes behavior once people know it exists — panelists who know they are scored will score differently. The neutral framing is a partial mitigation and not a complete one, and a firm using this should tell its panelists it exists rather than let them discover it.
+- **A calibration table is a record of colleagues' judgment quality.** It is genuinely useful and it is also the sort of artifact that changes behavior once people know it exists — panelists who know they are scored will score differently. The neutral framing is a partial mitigation and not a complete one, and a firm using this should tell its panelists it exists rather than let them discover it.
 
 ---
 
 ## Out of Scope
 
-- **Any recommendation to change interview weighting or hiring criteria** — this reports a correlation. Deciding what to do is a human judgement
+- **Any recommendation to change interview weighting or hiring criteria** — this reports a correlation. Deciding what to do is a human judgment
 - **Individual candidate predictions** — historical correlation across many hires, never a forward-looking claim about one person
 - **Analysing free-text rejection detail or interview notes** — the structured enum and ratings only
 - **Cost per hire** — a financial figure requiring recruitment spend this product does not track

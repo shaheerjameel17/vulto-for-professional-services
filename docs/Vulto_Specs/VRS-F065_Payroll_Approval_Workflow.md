@@ -92,11 +92,11 @@ Also surfaced in [[VPS-F003_Notification_and_Alert_Center|VPS-F003]]'s Inbox as 
 
 Missing leads deliberately. A person who has silently dropped off a run is the most expensive error here and the least visible — a wrong bonus is a number someone will query; an unpaid colleague is a relationship.
 
-**Variance rows are the design-critical element.** Each is a single row carrying: the employee, previous net pay, current net pay, the percentage change, and **previous and current revenue side by side in `mono`**. The revenue pair sits immediately beside the pay pair, not in a separate column group, so the comparison is one glance rather than two.
+**Variance rows are the design-critical element.** Each is a single row carrying: the employee, previous net pay, current net pay, the percentage change, and **previous and current revenue side by side in `numeric`**. The revenue pair sits immediately beside the pay pair, not in a separate column group, so the comparison is one glance rather than two.
 
-Where revenue moved in the same direction and rough proportion, the row renders neutral. Where pay rose and revenue did not, it renders `attention`. That is not a judgement — plenty of legitimate raises have nothing to do with billing — but it is the row worth looking at twice.
+Where revenue moved in the same direction and rough proportion, the row renders neutral. Where pay rose and revenue did not, it renders `attention`. That is not a judgment — plenty of legitimate raises have nothing to do with billing — but it is the row worth looking at twice.
 
-**The two actions sit at the foot**, and **Approve** is disabled until every Section has been scrolled through. The same reasoning as [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]]'s acknowledgement gate: an approval is an assertion that someone reviewed something, and a button available before the flags have been seen makes that assertion false.
+**The two actions sit at the foot**, and **Approve** is disabled until every Section has been scrolled through. The same reasoning as [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]]'s acknowledgment gate: an approval is an assertion that someone reviewed something, and a button available before the flags have been seen makes that assertion false.
 
 Where the reviewer is the finalizer, Approve reveals a required reason field with plain copy: *You finalized this run. Approving your own run requires a stated reason, which will be visible to anyone who can see this payroll.*
 
@@ -287,7 +287,7 @@ approvalStage.listPending(workspaceId) -> ApprovalStage[]
 
 - **Segregation of duty is the substantive control**, and it reuses rather than reinvents. [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]] built the exact shape needed — a hard default with a deliberate, logged, named-reason override — for a completely different problem. The same shape fits: a default that should hold, and a real-world exception that must never be silent when it does not.
 - **HR Admin's Full access was checked against PayRun's own row rather than assumed.** That row already grants HR Admin full access to the run itself, a more consequential authority than approving one, so restricting the approval specifically would be inconsistent with a ceiling already set.
-- **The scroll gate on approval is deliberate friction**, matching [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]]'s acknowledgement gate. Approving payroll is an assertion that someone reviewed the flags, and a button available before they have been seen makes that assertion false.
+- **The scroll gate on approval is deliberate friction**, matching [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]]'s acknowledgment gate. Approving payroll is an assertion that someone reviewed the flags, and a button available before they have been seen makes that assertion false.
 - **The snapshot is what makes this auditable.** Six months later, *what did the approver actually see* is the question, and recomputing the context from data that has since changed would answer a different one.
 
 ---

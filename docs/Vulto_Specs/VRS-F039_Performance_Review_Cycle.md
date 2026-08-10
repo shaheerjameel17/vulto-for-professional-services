@@ -51,7 +51,7 @@ An employee writes their own assessment on their own timeline up to the due date
 
 The snapshotted manager writes their own assessment and an overall rating — a separate field, on its own due date.
 
-**The manager cannot see the self-assessment until it is submitted, and the employee cannot see the manager assessment until it is.** Two independent judgements, then a conversation, rather than one anchoring the other.
+**The manager cannot see the self-assessment until it is submitted, and the employee cannot see the manager assessment until it is.** Two independent judgments, then a conversation, rather than one anchoring the other.
 
 ### Closing
 
@@ -78,7 +78,7 @@ That reciprocity is the point. An employee who can see their rating before writi
 
 **Team reviews** is a Table for the manager: employee, self-assessment status Badge, their own status, due date, days remaining. Sorted by due date. Rows past due render `attention`.
 
-**Cycle progress** shows two Progress bars — self-assessments submitted, manager assessments submitted — with counts in `mono`. An HR Admin chasing a cycle needs to know which half is lagging, and a single combined percentage conceals it.
+**Cycle progress** shows two Progress bars — self-assessments submitted, manager assessments submitted — with counts in `numeric`. An HR Admin chasing a cycle needs to know which half is lagging, and a single combined percentage conceals it.
 
 **The rating** is five options rendered as distinct Cards rather than a Select, each with its own one-line description of what it means. A five-point scale where the labels are the only guidance produces ratings that mean different things to different managers, which makes the whole record less useful than no record.
 
@@ -124,7 +124,7 @@ status:                  enum: Open, Closed
 
 ### ReviewEntry
 
-HR-restricted, Tier 2 — it carries a manager's actual judgement about a specific person.
+HR-restricted, Tier 2 — it carries a manager's actual judgment about a specific person.
 
 ```
 entry_id:                UUID v4
@@ -260,10 +260,10 @@ reviewCycle.progress(cycleId)           -> {
 
 ## Security Considerations
 
-- **ReviewEntry is HR-restricted, Tier 2.** A manager's written judgement about a person is among the more consequential records this product holds, and it is read in promotion decisions, disputes and terminations.
+- **ReviewEntry is HR-restricted, Tier 2.** A manager's written judgment about a person is among the more consequential records this product holds, and it is read in promotion decisions, disputes and terminations.
 - **Reciprocal disclosure is a fairness property enforced technically.** An employee who sees their rating first writes a different self-assessment; a manager who reads the self-assessment first writes a different assessment. Both are worth preventing, and a convention would not.
 - **A draft is private to its author until submitted, including from Owner.** The same reasoning as [[VRS-F031_Interview_Scheduling_and_Scorecards|VRS-F031]]'s unsubmitted scorecards: a half-formed thought read before its author finished having it changes what people are willing to write down.
-- **This feature never computes an average rating across a manager's reports**, and deliberately provides no calibration or forced-ranking mechanism. Both would turn a record of individual judgements into a comparative instrument, which is a different product with different consequences.
+- **This feature never computes an average rating across a manager's reports**, and deliberately provides no calibration or forced-ranking mechanism. Both would turn a record of individual judgments into a comparative instrument, which is a different product with different consequences.
 
 ---
 
@@ -285,7 +285,7 @@ reviewCycle.progress(cycleId)           -> {
 
 **Cycle progress separates the two halves.** An HR Admin chasing a cycle needs to know whether employees or managers are lagging, and a combined percentage conceals it.
 
-**Calibration and forced ranking remain permanently excluded** rather than deferred. Both convert a record of individual judgements into a comparative instrument, which changes what managers write and what the record is for.
+**Calibration and forced ranking remain permanently excluded** rather than deferred. Both convert a record of individual judgments into a comparative instrument, which changes what managers write and what the record is for.
 
 ---
 

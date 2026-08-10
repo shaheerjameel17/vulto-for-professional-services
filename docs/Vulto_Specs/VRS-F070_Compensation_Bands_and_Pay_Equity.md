@@ -91,7 +91,7 @@ Reached from [[VPS-F005_Workspace_Configuration_Console|VPS-F005]].
 
 ### Layout and components
 
-**Bands** is a Table: level, entity, minimum, midpoint, maximum, employees in band, out of band. All figures in `mono`. The out-of-band count renders `attention` while non-zero.
+**Bands** is a Table: level, entity, minimum, midpoint, maximum, employees in band, out of band. All figures use `numeric`. The out-of-band count renders `attention` while non-zero.
 
 **Band positioning** is the surface that matters. One row per employee: name, level, salary, compa-ratio, and **a horizontal position indicator** showing the band range with their position marked and the midpoint ticked.
 

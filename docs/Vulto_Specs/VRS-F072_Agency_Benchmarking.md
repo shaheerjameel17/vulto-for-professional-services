@@ -29,7 +29,7 @@ This feature was flagged from the beginning as facing the same unresolved proble
 
 Utilization rate, turnover rate, bench duration and time-to-fill are all **Tier 0 or Tier 2** — Standard or HR-restricted operational data, not compensation. The originally-anticipated Tier 1 exposure is not where this feature's sensitivity lives.
 
-That does not make the anonymization optional. **An agency's own utilization and turnover figures are commercially sensitive without touching a single salary** — a competitor learning that a firm's utilization sits at 58% has learned something they could act on. The same mechanism applies with equal rigour, for a different reason than the one originally assumed.
+That does not make the anonymization optional. **An agency's own utilization and turnover figures are commercially sensitive without touching a single salary** — a competitor learning that a firm's utilization sits at 58% has learned something they could act on. The same mechanism applies with equal rigor, for a different reason than the one originally assumed.
 
 ---
 
@@ -77,7 +77,7 @@ Four Sections, one per metric, each a horizontal percentile scale with **the wor
 
 That marker is the feature. A percentile table tells an owner what the range is; the same range with their own figure on it tells them where they stand, which is the only thing they opened this to learn.
 
-Beneath each, the sample size and the size band in `mono`, always.
+Beneath each, the sample size and the size band in `numeric`, always.
 
 **Where the workspace's own figure cannot be computed** — a firm with too little history for a turnover rate — the percentiles render without a marker and say so, rather than omitting the metric entirely. Knowing the market range is useful even before you can place yourself in it.
 

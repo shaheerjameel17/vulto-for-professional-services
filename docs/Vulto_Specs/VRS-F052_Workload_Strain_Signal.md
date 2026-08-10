@@ -55,7 +55,7 @@ It reuses two thresholds this product already established rather than inventing 
 
 ## Problem It Solves
 
-A manager who sees someone quietly working late for weeks, with two active assignments neither of them realised added up to more than full capacity, and no leave taken in months, is usually the last to notice — because none of those three facts individually looks alarming, and nobody is looking at all three together.
+A manager who sees someone quietly working late for weeks, with two active assignments neither of them realized added up to more than full capacity, and no leave taken in months, is usually the last to notice — because none of those three facts individually looks alarming, and nobody is looking at all three together.
 
 This feature does the looking.
 

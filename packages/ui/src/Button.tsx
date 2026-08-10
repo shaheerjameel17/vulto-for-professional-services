@@ -18,9 +18,6 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md" | "lg";
 
 const VARIANT: Record<Variant, string> = {
-  // FINDING F21: VPS-D002 states "Hover is `bg-hover`" for all four variants.
-  // `bg-hover` is neutral-100/neutral-800, so applying it to `primary` turns
-  // an amber button gray on hover. brand-700 is used here provisionally.
   primary: "bg-brand-600 text-text-inverse hover:bg-brand-700",
   secondary:
     "bg-bg-surface border border-border-default text-text-primary hover:bg-bg-hover",
@@ -70,8 +67,7 @@ export function Button({
       className={cx(
         "inline-flex items-center justify-center gap-2 rounded-full",
         "font-ui text-body-medium whitespace-nowrap",
-        // No elevation change on hover. VPS-D001: hover is bg-hover and that
-        // is the whole vocabulary.
+        // No elevation change on hover; each variant owns its fill treatment.
         "motion-fast transition-colors",
         // VPS-D002: disabled changes opacity and cursor only. Keeping the
         // original variant colors intact preserves the control's hierarchy.

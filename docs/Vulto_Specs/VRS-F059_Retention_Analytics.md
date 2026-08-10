@@ -31,7 +31,7 @@ That last correlation combines two features' structured records — a departure 
 
 ## What It Is
 
-Turnover and retention reporting: an annualised rate, voluntary against involuntary, cohort retention curves showing what fraction of a hiring period's intake remains at successive milestones, and — where enough data exists to say so responsibly — how much of voluntary turnover is regrettable.
+Turnover and retention reporting: an annualized rate, voluntary against involuntary, cohort retention curves showing what fraction of a hiring period's intake remains at successive milestones, and — where enough data exists to say so responsibly — how much of voluntary turnover is regrettable.
 
 ---
 
@@ -47,7 +47,7 @@ Those are the questions retention planning needs, and none is a raw headcount nu
 
 ### Turnover rate
 
-An Owner, HR Admin or Finance Admin — the last for the aggregate rate only — sees turnover for a period: departures over average headcount, annualised for comparability across period lengths.
+An Owner, HR Admin or Finance Admin — the last for the aggregate rate only — sees turnover for a period: departures over average headcount, annualized for comparability across period lengths.
 
 ### Voluntary against involuntary
 
@@ -77,7 +77,7 @@ Reached from [[VPS-F005_Workspace_Configuration_Console|VPS-F005]].
 
 Four Sections.
 
-**Turnover rate** leads with a Stat: the annualised percentage in `display`, with the departure count and average headcount beneath in `mono`. Both are shown, always — a rate without its constituents is unverifiable, and in a small workspace the difference between 8 of 100 and 2 of 25 matters to how much weight a reader gives it.
+**Turnover rate** leads with a Stat: the annualized percentage in `display`, with the departure count and average headcount beneath in `numeric`. Both are shown, always — a rate without its constituents is unverifiable, and in a small workspace the difference between 8 of 100 and 2 of 25 matters to how much weight a reader gives it.
 
 **Voluntary against involuntary** is a single stacked horizontal bar per [[VPS-D002_Component_Library|VPS-D002]], three segments in categorical colors. **Not `danger` for involuntary** — a termination is a decision the agency made, not a failure that befell it.
 
@@ -131,7 +131,7 @@ Cohort retention and regrettable turnover both pass through [[VPS-A004_Graph_Per
 
 ```
 retention.getTurnoverRate(workspaceId, startDate, endDate) -> {
-  annualisedRate, departureCount, averageHeadcount
+  annualizedRate, departureCount, averageHeadcount
 }
 
 retention.getBreakdown(workspaceId, startDate, endDate) -> {
@@ -183,7 +183,7 @@ retention.getRegrettableTurnover(workspaceId, startDate, endDate) -> {
 
 **GIVEN** 8 departures against an average headcount of 100 over six months
 **WHEN** the rate is requested
-**THEN** the annualised figure reflects that ratio scaled to twelve months, with both constituents shown
+**THEN** the annualized figure reflects that ratio scaled to twelve months, with both constituents shown
 
 ---
 

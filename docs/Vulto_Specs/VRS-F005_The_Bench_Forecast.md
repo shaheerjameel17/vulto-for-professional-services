@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto Roster Specs
-Date: "[[2026-08-07]]"
+Date: "[[2026-08-10]]"
 Product Phase:
   - MVP
 Feature Type:
@@ -26,7 +26,7 @@ This document is the single source of truth for this feature and owns Assignment
 
 A 90-day visual timeline showing every person in the agency, what they are assigned to, when they roll off, and when they become available again. It is the centerpiece of Vulto Roster and the first screen a founder opens each morning.
 
-In graph terms: a temporal visualisation of Assignment nodes connecting Employee to Project, rendered as a Gantt-style timeline. **Every bar is an Assignment. Every gap between bars is bench time, computed from the graph at render time and never stored as its own record.**
+In graph terms: a temporal visualization of Assignment nodes connecting Employee to Project, rendered as a Gantt-style timeline. **Every bar is an Assignment. Every gap between bars is bench time, computed from the graph at render time and never stored as its own record.**
 
 ---
 
@@ -34,7 +34,7 @@ In graph terms: a temporal visualisation of Assignment nodes connecting Employee
 
 A developer finishes a project on Friday. The next does not start for three weeks. Those three weeks cost the agency the person's full salary with zero revenue offset, and most founders do not notice until month-end numbers are already wrong.
 
-The typical alternative is a spreadsheet updated last Tuesday, a verbal check-in with two project managers, and a judgement call made on incomplete information — a process that takes twenty to forty minutes per decision, is wrong a meaningful proportion of the time, and is entirely inaccessible to anyone who was not present for the conversations.
+The typical alternative is a spreadsheet updated last Tuesday, a verbal check-in with two project managers, and a judgment call made on incomplete information — a process that takes twenty to forty minutes per decision, is wrong a meaningful proportion of the time, and is entirely inaccessible to anyone who was not present for the conversations.
 
 This feature makes the cost of idle time continuously visible, converting a reactive process into something checked every morning the way a founder checks a bank balance.
 
@@ -58,9 +58,13 @@ Where the filtered cohort falls below the k-anonymity threshold, the aggregate i
 
 Selection opens the Contextual Intelligence Panel, built from a single two-hop traversal of that Employee node, entirely local. What appears depends on the viewer's role and the tier of what is traversed to, governed by [[VPS-A004_Graph_Permission_Layer|VPS-A004]] rather than by logic written here.
 
+**Opening the Panel scrolls the selected row's live region clear of it.** This is a third Panel behavior, specific to this screen, and it exists because neither of [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s two behaviors is acceptable on a canvas where horizontal position carries meaning. At the 1280px design center the Panel overlays the right 360px of an approximately 966px track: displacing the content would cost the Forecast a third of its width, and overlaying it hides a third of the timeline. On any other screen that is an acceptable trade, because the covered region is more of the same list. Here the covered region is *a different span of time*, and a bar whose left edge falls beneath the Panel loses the label naming the project.
+
+On selection, the track therefore scrolls so that the selected employee's current or next live region — the assignment or bench period intersecting Today, or the next one after it — sits fully within the track width remaining left of the Panel's leading edge. Today stays visible where both can fit; where they cannot, the live region wins, because the reason a person selected the row is to look at what that person is doing. The movement is a single `motion-base` scroll rather than a jump, and it does not fire at `≥ 1536px`, where the Panel opens alongside content and occludes nothing. `T` continues to return Today to view, per the keyboard table below.
+
 ### Zoom
 
-Three horizons: 30, 90 and 180 days. Ninety is the default and the one the product is named around. Thirty is for a staffing conversation this month; 180 is for a hiring decision. The window is a view state, not a stored preference on any node.
+Three horizons: 30, 90 and 180 days. Ninety is the default and the one the product is named around. Thirty is for a staffing conversation this month; 180 is for a hiring decision. Every horizon begins with a 14-calendar-day historical lead-in before Today, followed by the selected number of forward days; the lead-in gives an assignment already in progress enough context to remain legible. The window is view state, not a stored preference on any node.
 
 ---
 
@@ -93,15 +97,15 @@ One screen, occupying Content and Panel. It is exempt from the 1440px content ma
 
 **Left column, 220px, fixed.** Avatar top-aligns with name; name at `body-medium`, human-readable employee code at `micro`, and role at `label` in `text-secondary`. These facts remain present at every timeline width; density must not remove identity. A 48px row gives the identity group clear separation without increasing the 20px bar height. The identity group alone receives a rounded hover/selection surface; no persistent divider separates it from the timeline. Ghost rows show a role title in place of a name, a `GHOST-nnn` code, and the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]]. The code is a workspace-scoped operational identifier, never the graph UUID.
 
-**Timeline region**, horizontally virtualized. At rest it has no generic non-working-day band: calendars belong to people, not to a workspace. When a row is hovered, non-working days resolved for that employee through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] appear as a quiet contextual shade. The sticky header is exactly two rows at each horizon: a month band plus daily labels at 30 days, or a month band plus unwrapped week/fortnight ranges at 90/180 days. Hovering a bench region highlights its exact range in the sticky header as one rounded pill. The Today line carries an 8px marker and its date is rendered as a brand pill with white text; a neutral line follows the pointer and highlights the exact date being inspected.
+**Timeline region**, horizontally virtualized. At rest it has no generic non-working-day band: calendars belong to people, not to a workspace. When a row is hovered, non-working days resolved for that employee through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] appear as a quiet contextual shade. Day columns are 32px at 30 days, 20px at 90 days and 12px at 180 days; the timeline scrolls rather than compressing below those widths. The sticky header is exactly two rows at each horizon: a month band plus daily labels at 30 days, or a month band plus unwrapped week/fortnight ranges at 90/180 days. Hovering a bench region highlights its exact range in the sticky header as one rounded pill. The Today line carries an 8px marker and its date is rendered as a brand pill with white text; a neutral line follows the pointer and highlights the exact date being inspected.
 
 **Assignment bar.** Neutral `bg-raised` with `border-default`, `radius-md`, 20px height, and the project name inside at `small` `text-primary`, truncating with ellipsis. A 6px `cat-n` dot assigned by project hash identifies the project without allowing assignment color to compete with bench amber.
 
-**Bench region.** Muted theme-specific amber at rest, strengthening to `attention` with the row hover, `radius-md`, 20px high. Left-aligned inside it, in `numeric-medium`, the accumulated unrecovered cost. This is the signature element. It does not animate or pulse — the restraint of everything around it is what makes it land.
+**Bench region.** Muted theme-specific amber at rest, strengthening to `attention` with the row hover, `radius-md`, 20px high. Left-aligned inside it, in `numeric-medium`, the accumulated unrecovered cost. The cost is suppressed when the region is too narrow to contain it; the working-day count appears only at 44px or wider. This is the signature element. It does not animate or pulse — the restraint of everything around it is what makes it land.
 
 **Today line.** 1px `brand-500`, full height, above bars, with an 8px dot at the top edge. The only persistent brand-colored element on the canvas.
 
-**Summary row**, sticky at the top: compact figures with unrecovered cost leading, followed by cohort size and utilization. A percentage is never shown without its denominator.
+**Summary row**, sticky at the top: compact figures with unrecovered cost leading, utilization in the middle, and people with bench time at the right. All three figures use the same type token and weight; amber is reserved for unrecovered cost. A percentage is never shown without its denominator.
 
 ### Components
 
@@ -179,9 +183,15 @@ Rejection is the default. [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]] cat
 
 The Pitch exclusion is part of this computation rather than applied downstream. A person pursuing new business is not idle; the days they spend doing it are covered, and a forecast that painted them amber would train users to ignore the color that matters most.
 
-Accumulated cost for a bench region is `bench working days × daily cost`, where daily cost derives from the employee's compensation only where the viewer is authorized for it. An unauthorized viewer receives no currency figure and no `billing_rate_default` substitute. Working day counts come from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], never from a local weekday calculation.
+Accumulated cost for a bench region is the sum of the employee's compensation cost for each uncovered working day. Annual compensation divides by that employee's working days in the relevant calendar year, counted through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] rather than a constant denominator. Monthly compensation is annualized at twelve months and uses the same calendar-year denominator. Hourly compensation multiplies the hourly amount by the contracted hours scheduled for that specific day through the employee's working pattern. A region crossing a calendar year computes each day against its own year. An unauthorized viewer receives no currency figure and no `billing_rate_default` substitute.
 
-**[[VRS-F012_Revenue_Gap_Alert|VRS-F012]] consumes this computation; it does not supply it.** That feature owns whether a bench period warrants an escalating alert. This feature owns the fact that the period exists and what it costs. The distinction is the difference between a statement of fact and a judgement about it, and separating them means the amber region works from the moment this feature ships rather than waiting seven features for an alerting engine.
+Aggregate utilization for the filtered cohort is:
+
+> the sum, over every cohort working day in the visible forward window, of Active Assignment `billable_percentage` divided by 100, divided by the count of those cohort working days.
+
+An employee working day contributes one unit of available capacity; a 60% Assignment contributes 0.6 covered units. Non-working days contribute to neither numerator nor denominator. Overlapping assignments sum subject to the 100% constraint. Ghost capacity is excluded from the headline percentage and reported separately per [[VRS-F007_Ghost_Resources|VRS-F007]].
+
+**[[VRS-F012_Revenue_Gap_Alert|VRS-F012]] consumes this computation; it does not supply it.** That feature owns whether a bench period warrants an escalating alert. This feature owns the fact that the period exists and what it costs. The distinction is the difference between a statement of fact and a judgment about it, and separating them means the amber region works from the moment this feature ships rather than waiting seven features for an alerting engine.
 
 ### The Contextual Intelligence Panel
 
@@ -254,7 +264,7 @@ contextualIntelligence.get(employeeId) -> {
 
 **GIVEN** an employee has no Assignment covering the next twelve working days
 **WHEN** the forecast renders
-**THEN** the bench region renders `attention` at 12% fill with the accumulated cost in `mono-lg`, computed from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s working day count, with no dependency on [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] existing
+**THEN** the bench region renders in its muted amber rest state with the accumulated cost in `numeric-medium`, computed from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s working day count, with no dependency on [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] existing
 
 ---
 
@@ -310,7 +320,7 @@ contextualIntelligence.get(employeeId) -> {
 
 - Full 90-day timeline renders under 200ms for 150 active employees on a mid-range device
 - Vertical scroll maintains 60fps at all times
-- Horizontal scroll across a 180-day window maintains 60fps through virtualisation
+- Horizontal scroll across a 180-day window maintains 60fps through virtualization
 - Affected rows re-render within 1 second of an underlying change, no full reload
 - Filter application completes within 50ms from the local graph
 - Ghost rows render within the same budget, no separate render pass

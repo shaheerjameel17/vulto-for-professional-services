@@ -87,7 +87,7 @@ A sweep on the same four-hourly cadence [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] 
 
 **The resolution panel** opens beside the assignment form rather than over it, so the manager can still see what they were trying to save. Not a modal: this is a decision needing context, and a modal removes the context.
 
-At the top, the arithmetic stated plainly in `mono`: current 80%, attempting 40%, combined **120%** with the excess in `attention`. Beneath it, three Cards, one per resolution, each showing the specific consequence rather than a generic label. *Reduce this assignment to 20%.* *Reduce Acme Rebrand from 60% to 20% for the overlapping fortnight.* *End Acme Rebrand on 14 March instead of 28 March.*
+At the top, the arithmetic stated plainly in `numeric`: current 80%, attempting 40%, combined **120%** with the excess in `attention`. Beneath it, three Cards, one per resolution, each showing the specific consequence rather than a generic label. *Reduce this assignment to 20%.* *Reduce Acme Rebrand from 60% to 20% for the overlapping fortnight.* *End Acme Rebrand on 14 March instead of 28 March.*
 
 Each Card carries its own action button. There is no primary among them, because the right answer depends on facts the product does not have.
 
@@ -253,7 +253,7 @@ conflictResolution.sweepOvercommitted(workspaceId)
 
 ## Out of Scope
 
-- **Automatic rebalancing across an employee's whole load** to optimize some global objective. This feature resolves one conflict at a time, at the moment it occurs, per the manager's judgement. It is not an optimization engine
+- **Automatic rebalancing across an employee's whole load** to optimize some global objective. This feature resolves one conflict at a time, at the moment it occurs, per the manager's judgment. It is not an optimization engine
 - **Notifying the employee that they were overcommitted** — [[VPS-F003_Notification_and_Alert_Center|VPS-F003]]
 - **Suggesting a replacement resource instead of overcommitting** — [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]]
 - **Leave-versus-assignment conflicts** — [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]] reuses this computation but deliberately does not route through the blocking panel. An assignment overcommitting someone is usually a mistake worth catching before it saves; a leave request overlapping a commitment is a staffing decision for whoever manages the project, surfaced plainly at approval with a link into this panel, never blocking the approval itself

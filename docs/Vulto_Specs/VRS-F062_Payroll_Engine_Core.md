@@ -101,7 +101,7 @@ When an offboarded employee's last working day falls inside a period, their pays
 
 The rule is the important detail. Everything left of it is money leaving the business; everything right of it is context. **They are never summed, never netted, and never adjacent without separation**, because a reader glancing at a row must not come away thinking the two halves relate arithmetically.
 
-Column totals sit in a sticky footer in `mono-lg`: total gross, total net, and — separated by the same rule — total revenue generated.
+Column totals sit in a sticky footer in `numeric-lg`: total gross, total net, and — separated by the same rule — total revenue generated.
 
 A row whose payslip is a final settlement carries a `attention` Badge. A row skipped for missing compensation data appears in a distinct section beneath, **never silently omitted** — an employee absent from a payroll run because nobody noticed their record was incomplete is the worst failure this screen can produce.
 
@@ -391,7 +391,7 @@ paySlip.listForEmployee(employeeId) -> PaySlip[]
 
 ## Security Considerations
 
-- **PayRun and PaySlip's Tier 1 treatment is not a new decision.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] named them explicitly, alongside wellness data and salary fields, as receiving true end-to-end encryption from the start. This is where that scope is realised.
+- **PayRun and PaySlip's Tier 1 treatment is not a new decision.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] named them explicitly, alongside wellness data and salary fields, as receiving true end-to-end encryption from the start. This is where that scope is realized.
 - **Manager is None on PayRun, not Read.** A run is a batch container with no single owning employee. An employee reads their own payslip through [[VRS-F050_Employee_Self-Service_Portal|VRS-F050]], which is the actually person-scoped record.
 - **Revenue and bench figures are Tier 0-sourced data stored inside a Tier 1 document** — a safe one-way combination. Tier 0 data inherits stronger protection by living inside a Tier 1 node; nothing is loosened.
 - **This feature performs no cross-pattern reasoning.** Both context figures are computed from raw structured records, the same category [[VRS-F054_Skill_Gap_Trend_Analysis|VRS-F054]] and [[VRS-F060_Hiring_Quality_Analytics|VRS-F060]] established stays outside Standing Rule 7.

@@ -15,7 +15,7 @@ aliases:
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
 **Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee and `has_skill`), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (the bench computation supplying availability), [[VRS-F007_Ghost_Resources|VRS-F007]] (Ghosts, matched identically), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (`requires_skill`, SkillGap and Skill registry entries), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission-scoped results)
-**Blocks:** [[VRS-F014_Skill_Matrix|VRS-F014]] (which visualises the Skill schema and proficiency ordering defined here), [[VPS-F002_Local-First_Search|VPS-F002]] (whose palette routes skill-shaped queries to this engine), [[VRS-F054_Skill_Gap_Trend_Analysis|VRS-F054]] (which analyzes the SkillGap history this feature accumulates)
+**Blocks:** [[VRS-F014_Skill_Matrix|VRS-F014]] (which visualizes the Skill schema and proficiency ordering defined here), [[VPS-F002_Local-First_Search|VPS-F002]] (whose palette routes skill-shaped queries to this engine), [[VRS-F054_Skill_Gap_Trend_Analysis|VRS-F054]] (which analyzes the SkillGap history this feature accumulates)
 
 This document is the single source of truth for this feature and owns **Skill's complete schema** and the proficiency ordering the whole product uses.
 
@@ -316,7 +316,7 @@ Three reasons. First, [[VRS-F005_The_Bench_Forecast|VRS-F005]] already renders e
 
 ## Related Notes
 
-- [[VRS-F014_Skill_Matrix|VRS-F014]] — the matrix visualising this schema
+- [[VRS-F014_Skill_Matrix|VRS-F014]] — the matrix visualizing this schema
 - [[VPS-F002_Local-First_Search|VPS-F002]] — the palette routing skill queries here
 - [[VRS-F005_The_Bench_Forecast|VRS-F005]] — the availability computation this feature filters on
 - [[VRS-F007_Ghost_Resources|VRS-F007]] — planned hires, matched identically

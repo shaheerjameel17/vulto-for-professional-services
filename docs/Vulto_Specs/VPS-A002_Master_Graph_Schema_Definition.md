@@ -181,7 +181,7 @@ Assignment's `effective_billing_rate`, added by [[VRS-F006_Rate_Card_Engine|VRS-
 | TrainingRecord | [[VRS-F041_Certification_and_Training_Tracker|VRS-F041]] | Standard | 0 |
 | SubVendor | [[VRS-F043_Contractor_and_Sub-Vendor_Management|VRS-F043]] | Standard | 0 |
 | Policy | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Standard | 0 |
-| PolicyAcknowledgement | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Standard | 0 |
+| PolicyAcknowledgment | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Standard | 0 |
 | WorkAuthorization | [[VRS-F045_Right_to_Work_and_Immigration_Compliance|VRS-F045]] | HR-restricted | 2 |
 | HRCase | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | HR-restricted identifying; content narrower still | Split: 2 / 1 |
 | CaseEvent | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | HR-restricted | Split: 2 / 1 |
@@ -407,8 +407,8 @@ Where an edge connects several node type pairs, each pair is listed explicitly. 
 | `allocated_to` | Asset → Employee | [[VRS-F042_Asset_and_Gear_Tracker|VRS-F042]] | Carries allocation_date, expected_return_date, actual_return_date |
 | `departing` | Departure → Employee | [[VRS-F023_Probation_and_Notice_Period_Tracker|VRS-F023]] | |
 | `enrolled_in` | Employee → OnboardingPlan | [[VRS-F024_Structured_Onboarding_Workflow|VRS-F024]] | |
-| `acknowledged_by` | PolicyAcknowledgement → Employee | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | |
-| `acknowledgement_of` | PolicyAcknowledgement → Policy | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Points at the specific version |
+| `acknowledged_by` | PolicyAcknowledgment → Employee | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | |
+| `acknowledgment_of` | PolicyAcknowledgment → Policy | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Points at the specific version |
 | `authorization_for` | WorkAuthorization → Employee | [[VRS-F045_Right_to_Work_and_Immigration_Compliance|VRS-F045]] | |
 | `case_concerns` | HRCase → Employee | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | |
 | `event_in` | CaseEvent → HRCase | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | |
@@ -624,7 +624,7 @@ Loro stores node properties as CRDT Maps, which are schema-flexible at the stora
 ## Out of scope
 
 - End-user configuration of the graph schema at runtime
-- Real-time graph visualisation for end users
+- Real-time graph visualization for end users
 - A bespoke graph database engine, explicitly ruled out by [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]
 - The sync protocol, document partitioning and encryption model — [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
 - The permission matrix and query interceptor implementation — [[VPS-A004_Graph_Permission_Layer|VPS-A004]]

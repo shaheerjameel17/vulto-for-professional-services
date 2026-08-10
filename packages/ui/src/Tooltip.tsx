@@ -12,7 +12,7 @@ import { cx } from "./cx";
  * and never contain an action. There is deliberately no `interactive` prop.
  *
  * FDN-19: this replaces the native `title` attribute, which rendered as the
- * operating system's own grey box and had none of VPS-D001's tokens in it. The
+ * operating system's own gray box and had none of VPS-D001's tokens in it. The
  * shortcut hints and the bar detail were both going through it.
  *
  * Radix supplies the delay, the collision handling and the ARIA wiring. Content

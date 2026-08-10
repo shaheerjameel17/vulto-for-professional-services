@@ -104,7 +104,7 @@ Four new documents. Written for Roster, authored to be inherited unchanged by ev
 | [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]] | Interaction, Motion and Keyboard Model | Architecture | Experience |
 | [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] | Application Shell, Navigation and System States | Architecture | Experience |
 
-Recorded direction, per founder decision: flat, executed with precision. No glassmorphism, no liquid glass, no decorative depth. Neutral-led palette with full light and dark themes. Brand accent Tailwind Indigo 500, with the semantic ramps required for success, warning, danger and the amber bench state the Bench Forecast depends on. Plus Jakarta Sans and Manrope as the typeface pairing; monospace selection deferred to [[VPS-D001_Design_Foundations|VPS-D001]]. The reference point is Linear's discipline — density, keyboard primacy, restraint, speed presented as an aesthetic — not Linear's appearance.
+Recorded direction, per founder decision and prototype validation: flat, executed with precision. No glassmorphism, liquid glass or decorative depth. Neutral-led light and dark themes use amber as both the restrained brand signal and the signature cost signal. Inter Variable is the single product face, with tabular numerals rather than a separate monospace family. There is one information-preserving product density. The reference point is Linear's discipline — keyboard primacy, restraint and speed presented as an aesthetic — not Linear's identity.
 
 [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] carries one obligation worth naming here: [[VPS-A004_Graph_Permission_Layer|VPS-A004]] requires that permission-denied, retention-window-aged-out and mid-sync are three visually distinct states that are never conflated. No document currently says what any of the three looks like. That is a specification gap sitting directly on top of a security requirement.
 
@@ -168,7 +168,7 @@ Twenty-four features. The recruitment cluster is rebuilt properly here; it was c
 | [[VRS-F041_Certification_and_Training_Tracker|VRS-F041]] | Certification and Training Tracker | F35 | Compliance | |
 | [[VRS-F042_Asset_and_Gear_Tracker|VRS-F042]] | Asset and Gear Tracker | F19 | Core | |
 | [[VRS-F043_Contractor_and_Sub-Vendor_Management|VRS-F043]] | Contractor and Sub-Vendor Management | F33 | Core | |
-| [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Policy Library and Acknowledgement | **new** | Compliance | Versioned handbook with an acknowledgement audit trail |
+| [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Policy Library and Acknowledgment | **new** | Compliance | Versioned handbook with an acknowledgment audit trail |
 | [[VRS-F045_Right_to_Work_and_Immigration_Compliance|VRS-F045]] | Right to Work and Immigration Compliance | **new** | Compliance | Work authorization and visa expiry for genuinely distributed teams |
 | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | Case Management: Disciplinary and Grievance | **new** | Compliance | Tier 2, HR-restricted, deliberately narrow |
 | [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] | Data Governance, Retention and Erasure | **new** | Compliance | Resolves the standing tension between never-hard-delete and statutory erasure rights |
@@ -234,7 +234,7 @@ Six features.
 
 **[[VRS-F038_Promotion_and_Compensation_Change_Workflow|VRS-F038]] Promotion and Compensation Change Workflow.** [[Vulto Roster]]'s own product note lists it — "structured multi-stakeholder approval for salary and role changes, ensuring that finance, the relevant project manager, and HR admin all sign off before changes take effect" — and [[VRS-F062_Payroll_Engine_Core|VRS-F062]] reads promotion-driven salary changes as an input that it assumes already exists. Nothing writes them.
 
-**[[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] Policy Library and Acknowledgement.** Versioned policy documents with a per-employee acknowledgement record. Unglamorous, and the first thing asked for in any employment dispute or client security review.
+**[[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] Policy Library and Acknowledgment.** Versioned policy documents with a per-employee acknowledgment record. Unglamorous, and the first thing asked for in any employment dispute or client security review.
 
 **[[VRS-F045_Right_to_Work_and_Immigration_Compliance|VRS-F045]] Right to Work and Immigration Compliance.** Work authorization status, visa type and expiry, and permit renewal windows, backed by [[VRS-F022_Encrypted_Document_Vault|VRS-F022]]'s document storage. For a product built explicitly for firms operating across Pakistan, the UAE and the UK, this is not an edge case.
 

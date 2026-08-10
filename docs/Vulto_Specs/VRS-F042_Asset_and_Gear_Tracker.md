@@ -81,7 +81,7 @@ Where a Departure exists per [[VRS-F023_Probation_and_Notice_Period_Tracker|VRS-
 
 **Assets** is a Table: name, type Badge, serial, status Badge, allocated to, expected return. Filters as a Toggle Group for status and a Select for type.
 
-A **utilization strip** sits above for License-type assets specifically: total seats, allocated, available, in `mono`. Where available seats exceed a threshold the figure renders `attention`, because unused paid seats are the cost this feature is most likely to actually recover.
+A **utilization strip** sits above for License-type assets specifically: total seats, allocated, available, in `numeric`. Where available seats exceed a threshold the figure renders `attention`, because unused paid seats are the cost this feature is most likely to actually recover.
 
 **Employee assets** on the profile is a compact list: name, type, allocated date, expected return. Overdue against an expected return renders `attention`.
 
@@ -273,7 +273,7 @@ asset.licenseUtilization(workspaceId) -> {
 
 ## Out of Scope
 
-- **Depreciation or amortisation** — `purchase_value` is recorded as a fact. Computing depreciation is [[Vulto Accounts]]' territory
+- **Depreciation or amortization** — `purchase_value` is recorded as a fact. Computing depreciation is [[Vulto Accounts]]' territory
 - **Barcode or QR scanning** — manual entry
 - **A proactive overdue sweep independent of departure.** The outstanding view and the expected-return indicator cover it; a separate alerting engine for overdue monitors would be noise
 - **Insurance claims for a lost asset** — the reason is recorded, not a claims workflow

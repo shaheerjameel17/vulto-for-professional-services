@@ -145,7 +145,7 @@ A manager calling it would have received departure data their role explicitly ex
 
 This feature closes it. A manager can nominate a delegate for a date range, and during it the delegate's own dashboard shows the delegating manager's approval items, clearly labeled as delegated and separated from their own.
 
-**Delegation covers approvals only** — leave requests, timesheet anomaly clearances, onboarding tasks. It never covers performance assessments, milestone confirmations or interview feedback, because those are judgements about a person that belong to the person who manages them.
+**Delegation covers approvals only** — leave requests, timesheet anomaly clearances, onboarding tasks. It never covers performance assessments, milestone confirmations or interview feedback, because those are judgments about a person that belong to the person who manages them.
 
 A delegation is time-bounded, visible to the delegate and to HR Admin, and audited.
 
@@ -246,7 +246,7 @@ delegation.listActive(workspaceId)                 -> Delegation[]
 
 **GIVEN** the same delegation
 **WHEN** the delegate's queue is checked for performance assessments owed by the delegating manager
-**THEN** none appear. Judgements about a person are never delegable
+**THEN** none appear. Judgments about a person are never delegable
 
 ---
 
@@ -279,7 +279,7 @@ delegation.listActive(workspaceId)                 -> Delegation[]
 - **Any new alerting or notification mechanism** — [[VPS-F003_Notification_and_Alert_Center|VPS-F003]]. This is a pull, not a push
 - **Cross-team or workspace-wide views** — a single manager's own team. An Owner equivalent is a different feature with a broader permission shape
 - **A unified priority score across action types** — deliberately rejected. A burnout alert and a leave approval are not comparable on one scale, and forcing them onto one is false precision
-- **Delegating judgement-type actions** — permanently excluded
+- **Delegating judgment-type actions** — permanently excluded
 - **Customizing which sections appear.** The queue is what a manager must handle; hiding a section is hiding an obligation
 
 ---

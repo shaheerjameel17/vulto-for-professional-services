@@ -172,12 +172,8 @@ export function holidayName(
 /*
  * Working days in a year, per entity.
  *
- * FINDING F27: VRS-F005 requires bench cost be `bench working days × daily
- * cost`, with daily cost "derived from the employee's compensation" — which is
- * an annual figure per VRS-F002. No document states the denominator. VRS-F004
- * gives `standard_daily_hours` for hour-level proration but no annual working
- * day count, and VRS-F062 owns payroll proration but is thirty features later
- * and cannot be depended on by MVP feature five.
+ * FDN-14 settled VRS-F005's daily-cost denominator: annual compensation uses
+ * the employee's materialized working-day index for the forecast year.
  *
  * Counted from the materialized index rather than assumed, so it stays correct
  * for a six-day week: London resolves near 252 and Karachi near 278.

@@ -33,7 +33,7 @@ This feature uses it, and [[VPS-A001_Technology_Stack_and_Engineering_Foundation
 
 ## What It Is
 
-Two things. **The live chart** is a visualisation of the `managed_by` hierarchy, showing who reports to whom, with span of control and cost roll-up where the viewer is authorized to see it. **Scenario mode** is a sandbox in which a proposed restructure can be modeled — moving people, removing roles, adding planned hires — against real cost, without touching the live graph until it is committed.
+Two things. **The live chart** is a visualization of the `managed_by` hierarchy, showing who reports to whom, with span of control and cost roll-up where the viewer is authorized to see it. **Scenario mode** is a sandbox in which a proposed restructure can be modeled — moving people, removing roles, adding planned hires — against real cost, without touching the live graph until it is committed.
 
 ---
 
@@ -57,7 +57,7 @@ An employee with no manager sits at the root. **Several roots are normal and not
 
 ### Span of control
 
-Each manager node shows its direct report count, and its total downstream count on hover. **A count above the workspace's configured threshold renders in `attention`** — not as a judgement, but because a manager with fourteen direct reports is a fact that is otherwise invisible until something goes wrong.
+Each manager node shows its direct report count, and its total downstream count on hover. **A count above the workspace's configured threshold renders in `attention`** — not as a judgment, but because a manager with fourteen direct reports is a fact that is otherwise invisible until something goes wrong.
 
 ### Cost roll-up
 
@@ -93,13 +93,13 @@ Discarding deletes the scenario.
 
 The chart is a **vertical tree**, root at the top, children beneath, connected by 1px `border-default` orthogonal lines. Vertical rather than horizontal because names read left to right and a horizontal tree rotates them or truncates them, and neither is acceptable in a chart whose entire content is names.
 
-Each node is a 200×64px Card: avatar at 24px, name at `body-medium`, role at `small` in `text-secondary`, and where the person manages others a right-aligned count in `mono`. Ghost Resources render with the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]].
+Each node is a 200×64px Card: avatar at 24px, name at `body-medium`, role at `small` in `text-secondary`, and where the person manages others a right-aligned count in `numeric`. Ghost Resources render with the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]].
 
 A branch collapses to a single node showing the subtree's headcount — *+ 12 people* — which is what makes a hundred-and-fifty-person chart navigable rather than a wall.
 
-**Cost, where visible, renders beneath the count in `mono` at `text-secondary`**, deliberately quieter than the name. A chart where money is the most prominent element on every card is a chart that changes how people read the organization.
+**Cost, where visible, renders beneath the count in `numeric` at `text-secondary`**, deliberately quieter than the name. A chart where money is the most prominent element on every card is a chart that changes how people read the organization.
 
-**Scenario mode is visually distinct at the canvas level**, not by a badge: the canvas takes `bg-subtle` and a 2px `attention` border, with a fixed bar along the top holding the scenario name, the delta in `mono-lg`, and **Commit** and **Discard**. Someone should never be uncertain whether they are looking at the real organization.
+**Scenario mode is visually distinct at the canvas level**, not by a badge: the canvas takes `bg-subtle` and a 2px `attention` border, with a fixed bar along the top holding the scenario name, the delta in `numeric-lg`, and **Commit** and **Discard**. Someone should never be uncertain whether they are looking at the real organization.
 
 Moved nodes render with an `attention` left border. Removed nodes render at 40% opacity with a strikethrough on the name. Added nodes render dashed, per the placeholder rule.
 
@@ -322,7 +322,7 @@ orgScenario.discard(scenarioId)               -> { success }
 - **Dotted-line or matrix reporting.** `managed_by` is a single active edge and this product is opinionated that a person has one manager. A firm needing matrix reporting is describing an organization this product is not built for
 - **Approval workflow on a scenario commit** — an Owner or HR Admin commits directly. Adding a fifth approval chain for a change that already flags every consequential item for HR review would be process for its own sake
 - **Position or seat modeling** — the chart is people, not vacancies. A planned role is a Ghost Resource
-- **Historical playback of the chart over time.** The history exists in `managed_by`'s effective dates and is traversable; a time-slider visualisation is not built
+- **Historical playback of the chart over time.** The history exists in `managed_by`'s effective dates and is traversable; a time-slider visualization is not built
 - **Export as an image or slide** — [[VRS-F061_Reporting_and_Export_Engine|VRS-F061]]
 - **Offboarding of any kind** — [[VRS-F023_Probation_and_Notice_Period_Tracker|VRS-F023]] and [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]]
 

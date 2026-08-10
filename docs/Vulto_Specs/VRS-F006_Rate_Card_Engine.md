@@ -75,11 +75,11 @@ Editing rates creates a new version linked by `supersedes`. **Assignments alread
 
 **Rate cards** is a Table: name, currency, line count, version, active assignment count, last updated. Active assignment count is the useful column — it tells a finance admin which cards are load-bearing before they edit one.
 
-**Rate card editor** opens in the Panel: a name Input, a currency Select, and a Table of one row per seniority level with an hourly rate Input. Daily and monthly figures render beside each row in `mono` `text-tertiary`, computed live and not editable.
+**Rate card editor** opens in the Panel: a name Input, a currency Select, and a Table of one row per seniority level with an hourly rate Input. Daily and monthly figures render beside each row in `numeric` `text-tertiary`, computed live and not editable.
 
 A version history Section beneath shows the supersedes chain — version, date, who changed it, and how many assignments still point at it. Saving a change opens a Modal confirming that existing assignments retain their rates and that only new ones take the update. This is one of the few modals in the product, because the alternative — a finance admin believing they have repriced live work when they have not — is a worse outcome than an interruption.
 
-**The Assignment rate selector** is a Select plus a live preview in `mono`: hourly, daily and the resolved figure. An override is revealed by a `ghost` **Override rate** action, which expands an Input and a required reason Textarea. An assignment carrying an override shows a small `attention` Badge on the Bench Forecast bar's hover card, since an unexplained rate difference is exactly the thing someone later needs to trace.
+**The Assignment rate selector** is a Select plus a live preview in `numeric`: hourly, daily and the resolved figure. An override is revealed by a `ghost` **Override rate** action, which expands an Input and a required reason Textarea. An assignment carrying an override shows a small `attention` Badge on the Bench Forecast bar's hover card, since an unexplained rate difference is exactly the thing someone later needs to trace.
 
 ### Keyboard
 

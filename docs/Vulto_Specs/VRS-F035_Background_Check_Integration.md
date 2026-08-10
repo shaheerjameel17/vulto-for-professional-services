@@ -53,7 +53,7 @@ No new link, no account, the same JWT [[VRS-F031_Interview_Scheduling_and_Scorec
 
 ### A decline
 
-Recorded as such and visible to HR Admin, who decides how to proceed per the agency's own policy. **This feature never withdraws an offer automatically or makes that judgement itself.**
+Recorded as such and visible to HR Admin, who decides how to proceed per the agency's own policy. **This feature never withdraws an offer automatically or makes that judgment itself.**
 
 ### While the check runs
 
@@ -90,7 +90,7 @@ Conversion runs unmodified. The record and its report remain as traversable from
 
 **Request check** is a set of Checkboxes, one per supported check type, with a plain statement of what each involves. Confirming shows what the candidate will be asked, verbatim, before it is sent — an HR Admin should see the request in the candidate's own words before it goes out.
 
-**Check status** shows the requested types, the status Badge, and where complete two clearly separated rows: **Provider result** and **Agency decision.** They are visually distinct, labeled differently, and never merged. The first is a fact reported to the agency; the second is the agency's own judgement, and conflating them is how a provider's raw finding becomes a hiring decision nobody consciously made.
+**Check status** shows the requested types, the status Badge, and where complete two clearly separated rows: **Provider result** and **Agency decision.** They are visually distinct, labeled differently, and never merged. The first is a fact reported to the agency; the second is the agency's own judgment, and conflating them is how a provider's raw finding becomes a hiring decision nobody consciously made.
 
 Recording a decision requires selecting it explicitly. **It is never pre-filled from the provider's result.**
 
@@ -155,7 +155,7 @@ overall_result:            enum: Clear, Flagged, Pending — nullable. The
                            provider's own outcome, recorded exactly as given
 completed_at:              timestamp, nullable
 decision:                  enum: ProceedWithHire, DoNotProceed, Pending —
-                           nullable. The agency's judgement, distinct from
+                           nullable. The agency's judgment, distinct from
                            overall_result and never defaulted from it
 decision_recorded_by:      user_id, nullable
 decision_recorded_at:      timestamp, nullable
@@ -322,7 +322,7 @@ backgroundCheckRecord.listForCandidate(candidateId) -> BackgroundCheckRecord[]
 
 **Adverse-action notice generation remains permanently excluded.** The field records that a notice was sent because the record matters; generating one would require jurisdictional legal expertise this product does not have and should not claim.
 
-**This feature moves from Mature into the recruitment cluster**, where it belongs. A background check happens between offer and hire, and scheduling it thirty features after the pipeline it sits inside was an artefact of the old ordering.
+**This feature moves from Mature into the recruitment cluster**, where it belongs. A background check happens between offer and hire, and scheduling it thirty features after the pipeline it sits inside was an artifact of the old ordering.
 
 ---
 

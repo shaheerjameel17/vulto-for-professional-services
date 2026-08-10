@@ -24,13 +24,13 @@ import { TYPE_TOKENS } from "@vulto/tokens";
  */
 
 const SURFACE_TOKENS: { name: string; className: string; light: string; dark: string }[] = [
-  { name: "bg-canvas", className: "bg-bg-canvas", light: "neutral-50", dark: "neutral-950" },
-  { name: "bg-surface", className: "bg-bg-surface", light: "neutral-0", dark: "neutral-900" },
-  { name: "bg-raised", className: "bg-bg-raised", light: "neutral-0", dark: "neutral-800" },
-  { name: "bg-subtle", className: "bg-bg-subtle", light: "neutral-100", dark: "neutral-800" },
-  { name: "bg-hover", className: "bg-bg-hover", light: "neutral-100", dark: "neutral-800" },
+  { name: "bg-canvas", className: "bg-bg-canvas", light: "#EFEFF0", dark: "#09090A" },
+  { name: "bg-surface", className: "bg-bg-surface", light: "#FFFFFF", dark: "#1A1A1B" },
+  { name: "bg-raised", className: "bg-bg-raised", light: "#FFFFFF", dark: "#1A1A1B" },
+  { name: "bg-subtle", className: "bg-bg-subtle", light: "#F9F9FA", dark: "#111112" },
+  { name: "bg-hover", className: "bg-bg-hover", light: "#EFEFF1", dark: "#222223" },
   { name: "bg-selected", className: "bg-bg-selected", light: "brand-50", dark: "brand-900" },
-  { name: "bg-active", className: "bg-bg-active", light: "neutral-200", dark: "neutral-800" },
+  { name: "bg-active", className: "bg-bg-active", light: "#E6E6E9", dark: "#1A1A1B" },
 ];
 
 const NEUTRAL = [
@@ -88,18 +88,18 @@ const SPACE: { token: string; px: number; className: string }[] = [
 
 const TYPE_SPEC: Record<string, string> = {
   display: "32 / 40 · Inter 640 · −0.022em",
-  h1: "24 / 30 · Inter 640 · −0.02em",
-  h2: "20 / 26 · Inter 600 · −0.015em",
-  h3: "16 / 22 · Inter 600",
-  body: "14 / 20 · Inter 400",
-  "body-medium": "14 / 20 · Inter 500",
-  small: "13 / 18 · Inter 400",
-  label: "12 / 16 · Inter 500",
+  h1: "22 / 28 · Inter 600 · −0.02em",
+  h2: "18 / 24 · Inter 600 · −0.015em",
+  h3: "15 / 20 · Inter 600",
+  body: "13 / 18 · Inter 400",
+  "body-medium": "13 / 18 · Inter 500",
+  small: "12 / 16 · Inter 400",
+  label: "11 / 14 · Inter 500",
   micro: "11 / 14 · Inter 560 · +0.04em",
-  numeric: "13 / 18 · Inter 400 · tabular figures",
-  "numeric-medium": "13 / 18 · Inter 500 · tabular figures",
-  "numeric-md": "16 / 22 · Inter 500 · tabular figures",
-  "numeric-lg": "20 / 26 · Inter 600 · tabular figures",
+  numeric: "12 / 16 · Inter 400 · tabular figures",
+  "numeric-medium": "12 / 16 · Inter 500 · tabular figures",
+  "numeric-md": "15 / 20 · Inter 500 · tabular figures",
+  "numeric-lg": "18 / 24 · Inter 600 · tabular figures",
 };
 
 const SAMPLE: Record<string, string> = {
@@ -180,12 +180,9 @@ export default function FoundationsPage() {
           </div>
 
           <div className="mt-4">
-            <InlineAlert tone="attention">
-              Finding F10 — in dark mode <code className="font-ui text-numeric">bg-raised</code>,{" "}
-              <code className="font-ui text-numeric">bg-subtle</code> and{" "}
-              <code className="font-ui text-numeric">bg-hover</code> are all
-              neutral-800. Switch to Dark and compare the three swatches above:
-              hover is invisible inside any overlay surface.
+            <InlineAlert tone="success">
+              FDN-9 closed the dark-surface collision. Canvas, inset, control,
+              and hover surfaces now occupy distinct contrast steps.
             </InlineAlert>
           </div>
         </Section>
@@ -210,11 +207,11 @@ export default function FoundationsPage() {
             </Text>
           </div>
           <div className="mt-4">
-            <InlineAlert tone="attention">
-              Finding F9 — the micro line above is a table column header as
-              specified. It computes to about 2.6:1 in light and 3.7:1 in dark,
-              against VPS-D001&rsquo;s 4.5:1 floor, and a column header is the
-              sole carrier of what its column means.
+            <InlineAlert tone="success">
+              FDN-9 closed the header contrast defect. Load-bearing labels use
+              <code className="font-ui text-numeric"> text-secondary</code>;
+              <code className="font-ui text-numeric"> text-tertiary</code> is
+              reserved for nonessential metadata.
             </InlineAlert>
           </div>
         </Section>

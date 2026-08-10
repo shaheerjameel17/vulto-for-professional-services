@@ -87,7 +87,7 @@ Category groups are separated by a 2px `border-strong` vertical rule and a `micr
 
 This is the one place in the product where color intensity carries meaning rather than category, and it is defensible because the alternative — four thousand cells of text — is unreadable. Hovering a cell states the values in words for anyone who cannot distinguish the intensities, and the Panel view is the full accessible representation.
 
-**Column headers** show the skill name, then coverage and depth beneath in `mono` as `12 · 3`. A skill with zero coverage renders its header in `text-tertiary`, since a column of nothing is worth seeing but not worth emphasising.
+**Column headers** show the skill name, then coverage and depth beneath in `numeric` as `12 · 3`. A skill with zero coverage renders its header in `text-tertiary`, since a column of nothing is worth seeing but not worth emphasizing.
 
 **Filters** sit above as a Select for category, a Toggle Group for minimum proficiency, and a Switch for verified-only.
 

@@ -91,7 +91,7 @@ Completing offboarding through [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] au
 
 **The probation decision Panel** shows the employee, their manager, their start date, and three actions as separate Cards rather than a Select: **Confirm**, **Extend**, **Terminate**. Extend reveals a DatePicker and a required reason. Terminate carries a Modal confirmation and hands off to [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] — it does not complete here, because ending someone's employment should not be reachable in one click from a list.
 
-**Create departure** collects type, notice date and notice period in days, showing the computed last working day live in `mono` as the period is typed. Where that date falls on a non-working day per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], the field shows the adjusted date and states why.
+**Create departure** collects type, notice date and notice period in days, showing the computed last working day live in `numeric` as the period is typed. Where that date falls on a non-working day per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], the field shows the adjusted date and states why.
 
 ### Keyboard
 

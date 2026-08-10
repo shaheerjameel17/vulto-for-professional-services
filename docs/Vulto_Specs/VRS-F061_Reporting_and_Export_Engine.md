@@ -158,7 +158,7 @@ Deliberately closed. A report generator with arbitrary field selection is a quer
 | Payroll | Payroll summary by period | [[VRS-F069_Payroll_and_HR_Cost_Dashboard|VRS-F069]] |
 | Payroll | Cost by department and entity | [[VRS-F069_Payroll_and_HR_Cost_Dashboard|VRS-F069]] |
 | Compliance | Access audit log | [[VPS-F004_Silent_Audit_Log|VPS-F004]] |
-| Compliance | Policy acknowledgement status | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] |
+| Compliance | Policy acknowledgment status | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] |
 | Compliance | Work authorization status | [[VRS-F045_Right_to_Work_and_Immigration_Compliance|VRS-F045]] |
 
 **Adding a report is an amendment to this document**, with the same review its permission and disclosure behavior requires.

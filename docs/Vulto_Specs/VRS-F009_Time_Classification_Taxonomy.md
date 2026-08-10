@@ -23,7 +23,7 @@ This document is the single source of truth for what an hour of logged time *mea
 
 ## What It Is
 
-The classification taxonomy for logged time: the raw judgement of whether an hour is **Billable** — client-chargeable work against an active Assignment — **Non-Billable** — necessary internal work — or **Pitch** — time invested pursuing new business that generates no revenue yet but is emphatically not idle.
+The classification taxonomy for logged time: the raw judgment of whether an hour is **Billable** — client-chargeable work against an active Assignment — **Non-Billable** — necessary internal work — or **Pitch** — time invested pursuing new business that generates no revenue yet but is emphatically not idle.
 
 This document owns the taxonomy and the write-time rules. It owns no dashboard, chart or aggregate; that is [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]]'s territory entirely.
 

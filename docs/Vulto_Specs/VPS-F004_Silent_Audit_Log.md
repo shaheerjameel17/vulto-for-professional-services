@@ -73,7 +73,7 @@ Reached from [[VPS-F005_Workspace_Configuration_Console|VPS-F005]], not from the
 
 ### Layout and components
 
-A Table: timestamp in `mono`, actor, role exercised, event type Badge, target node type, tier Badge. Ordered by time descending, virtualised — a payroll-active workspace generates a substantial volume and this table must scroll through months without degrading.
+A Table: timestamp in `numeric`, actor, role exercised, event type Badge, target node type, tier Badge. Ordered by time descending, virtualized — a payroll-active workspace generates a substantial volume and this table must scroll through months without degrading.
 
 Filters sit above as a DatePicker range, a Select for actor, a Toggle Group for event type, and a Select for record kind.
 
@@ -108,7 +108,7 @@ Drops `role exercised`, then `tier`, below 1280px. Actor and timestamp are never
 audit_entry_id:    UUID v4
 workspace_id:      UUID
 event_type:        enum: PermissionDenied, SensitiveAccessGranted
-actor_user_id:     UUID, FK to User — see pseudonymisation below
+actor_user_id:     UUID, FK to User — see pseudonymization below
 actor_role:        string — the specific role exercised at the moment of the
                    event, since a user may hold several
 actor_application: string, default 'VultoRoster' — which suite application
@@ -181,7 +181,7 @@ auditLog.query(workspaceId, filters?: {
 | G03 | No update or soft-delete operation against AuditEntry exists at the API layer, for any role. Rejected at write time, not merely omitted from the interface |
 | G04 | Denials are logged at every tier. Successful-access logging covers Tier 1 and Tier 3 only |
 | G05 | `actor_application` records which suite application issued the query, defaulting to `'VultoRoster'` |
-| G06 | AuditEntry is exempt from erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. An erased actor's identifier is pseudonymised to a stable opaque token; the entry itself persists |
+| G06 | AuditEntry is exempt from erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. An erased actor's identifier is pseudonymized to a stable opaque token; the entry itself persists |
 | G07 | AuditEntry is never indexed by [[VPS-F002_Local-First_Search|VPS-F002]] |
 
 ---
@@ -193,7 +193,7 @@ auditLog.query(workspaceId, filters?: {
 | VPS-F004-S01 | Query-layer logging integration | Security |
 | VPS-F004-S02 | Immutability enforcement | Security |
 | VPS-F004-S03 | Review surface | UI |
-| VPS-F004-S04 | Actor pseudonymisation on erasure | Security |
+| VPS-F004-S04 | Actor pseudonymization on erasure | Security |
 
 ---
 
@@ -255,7 +255,7 @@ auditLog.query(workspaceId, filters?: {
 - **This feature's access model deviates from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s standard definition of Full, and the deviation is the entire point.** An audit log that its most privileged role can quietly edit provides no accountability for that role specifically — which is the case that matters most.
 - **Logging is structural, not conventional.** A missed subscription rule for a notification is an inconvenience. A missed one for an audit event is a gap in exactly the record this feature exists to keep complete.
 - **The log is itself sensitive.** It reveals which people hold which roles, which records exist, and who is interested in whom. It is Tier 2, Owner and HR Admin only, excluded from search, and reached from settings rather than navigation. Every one of those is a deliberate reduction in casual exposure.
-- **Pseudonymisation is not anonymization, and this is stated honestly.** A pseudonymised actor's events remain correlatable with one another by design, which is what makes the log still useful. Where a jurisdiction requires stronger treatment, that is a legal question for that workspace rather than an engineering default.
+- **Pseudonymization is not anonymization, and this is stated honestly.** A pseudonymized actor's events remain correlatable with one another by design, which is what makes the log still useful. Where a jurisdiction requires stronger treatment, that is a legal question for that workspace rather than an engineering default.
 
 ---
 
@@ -272,7 +272,7 @@ auditLog.query(workspaceId, filters?: {
 
 **This feature moves from Scale to MVP.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] and [[VPS-A004_Graph_Permission_Layer|VPS-A004]] both reference it as an existing guarantee, and Tier 1 and Tier 3 data exists from the first payroll field. Building it thirty features later would mean either an unlogged quarter or a retrofit into an interceptor that thirty features already depend on.
 
-**The retention and erasure collision is resolved.** The previous specification left retention as a legal question with indefinite retention as a default, which left [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]'s erasure right and this log's immutability in direct conflict. Actor pseudonymisation satisfies both: the record survives, the person ceases to be identified.
+**The retention and erasure collision is resolved.** The previous specification left retention as a legal question with indefinite retention as a default, which left [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]'s erasure right and this log's immutability in direct conflict. Actor pseudonymization satisfies both: the record survives, the person ceases to be identified.
 
 **AuditEntry is excluded from search.** Not previously stated, and a real leak — indexing the log would let someone discover that a restricted record type exists by searching for it, which is the inference the interceptor prevents everywhere else.
 
@@ -284,5 +284,5 @@ auditLog.query(workspaceId, filters?: {
 
 - [[VPS-A004_Graph_Permission_Layer|VPS-A004]] — the interceptor that writes every entry
 - [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — the tier model this logging holds accountable
-- [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] — erasure, and the pseudonymisation path
+- [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] — erasure, and the pseudonymization path
 - [[VPS-F002_Local-First_Search|VPS-F002]] — search, from which this node type is excluded

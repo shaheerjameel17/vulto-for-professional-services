@@ -273,7 +273,7 @@ payrollTax.computeStatutoryDeductions(grossPay, taxConfigId) -> {
 - **Automatic filing, remittance or reporting to any authority** — this computes what is owed. Filing it is outside this graph entirely
 - **Statutory categories beyond income tax and social security** — a real future extension requiring the same scrutiny these two received, not assumed to fit the same shape
 - **Detecting a legislative rate change** — a config update is a deliberate human action. This feature monitors no external data feed
-- **Tax equalisation for internationally mobile employees** — materially more complex than domestic withholding, not attempted
+- **Tax equalization for internationally mobile employees** — materially more complex than domestic withholding, not attempted
 
 ---
 

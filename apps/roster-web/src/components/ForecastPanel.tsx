@@ -16,7 +16,7 @@ import { ENTITY_NAMES } from "../fixtures/calendar";
  * mocked. Two rules are honored because they are what the screen is for:
  *
  *  - Compensation-derived figures are absent, not zeroed, for a viewer without
- *    access (VRS-F005's security rules, and the founder's provisional F6).
+ *    access, per VRS-F005's settled security rule.
  *  - Wellness data is structurally absent for every role including Owner. There
  *    is no branch for it below, and there is no field to render — an
  *    unauthorized device never holds the data to suppress.

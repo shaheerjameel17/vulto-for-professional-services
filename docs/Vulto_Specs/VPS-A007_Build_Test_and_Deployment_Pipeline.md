@@ -75,7 +75,7 @@ The trigger is written as a condition rather than an exemption deliberately. **A
 
 **It is what makes Codespaces reproducible.** A007-T14 requires development to happen in Codespaces, and a Codespace is defined by a container image. Without one, each developer gets whatever the base image happened to contain that week.
 
-**It is what makes the production artefact promotable.** A007-T12 requires the production artefact to be byte-identical to the one tested in staging. That guarantee is only meaningful if the artefact is a sealed image rather than a build re-run against whatever the target machine has installed.
+**It is what makes the production artifact promotable.** A007-T12 requires the production artifact to be byte-identical to the one tested in staging. That guarantee is only meaningful if the artifact is a sealed image rather than a build re-run against whatever the target machine has installed.
 
 ### Three image roles
 
@@ -117,7 +117,7 @@ Per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]], with the pipelin
 | **Staging** | Merge to `main` | Synthetic only. **Never production data** |
 | **Production** | Manual promotion from a staging build | Real |
 
-**Production is promoted, never built.** The artefact that reaches production is byte-identical to the one tested in staging. A separate production build is a build nobody tested.
+**Production is promoted, never built.** The artifact that reaches production is byte-identical to the one tested in staging. A separate production build is a build nobody tested.
 
 ---
 
@@ -217,7 +217,7 @@ Each of those is a case this specification set corrected a defect in. **A fixtur
 
 ## Rollback
 
-**Frontend and backend roll back by promoting the previous artefact.** Seconds, not a rebuild.
+**Frontend and backend roll back by promoting the previous artifact.** Seconds, not a rebuild.
 
 **Mobile cannot roll back**, which is a property of app stores rather than this pipeline. It is stated here because it means a mobile release carries a materially higher bar than a web one, and the pipeline runs the full suite against a mobile build even where nothing mobile-specific changed.
 
@@ -238,12 +238,12 @@ Each of those is a case this specification set corrected a defect in. **A fixtur
 | A007-T09 | Log redaction MUST be tested against a payload containing every protected field                                                                                                                                                                                                                                                     |                       |
 | A007-T10 | The anonymous contribution nodes MUST be tested to confirm no traversal resolves to an Employee                                                                                                                                                                                                                                     |                       |
 | A007-T11 | Production data MUST NOT reach any pipeline stage, fixture or environment                                                                                                                                                                                                                                                           |                       |
-| A007-T12 | The production artefact MUST be the promoted staging artefact, never a separate build                                                                                                                                                                                                                                               |                       |
+| A007-T12 | The production artifact MUST be the promoted staging artifact, never a separate build                                                                                                                                                                                                                                               |                       |
 | A007-T13 | `services/cross-tenant-aggregation` MUST deploy separately with no shared database or connection pool                                                                                                                                                                                                                               |                       |
 | A007-T14 | Development MUST occur in Codespaces for any person with repository access who is not an owner of the company. Until such a person exists, an owner MAY develop locally on a device with full-disk encryption enabled, a passcode set, and against a private repository. Source MUST NOT be cloned to any non-owner personal device |                       |
 | A007-T15 | An offline-then-reconnect end-to-end test MUST run on every release                                                                                                                                                                                                                                                                 |                       |
 | A007-T16 | Every base image MUST be pinned to a digest, never a tag                                                                                                                                                                                                                                                                            |                       |
-| A007-T17 | A service image MUST NOT contain a compiler or build toolchain. It receives a built artefact                                                                                                                                                                                                                                        |                       |
+| A007-T17 | A service image MUST NOT contain a compiler or build toolchain. It receives a built artifact                                                                                                                                                                                                                                        |                       |
 | A007-T18 | `docker compose` MUST bring up the full local stack, with synthetic fixtures, in one command                                                                                                                                                                                                                                        |                       |
 | A007-T19 | The development image MUST allow a full local run without a host-installed Rust toolchain, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations| VPS-A001]]'s A001-T04 |
 
@@ -289,12 +289,12 @@ Each of those is a case this specification set corrected a defect in. **A fixtur
 
 **GIVEN** a service image is inspected
 **WHEN** its contents are listed
-**THEN** it contains a built artefact and its runtime, and no compiler or build toolchain
+**THEN** it contains a built artifact and its runtime, and no compiler or build toolchain
 
 ---
 
 **GIVEN** a release is promoted to production
-**WHEN** the artefact is compared to the staging build
+**WHEN** the artifact is compared to the staging build
 **THEN** they are byte-identical
 
 ---
@@ -329,7 +329,7 @@ Each of those is a case this specification set corrected a defect in. **A fixtur
 
 **It binds on a trigger rather than a date or a phase.** The first person with repository access who is not an owner of the company. Written as a condition because an exemption naming the founder would be a precedent the next requester could cite, where a condition is one nobody can argue themselves out of.
 
-**Docker is documented here rather than as its own architecture document.** It is deployment and environment mechanics, not a cross-cutting foundation every feature inherits, and giving it document weight would make it look as consequential as the CRDT choice — which it is not. It is named at all because three requirements depend on it silently: A001-T04's toolchain-free local stack, A007-T14's Codespaces reproducibility, and A007-T12's promotable artefact.
+**Docker is documented here rather than as its own architecture document.** It is deployment and environment mechanics, not a cross-cutting foundation every feature inherits, and giving it document weight would make it look as consequential as the CRDT choice — which it is not. It is named at all because three requirements depend on it silently: A001-T04's toolchain-free local stack, A007-T14's Codespaces reproducibility, and A007-T12's promotable artifact.
 
 ---
 

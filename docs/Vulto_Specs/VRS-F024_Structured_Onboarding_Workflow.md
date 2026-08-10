@@ -186,7 +186,7 @@ Same historical-accuracy principle as [[VRS-F006_Rate_Card_Engine|VRS-F006]]'s r
 
 A plain URL. [[Vulto Learn - Team Knowledge]] is a separate application this project does not build, and inventing a structured integration against an API that does not exist would be guessing.
 
-A plain link is a complete solution here, not a placeholder apologising for itself. If that application later exposes a content API, this field is a natural place to evolve from.
+A plain link is a complete solution here, not a placeholder apologizing for itself. If that application later exposes a content API, this field is a natural place to evolve from.
 
 ### API contracts
 

@@ -36,13 +36,8 @@ import {
  * VPS-D002's Table specification survives a hundred rows, even though this
  * fixture only supplies fifteen.
  *
- * FINDING F9 AT TABLE SCALE, deliberately not patched here: VPS-D002
- * requires column headers at `micro` in `text-tertiary`, which computes to
- * roughly 2.6:1 — already logged against the Stat deviation in FDN-17, and
- * a table is nothing but column headers doing load-bearing work, which
- * pushes harder on the same floor. Recorded in Prototype_Findings.md rather
- * than patched locally; FDN-9 resolves it as a rule change, not a
- * per-component workaround.
+ * FDN-9 settled the table-header contrast rule: column headers are
+ * load-bearing labels and use `text-secondary`, not `text-tertiary`.
  *
  * Row selection into a Panel summary and checkbox-based selection are
  * VPS-D002's Table behavior too, but nothing on this screen needs either

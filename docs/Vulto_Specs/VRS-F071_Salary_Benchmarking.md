@@ -106,7 +106,7 @@ This is the one screen in the product where a wall of explanatory text is correc
 
 That overlay is the whole point. A percentile table is information. The same percentiles with the firm's own band drawn across them is a decision — *our midpoint sits at the market 40th* is actionable in a way two separate numbers on two separate screens never are.
 
-Sample size renders beneath in `mono`, always. A benchmark without its sample is a rumor.
+Sample size renders beneath in `numeric`, always. A benchmark without its sample is a rumor.
 
 ### Keyboard
 
@@ -141,7 +141,7 @@ role_category:      string — matches Skill.category per VRS-F013
 seniority_level:    enum per VRS-F002
 jurisdiction:       enum per VRS-F003
 salary_band:        string — computed client-side. Bands are 10,000 wide below
-                    200,000 annualised and 20,000 wide above, coarser at the
+                    200,000 annualized and 20,000 wide above, coarser at the
                     high end where a narrow band is more identifying against
                     a smaller population
 currency:           ISO 4217

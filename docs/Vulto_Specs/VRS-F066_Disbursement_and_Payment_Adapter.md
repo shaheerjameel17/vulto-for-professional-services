@@ -87,7 +87,7 @@ An individual instruction can fail — a wrong account, a closed account, a reje
 
 ### Layout and components
 
-**Batch detail** leads with a reconciliation strip: three figures in `mono-lg` — **total, confirmed, outstanding** — with outstanding rendering `attention` while non-zero.
+**Batch detail** leads with a reconciliation strip: three figures in `numeric-lg` — **total, confirmed, outstanding** — with outstanding rendering `attention` while non-zero.
 
 That strip is the feature's most important element. The question a finance admin has after a payroll run is not what was calculated; it is **whether everyone actually got paid**, and until outstanding reads zero the answer is no.
 
@@ -171,7 +171,7 @@ confirmed_at:        timestamp, nullable
 
 Neither node carries an account number, a sort code, an IBAN or any payment credential. `recipient_id` points at an Employee or SubVendor; **the actual banking detail is held in the payment provider's own vault or, on the file path, entered by a person into their bank's portal.**
 
-Where a file is generated, account details are read from a separately encrypted store at generation time, written into the file, and **never persisted into a graph node.** The file itself lives in object storage per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]], encrypted client-side at Tier 1, and is subject to a short retention — days, not years — because a bank file is a list of every employee's account details in one place, which is the single most damaging artefact this product can produce.
+Where a file is generated, account details are read from a separately encrypted store at generation time, written into the file, and **never persisted into a graph node.** The file itself lives in object storage per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]], encrypted client-side at Tier 1, and is subject to a short retention — days, not years — because a bank file is a list of every employee's account details in one place, which is the single most damaging artifact this product can produce.
 
 ### The adapter interface
 
@@ -321,7 +321,7 @@ disbursement.retry(instructionId) -> { instructionId }
 ## Security Considerations
 
 - **Keeping banking details out of the graph is the central decision.** A graph node holding every employee's account number would be the highest-value target in this product, synced to devices, and outside the encryption model that protects compensation. Details live in an encrypted store keyed separately, or in a provider's vault, and reach the graph never.
-- **A generated bank file is the most dangerous artefact this product creates** — every employee's account details, in one file, in one place. Tier 1, client-side encrypted, short retention, and audited on every access. The retention default of seven days is deliberately shorter than any other document class in the product.
+- **A generated bank file is the most dangerous artifact this product creates** — every employee's account details, in one file, in one place. Tier 1, client-side encrypted, short retention, and audited on every access. The retention default of seven days is deliberately shorter than any other document class in the product.
 - **This surface is Owner and Finance Admin only — narrower than payroll itself.** HR Admin holds full access to a payroll run, correctly, because they own employment records. Releasing money is a different authority, and this is the one place in the product where HR Admin is deliberately excluded from something adjacent to their own domain.
 - **Approval is enforced at the write layer.** This is the only path by which money leaves, and a gate enforced in an interface is not a gate.
 - **A failed instruction is never mutated.** The failure record survives the retry, because *this payment failed and was reissued* is a materially different fact from *this payment succeeded on the second attempt*, and only the first is honest.

@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** Nearly every feature built so far, read not written — [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (timezone, personalising each user's own today), [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] (notification read state, reused rather than a second freshness mechanism), [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] (documents, for interview enrichment), [[VRS-F031_Interview_Scheduling_and_Scorecards|VRS-F031]] (**and the independence guarantee this feature must actively protect**), [[VRS-F049_Manager_Dashboard|VRS-F049]] (whose action queue this reuses rather than reimplements), [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] (Insights, displayed never re-derived)
+**Depends On:** Nearly every feature built so far, read not written — [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (timezone, personalizing each user's own today), [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] (notification read state, reused rather than a second freshness mechanism), [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] (documents, for interview enrichment), [[VRS-F031_Interview_Scheduling_and_Scorecards|VRS-F031]] (**and the independence guarantee this feature must actively protect**), [[VRS-F049_Manager_Dashboard|VRS-F049]] (whose action queue this reuses rather than reimplements), [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] (Insights, displayed never re-derived)
 **Blocks:** Nothing structurally.
 
 This document is the single source of truth for this feature.
@@ -27,7 +27,7 @@ Not a bigger version of [[VRS-F049_Manager_Dashboard|VRS-F049]]'s queue with a n
 
 **The test held here is narrower and harder: could a person read this in under thirty seconds and know exactly what today requires of them, with the context needed to act rather than a link to go find it.** If a section does not clear that bar it does not belong, however easy it would be to add.
 
-This is why the feature is deliberately short on sections. The temptation would have been to compose the same fourteen sources again and call it a briefing. **A briefing that takes real judgement about what to leave out is more useful than one that includes everything and asks the reader to do the prioritizing** — which is exactly the job this feature exists to do instead.
+This is why the feature is deliberately short on sections. The temptation would have been to compose the same fourteen sources again and call it a briefing. **A briefing that takes real judgment about what to leave out is more useful than one that includes everything and asks the reader to do the prioritizing** — which is exactly the job this feature exists to do instead.
 
 ---
 
@@ -39,15 +39,15 @@ Three surfaces now show a person things needing attention, and the distinction h
 
 **[[VRS-F049_Manager_Dashboard|VRS-F049]]** is a manager's persistent current-state command center, scoped to running a team. It reports *what is true right now* about their reports.
 
-**This feature answers a question neither does: what does today, specifically, require of me.** It is the only one of the three that is date-scoped, the only one personalised by the reader's own time zone, and the only one that is a daily artefact rather than a continuously current view.
+**This feature answers a question neither does: what does today, specifically, require of me.** It is the only one of the three that is date-scoped, the only one personalized by the reader's own time zone, and the only one that is a daily artifact rather than a continuously current view.
 
-Its Needs Your Action section reuses [[VRS-F049_Manager_Dashboard|VRS-F049]]'s composition directly rather than reimplementing it, personalised to whatever role the reader actually holds.
+Its Needs Your Action section reuses [[VRS-F049_Manager_Dashboard|VRS-F049]]'s composition directly rather than reimplementing it, personalized to whatever role the reader actually holds.
 
 ---
 
 ## What It Is
 
-A personalised, self-scoped view, computed fresh every time it opens, built from three things and nothing else: **what is scheduled for today**, by name and time; **what needs this person's action**, ranked by how long it has waited; and **what is new since they last looked**, as an honest count.
+A personalized, self-scoped view, computed fresh every time it opens, built from three things and nothing else: **what is scheduled for today**, by name and time; **what needs this person's action**, ranked by how long it has waited; and **what is new since they last looked**, as an honest count.
 
 ---
 
@@ -108,7 +108,7 @@ Works unchanged to 375px. This is a surface read on a phone before a laptop is o
 
 Composed at request time from three kinds of existing data: date-scoped records already carrying a scheduled or due date, [[VPS-F003_Notification_and_Alert_Center|VPS-F003]]'s notification read state, and each source feature's own pending-action queries — most of which [[VRS-F049_Manager_Dashboard|VRS-F049]] already exposes and this reuses directly.
 
-### Today, personalised per user
+### Today, personalized per user
 
 A reader's *today* is computed against their own `timezone` per [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]], not a workspace-wide cutoff. **Two colleagues in different time zones see different boundaries for the same events, correctly** — and for a product whose target market spans Karachi, Dubai and London, that is the ordinary case rather than an edge one.
 
@@ -167,7 +167,7 @@ briefing.getToday(userId) -> {
 
 | ID | Name | Type |
 |---|---|---|
-| VRS-F056-S01 | Personalised Today composition | Logic |
+| VRS-F056-S01 | Personalized Today composition | Logic |
 | VRS-F056-S02 | Interview enrichment with independence preservation | Logic |
 | VRS-F056-S03 | Age-ordered action list | Logic |
 | VRS-F056-S04 | New Since Yesterday summary | UI |
@@ -248,7 +248,7 @@ briefing.getToday(userId) -> {
 
 **The name drops *Intelligence*.** The feature composes and orders; it derives nothing. [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] is where intelligence happens, and two features carrying the word would blur which one carries the obligations that come with it.
 
-**The three-way boundary with [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] and [[VRS-F049_Manager_Dashboard|VRS-F049]] is stated explicitly.** Three surfaces showing pending items needs a real distinction: what happened, what is true now, what today requires. This is the only one that is date-scoped and timezone-personalised.
+**The three-way boundary with [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] and [[VRS-F049_Manager_Dashboard|VRS-F049]] is stated explicitly.** Three surfaces showing pending items needs a real distinction: what happened, what is true now, what today requires. This is the only one that is date-scoped and timezone-personalized.
 
 **Needs Your Action reuses [[VRS-F049_Manager_Dashboard|VRS-F049]]'s composition** rather than reimplementing it, which also means a change to that queue's ordering propagates here rather than the two drifting.
 

@@ -6,7 +6,7 @@
  * themselves so a component cannot accept a variant that does not exist.
  */
 
-/** The eleven type tokens from VPS-D001's scale. There is no twelfth. */
+/** The thirteen settled type tokens from VPS-D001's scale. */
 export const TYPE_TOKENS = [
   "display",
   "h1",
@@ -18,25 +18,9 @@ export const TYPE_TOKENS = [
   "label",
   "micro",
   "numeric",
-  /*
-   * FDN-15's twelfth token, and F40 is settled in favor of keeping it.
-   *
-   * The question was whether `numeric` at 400 could simply become 500, leaving
-   * the scale at eleven. It cannot: `numeric` at 400 is load-bearing on the bench bar,
-   * where the day count is deliberately lighter than the cost figure beside it.
-   * That is the "weight, not hue" distinction FDN-15 established, and
-   * redefining `numeric` would collapse it. VPS-D001's count moves to twelve.
-   */
+  /* A medium-weight figure beside a lighter figure at the same size. */
   "numeric-medium",
-  /*
-   * FDN-20's thirteenth token, for a supporting figure in a group — large
-   * enough to read as a figure rather than a caption, below the figure that
-   * leads. 16px is an existing step on VPS-D001's size ladder.
-   *
-   * NAMING COLLISION, for FDN-21 to resolve: `-medium` denotes weight here
-   * (matching `body-medium`) while `-md` and `-lg` denote size. The numeric
-   * family is now the one place in the scale where a suffix means two things.
-   */
+  /* Supporting and leading figures in a summary group. */
   "numeric-md",
   "numeric-lg",
 ] as const;

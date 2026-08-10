@@ -50,12 +50,7 @@ export function Stat({
   valueClassName,
   deltaClassName,
 }: StatProps) {
-  /*
-   * FINDING F9 pressure: VPS-D002 specifies `micro` in `text-tertiary` for a
-   * Stat's label, which computes to about 2.6:1. Three of these now sit in the
-   * Bench Forecast's most important band, so they take `text-secondary` here.
-   * F9 remains open; this is the second surface pushing on it.
-   */
+  /* FDN-9: load-bearing micro labels use text-secondary. */
   const labelNode = (
     <Text variant="micro" className="text-text-secondary">
       {label}

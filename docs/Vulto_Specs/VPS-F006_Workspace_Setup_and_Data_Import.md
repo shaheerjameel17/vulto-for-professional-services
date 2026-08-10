@@ -107,7 +107,7 @@ There is no back-out and no skip. **There is also no wrong answer**: every choic
 
 *Map* is a Table: source column, a Select for the destination field, and a preview of the first three values. Auto-matched rows render with a `success` check and are collapsed by default; only the ambiguous ones demand attention.
 
-*Validate* is the most important surface. Three counts in `mono-lg` — **will import**, **warnings**, **errors** — above a Table of affected rows: row number, the source values, and the specific problem. Errors are filterable to themselves, since a file with 300 rows and 11 errors should not require scrolling past 289 good ones.
+*Validate* is the most important surface. Three counts in `numeric-lg` — **will import**, **warnings**, **errors** — above a Table of affected rows: row number, the source values, and the specific problem. Errors are filterable to themselves, since a file with 300 rows and 11 errors should not require scrolling past 289 good ones.
 
 The primary action reads **Import 187 rows**, stating the number, and is available even where errors exist — importing the valid rows and reporting the rest is almost always better than refusing the whole file.
 

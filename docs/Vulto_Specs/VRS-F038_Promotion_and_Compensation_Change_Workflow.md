@@ -98,11 +98,11 @@ A person should not learn about their own raise from a payslip.
 
 Beneath the compensation field, where a band exists, a horizontal position indicator: the band range, the current figure, and the proposed figure, with the movement shown. A figure outside the band renders `attention` and reveals a required reason.
 
-**Compensation history** is the surface that matters most. A vertical list, newest first: effective date, what changed, from and to, who approved, and the rationale. Compensation figures render in `mono` and are structurally absent for a viewer without Tier 1 access — for whom the entry still shows that a change occurred, its date and its role component, since a promotion is not a secret even where its figure is.
+**Compensation history** is the surface that matters most. A vertical list, newest first: effective date, what changed, from and to, who approved, and the rationale. Compensation figures render in `numeric` and are structurally absent for a viewer without Tier 1 access — for whom the entry still shows that a change occurred, its date and its role component, since a promotion is not a secret even where its figure is.
 
 Pending changes render dashed per [[VPS-D001_Design_Foundations|VPS-D001]]'s rule, being expected rather than in effect.
 
-**The approval card** shows current, proposed, the delta in both absolute and percentage terms in `mono-lg`, the band position, and the rationale in full. Two actions inline. The percentage is the largest element after the figures themselves, because it is what makes a change legible in context.
+**The approval card** shows current, proposed, the delta in both absolute and percentage terms in `numeric-lg`, the band position, and the rationale in full. Two actions inline. The percentage is the largest element after the figures themselves, because it is what makes a change legible in context.
 
 **Pending changes** is a Table across the workspace: employee, change type, effective date, current approval stage, days pending. Sorted by effective date ascending — a change effective next Monday that has not cleared approval is the urgent one, not the oldest.
 

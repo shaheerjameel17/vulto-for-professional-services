@@ -51,7 +51,7 @@ That last one is small and it is the one people notice. A person whose preferred
 
 ### Leave
 
-Current balance per type computed live, a new request through the identical flow [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]] built — Team Away overlay and all — and cancelation of a pending or future-dated approved request. Nothing reimplemented.
+Current balance per type computed live, a new request through the identical flow [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]] built — Team Away overlay and all — and cancellation of a pending or future-dated approved request. Nothing reimplemented.
 
 ### Payslips
 
@@ -63,7 +63,7 @@ Every document filed against them — an ID scan, a certification, a signed cont
 
 ### Policies
 
-Every policy in scope, with its acknowledgement status and any outstanding acknowledgement actionable here.
+Every policy in scope, with its acknowledgment status and any outstanding acknowledgment actionable here.
 
 ### Certifications
 
@@ -89,15 +89,15 @@ One screen with Tabs — Overview, Leave, Pay, Documents, Policies, Profile — 
 
 ### Layout and components
 
-**Overview** is the landing tab and answers *what do I need to know right now*: leave balance as a Stat row, any outstanding policy acknowledgement, any expiring certification, and the most recent payslip. Where none applies, it says so plainly.
+**Overview** is the landing tab and answers *what do I need to know right now*: leave balance as a Stat row, any outstanding policy acknowledgment, any expiring certification, and the most recent payslip. Where none applies, it says so plainly.
 
 **Leave** composes [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]]'s own surface unchanged.
 
-**Pay** is a Table of payslips: period, gross, net, and a download action. Figures in `mono`. Opening one renders exactly what payroll computed, itemised.
+**Pay** is a Table of payslips: period, gross, net, and a download action. Figures use `numeric`. Opening one renders exactly what payroll computed, itemized.
 
 **Documents** is a Table: name, category, date. A Tier 1 document carries a small lock glyph and decrypts on download.
 
-**Policies** is a list with acknowledgement status. Outstanding items carry an **Acknowledge** action that opens [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]]'s reading surface, scroll gate and all — **the gate is not relaxed here.**
+**Policies** is a list with acknowledgment status. Outstanding items carry an **Acknowledge** action that opens [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]]'s reading surface, scroll gate and all — **the gate is not relaxed here.**
 
 **Profile** renders every field, with the five editable ones as inline Inputs and everything else as read-only text. **Read-only fields are visibly so rather than merely non-interactive**, and each carries a one-line note on who to ask — *Changed by HR.* An employee who cannot edit a field should be told where the change happens rather than left clicking at it.
 
@@ -270,7 +270,7 @@ employee.updateSelfServiceFields(employeeId, {
 - **This feature's security posture is almost entirely inherited.** Five of six domains add no new access surface; every guarantee proven in their own documents holds here automatically.
 - **The self-edit is the one new capability and it is deliberately narrow.** Widening Team Member's Employee row rather than gating five fields at the application layer would have granted far more than a personal-preference update needs, and created exactly the over-broad write access this project has avoided everywhere else.
 - **No compensation, employment-status or organizationally-controlled field is reachable through this write path**, regardless of how the request is constructed, since the action never accepts a field name outside its whitelist.
-- **This is the surface a departing or disgruntled employee is most likely to use to gather information about their own employment.** That is legitimate — it is their data — and it is worth being conscious that the document list, the payslip history and the policy acknowledgement record are exactly what someone assembles before raising a grievance. The feature should make that straightforward rather than obstructed, because obstruction would be both wrong and, under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]'s access rights, futile.
+- **This is the surface a departing or disgruntled employee is most likely to use to gather information about their own employment.** That is legitimate — it is their data — and it is worth being conscious that the document list, the payslip history and the policy acknowledgment record are exactly what someone assembles before raising a grievance. The feature should make that straightforward rather than obstructed, because obstruction would be both wrong and, under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]'s access rights, futile.
 
 ---
 
@@ -294,7 +294,7 @@ employee.updateSelfServiceFields(employeeId, {
 
 **Read-only fields state who changes them.** An employee clicking at a field that does nothing, with no indication of where the change happens, is the small indignity this feature exists to remove.
 
-**The scroll gate is not relaxed here.** [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]]'s acknowledgement gate is the only artificial friction in the product and composing it into a convenience surface would be exactly the place someone would be tempted to drop it.
+**The scroll gate is not relaxed here.** [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]]'s acknowledgment gate is the only artificial friction in the product and composing it into a convenience surface would be exactly the place someone would be tempted to drop it.
 
 ---
 
@@ -302,5 +302,5 @@ employee.updateSelfServiceFields(employeeId, {
 
 - [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] — the profile whose self-edit deferral this resolves
 - [[VRS-F049_Manager_Dashboard|VRS-F049]] — the manager-facing counterpart
-- [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] — the acknowledgement gate applied unchanged
+- [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] — the acknowledgment gate applied unchanged
 - [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] — the access rights this surface partially anticipates

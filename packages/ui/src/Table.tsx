@@ -9,18 +9,13 @@ import { Text } from "./Text";
 /*
  * VPS-D002. The most-used component in the product.
  *
- * 32px rows. Header row at `micro`, uppercase, `text-tertiary`,
- * 1px bottom border-default. Rows carry no separators — separation is
- * `bg-hover` and alignment alone. Numeric columns right-aligned in `numeric`;
- * text columns left-aligned; no center alignment anywhere.
- *
- * FINDING F9, deliberately not patched here: the header row's `micro` in
- * `text-tertiary` computes to roughly 2.6:1, and a table is nothing but
- * column headers doing load-bearing work — see FDN-9, which resolves this as
- * a design-system rule change rather than a local fix.
+ * 32px rows. Header row at `micro`, uppercase, `text-secondary`, on a rounded
+ * active strip. Rows carry no separators — separation is `bg-hover`, spacing
+ * and alignment alone. Numeric columns right-aligned in `numeric`; text
+ * columns left-aligned; no center alignment anywhere.
  *
  * NOT YET BUILT: checkbox row selection, keyboard row navigation and
- * virtualisation above 100 rows. VPS-D002 specifies all three; no screen
+ * virtualization above 100 rows. VPS-D002 specifies all three; no screen
  * composing this component yet needs them, and this component is not the
  * place to build ahead of that need. Sticky header, sort-on-click and hover
  * are what People actually uses, so that is what exists.
@@ -121,14 +116,14 @@ export function Table<T>({
                     column.align === "right" && "flex-row-reverse",
                   )}
                 >
-                  <Text variant="micro" className="text-text-tertiary">
+                  <Text variant="micro" className="text-text-secondary">
                     {column.header}
                   </Text>
                   {column.sortable && sort?.key === column.key ? (
                     <Icon
                       icon={sort.direction === "asc" ? ChevronUp : ChevronDown}
                       size={16}
-                      className="text-text-tertiary"
+                      className="text-text-secondary"
                     />
                   ) : null}
                 </button>

@@ -25,13 +25,13 @@ This document is the single source of truth for this feature. **One identity, on
 
 Authentication and Workspace Foundation establishes identity, session management, workspace structure, team membership, role assignment and device trust.
 
-In graph terms: authentication creates the User node that owns a session. Workspace creation creates the Workspace node containing every other node in that tenant. Role assignment creates the WorkspaceMembership edge that [[VPS-A004_Graph_Permission_Layer|VPS-A004]] enforces against. Device registration initialises the local graph store per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], keyed to that device's own session.
+In graph terms: authentication creates the User node that owns a session. Workspace creation creates the Workspace node containing every other node in that tenant. Role assignment creates the WorkspaceMembership edge that [[VPS-A004_Graph_Permission_Layer|VPS-A004]] enforces against. Device registration initializes the local graph store per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], keyed to that device's own session.
 
 ---
 
 ## Problem It Solves
 
-Without this feature no user can access the product, no container exists for employees or assignments, the permission layer has no roles to enforce, and the local-first architecture has no mechanism to initialise, key or revoke a device's local store. There is no alternative implementation path.
+Without this feature no user can access the product, no container exists for employees or assignments, the permission layer has no roles to enforce, and the local-first architecture has no mechanism to initialize, key or revoke a device's local store. There is no alternative implementation path.
 
 ---
 
@@ -49,7 +49,7 @@ Workspace creation hands off directly to [[VPS-F006_Workspace_Setup_and_Data_Imp
 
 ### Tier 1 key establishment
 
-Because the Owner will hold compensation data, [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 1 key material is established during initial setup rather than deferred to the first payroll run. The flow generates the recovery artifact, requires correct re-entry before proceeding, and prompts for a second Tier 1 holder framed as business continuity — *so a lost laptop never locks your business out of its own payroll history*. Declining requires an explicit acknowledgement.
+Because the Owner will hold compensation data, [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 1 key material is established during initial setup rather than deferred to the first payroll run. The flow generates the recovery artifact, requires correct re-entry before proceeding, and prompts for a second Tier 1 holder framed as business continuity — *so a lost laptop never locks your business out of its own payroll history*. Declining requires an explicit acknowledgment.
 
 ### Team invitation and role assignment
 
@@ -59,7 +59,7 @@ Manager is not assigned manually once [[VRS-F002_Atomic_Employee_Profiles|VRS-F0
 
 ### Device registration and multi-device sync
 
-Every device authenticating into a workspace for the first time registers as a Device node and initialises its own local graph store. When an authenticated user opens Roster on a second device, the workspace graph — filtered by their role and by [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s tier rules — begins syncing before any data surface is interactive. The user sees the syncing state defined in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], never a blank or broken screen.
+Every device authenticating into a workspace for the first time registers as a Device node and initializes its own local graph store. When an authenticated user opens Roster on a second device, the workspace graph — filtered by their role and by [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s tier rules — begins syncing before any data surface is interactive. The user sees the syncing state defined in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], never a blank or broken screen.
 
 Device registration is scoped by `application`, because the same physical laptop running Roster and [[Vulto Accounts]] presents two separate web origins and needs two independently synced, independently revocable local graphs.
 
@@ -97,7 +97,7 @@ Pre-authentication screens are single-column, 400px maximum, vertically centered
 
 **Devices** is a Table — device name, platform, application, last active, registered — with a `danger` **Revoke** action requiring a Modal confirmation. This is one of the few flows in this product that warrants a modal: revocation is destructive, irreversible from the user's side, and wipes a colleague's local data.
 
-**Tier 1 key setup** displays the recovery artifact once, in `mono`, on a `raised` Card with a **Download** action, followed by a re-entry Input that must match before **Continue** enables. The second-holder prompt is a separate step, not a checkbox on the same screen, because a checkbox is dismissed without reading and a step is not.
+**Tier 1 key setup** displays the recovery artifact once, in `numeric`, on a `raised` Card with a **Download** action, followed by a re-entry Input that must match before **Continue** enables. The second-holder prompt is a separate step, not a checkbox on the same screen, because a checkbox is dismissed without reading and a step is not.
 
 ### Keyboard
 
@@ -164,7 +164,7 @@ workspace.inviteMember(workspaceId, email, role) -> { invitationId }
 workspace.acceptInvitation(invitationId)        -> { userId, workspaceId, sessionToken }
 workspace.changeMemberRole(membershipId, role)  -> { success }
 
-tier1Keys.initialise(userId)                    -> { recoveryArtifact }
+tier1Keys.initialize(userId)                    -> { recoveryArtifact }
 tier1Keys.verifyArtifact(userId, entered)       -> { verified }
 tier1Keys.addRecoveryHolder(userId, holderId)   -> { success }
 
@@ -212,13 +212,13 @@ device.listForWorkspace(workspaceId)            -> Device[]
 
 **GIVEN** an Owner completes Tier 1 key setup
 **WHEN** the recovery step is reached
-**THEN** the artifact is displayed once, correct re-entry is required before continuing, and a second Tier 1 holder is prompted for with an explicit acknowledgement required to decline
+**THEN** the artifact is displayed once, correct re-entry is required before continuing, and a second Tier 1 holder is prompted for with an explicit acknowledgment required to decline
 
 ---
 
 **GIVEN** an authenticated user opens Roster on a second device
 **WHEN** authentication completes
-**THEN** a Device node is created, the local store is initialised, and the graph filtered by role and tier begins syncing before any product surface is interactive
+**THEN** a Device node is created, the local store is initialized, and the graph filtered by role and tier begins syncing before any product surface is interactive
 
 ---
 

@@ -98,7 +98,7 @@ Clearing takes one click for the overwhelming majority, which are honest mistake
 
 Cells are 32px tall at the product density, right-aligned, `numeric`. An empty cell shows nothing — not a zero, not a placeholder — because a grid pre-filled with zeros is a grid where nothing looks like something.
 
-The running total row is `bg-subtle`, sticky at the bottom of the grid, with figures in `mono-lg`. The compliance line sits beneath it in `small`, turning `attention` when logged billable falls below target with two working days remaining.
+The running total row is `bg-subtle`, sticky at the bottom of the grid, with figures in `numeric-lg`. The compliance line sits beneath it in `small`, turning `attention` when logged billable falls below target with two working days remaining.
 
 **There is exactly one primary action: Submit week.** It is disabled until at least one cell holds a value, and its label changes to the count of hours being submitted once enabled — *Submit 38h* — so the person sees the number they are committing to.
 
@@ -113,7 +113,7 @@ The running total row is `bg-subtle`, sticky at the bottom of the grid, with fig
 | `Tab` / `Shift+Tab` | Next / previous cell, wrapping at rows |
 | `↑ ↓ ← →` | Move between cells |
 | `Cmd+Enter` | Submit week |
-| `Cmd+D` | Fill the rest of the row from the cell above |
+| `Cmd+D` | Copy the current cell's value into every remaining cell to its right in the same row |
 | `[` / `]` | Previous / next week |
 
 This is the highest-frequency interaction in the product and its budget is the tightest in the set. **No dropdown appears anywhere in the critical path** — a dropdown is a mouse instrument wearing a keyboard costume.

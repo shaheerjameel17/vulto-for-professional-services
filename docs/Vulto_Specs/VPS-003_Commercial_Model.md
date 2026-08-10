@@ -297,4 +297,4 @@ A gated feature renders **a plain description of what it does, what plan include
 - [[VRS-001_Feature_Register|VRS-001]] — where every feature's type is assigned
 - [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] — the billing fields extended here
 - [[VPS-A004_Graph_Permission_Layer|VPS-A004]] — the interceptor this adds a third check to
-- [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] — the export and retention that survive cancelation
+- [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] — the export and retention that survive cancellation

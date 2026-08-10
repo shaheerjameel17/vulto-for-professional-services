@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-08]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -146,7 +146,7 @@ Six values. Feature Type answers *what kind of engineering problem this is*, whi
 | **Core** | The primary operational surface. Records the facts the business runs on and presents them. If Core is broken, the product is broken. | [[VRS-F005_The_Bench_Forecast|VRS-F005]], [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]], [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] |
 | **Intelligence** | Derives a signal, prediction, correlation or aggregate from data another feature already recorded. Owns no primary facts. Its failure mode is being wrong quietly rather than breaking loudly. | [[VRS-F052_Workload_Strain_Signal|VRS-F052]], [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]], [[VRS-F058_People_Analytics_Dashboard|VRS-F058]] |
 | **Financial** | Touches money: rates, cost, payroll, invoices, expenses, disbursement. Subject to the strictest correctness, audit and encryption requirements in the product. | [[VRS-F062_Payroll_Engine_Core|VRS-F062]], [[VRS-F067_Contractor_Invoice_Management|VRS-F067]], [[VRS-F006_Rate_Card_Engine|VRS-F006]] |
-| **Compliance** | Exists because a law, a contract or an audit requires it. Correctness is defined externally rather than by product judgement, and "we thought this was reasonable" is never a defense. | [[VRS-F020_Universal_Contract_Builder|VRS-F020]], [[VRS-F045_Right_to_Work_and_Immigration_Compliance|VRS-F045]], [[VPS-F004_Silent_Audit_Log|VPS-F004]] |
+| **Compliance** | Exists because a law, a contract or an audit requires it. Correctness is defined externally rather than by product judgment, and "we thought this was reasonable" is never a defense. | [[VRS-F020_Universal_Contract_Builder|VRS-F020]], [[VRS-F045_Right_to_Work_and_Immigration_Compliance|VRS-F045]], [[VPS-F004_Silent_Audit_Log|VPS-F004]] |
 | **Platform** | Infrastructure the product is built on or extended through, rather than a surface a user visits. Search, sync, notifications, APIs, extensibility, import. | [[VPS-F002_Local-First_Search|VPS-F002]], [[VPS-F009_Vulto_Sync_API|VPS-F009]], [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] |
 | **Experience** | A composed surface over facts other features own, existing to serve one specific person exceptionally well. Adds little to the graph and everything to whether the product is loved. | [[VRS-F049_Manager_Dashboard|VRS-F049]], [[VRS-F050_Employee_Self-Service_Portal|VRS-F050]], [[VPS-F011_Mobile-Native_Experience|VPS-F011]] |
 
@@ -208,9 +208,9 @@ Architecture and Design documents follow the same shape with sections 6, 7 and 1
 
 **No document in this set may contain an unresolved question.**
 
-This specification set exists to be implemented by an agent that cannot ask a follow-up question, cannot weigh a commercial trade-off, and will, if handed an ambiguity, resolve it silently and plausibly in a direction nobody chose. An open item in a document that reaches implementation is not an honest acknowledgement of uncertainty. It is a decision delegated to whoever reads it last, made without the context to make it well.
+This specification set exists to be implemented by an agent that cannot ask a follow-up question, cannot weigh a commercial trade-off, and will, if handed an ambiguity, resolve it silently and plausibly in a direction nobody chose. An open item in a document that reaches implementation is not an honest acknowledgment of uncertainty. It is a decision delegated to whoever reads it last, made without the context to make it well.
 
-Every question previously carried as an Open Item is therefore now answered. Where the answer is a genuine product judgement, the judgement is recorded along with its reasoning, so that a future reader can disagree with it deliberately rather than discover it by accident. Where the answer is "deliberately excluded", it appears in Out of Scope with the feature or application that owns it instead.
+Every question previously carried as an Open Item is therefore now answered. Where the answer is a genuine product judgment, the judgment is recorded along with its reasoning, so that a future reader can disagree with it deliberately rather than discover it by accident. Where the answer is "deliberately excluded", it appears in Out of Scope with the feature or application that owns it instead.
 
 This does not forbid recording uncertainty. It forbids recording it as a gap. A decision made under uncertainty is written as a decision, with the uncertainty named:
 
@@ -226,12 +226,14 @@ That is a decision. This is not:
 
 1. **Every document is the single source of truth for exactly one thing.** Where a fact appears in two documents, one of them is a defect. Reference, never duplicate.
 2. **Writing a later document routinely corrects an earlier one.** This is expected, not a failure. The correction is made in the earlier document, and noted in the later document's Decisions Recorded section so the trail is visible.
-3. **A node type is defined once, in the feature that operationalises it,** with its lifecycle, privacy class and tier anchored in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]. [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] is a registry, not a schema dump.
+3. **A node type is defined once, in the feature that operationalizes it,** with its lifecycle, privacy class and tier anchored in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]. [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] is a registry, not a schema dump.
 4. **Every new node type is registered in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] before it is implemented,** and every new node type's permission behavior is confirmed against [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s default mapping explicitly rather than assumed.
 5. **Governance language is uniform.** Status is always `Decided at Founder Level`. The Owner block is identical in every document. When a CTO function is engaged, that language changes in one pass across the whole set rather than drifting document by document.
-6. **British English throughout,** matching the existing set: *utilization*, *organization*, *behavior*, *prioritize*.
+6. **American English throughout,** matching the existing set: *utilization*, *organization*, *behavior*, *prioritize*.
 7. **An application never restates a suite document.** Where an application needs to extend one — registering a node type, a search index entry, a notification rule, a settings group — it does so *in* the suite document, which is built as an open registry for exactly that purpose. A parallel copy is the drift this rule exists to prevent.
 8. **No document assumes the conversation that produced it.** If a reason matters, it is written down. If it is not written down, it does not exist.
+
+`VRS-F044_Policy_Library_and_Acknowledgement.md` is the one known legacy filename. Its visible title, prose and identifiers use **Acknowledgment**. Renaming the file requires a deliberate inbound-link migration under this document's filename rule and must not be performed as an incidental spelling edit.
 
 ---
 

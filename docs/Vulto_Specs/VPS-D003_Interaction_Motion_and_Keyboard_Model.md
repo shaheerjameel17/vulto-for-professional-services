@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-10]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -45,8 +45,8 @@ These are requirements, not aspirations. A feature that cannot meet its budget i
 | Navigate between profiles | 100ms | Per [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] |
 | Bench Forecast full render | 200ms | 150 employees, mid-range device, per [[VRS-F005_The_Bench_Forecast|VRS-F005]] |
 | Filter application | 50ms | Recomputed aggregate included |
-| Write acknowledgement | 16ms | Optimistic, before any network call |
-| Scroll | 60fps | Never degrades under virtualisation |
+| Write acknowledgment | 16ms | Optimistic, before any network call |
+| Scroll | 60fps | Never degrades under virtualization |
 
 **Nothing in this product shows a loading spinner for an operation under 300ms.** Below that threshold the correct treatment is no treatment: the result simply appears. A spinner on a 40ms operation manufactures the impression of slowness the architecture was built to avoid.
 
@@ -56,7 +56,7 @@ These are requirements, not aspirations. A feature that cannot meet its budget i
 
 Every write is applied to the local graph and rendered immediately, then synchronized. The user is never made to wait for a server to agree.
 
-**The success path is silent.** No toast, no confirmation, no acknowledgement. The change appearing *is* the confirmation. A product that congratulates itself on every save is a product that expected to fail.
+**The success path is silent.** No toast, no confirmation, no acknowledgment. The change appearing *is* the confirmation. A product that congratulates itself on every save is a product that expected to fail.
 
 **The failure path is honest and specific.** Where a write is rejected — by a permission check, a schema constraint, or a merge conflict — the local state is reverted with the change visibly returning to its prior value, and an Inline Alert states what happened and what to do. Failure is rare enough in this architecture that when it occurs it deserves a full explanation rather than a generic message.
 
@@ -77,12 +77,20 @@ This product is operated by keyboard by the people who use it most. Mouse operat
 | `Escape` | Dismiss the topmost layer: panel, then modal, then palette |
 | `Cmd/Ctrl + \` | Toggle sidebar |
 | `Cmd/Ctrl + Enter` | Submit the current form |
-| `G` then `B` | Go to Bench Forecast |
-| `G` then `P` | Go to People |
-| `G` then `T` | Go to Timesheets |
+| `G` then `H` | Go to Home |
 | `G` then `I` | Go to Inbox |
+| `G` then `B` | Go to Bench Forecast |
+| `G` then `R` | Go to Hiring |
+| `G` then `P` | Go to People |
+| `G` then `D` | Go to Development |
+| `G` then `O` | Go to People Ops |
+| `G` then `T` | Go to Timesheets |
+| `G` then `L` | Go to Leave |
+| `G` then `E` | Go to Expenses |
+| `G` then `Y` | Go to Payroll |
+| `G` then `A` | Go to Reports |
 
-Sequential `G` navigation is used rather than modifier combinations because the destinations are memorable by initial and the shortcuts remain available without conflicting with browser and operating system bindings.
+Sequential `G` navigation is used rather than modifier combinations because the destinations are memorable and the shortcuts remain available without conflicting with browser and operating system bindings. Where two destinations share an initial, the mnemonic is the nearest unambiguous letter: `R` for recruiting/Hiring, `Y` for Payroll, and `A` for analytics/Reports.
 
 ### Lists and tables
 
@@ -106,7 +114,7 @@ Owned by [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] and stated here because it is
 | `Tab` / `Shift+Tab` | Next / previous cell |
 | `↑ ↓ ← →` | Move between cells |
 | `Cmd/Ctrl + Enter` | Submit week |
-| `Cmd/Ctrl + D` | Fill remaining cells in row from the cell above |
+| `Cmd/Ctrl + D` | Copy the current cell's value into every remaining cell to its right in the same row |
 
 Natural language input is accepted in every cell — `fd` for a full day, `8-1` for seven hours, a bare `8` for eight — parsed on blur and displayed as hours. No dropdown appears anywhere in the critical path, because a dropdown is a mouse instrument wearing a keyboard costume.
 
@@ -157,9 +165,12 @@ The web product targets 1280px and above as its design center and remains fully 
 | `≥ 1536px` | Panel opens alongside content without displacing it |
 | `1280–1535px` | Design center. Panel overlays the right edge of content |
 | `1024–1279px` | Sidebar collapses to icons. Tables drop secondary columns in a defined priority order |
-| `< 1024px` | Sidebar becomes a drawer. Timeline switches to a vertical per-person list. Timesheet entry switches to the single-day swipe view from [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] |
+| `768–1023px` | Sidebar becomes a drawer. Timeline switches to a vertical per-person list. Timesheet entry keeps the weekly grid with three visible day columns and horizontal scroll |
+| `< 768px` | Timesheet entry switches to the single-day swipe view from [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] |
 
 Column drop order is declared per table in the feature that owns it, so degradation is a decision rather than whatever the layout engine happens to do.
+
+**Overlaying is acceptable because what the Panel covers is usually more of the same list.** Where that is not true — where horizontal position itself carries meaning, so the covered region is different *content* rather than more rows — the owning feature may declare one additional scoped behavior that reveals what the Panel would hide. It declares it in its own document, it applies only at the overlay breakpoints, and it does not change the two behaviors above. [[VRS-F005_The_Bench_Forecast|VRS-F005]] is the one instance today: its horizontal axis is time, so opening the Panel scrolls the selected row's live region clear of it.
 
 ---
 

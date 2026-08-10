@@ -25,7 +25,7 @@ This document is the single source of truth for this feature.
 
 An automated bench-monitoring engine that watches every active employee and writes a RevenueGapAlert the moment a configured threshold is crossed, surfaced on the Bench Forecast row and in [[VPS-F003_Notification_and_Alert_Center|VPS-F003]]'s Inbox. The alert carries a daily cost and the accumulated cost of the bench period, making the financial consequence of inaction explicit rather than something a founder calculates themselves.
 
-**The relationship to [[VRS-F005_The_Bench_Forecast|VRS-F005]] is the important structural fact about this feature.** That feature owns the bench computation — which days are uncovered, and what they cost. This feature owns the judgement layered on top: whether an uncovered period has gone on long enough to warrant escalation, and whose attention it needs.
+**The relationship to [[VRS-F005_The_Bench_Forecast|VRS-F005]] is the important structural fact about this feature.** That feature owns the bench computation — which days are uncovered, and what they cost. This feature owns the judgment layered on top: whether an uncovered period has gone on long enough to warrant escalation, and whose attention it needs.
 
 The distinction is the difference between a statement of fact and an opinion about it. The Bench Forecast states the fact continuously. This feature raises its voice when the fact stops being tolerable.
 
@@ -77,9 +77,9 @@ The moment an Assignment is created with a start date at or before today, the al
 
 **The alert badge** sits in the Bench Forecast's left column beside the employee name: a Badge in `attention` reading the bench day count. Severity is expressed by weight rather than by a third color — Low is `subtle`, Medium and High are `solid`. Introducing red for High would break [[VPS-D001_Design_Foundations|VPS-D001]]'s reservation of `danger` for failure, and a long bench is expensive rather than broken.
 
-**The alert card** in the Inbox is actionable in place per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]: employee name and role, days on bench, daily cost and accumulated cost in `mono`, and two actions — **Find work** which opens [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]]'s matcher pre-filtered to this person, and **Dismiss**.
+**The alert card** in the Inbox is actionable in place per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]: employee name and role, days on bench, daily cost and accumulated cost in `numeric`, and two actions — **Find work** which opens [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]]'s matcher pre-filtered to this person, and **Dismiss**.
 
-The accumulated cost is the largest element on the card, in `mono-lg`. It is the only number on it that changes the reader's behavior.
+The accumulated cost is the largest element on the card, in `numeric-lg`. It is the only number on it that changes the reader's behavior.
 
 **The bench alerts list** is a Table sorted by accumulated cost descending, not by date. A founder with six alerts should look at the expensive one first, and sorting by recency buries it beneath three junior developers who went on bench yesterday.
 
@@ -268,7 +268,7 @@ revenueGapAlert.listActive(workspaceId) -> RevenueGapAlert[]
 - **No elevated privacy concern.** RevenueGapAlert is Tier 0, the same visibility as the Bench Forecast it appears on.
 - **Cost figures derive from billing rates, not compensation.** `effective_billing_rate` and `billing_rate_default` are both Tier 0. This feature never reads a salary.
 - **Cost visibility follows [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s rule.** A viewer without compensation access sees days on bench and not the currency figure, so the two surfaces cannot disagree about what a person may see.
-- **An alert is about a person and is visible workspace-wide.** That is a deliberate consequence of Tier 0, and it is correct — bench time is an operational fact, not a private one — but it means the copy must stay neutral. The card names a cost and a person; it never characterises the person.
+- **An alert is about a person and is visible workspace-wide.** That is a deliberate consequence of Tier 0, and it is correct — bench time is an operational fact, not a private one — but it means the copy must stay neutral. The card names a cost and a person; it never characterizes the person.
 
 ---
 
@@ -285,7 +285,7 @@ revenueGapAlert.listActive(workspaceId) -> RevenueGapAlert[]
 
 ## Decisions Recorded
 
-**This feature now consumes [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s bench computation rather than supplying it.** Previously it implemented its own bench query including the Pitch exclusion, and the Bench Forecast deferred its amber state to the resulting alert. That split one computation across two features and made the product's signature visual dependent on an alerting engine seven features downstream. The computation now lives with the view that renders it, and this feature owns only the judgement about escalation.
+**This feature now consumes [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s bench computation rather than supplying it.** Previously it implemented its own bench query including the Pitch exclusion, and the Bench Forecast deferred its amber state to the resulting alert. That split one computation across two features and made the product's signature visual dependent on an alerting engine seven features downstream. The computation now lives with the view that renders it, and this feature owns only the judgment about escalation.
 
 **`bench_days` resolves through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]].** The previous specification excluded Saturday, Sunday and a workspace holiday list — wrong for the Gulf, wrong for a six-day week, and wrong in exactly the figure this alert exists to make credible.
 

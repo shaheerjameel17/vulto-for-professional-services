@@ -83,7 +83,7 @@ An Owner or Finance Admin sees consolidated spend across every finalized run in 
 
 **Exchange rates** is a Table: pair, rate, effective date, entered by. Grouped by pair, newest first. Entering a rate for a date that already has one shows the existing value before replacing it — a correction should be a deliberate act, not an accidental overwrite.
 
-**The disbursement breakdown** is the operationally important surface: one row per currency, each showing the total and the recipient count, with the run's own calculation currency marked. Totals render in `mono-lg`.
+**The disbursement breakdown** is the operationally important surface: one row per currency, each showing the total and the recipient count, with the run's own calculation currency marked. Totals render in `numeric-lg`.
 
 Payslips with an unresolved rate render in a separate section headed plainly — *2 payslips cannot be converted* — with the missing pair named and a **Record rate** action. **They are not merged into the breakdown with a zero**, which would understate what needs sending.
 

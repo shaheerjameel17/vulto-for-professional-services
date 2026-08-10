@@ -170,7 +170,7 @@ A device holding Tier 1 access does not need, and must not default to holding, t
 
 **On demand.** A record outside the window is fetched and decrypted on request, displays normally, and remains locally available for thirty days from its most recent access. Re-accessing resets the clock. Expiry is evaluated on-device using the device's own clock, requiring no network round-trip. This is the aged-out state [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] renders with a dashed border and a **Fetch** action.
 
-**Implementation.** Tier 1 documents are partitioned by time period — one Loro document per pay cycle is the natural unit — in addition to sensitivity partitioning. Ageing a period out is therefore a matter of no longer handing a device that period's document, not surgical deletion within an ever-growing shared one.
+**Implementation.** Tier 1 documents are partitioned by time period — one Loro document per pay cycle is the natural unit — in addition to sensitivity partitioning. Aging a period out is therefore a matter of no longer handing a device that period's document, not surgical deletion within an ever-growing shared one.
 
 **Relationship to revocation.** The window operates independently of, and in addition to, device wipe on access change. Revocation remains the primary control. The window bounds worst-case exposure to a year of history rather than a complete financial record in the gap between a revocation event and it reaching a device.
 
@@ -202,7 +202,7 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 | A003-T12 | Tier 3 key derivation MUST use WebAuthn PRF with backup to the platform's native secure keychain. A user-managed recovery phrase MUST NOT be the default or only Tier 3 recovery path |
 | A003-T13 | Any Tier 1 recovery artifact MUST be product-generated, unmistakably labeled, and the setup flow MUST require correct re-entry before completion |
 | A003-T14 | Tier 1 recovery MUST support an M-of-N threshold scheme, two of three by default, so no single device loss or departure permanently locks the organization out |
-| A003-T15 | Workspace setup MUST prompt for a second Tier 1 holder, framed as business continuity, and MUST require explicit acknowledgement if declined |
+| A003-T15 | Workspace setup MUST prompt for a second Tier 1 holder, framed as business continuity, and MUST require explicit acknowledgment if declined |
 | A003-T16 | Device revocation and local wipe MUST fire on any change removing Tier 1 access, not only full offboarding. A demotion or role change removing Tier 1 authorization is a revocation event in its own right |
 | A003-T17 | Closed Tier 1 records older than `tier1_retention_window_months` MUST NOT be materialized on any device by default. Default twelve months, configurable six to twenty-four |
 | A003-T18 | Active, open Tier 1 records MUST always be available regardless of the window |

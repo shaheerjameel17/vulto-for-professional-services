@@ -30,9 +30,8 @@
    * track recesses and the active segment sits on top of it. The active label
    * also changes weight and color, so three channels carry what one used to.
    *
-   * These are their own values rather than `bg-subtle` and `bg-raised` because
-   * in dark those two are both neutral-800 — see F10, still open — and the
-   * inversion would have collapsed.
+   * These remain dedicated values because a segmented control needs an
+   * explicit recessed track and elevated active segment in either theme.
    */
   --vt-segment-track: #f3f3f4;
   --vt-segment-active: #ffffff; /* neutral-0 */

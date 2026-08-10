@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-08-07]]"
+Date: "[[2026-08-10]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -17,7 +17,7 @@ aliases:
 **Depends On:** [[VPS-000_Documentation_Standard|VPS-000]] (documentation conventions)
 **Blocks:** [[VPS-D002_Component_Library|VPS-D002]], [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], and the Interface Specification section of every feature document
 
-This document is the single source of truth for every color, typeface, size, space and border in [[Vulto for Professional Services]]. **No feature document, in any application, may introduce a value not defined here.**
+This document is the single source of truth for every reusable color, typeface, type size, spacing step, radius and elevation token in [[Vulto for Professional Services]]. Component and shell dimensions are owned by [[VPS-D002_Component_Library|VPS-D002]] and [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] respectively; a feature may consume those dimensions but may not invent a parallel token.
 
 An operating system for professional services firms that looks like nine different products is not an operating system.
 
@@ -33,7 +33,7 @@ This produces the governing rule of the whole system, which every other decision
 
 > **The interface is deliberately color-starved so that money is the only thing on screen with a hue.**
 
-Ninety percent of any Roster screen is neutral. Amber is the product brand and the signature color for cost and idleness; red remains reserved for failure. The cool half is available for small categorical markers such as project dots, never large fills. Brand appears at most twice per screen and always has a job: the primary action, current focus or Today. There are no decorative gradients anywhere in this product, no glass, no blur, no decorative depth, and no color used because a surface looked empty. A gradient used only to communicate a horizontal scroll boundary is the sole exception and carries no decorative color.
+Ninety percent of any Roster screen is neutral. Amber is the product brand and the signature color for cost and idleness; red remains reserved for failure. The cool half is available for small categorical markers such as project dots, never large fills. Every amber element on a screen has a job — the cost it states, the action it offers, or the day it marks — and the rationing rule under **Brand** below governs which. There are no decorative gradients anywhere in this product, no glass, no blur, no decorative depth, and no color used because a surface looked empty. A gradient used only to communicate a horizontal scroll boundary is the sole exception and carries no decorative color.
 
 When a designer or an engineer wants to add color, the question is not "does this look better" but "is this about money going wrong". If it is not, it is neutral.
 
@@ -67,11 +67,17 @@ Amber. `brand-500` `#F59E0B` is the anchor, per founder decision after the proto
 | `brand-300` | `#FCD34D` | `brand-800` | `#92400E` |
 | `brand-400` | `#FBBF24` | `brand-900` | `#78350F` |
 
-**Brand color is rationed.** It marks exactly three things: the primary action on a screen, the current selection or focus, and the today line on the Bench Forecast. It is never a background fill for a large region, never a heading color, and never used to indicate status. A screen showing brand color in four places has three too many.
+**Brand and cost are the same hue on purpose.** They were originally separate — an indigo brand beside an amber bench. Rendered, the warm and cool anchors read as two products sharing a screen rather than one, and amber was settled as the brand after the second dark-mode calibration. In a product whose entire subject is money, the brand hue and the money hue being the same color is the thesis rather than a collision. The rule below is what keeps that from becoming a license.
+
+**Brand color is rationed, and the ration counts signals rather than pixels.** Amber marks exactly three *signals*: the primary action on a screen, the current selection or focus, and the today line on the Bench Forecast. A signal points — it says where to act, what is selected, or where the viewer is in time. A signal is never a heading color and never used to indicate status, and a screen carrying a fourth kind of amber signal has one too many.
+
+**The cost field is not a signal and is not counted against that ration.** Amber is also cost and idleness themselves: the bench region on the Bench Forecast, and the unrecovered figure above it. These do not point at something elsewhere on the screen — they *are* the thing this product exists to surface, and the governing rule at the top of this document requires them to carry the hue. This is the one sanctioned case of amber as a large fill. It is stated explicitly so that an audit of brand usage does not keep reading the signature surface as a violation of its own design system.
 
 **Which page a person is on is not one of the three.** Location is not selection, so navigation items and segmented controls take a neutral active treatment. A neutral active state needs more than a fill to carry what a brand fill carried alone — separation from its own background, plus a change of label weight or color.
 
-**The workspace mark is exempt.** The three uses above are *signals*: they tell a person where the action is, what is selected, and where today falls. A mark is not a signal, it is an identity, and rendering the workspace's own initial in the brand color is what a logo is for. This exemption is stated so that an audit of brand usage does not keep reopening it — the rule is about signals, and the mark is not competing with them.
+**The workspace mark is exempt.** A mark is not a signal and not a cost figure; it is an identity, and rendering the workspace's own initial in the brand color is what a logo is for. This exemption is stated so that an audit of brand usage does not keep reopening it — the ration is about signals, and the mark is not competing with them.
+
+**So an audit of amber on any screen sorts every instance into exactly one of four buckets:** a signal (at most three kinds), the cost field, the workspace mark, or a defect.
 
 ### Semantic
 
@@ -124,6 +130,7 @@ Components reference these, never raw ramp values. This is what makes theming a 
 | `bg-raised` | `neutral-0` | `#1A1A1B` |
 | `bg-subtle` | `#F9F9FA` | `#111112` |
 | `bg-hover` | `neutral-100` | `#222223` |
+| `bg-active` | `#E6E6E9` | `#1A1A1B` |
 | `bg-selected` | `brand-50` | `#2A2115` |
 | `border-default` | `neutral-200` | `#2A2A2B` |
 | `border-strong` | `neutral-300` | `#3F3F42` |
@@ -138,7 +145,7 @@ Dark mode is a first-class theme, not an inversion. It is likely the majority mo
 
 ### Contrast floor
 
-All text meets WCAG AA — 4.5:1 for body, 3:1 for text above 18px and for interface controls. `text-tertiary` is permitted only for non-essential text that is never the sole carrier of meaning. Color is never the only channel for a state: every amber region carries a number, every red state carries a word.
+All text meets WCAG AA — 4.5:1 for body, 3:1 for text above 18px and for interface controls. `text-tertiary` is permitted only for non-essential text that is never the sole carrier of meaning. Table headers therefore use `text-secondary`, and subtle semantic Badges pair their 10% semantic tint with `text-primary`; both pairings exceed 4.5:1 in both themes. Color is never the only channel for a state: every amber region carries a number, every red state carries a word.
 
 ---
 
@@ -182,7 +189,7 @@ Component padding uses `2` and `3`. Space between related elements uses `2`. Spa
 
 ### Product geometry
 
-One information-preserving density. Product density is not an appearance preference: a second mode made the same interface expose different facts, while browser zoom already provides a device-level scale control. No screen may hide a role, identifier or other useful field to become denser.
+One information-preserving density, and it is the product default everywhere. Product density is not an appearance preference: a second mode made the same interface expose different facts, while browser zoom already provides a device-level scale control. No screen may hide a role, identifier or other useful field to become denser.
 
 | Element | Value |
 |---|---|
@@ -190,6 +197,12 @@ One information-preserving density. Product density is not an appearance prefere
 | Bench Forecast row height | 48px |
 | Control height | 28px |
 | Cell padding | `2` |
+
+### Structural dimensions
+
+The spacing scale governs gaps and padding; it is not a catalog of every legitimate layout dimension. Dimensions intrinsic to a reusable component are defined with that component in [[VPS-D002_Component_Library|VPS-D002]], and dimensions intrinsic to the shell are defined in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]. This is an explicit delegation, not permission for feature-local values.
+
+The current structural registry is: 200px expanded and 48px collapsed sidebar; 48px page header; 360px contextual panel; 220px Timeline identity column; 20px Timeline bars; 6px categorical dots; 24/28/32px Button heights; 20/24/32/40/48px Avatar sizes; and the Command Palette and Modal widths in [[VPS-D002_Component_Library|VPS-D002]]. Changes belong in the owning suite document before implementation.
 
 ---
 
@@ -267,7 +280,7 @@ That is the principle. What follows is Roster's instance of it, recorded here be
 
 ### Roster's instance
 
-On the Bench Forecast, an employee's bench period renders as a flat `attention`-tinted region with no border and no pattern. Left-aligned inside it, in `mono-lg`, is the accumulated unrecovered salary cost for that gap. That figure is live: it recalculates as the working day advances, and it is one of very few elements in the suite permitted to change without user input.
+On the Bench Forecast, an employee's bench period renders as a flat `attention`-tinted region with no border and no pattern. Left-aligned inside it, in `numeric-medium`, is the accumulated unrecovered salary cost for that gap. That figure is live: it recalculates as the working day advances, and it is one of very few elements in the suite permitted to change without user input.
 
 It is not animated, it does not pulse, and it does not draw attention to itself in any conventional sense. It simply sits there, in the calmest interface the team could build, quietly counting up. **The restraint of everything around it is what makes it land.**
 

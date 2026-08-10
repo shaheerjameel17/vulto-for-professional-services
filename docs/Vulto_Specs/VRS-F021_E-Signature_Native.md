@@ -95,7 +95,7 @@ Signatories are an ordered list with drag-to-reorder. Each row holds name, email
 
 Required fields carry a 2px `border-focus` ring and a small `attention` dot. Completed fields render the entered value and lose the ring. **The action never says Submit**, and never appears before the recipient has reached the first field.
 
-**Signature status** on the Contract is a compact list: each signatory, their status Badge, and once signed the timestamp in `mono`. The IP and user agent are collapsed behind a **View signing evidence** disclosure — present for legal defensibility, not something to display beside a colleague's name by default.
+**Signature status** on the Contract is a compact list: each signatory, their status Badge, and once signed the timestamp in `numeric`. The IP and user agent are collapsed behind a **View signing evidence** disclosure — present for legal defensibility, not something to display beside a colleague's name by default.
 
 ### Keyboard
 

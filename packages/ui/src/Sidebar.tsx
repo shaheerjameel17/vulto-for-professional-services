@@ -9,16 +9,15 @@ import { Text } from "./Text";
 import { Tooltip, TooltipProvider } from "./Tooltip";
 
 /*
- * VPS-D004. 216px, `bg-canvas`, no right border, collapsible to 48px icons
+ * VPS-D004. 200px, `bg-canvas`, no right border, collapsible to 48px icons
  * via Cmd+\.
  *
  * There is no top-level global header bar in this product. The workspace
- * identity lives here, search lives behind Cmd+K, and the user menu is at this
- * sidebar's foot — which returns roughly 56 vertical pixels to the Bench
- * Forecast, worth about one and a half employee rows.
+ * identity and account menu live in the workspace trigger, search lives behind
+ * Cmd+K, and sync is the only persistent item at the foot.
  *
- * Navigation items are `small`, 32px tall, radius-md, with a 16px Lucide
- * icon. The active item takes `bg-selected` with `text-brand`. Counts appear as
+ * Navigation items are `label`, 32px tall, radius-md, with a 16px Lucide
+ * icon. The active item takes `bg-active` with `text-primary`. Counts appear as
  * a right-aligned `micro` figure in `text-tertiary`, and only where the count
  * implies an action the person should take.
  */
@@ -123,11 +122,8 @@ export function Sidebar({
       <div className="flex-1 overflow-y-auto px-2 py-2">
         {groups.map((group) => (
           <div key={group.label} className="mb-4">
-            {/* FINDING F23: VPS-D004 requires navigation be "grouped by role
-              * relevance" but specifies no group-header treatment, and does
-              * not say whether five items justify grouping at all. `micro`
-              * uppercase `text-tertiary` follows the convention VPS-D002 uses
-              * for the command palette's group headers. */}
+            {/* VPS-D004: group labels share the command palette's quiet micro
+              * treatment and disappear with the label column when collapsed. */}
             {collapsed ? null : (
               <Text variant="micro" className="block px-2 pb-1 text-text-tertiary">
                 {group.label}
@@ -135,7 +131,9 @@ export function Sidebar({
             )}
             <ul>
               {group.items.map((item) => {
-                const active = item.href === activeHref;
+                const active =
+                  item.href === activeHref ||
+                  (item.href !== "/" && activeHref.startsWith(`${item.href}/`));
                 return (
                   <li key={item.href}>
                     <Tooltip

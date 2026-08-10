@@ -261,7 +261,7 @@ writeAuthority.check(workspaceId, nodeType, fieldGroup?, callingApplication)
 
 ## Security Considerations
 
-- **This is as much a protection for Roster's permanent data as a mechanism for handing bootstrap data away.** Employee, Assignment and Entity are protected from ever being written by another application, with the same rigour applied in both directions rather than only the more visible one.
+- **This is as much a protection for Roster's permanent data as a mechanism for handing bootstrap data away.** Employee, Assignment and Entity are protected from ever being written by another application, with the same rigor applied in both directions rather than only the more visible one.
 - **The policy is read from [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s table and never redefined.** A second competing source of truth for node ownership would be exactly the drift this whole pass exists to eliminate.
 - **The check runs after role permission, never before or instead.** A user without role-based write permission is stopped by [[VPS-A004_Graph_Permission_Layer|VPS-A004]] regardless of which application holds authority. **This feature narrows an already-permitted write; it never widens one.**
 - **Activation is a one-way door and the interface should say so.** An Owner activating [[Vulto Legal]] is permanently moving contract generation out of Roster for that workspace, and the activating application's onboarding is responsible for making that clear before it happens.

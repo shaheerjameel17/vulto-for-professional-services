@@ -7,10 +7,8 @@ import { Text } from "./Text";
  * subtitle carrying the most useful context for that screen, and a
  * right-aligned action slot with at most one `primary` button.
  *
- * FINDING F24: the subtitle is rendered inline with the title rather than
- * beneath it. VPS-D004 does not say which, and stacked does not fit: an `h1`
- * at 24/30 above a `small` at 13/18 is 48px of text inside a 56px band, which
- * leaves 4px above and below.
+ * FDN-14 settled title and subtitle on one baseline. The subtitle truncates
+ * before it can displace the page action.
  */
 
 export type PageHeaderProps = {
