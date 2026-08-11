@@ -18,7 +18,23 @@
   --vt-bg-raised: #ffffff; /* neutral-0 */
   --vt-bg-subtle: #f9f9fa;
   --vt-bg-hover: #efeff1;
-  --vt-bg-selected: #fffbeb; /* brand-50 */
+  /*
+   * FDN-44 round 3. One hover value cannot serve two base surfaces.
+   *
+   * `bg-hover` is calibrated against `bg-surface` (neutral-0) and is correct
+   * there. The sidebar has no surface of its own — FDN-16 put it directly on
+   * `bg-canvas` — and F38 then moved light `bg-canvas` to #efeff0, one digit
+   * from `bg-hover`. Sidebar hover was therefore invisible in light and fine
+   * in dark, which is exactly the asymmetry `bg-active` was already added to
+   * solve for the *active* state (see the note on --color-bg-active).
+   *
+   * Sits between canvas and active in both themes, deliberately: hover is a
+   * preview of active and must never out-weigh it. Dark previously inverted
+   * that — `bg-hover` #222223 is lighter than `bg-active` #1a1a1b, so hovering
+   * an inactive item shouted louder than the page you were actually on.
+   */
+  --vt-bg-canvas-hover: #e8e8eb;
+  --vt-bg-selected: #fef2e7; /* draft, FDN-40: orange tint, not the old amber-50 */
   --vt-bg-active: #e6e6e9;
   --vt-bg-scrim: rgb(9 9 11 / 0.36);
 
@@ -35,14 +51,33 @@
    */
   --vt-segment-track: #f3f3f4;
   --vt-segment-active: #ffffff; /* neutral-0 */
+
+  /*
+   * The Table's inset column-header strip. FDN-44.
+   *
+   * It was `bg-active`, which works on the People directory — that table sits
+   * on `bg-subtle` — and disappears completely on the Manager Dashboard, where
+   * the same table sits inside a Card: in dark, `bg-active` and `bg-surface`
+   * are both #1a1a1b, so the strip was drawn in exactly the color of the thing
+   * it was drawn on.
+   *
+   * A column header has to read on every surface a table can be placed on, so
+   * it gets a value that clears all of them rather than one borrowed from a
+   * state token that happens to work in one location.
+   */
+  --vt-bg-column-header: #ebebee;
   --vt-border-default: #e7e7e9;
   --vt-border-strong: #d4d4d8; /* neutral-300 */
-  --vt-border-focus: #d97706; /* brand-600 */
+  /* FOUNDER DECISION: pure FF8000 in both themes, no darker light-mode step.
+   * #FF8000 as a ring/text color on white is 2.52:1, below the 3:1/4.5:1
+   * floor VPS-D001 states elsewhere — accepted knowingly for one consistent
+   * brand orange. See the note on brand-600 in theme.css. */
+  --vt-border-focus: #ff8000;
   --vt-text-primary: #18181b; /* neutral-900 */
   --vt-text-secondary: #52525b; /* neutral-600 */
   --vt-text-tertiary: #a1a1aa; /* neutral-400 */
   --vt-text-inverse: #ffffff; /* neutral-0 */
-  --vt-text-brand: #b45309; /* brand-700 */
+  --vt-text-brand: #ff8000;
 
   /* Semantic hues — VPS-D001. Three, deliberately no fourth. */
   --vt-success: #059669;
@@ -52,6 +87,54 @@
   /* Avatar initials fallback — VPS-D002 names the light/dark ramp pair
    * directly rather than a semantic token, so it gets its own variable. */
   --vt-avatar-fallback: #e4e4e7; /* neutral-200 */
+
+  /*
+   * Tag fills. FDN-44 round 3.
+   *
+   * Badge's `subtle` intensity was one alpha percentage — the hue at 10% —
+   * for both themes, and it failed in both for different reasons: 10% of a
+   * hue over white is a wash that reads as no color at all, and `neutral`
+   * resolved to `bg-active`, which in dark is #1a1a1b — the identical value
+   * as `bg-raised`. A Type tag on a Card was therefore literally invisible
+   * until a row hover changed the surface underneath it.
+   *
+   * This is the same finding F32 recorded for the bench fill, in a second
+   * place: one percentage over white and over near-black cannot be one
+   * decision. The tint is now stated per theme, and the ink with it, so a
+   * tag reads as colored without the label losing contrast.
+   *
+   * Still alpha rather than an opaque mix, unlike the bench: a tag sits on
+   * four different surfaces (surface, subtle, raised, hover) and nothing
+   * beneath it can stripe through the way non-working shading did.
+   */
+  --vt-tag-tint: 16%;
+  --vt-tag-success-ink: color-mix(in srgb, var(--vt-success) 70%, #09090b);
+  --vt-tag-attention-ink: color-mix(in srgb, var(--vt-attention) 70%, #09090b);
+  --vt-tag-danger-ink: color-mix(in srgb, var(--vt-danger) 70%, #09090b);
+  /* Neutral carries no hue, so it cannot be a tint of one. It gets a real
+   * fill that clears every surface it can land on, in place of `bg-active`. */
+  --vt-tag-neutral-bg: #eaeaed;
+  --vt-tag-neutral-ink: #3f3f46; /* neutral-700 */
+
+  /*
+   * Today's column on the timesheet grid. FDN-45.
+   *
+   * This is the *same signal* as the Bench Forecast's today line, in a grid
+   * rather than on a canvas, so it stays inside VPS-D001's brand ration rather
+   * than adding a fourth use. What it replaces was a `border-t` on the header
+   * cell alone, which — beside the column rule the cell already had — read as
+   * two unrelated strokes meeting at a corner rather than as a marked column.
+   *
+   * A column cannot practically be outlined on four sides in a collapsed table
+   * whose height changes with its rows, so it is filled instead: a stronger
+   * tint on the header where the date is named, and a wash down the column
+   * body faint enough that a full week of them would still read as one grid.
+   *
+   * Mixed from `text-brand` so nothing new is declared, at a higher percentage
+   * in dark where the same ratio over near-black disappears.
+   */
+  --vt-bg-today: color-mix(in srgb, var(--vt-text-brand) 5%, var(--vt-bg-surface));
+  --vt-bg-today-header: color-mix(in srgb, var(--vt-text-brand) 16%, var(--vt-bg-surface));
 
   /*
    * Non-working day columns on the Timeline. FDN-15.
@@ -73,10 +156,48 @@
    *
    * Neither value is expressible in VPS-D001's ramp — see Findings F19.
    */
-  --vt-nonworking-fill: #f5f5f6;
+  --vt-nonworking-fill: #e9e9eb; /* FDN-40 draft: darker on founder direction, was too faint on hover */
 
-  /* Elevation — VPS-D001. Only `overlay` casts a shadow. */
-  --vt-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.08);
+  /*
+   * Elevation — VPS-D001. Only `overlay` casts a shadow.
+   *
+   * FDN-44 round 3 rebuilds the light recipe. The previous one raised alpha
+   * as blur grew — 0.04 at 4px, 0.08 at 16px, 0.12 at 48px — which is the
+   * inverse of how a real shadow behaves and is most of what makes a shadow
+   * read as cheap: the widest, softest layer was also the darkest, so the
+   * overlay sat in a gray cloud instead of above the page.
+   *
+   * Physically, occlusion is strongest where the surfaces nearly touch and
+   * falls away with distance. So: a tight, comparatively dark contact layer,
+   * then progressively wider layers at lower alpha, each pulled in by a
+   * negative spread so the penumbra stays under the element rather than
+   * haloing out sideways.
+   *
+   * Tinted with neutral-950 rather than pure black — a true-black shadow over
+   * a cool-neutral ramp reads muddy, and this ramp is zinc.
+   */
+  --vt-shadow-overlay:
+    0 1px 2px -1px rgb(9 9 11 / 0.12),
+    0 2px 6px -2px rgb(9 9 11 / 0.10),
+    0 8px 16px -6px rgb(9 9 11 / 0.10),
+    0 20px 32px -12px rgb(9 9 11 / 0.10);
+
+  /*
+   * FDN-43. The scrollbar, which had been the operating system's.
+   *
+   * No new color enters the system: the thumb is `border-strong` — a scrollbar
+   * is a hairline affordance, the same weight as the rules it sits beside — and
+   * it resolves to `text-tertiary` on hover, one step up, the same promotion
+   * every other quiet control in this product makes when pointed at. Both are
+   * references rather than copies, so the scrollbar follows the theme without
+   * being declared twice.
+   *
+   * The track is deliberately transparent. A filled track would draw a
+   * permanent band across the bottom of the Bench Forecast, which is the exact
+   * complaint the native scrollbar generated.
+   */
+  --vt-scrollbar-thumb: var(--vt-border-strong);
+  --vt-scrollbar-thumb-hover: var(--vt-text-tertiary);
 
   /*
    * FDN-19. The scroll-boundary fade's inputs, at rest.
@@ -103,20 +224,38 @@
   --vt-bg-raised: #1a1a1b;
   --vt-bg-subtle: #111112;
   --vt-bg-hover: #222223;
-  --vt-bg-selected: #2a2115;
-  --vt-bg-active: #1a1a1b;
+  /* Between canvas (#09090a) and active (#1a1a1b), so hover stays subordinate
+   * to active — see the light-column note. */
+  --vt-bg-canvas-hover: #141416;
+  --vt-bg-selected: #33210f; /* draft, FDN-40: orange tint, not the old amber-900 */
+  /*
+   * FDN-44: raised off #1a1a1b, which was `bg-surface`'s exact value.
+   *
+   * On the canvas and on `bg-subtle` that collision never showed, so the
+   * sidebar's active item and the Timeline's date pill both looked correct.
+   * On a Card it was fatal: the Manager queue's selected row — the cursor its
+   * whole J/K keyboard model depends on — was painted in precisely the color
+   * of the card under it. It also sat *below* `bg-hover` (#222223), so
+   * hovering any other row out-shouted the selected one.
+   *
+   * Selection is the strongest resting state a row has and now measures that
+   * way in both themes.
+   */
+  --vt-bg-active: #2a2a2e;
   --vt-bg-scrim: rgb(9 9 10 / 0.64);
 
   --vt-segment-track: #1a1a1b;
   --vt-segment-active: #2a2a2b;
+  /* Clears bg-subtle (#111112) and bg-surface/raised (#1a1a1b) alike. */
+  --vt-bg-column-header: #242427;
   --vt-border-default: #2a2a2b;
   --vt-border-strong: #3f3f42;
-  --vt-border-focus: #fbbf24; /* brand-400 */
+  --vt-border-focus: #ff8000;
   --vt-text-primary: #fafafa; /* neutral-50 */
   --vt-text-secondary: #a1a1aa; /* neutral-400 */
   --vt-text-tertiary: #71717a; /* neutral-500 */
   --vt-text-inverse: #ffffff;
-  --vt-text-brand: #fbbf24; /* brand-400 */
+  --vt-text-brand: #ff8000; /* brand-500 */
 
   --vt-success: #10b981;
   --vt-attention: #f59e0b;
@@ -124,9 +263,55 @@
 
   --vt-avatar-fallback: #2a2a2b;
 
-  --vt-nonworking-fill: #202021;
+  --vt-tag-tint: 22%;
+  /* The dark semantic hues are already the bright step of their ramp, so the
+   * ink is the hue itself — mixing it toward black here would undo exactly
+   * what the dark column raised it for. */
+  --vt-tag-success-ink: var(--vt-success);
+  --vt-tag-attention-ink: var(--vt-attention);
+  --vt-tag-danger-ink: var(--vt-danger);
+  /* Clears bg-subtle (#111112), bg-raised (#1a1a1b) and bg-hover (#222223)
+   * alike — the failure the old `bg-active` value had was being equal to one
+   * of them. */
+  --vt-tag-neutral-bg: #2e2e33;
+  --vt-tag-neutral-ink: #d4d4d8; /* neutral-300 */
 
-  --vt-shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.4);
+  /* The body wash runs the full height of the grid, so it stays far fainter
+   * than the header cell that names the date — a column-length band at the
+   * header's strength stops being a marker and becomes the background. */
+  --vt-bg-today: color-mix(in srgb, var(--vt-text-brand) 6%, var(--vt-bg-surface));
+  --vt-bg-today-header: color-mix(in srgb, var(--vt-text-brand) 20%, var(--vt-bg-surface));
+
+  /*
+   * FDN-44 round 3. Still lighter than the surface, and that is correct.
+   *
+   * FDN-44 round 2 called a lighter value the bug and set #141415 to be
+   * "genuinely darker" — but it measured against `bg-raised` (#1a1a1b), and
+   * the Timeline sits on `bg-subtle` (#111112). #141415 is lighter than
+   * #111112, so the shading was never actually darker; it was a highlight so
+   * faint it read as absent, which is what was reported.
+   *
+   * Chasing darker is not available: matching light's 1.15:1 against #111112
+   * needs a negative luminance. In a near-black theme the light-mode metaphor
+   * inverts — an inert column is marked by a wash, not a shade. The real
+   * constraint is the one round 2 was reaching for and stated wrongly: the
+   * wash must stay *below* the bars, or non-working columns float above the
+   * assignments. It sits between bg-subtle and bg-raised, so it does.
+   */
+  --vt-nonworking-fill: #1e1e21;
+
+  /*
+   * A shadow cannot separate a near-black surface from a near-black canvas —
+   * there is no darker to fall back on. Dark elevation is carried by the edge
+   * instead: `elevation-overlay`'s border, plus a top rim catching the
+   * implied light, which is what gives a raised surface its lit leading edge.
+   * The dark layers below are for grounding and direction, not separation.
+   */
+  --vt-shadow-overlay:
+    inset 0 1px 0 0 rgb(255 255 255 / 0.06),
+    0 1px 2px -1px rgb(0 0 0 / 0.6),
+    0 8px 16px -6px rgb(0 0 0 / 0.55),
+    0 20px 32px -12px rgb(0 0 0 / 0.5);
 }
 
 /*
@@ -183,16 +368,24 @@
  * pattern for its semantic hues, where `attention` goes 600 to 500 because a
  * near-black field needs more luminance to carry the same perceived weight.
  */
+/*
+ * FDN-40 draft. Bench is deliberately NOT theme-varying — founder direction:
+ * amber is reserved for cost regardless of theme, and a pale rest color that
+ * reads muted on white was found to read bright, not muted, against a
+ * near-black canvas (the same failure mode F32 already diagnosed once).
+ * These are mid-tone/saturated rather than pastel specifically to avoid that
+ * flip.
+ *
+ * First candidate (amber-600/-500) rendered 2° of hue from the new brand-600
+ * — indistinguishable in practice even though the math against bench-hover
+ * looked fine. Shifted a step yellower to amber-500/-400, which gives ~8-13°
+ * separation from brand's ~30° and keeps the same rest-darker/hover-brighter
+ * relationship. Figure-text contrast: 9.26:1 at rest, 11.92:1 on hover.
+ */
 :root {
-  --vt-bench-rest: #ffcca1;
-  --vt-bench-fill: #f59e0b; /* amber-500 */
-  --vt-bench-figure: #09090b; /* neutral-950 — 9.26:1 */
-}
-
-:root[data-theme="dark"] {
-  --vt-bench-rest: #dba158;
+  --vt-bench-rest: #f59e0b; /* amber-500 */
   --vt-bench-fill: #fbbf24; /* amber-400 */
-  --vt-bench-figure: #09090b; /* neutral-950 — 11.92:1 */
+  --vt-bench-figure: #09090b; /* neutral-950 */
 }
 
 /* FDN-15, settled: the bench bar sits at exactly an assignment bar's height, so

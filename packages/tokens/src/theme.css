@@ -34,17 +34,27 @@
   --color-neutral-900: #18181b;
   --color-neutral-950: #09090b;
 
-  /* Brand — amber. Rationed: marks exactly three things. VPS-D001. */
-  --color-brand-50: #fffbeb;
-  --color-brand-100: #fef3c7;
-  --color-brand-200: #fde68a;
-  --color-brand-300: #fcd34d;
-  --color-brand-400: #fbbf24;
-  --color-brand-500: #f59e0b;
-  --color-brand-600: #d97706;
-  --color-brand-700: #b45309;
-  --color-brand-800: #92400e;
-  --color-brand-900: #78350f;
+  /* Brand — orange, distinct from the amber reserved for cost. Rationed:
+   * marks exactly three signals. VPS-D001, F53, FDN-40 draft.
+   *
+   * FOUNDER DECISION, recorded deliberately: brand-500 and brand-600 are both
+   * FF8000 and pair with white text throughout (buttons, badges, the
+   * workspace mark). White on FF8000 measures 2.52:1, below the 4.5:1 body /
+   * 3:1 large-text floor VPS-D001 states elsewhere. Flagged and accepted
+   * knowingly in favor of a single consistent orange — this is not an
+   * oversight, do not "fix" it back to a darker step without asking first.
+   * brand-700 stays a genuine darker step, but only for the button
+   * hover-darken interaction, not for a resting contrast fix. */
+  --color-brand-50: #fef7f0;
+  --color-brand-100: #feebd7;
+  --color-brand-200: #ffd4a8;
+  --color-brand-300: #ffb366;
+  --color-brand-400: #ff9933;
+  --color-brand-500: #ff8000; /* anchor */
+  --color-brand-600: #ff8000; /* same as 500 — see note above */
+  --color-brand-700: #cc6600; /* hover-darken only */
+  --color-brand-800: #7a3d00;
+  --color-brand-900: #5e3102;
 
   /* Categorical tokens are declared per theme in runtime.css and aliased in the
    * `@theme inline` block below — FDN-20 made them theme-aware, because one
@@ -109,10 +119,32 @@
   --spacing-palette-offset: 15vh; /* VPS-D002, VPS-F002 */
   --spacing-palette-results: 480px; /* six to eight grouped rows at design center */
   --spacing-icon: 16px; /* VPS-D002 */
+  /*
+   * FDN-43. The scrollbar's own thickness, delegated to VPS-D002 under the
+   * structural-dimensions rule above rather than added to VPS-D001's space set.
+   *
+   * It happens to equal space-2, but it is not spacing — it is the size of a
+   * piece of chrome, in the same category as the sidebar's width. Stating it
+   * here is what keeps the Bench Forecast from rendering a scrollbar whose
+   * width, color and radius come from the operating system, on the one surface
+   * whose entire premise is that every value comes from the token set.
+   */
+  --spacing-scrollbar: 8px; /* VPS-D002, FDN-43 */
   --spacing-dot: 6px; /* VPS-D002, the today line's dot. Not in D001's set. */
   --spacing-badge: 20px; /* VPS-D002 */
-  --spacing-avatar-sm: 20px; /* VPS-D002 */
-  --spacing-avatar-md: 24px; /* VPS-D002 */
+  /*
+   * FDN-44 round 3 raises the two small steps. VPS-D002's 20/24/32/40 was
+   * written before initials were rendered: two uppercase glyphs of Inter at
+   * the only type token that fits a 20px circle span ~14px, leaving under 3px
+   * of clearance to a curved edge, and `micro`'s +0.04em uppercase tracking
+   * spent part of that on a trailing space that pushed the pair off-center.
+   *
+   * 24/28/32/40 keeps four distinct steps and lands every one of them near
+   * the 0.45 glyph-to-diameter ratio initials actually need. The two large
+   * steps were already right and do not move.
+   */
+  --spacing-avatar-sm: 24px; /* VPS-D002, corrected by FDN-44 */
+  --spacing-avatar-md: 28px; /* VPS-D002, corrected by FDN-44 */
   --spacing-avatar-lg: 32px; /* VPS-D002 */
   --spacing-avatar-xl: 40px; /* VPS-D002 */
   --spacing-button-sm: 24px; /* VPS-D002 */
@@ -147,6 +179,14 @@
 
   --font-*: initial;
   --font-weight-*: initial;
+  /* Weight lives inside each named type token (VPS-D001), not as a separate
+   * axis — these two exist only for the rare case of bolding an existing
+   * variant in place (a Stat delta, say) without a token of its own. `medium`
+   * was already referenced as dead weight before this existed: `font-medium`
+   * compiled to nothing with the scale cleared, which is worth knowing if you
+   * go looking for other silently-missing weight classes. */
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
   --font-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
 
   /*
@@ -299,6 +339,9 @@
   --color-bg-raised: var(--vt-bg-raised);
   --color-bg-subtle: var(--vt-bg-subtle);
   --color-bg-hover: var(--vt-bg-hover);
+  /* FDN-44: hover for anything sitting on the canvas rather than on a
+   * surface — which in this shell means the sidebar, and only the sidebar. */
+  --color-bg-canvas-hover: var(--vt-bg-canvas-hover);
   --color-bg-selected: var(--vt-bg-selected);
   --color-bg-scrim: var(--vt-bg-scrim);
 
@@ -318,6 +361,18 @@
 
   --color-avatar-fallback: var(--vt-avatar-fallback);
 
+  /* FDN-44: Badge's `subtle` intensity, stated per theme. The tint is the
+   * semantic hue at a theme-specific alpha; the ink is derived from the same
+   * hue so no new color enters the system. */
+  --color-tag-success: color-mix(in srgb, var(--vt-success) var(--vt-tag-tint), transparent);
+  --color-tag-attention: color-mix(in srgb, var(--vt-attention) var(--vt-tag-tint), transparent);
+  --color-tag-danger: color-mix(in srgb, var(--vt-danger) var(--vt-tag-tint), transparent);
+  --color-tag-neutral: var(--vt-tag-neutral-bg);
+  --color-tag-success-ink: var(--vt-tag-success-ink);
+  --color-tag-attention-ink: var(--vt-tag-attention-ink);
+  --color-tag-danger-ink: var(--vt-tag-danger-ink);
+  --color-tag-neutral-ink: var(--vt-tag-neutral-ink);
+
   /*
    * Categorical. FDN-20: per theme, because the bar is an opaque mix — 34%
    * against white, 42% against near-black — and a single source value comes out
@@ -334,6 +389,10 @@
 
   --color-segment-track: var(--vt-segment-track);
   --color-segment-active: var(--vt-segment-active);
+
+  /* FDN-44: the Table's inset column-header strip, which has to read on every
+   * surface a table can sit on rather than only on `bg-subtle`. */
+  --color-bg-column-header: var(--vt-bg-column-header);
 
   /*
    * FDN-12. The bench region's fill is a chosen color per theme, not
@@ -358,4 +417,9 @@
 
   /* FDN-15: the faintest hint that a column is not a working day. */
   --color-nonworking: var(--vt-nonworking-fill);
+
+  /* FDN-45: today's column on the timesheet grid — the same signal as the
+   * Bench Forecast's today line, filled rather than drawn. */
+  --color-bg-today: var(--vt-bg-today);
+  --color-bg-today-header: var(--vt-bg-today-header);
 }

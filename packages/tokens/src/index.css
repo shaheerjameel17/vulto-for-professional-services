@@ -82,8 +82,56 @@
 
 @utility elevation-overlay {
   background-color: var(--vt-bg-raised);
-  border: 1px solid var(--vt-border-default);
+  /* FDN-40 draft: border-strong, not border-default. A pure-black shadow at
+   * low alpha gives depth in light mode but is nearly invisible against a
+   * near-black canvas, so the border is what actually separates an overlay
+   * from what's behind it in dark mode — border-default was too close to
+   * bg-raised to do that job on its own. */
+  border: 1px solid var(--vt-border-strong);
   box-shadow: var(--vt-shadow-overlay);
+}
+
+/*
+ * FDN-43. The scrollbar on the surfaces this design system owns.
+ *
+ * Deliberately a utility rather than a global rule on `*`. A product decides
+ * which of its surfaces are its own; resetting every scrollbar in the document
+ * would also restyle anything embedded later that has its own opinion.
+ *
+ * Both engines are covered, and that is the point rather than a detail. Firefox
+ * reads `scrollbar-width` and `scrollbar-color`; Chromium and WebKit read the
+ * `::-webkit-scrollbar` pseudo-elements and ignore the standard properties when
+ * a pseudo-element rule exists. Styling only one engine is worse than styling
+ * neither, because it looks correct on the machine it was written on.
+ *
+ * `thin` is Firefox's only expressible narrow width — it takes no length — so
+ * the two engines agree in intent rather than to the pixel. That is a platform
+ * limit, not a decision, and is recorded as such.
+ */
+@utility scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vt-scrollbar-thumb) transparent;
+
+  &::-webkit-scrollbar {
+    width: var(--spacing-scrollbar);
+    height: var(--spacing-scrollbar);
+  }
+
+  /* Transparent, so the fade at a scroll boundary is never competing with a
+   * painted band underneath it — see `scroll-boundary-fade` below. */
+  &::-webkit-scrollbar-track,
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--vt-scrollbar-thumb);
+    border-radius: var(--radius-full);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--vt-scrollbar-thumb-hover);
+  }
 }
 
 /*
