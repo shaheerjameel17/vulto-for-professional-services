@@ -85,6 +85,24 @@ Workspace Settings, reached from the workspace trigger, owns members and roles, 
 
 **Sub-screen placement is stable even when a feature grows.** Billable versus non-billable pulse is a profile fact and a Reports aggregate, not a thirteenth destination. Assets are person-scoped in the profile and managed as a register within People Ops. Policies are administered in People Ops and acknowledged from Home or Inbox. The same rule applies to every future feature.
 
+### Home's role variants
+
+**Home is always called Home** — in the sidebar, in the route, and in the page title. No variant of it is titled after the role that sees it. A title naming a role the viewer does not hold is how a reader concludes they are on the wrong screen, and it is the specific defect FDN-41 found on the rendered prototype, where one destination carried three different names.
+
+The variants differ in **composition**, not in the same list filtered differently:
+
+| Role | Home leads with | Owned by |
+|---|---|---|
+| Team Member | Self-service: their own time, leave, documents and acknowledgements | Not yet specified; no feature document claims it |
+| Manager | The action queue, with a team overview supporting it | [[VRS-F049_Manager_Dashboard\|VRS-F049]] |
+| HR Admin, Finance Admin, Owner | The operational overview for their remit, with an action queue beneath it | This document |
+
+The distinction is real rather than cosmetic. A manager's morning is a list of things waiting on them, so the queue leads. An administrative role's first question is how the business stands, so the figures lead and the queue sits below them. Putting the queue first for every role is what made the administrative Home read as a manager's screen regardless of what it was called.
+
+**Every figure on Home is computed from the viewer's own cohort**, never a workspace-wide aggregate filtered after the fact — the same rule [[VRS-F005_The_Bench_Forecast|VRS-F005]] holds for the Manager Bench Forecast, and for the same reason: a total that was summed over people the viewer cannot see is wrong even when the rows beneath it are correct.
+
+**Where a figure appears on both Home and its owning feature, it is derived once.** The administrative Home's utilization, bench exposure and unrecovered cost are read from the Bench Forecast's own derivation rather than recomputed here, so the two surfaces cannot state different numbers for the same fact.
+
 ### Role filtering
 
 The Owner sees the complete map above. Every other role receives a subset in the same order; empty groups disappear. Composite roles receive the union. The navigation is permission-filtered before rendering, so it never exposes a destination only to replace it with a permission wall.

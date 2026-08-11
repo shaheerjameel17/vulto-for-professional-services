@@ -21,6 +21,16 @@ This document is the single source of truth for this feature.
 
 ---
 
+## What this specifies, and what it is called on screen
+
+**This document specifies the Manager variant of Home.** It does not specify a destination named "Manager Dashboard" — no such destination exists in the navigation. [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] fixes twelve destinations, and Home is one of them; what this document describes is what Home renders for a viewer holding the Manager role.
+
+The distinction is not pedantic. FDN-41 found the rendered prototype calling one destination Home in the sidebar, `/dashboard` in the route, and "Manager Dashboard" in the page title — and showing that title to an Owner, who is not a manager. **The page title is Home for every role.** The name in this document's own heading is the name of the specification, not of a screen.
+
+[[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] owns what the other role variants of Home differ in, and owns the rule that every figure on Home is computed from the viewer's own cohort rather than filtered after aggregation.
+
+---
+
 ## What this refuses to be
 
 Not a status page. Not a grid of numbers copied from other screens with a new header.
