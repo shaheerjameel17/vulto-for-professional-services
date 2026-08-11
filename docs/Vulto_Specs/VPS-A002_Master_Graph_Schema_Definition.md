@@ -97,6 +97,22 @@ soft_deleted_by:   user_id UUID, null if not deleted
 
 `effective_from` and `effective_to` are promoted to first-class fields rather than living inside `metadata`. Temporal filtering is the single most common operation performed on this graph — every Bench Forecast render, every capacity check, every reporting-line traversal filters on it — and JSON extraction inside a SQLite `WHERE` clause cannot be indexed usefully. This is a performance decision, made once here, that [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s latency budgets depend on.
 
+## When a relationship is a node instead of an edge
+
+Some relationships carry data of their own. An assignment has a billing rate and a status; a skill holding has a proficiency level; a membership has a role. Two shapes are available, and choosing between them per relationship produced three different patterns for the same idea.
+
+**A relationship is a node when it carries its own lifecycle status, or when another node must point at it. Otherwise it is an edge carrying metadata.**
+
+**Lifecycle is the test because this document already made it one.** Every node carries `lifecycle_status`; no edge does. A relationship that moves through states — Active, then Completed, then Canceled — is a thing with a life, and modeling it as an edge means inventing a status field the edge conventions do not have. The second clause is forced rather than chosen: A002-T03 requires an edge's endpoints to be nodes, so anything another node must reference has to be one.
+
+Assignment and WorkspaceMembership are nodes: the first is Active, Completed or Canceled and is pointed at by TimesheetEntry; the second is Active or Revoked. `has_skill`, `contracted_with`, `allocated_to`, `holds_certification`, `managed_by` and `registered_on` are edges carrying metadata — none has a status of its own and nothing points at any of them.
+
+**A relationship-node's endpoint edges are named for what they express, with the node as the `from`.** `assignment_of` runs Assignment → Employee and `assigned_to` runs Assignment → Project, following `incurred_by` and `attributed_to` on Expense. **The endpoint pair itself is not an edge.** *Which employees are on which projects* is a two-hop traversal through Assignment, and registering an Employee → Project edge alongside it would create a second answer to a question the graph can already answer — the denormalization Standing Rule 7 exists to prevent.
+
+**The edge registry's key is the triple of `edge_type`, from-node type and to-node type — never `edge_type` alone.** `governed_by` is registered four times against four unrelated pairs; `part_of` twice; `supersedes`, `references`, `affects` and `has_custom_value` are polymorphic across many types. An implementation keyed on the edge type would collapse four distinct relationships into one, silently.
+
+---
+
 **The single-active-edge-with-history pattern** applies to any edge type representing a relationship that changes over time but whose history must remain traversable. `managed_by` is the canonical example. At most one edge of that type may be active between a given pair of nodes at any moment; changing it sets `effective_to` on the prior edge and creates a new one with `effective_from`. Full history remains traversable. Any future edge with this shape follows the same pattern rather than inventing a new one.
 
 ---
@@ -180,7 +196,7 @@ New. WorkingCalendar defines the working week and holiday set for an Entity; Hol
 | **Assignment** | Active, Completed, Canceled | [[VRS-F005_The_Bench_Forecast|VRS-F005]] | Standard | 0 |
 | **Project** | Pitch, Active, Completed, Archived | [[VRS-F005_The_Bench_Forecast|VRS-F005]] bootstrap | Standard | 0 |
 | **Pitch** | Active, Won, Lost, Converted | [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] | Standard (identifying) / Finance-restricted (commercial) | Split: 0 / 1 |
-| **Client** | Active, Inactive | [[Vulto Sales]] | Standard | 0 |
+| **Client** | Active, Inactive | [[Vulto Sales]] permanent; [[VPJ-F001]] bootstrap | Standard | 0 |
 | **OpenRole** | Open, Filled, Canceled | [[VRS-F028_Recruitment_Pipeline|VRS-F028]] | Standard | 0 |
 | **Skill** | Active, Deprecated | [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]] | Standard | 0 |
 
@@ -375,7 +391,8 @@ Where an edge connects several node type pairs, each pair is listed explicitly. 
 
 | Edge | From → To | Owner | Notes |
 |---|---|---|---|
-| `member_of` | User → Workspace | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Via WorkspaceMembership |
+| `membership_of` | WorkspaceMembership → User | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | |
+| `membership_in` | WorkspaceMembership → Workspace | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | A user's workspaces are the two-hop traversal, not an edge |
 | `registered_on` | Device → User | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Carries platform, registered_at, last_active_at |
 | `managed_by` | Employee → Employee | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Single-active-edge-with-history. Backed by Loro's Movable Tree per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] |
 | `scoped_to_entity` | Employee → Entity | [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] | Employment jurisdiction only |
@@ -388,7 +405,8 @@ Where an edge connects several node type pairs, each pair is listed explicitly. 
 
 | Edge | From → To | Owner | Notes |
 |---|---|---|---|
-| `assigned_to` | Employee → Project | [[VRS-F005_The_Bench_Forecast|VRS-F005]] | Via Assignment |
+| `assignment_of` | Assignment → Employee | [[VRS-F005_The_Bench_Forecast|VRS-F005]] | |
+| `assigned_to` | Assignment → Project | [[VRS-F005_The_Bench_Forecast|VRS-F005]] | Who is on what is the two-hop traversal through Assignment, not an edge |
 | `belongs_to` | Project → Client | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | |
 | `originated_from` | Project → Pitch | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Preserved on conversion |
 | `placeholder_for` | GhostResource → OpenRole | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Links capacity planning to recruitment |
@@ -500,7 +518,6 @@ Registered ahead of implementation so that [[VRS-F005_The_Bench_Forecast|VRS-F00
 
 | Node Type | Lifecycle Statuses | Owner | Privacy Class | Tier |
 |---|---|---|---|---|
-| **Client** | Active, Inactive | [[VPJ-F001]] bootstrap; [[Vulto Sales]] permanent | Standard | 0 |
 | **Deliverable** | Draft, InProgress, InReview, RevisionRequested, Approved, Canceled | [[VPJ-F003]] | Standard | 0 |
 | **Task** | Todo, InProgress, Done, Canceled | [[VPJ-F004]] | Standard | 0 |
 | **Brief** | Draft, Agreed, Superseded | [[VPJ-F005]] | Standard | 0 |

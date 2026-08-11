@@ -74,7 +74,15 @@ Easily conflated, and worth separating cleanly.
 
 **Tier determines the strength of protection. Privacy Class determines who receives it.** These are orthogonal, and the previous draft conflated them by listing a fixed reader set against Tier 1 — Owner, Finance Admin, HR Admin. That was accurate while Tier 1 held only financial data. It is no longer: [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]'s case narrative and [[VRS-F020_Universal_Contract_Builder|VRS-F020]]'s contract content are both Tier 1, and neither should reach a Finance Admin. Had the tier carried its own reader set, activating case management would have distributed grievance narratives to the finance team.
 
-The corrected rule: **a Tier 1 document's key is wrapped for exactly the roles its node type's Privacy Class grants read access, per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], and for no others.** Tier 1 means *end-to-end encrypted*. It does not mean *financial*.
+The corrected rule: **a Tier 1 document's key is wrapped for exactly the roles the node type's effective grant gives read access, per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], and for no others.** Tier 1 means *end-to-end encrypted*. It does not mean *financial*.
+
+**"Effective grant" is load-bearing and means the Privacy Class default as overridden by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s per-node matrix.** Resolving against the class default alone gets this wrong on every Tier 1 node the matrix narrows. `Finance-restricted` defaults Team Member to `Read (own only)`; the matrix overrides Team Member to `None` on HeadcountPlan, PayRun, Requisition's budget half and Offer's terms. Wrapping against the default would hand every employee in the workspace a decryption key for the headcount plan, the payroll run and every offer's compensation terms.
+
+The permission interceptor would still refuse to return those rows, and that is exactly the point: **the key layer and the query layer must fail independently or they are not two layers.** A key wrapped for someone the interceptor denies survives the interceptor being wrong, misconfigured, or bypassed — which is the only circumstance Tier 1 exists to protect against.
+
+**The reader set is derived once and consumed by both layers.** Key wrapping and query interception resolving it separately is how they come to disagree.
+
+`Read (own only)` also has no meaning on a workspace-scoped node. There is no *own* headcount plan and no *own* pay run. That grant was written for person-scoped records, and read literally against a workspace-scoped one it grants everything rather than nothing — which is the failure mode above, arriving by a second route.
 
 The authoritative tier assignment for every node type lives in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]. The mapping from Privacy Class to default tier is mechanical, and it is **total** — every one of the thirteen classes [[VPS-A004_Graph_Permission_Layer|VPS-A004]] defines appears here, so a newly registered node type always has a default:
 
@@ -203,7 +211,7 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 | A003-T03 | All sync payloads MUST be encrypted in transit using TLS 1.3 minimum, regardless of tier |
 | A003-T04 | Local device storage MUST be encrypted at rest with AES-256, keyed from the authenticated session and never stored alongside the data. This is independent of, and does not substitute for, the Tier 1 and Tier 3 end-to-end scheme |
 | A003-T05 | Tier 1 and Tier 3 documents MUST be encrypted client-side before transmission. The server MUST NOT possess or be able to derive any key capable of decrypting them, verified by an automated test confirming no server-side code path can decrypt a Tier 1 or Tier 3 payload |
-| A003-T06 | A Tier 1 document's key MUST be wrapped for exactly the roles its node type's Privacy Class grants read access per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], and for no others. Tier MUST NOT imply a reader set |
+| A003-T06 | A Tier 1 document's key MUST be wrapped for exactly the roles the node type's **effective grant** gives read access — its Privacy Class default **as overridden by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s per-node matrix** — and for no others. The class default alone MUST NOT be used. Tier MUST NOT imply a reader set |
 | A003-T07 | Key wrapping MUST support adding and removing readers without re-encrypting the underlying document. On revocation the key epoch MUST increment for future writes, with historical re-wrapping performed lazily on next authorized modification. On grant, the new reader's wrapped-key entry for the current retention window MUST be created immediately |
 | A003-T08 | The sync engine MUST expose a SyncStatus observable any UI component may subscribe to |
 | A003-T09 | Every sync delta MUST be logged to [[VPS-F004_Silent_Audit_Log|VPS-F004]], including its tier |
