@@ -121,6 +121,13 @@ export function TimesheetScreen() {
   );
   const totalHours = totalsByDay.reduce((sum, hours) => sum + hours, 0);
   const billableHours = billableByDay.reduce((sum, hours) => sum + hours, 0);
+  /* Neutral until the week has actually started — see the note on the pills. */
+  const remainingTone: "neutral" | "attention" | "success" =
+    billableHours === 0
+      ? "neutral"
+      : billableHours >= TIMESHEET_EMPLOYEE.billableTarget
+        ? "success"
+        : "attention";
   const remainingBillable = Math.max(
     0,
     TIMESHEET_EMPLOYEE.billableTarget - billableHours,
@@ -394,7 +401,7 @@ export function TimesheetScreen() {
           </InlineAlert>
         ) : null}
 
-        <div className="hidden overflow-x-auto rounded-lg border border-border-default md:block">
+        <div className="scrollbar-slim hidden overflow-x-auto rounded-lg border border-border-default md:block">
           <table className="min-w-timesheet-grid table-fixed lg:min-w-full">
             <colgroup>
               <col className="w-timesheet-label" />
@@ -409,36 +416,62 @@ export function TimesheetScreen() {
                     Work
                   </Text>
                 </th>
-                {days.map((day) => (
+                {days.map((day) => {
+                  const today = day.date === TODAY;
+                  return (
                   <th
                     key={day.date}
                     scope="col"
+                    // FDN-45: today is a filled column, not a stray top border
+                    // on one cell. See the `bg-today` token for why a fill
+                    // rather than an outline.
                     className={cx(
                       "h-12 border-l border-border-default px-cell text-right",
-                      day.date === TODAY && "border-t border-brand-500",
+                      today && "bg-bg-today-header",
                     )}
                   >
-                    <Text variant="micro" className="block text-text-tertiary">
+                    <Text
+                      variant="micro"
+                      className={cx("block", today ? "text-text-brand" : "text-text-tertiary")}
+                    >
                       {dayFormatter.format(asDate(day.date))}
                     </Text>
-                    <Text variant="small" className="text-text-secondary">
+                    <Text
+                      variant="small"
+                      className={today ? "text-text-primary" : "text-text-secondary"}
+                    >
                       {dateFormatter.format(asDate(day.date))}
                     </Text>
                   </th>
-                ))}
+                  );
+                })}
               </tr>
             </thead>
             <tbody>
               {TIMESHEET_ROWS.map((row, rowIndex) => (
+                /*
+                 * FDN-45: `h-timeline-row`, not `h-row`.
+                 *
+                 * The label carries two stacked facts — the work and the client
+                 * — which is 30px of type inside a 32px row, so it read as text
+                 * pressed against the cell border. Every other row in this
+                 * product carrying two stacked facts is 52px: the People
+                 * directory's, the Bench Forecast's. This is the same row.
+                 *
+                 * `focus-within` beside `hover` is the whole point: the row
+                 * tint and the cell fill were pointer-only, so driving the grid
+                 * from the keyboard — which is what this screen exists to
+                 * prove — left the cursor invisible.
+                 */
                 <tr
                   key={row.id}
-                  className="h-row border-b border-border-default hover:bg-bg-hover"
+                  className="h-timeline-row border-b border-border-default motion-fast transition-colors hover:bg-bg-hover focus-within:bg-bg-hover"
                 >
-                  <th scope="row" className="px-cell text-left font-normal">
+                  <th scope="row" className="px-cell py-2 text-left font-normal">
                     <Text variant="small" className="block truncate text-text-primary">
                       {row.label}
                     </Text>
-                    <Text variant="micro" className="block truncate text-text-tertiary">
+                    <Text variant="micro" className="mt-1 block truncate text-text-tertiary">
                       {row.detail}
                     </Text>
                   </th>
@@ -447,7 +480,10 @@ export function TimesheetScreen() {
                     return (
                       <td
                         key={day.date}
-                        className="border-l border-border-default px-1"
+                        className={cx(
+                          "border-l border-border-default px-1",
+                          day.date === TODAY && "bg-bg-today",
+                        )}
                       >
                         <input
                           ref={(node) => {
@@ -465,7 +501,11 @@ export function TimesheetScreen() {
                           className={cx(
                             "h-control w-full rounded-md bg-transparent px-2 text-right",
                             "font-ui text-numeric numeric-tabular text-text-primary",
-                            "outline-none hover:bg-bg-subtle",
+                            // FDN-45: `focus:` alongside `hover:`. The cell fill
+                            // marked where the pointer was and not where the
+                            // cursor was, on the one grid whose acceptance is a
+                            // keyboard speed run.
+                            "outline-none motion-fast transition-colors hover:bg-bg-subtle focus:bg-bg-subtle",
                             "focus-visible:outline focus-visible:outline-2",
                             "focus-visible:outline-border-focus focus-visible:outline-offset-2",
                             errors[key] && "border border-danger",
@@ -488,7 +528,10 @@ export function TimesheetScreen() {
                 {totalsByDay.map((hours, index) => (
                   <td
                     key={days[index]!.date}
-                    className="border-l border-border-default px-cell text-right"
+                    className={cx(
+                      "border-l border-border-default px-cell text-right",
+                      days[index]!.date === TODAY && "bg-bg-today",
+                    )}
                   >
                     <Text variant="numeric-lg" className="text-text-primary">
                       {displayHours(hours)}
@@ -508,7 +551,7 @@ export function TimesheetScreen() {
           onTouchStart={handleTouchStart}
           onTouchEnd={handleTouchEnd}
         >
-          <div className="mb-4 overflow-x-auto">
+          <div className="scrollbar-slim mb-4 overflow-x-auto">
             <ToggleGroup
               label="Working day"
               value={days[selectedDayIndex]?.date ?? ""}
@@ -558,13 +601,35 @@ export function TimesheetScreen() {
           </Text>
         </div>
 
-        <div className="mt-4 flex items-center justify-between gap-4 border-t border-border-default pt-4">
-          <Text
-            variant="small"
-            className={remainingBillable > 0 ? "text-attention" : "text-success"}
-          >
-            Billable target {TIMESHEET_EMPLOYEE.billableTarget}h · Logged {displayHours(billableHours)}h · Remaining {displayHours(remainingBillable)}h
-          </Text>
+        {/*
+          * FDN-45. Three pills, and only one of them carries a color.
+          *
+          * This was one amber sentence, amber whenever anything at all was
+          * outstanding — so an untouched Monday, where nothing has happened
+          * yet and nothing is wrong, was rendered in the color this product
+          * reserves for cost and attention. Amber that appears by default
+          * stops meaning anything.
+          *
+          * Target and Logged are facts and stay neutral. Remaining is the only
+          * one with a state, and it has three:
+          *   nothing logged yet  neutral — the week has not started
+          *   short, mid-week     attention — work is underway and it is behind
+          *   met or exceeded     success — and it says so in words, not a color
+          */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-border-default pt-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge shape="pill">
+              Target {TIMESHEET_EMPLOYEE.billableTarget}h
+            </Badge>
+            <Badge shape="pill">Logged {displayHours(billableHours)}h</Badge>
+            <Badge shape="pill" tone={remainingTone}>
+              {remainingBillable <= 0
+                ? billableHours > TIMESHEET_EMPLOYEE.billableTarget
+                  ? `Target met · ${displayHours(billableHours - TIMESHEET_EMPLOYEE.billableTarget)}h over`
+                  : "Target met"
+                : `Remaining ${displayHours(remainingBillable)}h`}
+            </Badge>
+          </div>
           <Text variant="small" className="text-text-tertiary">
             Cmd+D fills right · Cmd+Enter submits · [ ] changes week
           </Text>

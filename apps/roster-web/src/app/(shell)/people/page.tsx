@@ -80,9 +80,35 @@ const COLUMN_OPTIONS: { value: DirectoryColumnKey; label: string }[] = [
 
 export default function PeoplePage() {
   const router = useRouter();
-  const [entityFilter, setEntityFilter] = useState<EntityId[]>([]);
-  const [typeFilter, setTypeFilter] = useState<EmploymentType[]>([]);
+  /*
+   * Every option selected, not none.
+   *
+   * An empty selection and a full one filter identically — `allLabel` covers
+   * both, and MultiSelect treats "all selected" as no active filter. But the
+   * popover is where the user finds out which is which, and opening it to a
+   * column of empty checkboxes above a table showing every row states the
+   * opposite of what is true. The control should agree with the table it
+   * controls at rest.
+   */
+  const [entityFilter, setEntityFilter] = useState<EntityId[]>(
+    ENTITY_FILTERS.map((option) => option.value),
+  );
+  const [typeFilter, setTypeFilter] = useState<EmploymentType[]>(
+    TYPE_FILTERS.map((option) => option.value),
+  );
   const [visibleColumns, setVisibleColumns] = useState<DirectoryColumnKey[]>(
+    COLUMN_OPTIONS.map((column) => column.value),
+  );
+  /*
+   * FDN-44. Which columns appear and what order they appear in are two
+   * different questions, and the Columns control was only answering the first.
+   *
+   * One piece of state answers the second, edited by two gestures onto the
+   * same list: dragging a row in the Columns popover, or dragging a header in
+   * the table itself. `name` is not in it — it is the row's identity and holds
+   * the first position, which is why Table has a `pinned` flag at all.
+   */
+  const [columnOrder, setColumnOrder] = useState<DirectoryColumnKey[]>(
     COLUMN_OPTIONS.map((column) => column.value),
   );
   const [addPersonOpen, setAddPersonOpen] = useState(false);
@@ -116,6 +142,7 @@ export default function PeoplePage() {
     {
       key: "name",
       header: "Name",
+      pinned: true,
       sortable: true,
       sortValue: (row) => row.employee.fullName,
       render: (row) => (
@@ -209,9 +236,20 @@ export default function PeoplePage() {
       width: "96px",
     },
   ];
-  const columns = allColumns.filter(
-    (column) => column.key === "name" || visibleColumns.includes(column.key as DirectoryColumnKey),
-  );
+  /* Name first, then the visible columns in the order the user has put them. */
+  const columns: TableColumn<DirectoryRow>[] = [
+    allColumns.find((column) => column.key === "name")!,
+    ...columnOrder
+      .filter((key) => visibleColumns.includes(key))
+      .map((key) => allColumns.find((column) => column.key === key))
+      .filter((column): column is TableColumn<DirectoryRow> => column !== undefined),
+  ];
+
+  /* Table hands back every key it was given, `name` among them; the order
+   * state holds only the movable ones. */
+  const orderedColumnOptions = columnOrder
+    .map((key) => COLUMN_OPTIONS.find((option) => option.value === key))
+    .filter((option): option is (typeof COLUMN_OPTIONS)[number] => option !== undefined);
 
   return (
     <>
@@ -248,7 +286,8 @@ export default function PeoplePage() {
             allLabel="All columns"
             value={visibleColumns}
             onChange={setVisibleColumns}
-            options={COLUMN_OPTIONS}
+            onReorder={setColumnOrder}
+            options={orderedColumnOptions}
             searchable
             searchPlaceholder="Search columns"
             appearance="filter"
@@ -269,6 +308,29 @@ export default function PeoplePage() {
             rowKey={(row) => row.employee.employeeId}
             appearance="directory"
             stickyHeaderClassName="top-12"
+            /*
+             * The table only knows about the columns it was given, so a drop
+             * there reports the visible order and nothing about the hidden
+             * ones. Rewriting the whole order from it would silently discard
+             * every unchecked column. Instead the new sequence is dealt back
+             * into the visible slots of the existing order, which leaves each
+             * hidden column exactly where its owner left it — so unchecking a
+             * column and checking it again returns it to its own position.
+             */
+            onReorderColumns={(keys) => {
+              const moved = keys.filter(
+                (key): key is DirectoryColumnKey => key !== "name",
+              );
+              setColumnOrder((current) => {
+                // Copied inside the updater, not outside: React may call this
+                // more than once for a single update, and an updater that
+                // drains a shared queue is not idempotent.
+                const queue = [...moved];
+                return current.map((key) =>
+                  visibleColumns.includes(key) ? queue.shift() ?? key : key,
+                );
+              });
+            }}
             onRowClick={(row) => router.push(`/people/${row.employee.employeeId}`)}
             emptyState={
               <Text variant="body" className="text-text-secondary">

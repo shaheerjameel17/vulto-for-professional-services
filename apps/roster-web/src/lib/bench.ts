@@ -283,18 +283,25 @@ export function buildForecast(
   };
 }
 
+/*
+ * The header's date cadence: every day at 30, every seventh at 90, every
+ * fourteenth at 180.
+ *
+ * FDN-44 drops the ranges. The longer horizons used to label a column "20–26",
+ * naming the whole week the column opened, because with no way to ask about a
+ * specific day the label had to describe the span it stood for. The pointer
+ * marker answers that question directly now — it names the exact day under the
+ * cursor, continuously — so the range was restating something the interaction
+ * already tells you, in twice the width, and at 180 days the header read as a
+ * row of arithmetic rather than a scale. A single number is what a scale mark
+ * is: where this cadence lands, not what it covers.
+ */
 function horizonLabel(dates: string[], index: number, horizon: Horizon): string | undefined {
   const date = dates[index]!;
   const day = String(Number(date.slice(8, 10)));
   if (horizon === 30) return day;
-  if (horizon === 90 && index % 7 === 0) {
-    const end = dates[Math.min(index + 6, dates.length - 1)]!;
-    return `${day}–${Number(end.slice(8, 10))}`;
-  }
-  if (horizon === 180 && index % 14 === 0) {
-    const end = dates[Math.min(index + 13, dates.length - 1)]!;
-    return `${day}–${Number(end.slice(8, 10))}`;
-  }
+  if (horizon === 90 && index % 7 === 0) return day;
+  if (horizon === 180 && index % 14 === 0) return day;
   return undefined;
 }
 

@@ -49,7 +49,7 @@ export function WorkspaceMenuContent({
         />
       </div>
 
-      <div className="border-t border-border-default pt-2">
+      <div className="flex flex-col gap-1 border-t border-border-default pt-2">
         {canManageWorkspace ? (
           <button
             type="button"

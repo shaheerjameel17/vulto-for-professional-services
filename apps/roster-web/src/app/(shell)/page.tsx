@@ -141,10 +141,30 @@ export default function BenchForecastPage() {
               </div>
             }
           >
-            <button type="button" aria-label="About the Bench Forecast" className="flex size-button-md items-center justify-center rounded-full bg-bg-surface text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-secondary">
-              <Icon icon={Info} />
+            <button type="button" aria-label="About the Bench Forecast" className="flex size-button-md items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:text-text-secondary">
+              <Icon icon={Info} size={14} />
             </button>
           </Tooltip>
+        }
+        actions={
+          // Prototype furniture: VRS-F005's restricted state is one of the
+          // things worth looking at, and this is the only way to see it.
+          // Small, and in the title row rather than the controls row, so it
+          // reads as scaffolding beside the page identity rather than as a
+          // screen control a real user would touch.
+          <div className="flex items-center gap-2">
+            <Text variant="micro" className="text-text-tertiary">Prototype viewer</Text>
+            <ToggleGroup<ViewerRole>
+              label="Viewing as"
+              value={role}
+              onChange={setRole}
+              size="sm"
+              options={[
+                { value: "owner", label: "Owner" },
+                { value: "manager", label: "Manager" },
+              ]}
+            />
+          </div>
         }
       />
 
@@ -154,7 +174,12 @@ export default function BenchForecastPage() {
           * VPS-D004's page header is 56px and a `display` figure with a `micro`
           * denominator does not fit inside it — the arithmetic decided this.
           */}
-        <div className="flex shrink-0 items-center justify-between gap-8 border-b border-border-default px-4 pb-4 pt-2">
+        {/* FDN-44: symmetric padding. `pt-2 pb-4` put every control eight
+          * pixels closer to the rule above than the one below — `items-center`
+          * centers within the content box, and an asymmetric box centers
+          * asymmetrically. Measured 8px top against 17px bottom before, equal
+          * after, at the same overall row height. */}
+        <div className="flex shrink-0 items-center justify-between gap-8 border-b border-border-default px-4 py-3">
           <div className="flex items-center gap-2">
             <ToggleGroup<string>
               label="Horizon"
@@ -173,12 +198,16 @@ export default function BenchForecastPage() {
               * manual. Now through VPS-D002's Tooltip rather than the browser's
               * own box. */}
             <Tooltip content="Filter the cohort" shortcut="F">
-              <Button ref={filtersRef} size="md" variant="secondary" icon={SlidersHorizontal} aria-label="Filter the cohort" />
+              <Button ref={filtersRef} size="md" variant="secondary" icon={SlidersHorizontal} iconSize={14} aria-label="Filter the cohort" />
             </Tooltip>
+            {/* FDN-44: `md`, matching the filter button beside it. At `sm` the
+              * hover fill was 24px tall with 8px of horizontal padding — a
+              * label in a fill barely larger than the label — and it also sat
+              * four pixels shorter than every other control in the row. */}
             <Tooltip content="Scroll today into view" shortcut="T">
               <Button
                 variant="ghost"
-                size="sm"
+                size="md"
                 onClick={() => setTodayNonce((value) => value + 1)}
               >
                 Today
@@ -186,22 +215,7 @@ export default function BenchForecastPage() {
             </Tooltip>
           </div>
 
-          <div className="flex items-center gap-8">
-            {/* Prototype furniture: VRS-F005's restricted state is one of the
-              * things worth looking at, and this is the only way to see it. */}
-            <div className="flex items-center gap-2">
-              <Text variant="micro" className="text-text-tertiary">Prototype viewer</Text>
-              <ToggleGroup<ViewerRole>
-                label="Viewing as"
-                value={role}
-                onChange={setRole}
-                options={[
-                  { value: "owner", label: "Owner" },
-                  { value: "manager", label: "Manager" },
-                ]}
-              />
-            </div>
-
+          <div className="flex items-center">
             {/*
               * FDN-17. Three compact figures at one size; money leads by hue.
               *
@@ -213,17 +227,10 @@ export default function BenchForecastPage() {
               * The unrecovered total takes the now-amber brand treatment,
               * connecting the summary to the bench regions it totals.
               */}
-            <div className="flex items-end gap-10">
-              {canSeeCompensation ? (
-                <Stat
-                  label={`Unrecovered · next ${forecast.costHorizonDays} days`}
-                  value={formatMoney(forecast.totalBenchCost)}
-                  scale="numeric-md"
-                  labelPlacement="below"
-                  className="items-end text-right"
-                  valueClassName="text-text-brand"
-                />
-              ) : null}
+            {/* FDN-44: `items-center`. The three figures are one visual block
+              * and are centered in the row as one, rather than hung from a
+              * shared baseline that ignores the row they sit in. */}
+            <div className="flex items-center gap-10">
               <Stat
                 label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
                 value={`${forecast.utilization}%`}
@@ -238,6 +245,16 @@ export default function BenchForecastPage() {
                 labelPlacement="below"
                 className="items-end text-right"
               />
+              {canSeeCompensation ? (
+                <Stat
+                  label={`Unrecovered · next ${forecast.costHorizonDays} days`}
+                  value={formatMoney(forecast.totalBenchCost)}
+                  scale="numeric-md"
+                  labelPlacement="below"
+                  className="items-end text-right"
+                  valueClassName="font-semibold text-text-brand"
+                />
+              ) : null}
             </div>
           </div>
         </div>
