@@ -29,7 +29,7 @@ const COMMANDS: IndexedResult[] = [
   command("go-bench", "Go to Bench Forecast", "Open the 90-day capacity view", "/", "bench forecast capacity"),
   command("go-people", "Go to People", "Browse and filter the employee roster", "/people", "employees roster"),
   command("go-timesheets", "Go to Timesheets", "Open this week’s speed-run grid", "/timesheets", "time entries week"),
-  command("go-dashboard", "Go to Home", "Open your role-aware home and action queue", "/dashboard", "manager dashboard queue approvals"),
+  command("go-home", "Go to Home", "Open your role-aware home and action queue", "/home", "manager dashboard queue approvals overview"),
   command("create-employee", "Create employee", "Start a new employee record", "/people", "add person"),
   command("add-assignment", "Add assignment", "Plan work from the Bench Forecast", "/", "create project allocation"),
   command("submit-timesheet", "Submit timesheet", "Review and submit the current week", "/timesheets", "send week"),

@@ -29,7 +29,10 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     label: "Overview",
     items: [
-      { href: "/dashboard", label: "Home", icon: House, shortcut: "G H" },
+      // FDN-41: `/home`. The sidebar item, the route and the page title are one
+      // name now — it was Home here, `/dashboard` in the URL and "Manager
+      // Dashboard" on the page, which named a role most viewers do not hold.
+      { href: "/home", label: "Home", icon: House, shortcut: "G H" },
       { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: "G I", count: 7 },
     ],
   },
@@ -77,7 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
 
 /** `G` sequences, keyed by their second letter. */
 export const GOTO: Record<string, string> = {
-  h: "/dashboard",
+  h: "/home",
   i: "/inbox",
   b: "/",
   r: "/hiring",
