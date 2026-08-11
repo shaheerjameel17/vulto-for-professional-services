@@ -105,6 +105,18 @@ Sequential `G` navigation is used rather than modifier combinations because the 
 
 `J` and `K` are specified in [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] for profile navigation and are generalized here to every list surface in the product, so the muscle memory transfers rather than being relearned per screen.
 
+**Where a list can be reordered, `Alt + ↑ / ↓` moves the focused item one place**, and `Alt + ← / →` where the list runs horizontally, as table columns do. This is the keyboard path for every drag-to-reorder gesture in the product; no reorder may exist as a pointer gesture alone.
+
+**Drag-to-reorder runs on pointer events, never on the HTML5 drag-and-drop API.** This is a specification-level decision rather than an implementation preference, because the native API failed three separate ways here and any one of them would recur:
+
+* Only the element carrying `draggable` starts a drag, so making a small handle the source means grabbing the row — which is what people actually do — does nothing at all, silently. **The whole row is the drag surface; a grip states that it is.**
+* It is unreliable inside a portalled overlay, which manages `pointer-events` on the document to implement dismissal.
+* **It cannot be verified.** Synthetic input does not open a native drag session, so an automated check of it passes or fails for reasons unrelated to whether a person can perform the gesture. A test that cannot fail for the right reason is not evidence.
+
+A press becomes a drag only after about 4px of movement, so a press that does not move is still a click and any control inside the row keeps working.
+
+**The drop indicator is an insertion line in the gap between two items, not a fill on the item being targeted.** The gesture asks *between which two*, and the gap is where that answer belongs. It is positioned so that it occupies no space — an indicator that takes width reflows everything after it at the exact moment the user is aiming at one of them.
+
 ### Timesheet entry
 
 Owned by [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] and stated here because it is the highest-frequency interaction in the product and its budget is the tightest in the specification set — an entire working week in fifteen seconds.
@@ -121,6 +133,10 @@ Natural language input is accepted in every cell — `fd` for a full day, `8-1` 
 ### Rules
 
 Shortcuts never fire while a text input has focus, except `Escape` and `Cmd`-modified combinations. Single-letter shortcuts are documented on hover of the control they trigger, which is how they are discovered without a manual. Nothing destructive is bound to a single key.
+
+**Whatever marks the pointer's position must also mark the keyboard's.** Any treatment applied on hover — a row tint, a cell fill, a raised target — applies identically to the focused element. The timesheet grid was built with both and gave neither to the keyboard, on the one surface whose acceptance criterion is an entire week entered in fifteen seconds without a mouse: the cursor was invisible for the whole of the interaction the screen exists for.
+
+This is expressed with `:focus` and `:focus-within` rather than tracked state, deliberately. Tracked state covers the routes to a cell that were remembered when it was written; the pseudo-classes cover every route, including the ones added later.
 
 ---
 

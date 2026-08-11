@@ -82,7 +82,7 @@
 
 @utility elevation-overlay {
   background-color: var(--vt-bg-raised);
-  /* FDN-40 draft: border-strong, not border-default. A pure-black shadow at
+  /* FDN-40: border-strong, not border-default. A pure-black shadow at
    * low alpha gives depth in light mode but is nearly invisible against a
    * near-black canvas, so the border is what actually separates an overlay
    * from what's behind it in dark mode — border-default was too close to

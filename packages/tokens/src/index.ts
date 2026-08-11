@@ -71,19 +71,3 @@ export function categoricalTokenForId(id: string): CategoricalToken {
 export const THEMES = ["light", "dark", "system"] as const;
 export type ThemePreference = (typeof THEMES)[number];
 export type ResolvedTheme = "light" | "dark";
-
-/*
- * FDN-12 candidates. TEMPORARY — these exist so the fills can be chosen by
- * looking rather than by argument. One of each becomes the token, and both
- * unions plus their runtime.css blocks are then deleted.
- */
-
-/*
- * FDN-20 categorical palette candidates.
- *
- * `current` is the palette as built, kept for comparison. `spread` leans on hue,
- * `ladder` on lightness. TEMPORARY — one becomes the token set, and the other
- * two plus this union are then deleted.
- */
-export const CAT_PALETTES = ["current", "spread", "ladder"] as const;
-export type CatPalette = (typeof CAT_PALETTES)[number];

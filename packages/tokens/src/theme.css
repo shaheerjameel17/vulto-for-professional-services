@@ -35,7 +35,7 @@
   --color-neutral-950: #09090b;
 
   /* Brand — orange, distinct from the amber reserved for cost. Rationed:
-   * marks exactly three signals. VPS-D001, F53, FDN-40 draft.
+   * marks exactly three signals. VPS-D001, F53, FDN-40.
    *
    * FOUNDER DECISION, recorded deliberately: brand-500 and brand-600 are both
    * FF8000 and pair with white text throughout (buttons, badges, the
@@ -130,7 +130,10 @@
    * whose entire premise is that every value comes from the token set.
    */
   --spacing-scrollbar: 8px; /* VPS-D002, FDN-43 */
-  --spacing-dot: 6px; /* VPS-D002, the today line's dot. Not in D001's set. */
+  /* The categorical project dot inside an assignment bar, and the active-filter
+   * dot on a MultiSelect trigger. It was named for the today line's dot, which
+   * FDN-44 deleted when the marker was rebuilt. Not in D001's space set. */
+  --spacing-dot: 6px; /* VPS-D002 */
   --spacing-badge: 20px; /* VPS-D002 */
   /*
    * FDN-44 round 3 raises the two small steps. VPS-D002's 20/24/32/40 was

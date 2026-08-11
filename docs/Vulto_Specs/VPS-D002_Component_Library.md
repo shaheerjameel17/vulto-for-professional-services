@@ -66,13 +66,21 @@ The picker accepts typed ISO dates and exposes month and year Selects, previous/
 
 ### Badge
 
-`radius-sm`, `label` token, `2` horizontal padding, 20px height. Statuses and skill tags take `radius-full`; compact metadata badges retain `radius-sm`. Two intensities: `subtle`, a 10% semantic tint with `text-primary`, used for status; and `solid`, used only for counts. The label supplies the meaning while the tint supplies a redundant cue, and the text pairing passes the contrast floor in both themes.
+`radius-sm`, `label` token, `2` horizontal padding, 20px height. Statuses and skill tags take `radius-full`; compact metadata badges retain `radius-sm`. Two intensities: `subtle`, used for status, and `solid`, used only for counts. The label supplies the meaning while the tint supplies a redundant cue.
 
-Status badges take their color from the semantic tokens exclusively. A badge is never `brand`. Neutral metadata — employment type, skill, category, source — uses `bg-active` with `text-secondary`; it must never borrow a semantic hue merely to avoid looking plain.
+**`subtle` is a per-theme tint with hue-derived ink — the `tag-*` tokens — not one alpha with `text-primary`.** It was the semantic hue at 10% in both themes, and it failed in each for a different reason. Over white, 10% of a hue is a wash that reads as no color at all. And `neutral` resolved to `bg-active`, which in dark was the identical value to `bg-surface`, so an employment-type tag on a Card was literally invisible until a row hover moved the surface out from under it.
+
+The tint is stated per theme and the ink is mixed from the same hue, so no new color enters the system and a tag reads as a status rather than as a gray chip that happens to be tinted. See [[VPS-D001_Design_Foundations|VPS-D001]]'s contrast floor for the pairings.
+
+Status badges take their color from the semantic tokens exclusively. A badge is never `brand`. Neutral metadata — employment type, skill, category, source — takes `tag-neutral`, which is its own value rather than a reuse of a state token, because it has no hue to tint and must clear every surface a tag can land on.
 
 ### Avatar
 
-`radius-full`, sizes 20/24/32/40, plus a 48px identity size reserved for the employee profile header. Falls back to initials on `neutral-200` / `neutral-800` when no image exists, never to a generic silhouette. `AvatarGroup` overlaps at -8px and truncates to a `+n` chip after four.
+`radius-full`, sizes **24/28/32/40**, plus a 48px identity size reserved for the employee profile header. Falls back to initials on `neutral-200` / `neutral-800` when no image exists, never to a generic silhouette. `AvatarGroup` overlaps at -8px and truncates to a `+n` chip after four.
+
+**The two small steps were 20 and 24 and were raised, and the type token changed with them.** This scale was written before initials were rendered. Two uppercase glyphs at the only type token that fits a 20px circle span about 14px, leaving under 3px of clearance to a curved edge — and `micro`'s +0.04em uppercase tracking spent part of that on a *trailing* space, pushing the pair visibly left of center and running the second letter into the edge.
+
+**Initials are set in `label`, not `micro`, at every size below 32px.** `micro` is this system's uppercase treatment and carries tracking for that job; initials are already uppercase by construction, so the tracking has nothing to do but decenter them. The general rule: **letter-spacing applies to the last glyph as well as between them, so any centered box of tracked text is off-center by half the tracking.**
 
 ### Icon
 
@@ -86,7 +94,13 @@ One icon set throughout: **Lucide**, 16px default, 1.5px stroke, `currentColor`.
 
 The most-used component in the product and the one most worth getting right.
 
-Row height is 32px per [[VPS-D001_Design_Foundations|VPS-D001]]. The header row is a rounded `bg-active` strip using `micro`, uppercase and `text-secondary`; it has no bottom divider. Rows have no separators — separation comes from row hover, spacing and alignment alone, which keeps a hundred-row table from reading as a grid of cages.
+Row height is 32px per [[VPS-D001_Design_Foundations|VPS-D001]]; **a row carrying two stacked facts is 52px**, which is the People directory's row, the Timeline's, and the timesheet's work column. Two stacked facts in a 32px row is 30px of type in 32px of space, and it reads as text pressed against the cell border.
+
+The header row is a rounded **`bg-column-header`** strip using `micro`, uppercase and **`text-primary`**; it has no bottom divider. It was `bg-active` with `text-secondary` — the fill because a state token was standing in for a structural surface and disappeared entirely on a Card, the ink because a column header is a load-bearing label. Both are covered by rules in [[VPS-D001_Design_Foundations|VPS-D001]].
+
+Rows have no separators — separation comes from row hover, spacing and alignment alone, which keeps a hundred-row table from reading as a grid of cages.
+
+**A row's fill lives on its cells, not on the row.** A `<tr>` accepts `border-radius` and does nothing with it: the background is painted by the cells, so the corners a row appears to have are its first and last cell's. Any table wanting a rounded hover or selection carries the fill down to the cells, rounds the outer two, and uses a group hover so the gesture stays whole-row. This also requires `border-separate` — under `border-collapse`, cell backgrounds are painted into one shared grid that no radius can clip. At zero spacing the rows still tile with no gap, so density is unaffected.
 
 **Row hover is `bg-hover`; the Timeline applies that fill only to its frozen identity group.** A Timeline row spans a frozen person column and a horizontally scrolling track, and a whole-row fill leaves those halves reading as separate objects at exactly the join that matters. The identity target therefore carries hover and selection while the track remains quiet.
 
@@ -95,6 +109,8 @@ The People directory is the intentional sparse variant: it sits directly on an i
 Numeric columns are right-aligned and use Inter tabular numerals. Text columns are left-aligned. There is no center alignment anywhere in this product.
 
 Behavior: sticky header, column sort on header click, keyboard row navigation per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], row selection via checkbox column, and virtualized rendering above 100 rows. Sorting and filtering run against the local SQLite index and never round-trip.
+
+**Column order is a setting where a table exposes one, and it is edited by two gestures onto one piece of state** — dragging a header, or dragging a row in the visible-column control. The two must never be separate orders. Identity columns are `pinned`: they cannot be dragged and nothing can be inserted ahead of them, because a directory whose name column can be pushed into the middle has stopped being a directory.
 
 **Empty state** is an invitation, not an apology: a single line of `body` text naming what would appear here and a `secondary` button that creates the first one. No illustration, no icon, no empty box.
 

@@ -156,6 +156,21 @@ A workaround produces a codebase that disagrees with its own specification, and 
 - A rule stated in two documents that cannot both be true
 - A dependency on a feature that has not been built and is not marked as a bootstrap
 
+### Where building shows the instruction itself is wrong
+
+The three signals above are contradictions you can find by reading. There is a fourth kind, and it can only be found by building: **an instruction that is internally consistent, followable, and produces the wrong result on screen.**
+
+**Where implementation reveals that a specification's instruction is wrong, the implementation stands and the specification is corrected.** Founder decision, and it is not a licence to improvise — it applies where building produced the evidence, and the evidence goes in the findings log and the owning document together.
+
+This is what the design prototype is for. Its stated deliverable is a corrected [[VPS-D001_Design_Foundations|VPS-D001]] through [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], and *"if it ends with polished screens and no changes to the design documents, it has failed."* **A build that obeys a defective instruction has produced no finding**, which is the one outcome that project cannot afford.
+
+Two worked examples, both recorded in `docs/Prototype_Findings.md`:
+
+* **Brand and cost as one hue.** [[VPS-D001_Design_Foundations|VPS-D001]] argued that in a product about money, the brand hue and the money hue being identical was the thesis rather than a collision. The argument was sound. Rendered, `border-focus` and the bench fill resolved to the *same value* in dark mode, so the ring marking where you were typing and the field marking unrecovered cost were indistinguishable. Brand moved to its own orange.
+* **Empty states on unbuilt destinations.** An issue specified that placeholder destinations compose [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s Empty treatment. Building it showed Empty means *the query returned none* — so applying it would make an unbuilt destination look like a working feature with no data, contradicting the same issue's own acceptance criterion. The instruction was withdrawn as defective and D004 gained the distinction.
+
+**What this does not permit:** disagreeing with a decision because you would have made a different one. These specifications closed every open question deliberately. The bar is evidence from a rendered, working build that the specified thing does not do what the document says it will.
+
 ---
 
 ## What this set will not tell you

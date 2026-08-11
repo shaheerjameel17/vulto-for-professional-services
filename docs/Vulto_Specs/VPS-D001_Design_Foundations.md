@@ -57,27 +57,47 @@ Zinc, cool-neutral, chosen because its near-black and near-white values stay qui
 
 ### Brand
 
-Amber. `brand-500` `#F59E0B` is the anchor, per founder decision after the prototype's second dark-mode calibration.
+Orange. `brand-500` `#FF8000` is the anchor.
 
 | Token | Hex | Token | Hex |
 |---|---|---|---|
-| `brand-50` | `#FFFBEB` | `brand-500` | `#F59E0B` |
-| `brand-100` | `#FEF3C7` | `brand-600` | `#D97706` |
-| `brand-200` | `#FDE68A` | `brand-700` | `#B45309` |
-| `brand-300` | `#FCD34D` | `brand-800` | `#92400E` |
-| `brand-400` | `#FBBF24` | `brand-900` | `#78350F` |
+| `brand-50` | `#FEF7F0` | `brand-500` | `#FF8000` |
+| `brand-100` | `#FEEBD7` | `brand-600` | `#FF8000` |
+| `brand-200` | `#FFD4A8` | `brand-700` | `#CC6600` |
+| `brand-300` | `#FFB366` | `brand-800` | `#7A3D00` |
+| `brand-400` | `#FF9933` | `brand-900` | `#5E3102` |
 
-**Brand and cost are the same hue on purpose.** They were originally separate — an indigo brand beside an amber bench. Rendered, the warm and cool anchors read as two products sharing a screen rather than one, and amber was settled as the brand after the second dark-mode calibration. In a product whose entire subject is money, the brand hue and the money hue being the same color is the thesis rather than a collision. The rule below is what keeps that from becoming a license.
+**`brand-500` and `brand-600` are deliberately the same value.** One orange, whichever step a component asks for. `brand-700` is a genuine darker step and exists for one purpose only: the hover-darken on a filled button. It is never used to make resting text pass a contrast check — see the exception below.
 
-**Brand color is rationed, and the ration counts signals rather than pixels.** Amber marks exactly three *signals*: the primary action on a screen, the current selection or focus, and the today line on the Bench Forecast. A signal points — it says where to act, what is selected, or where the viewer is in time. A signal is never a heading color and never used to indicate status, and a screen carrying a fourth kind of amber signal has one too many.
+#### Brand and cost were the same hue, and that was wrong
 
-**The cost field is not a signal and is not counted against that ration.** Amber is also cost and idleness themselves: the bench region on the Bench Forecast, and the unrecovered figure above it. These do not point at something elsewhere on the screen — they *are* the thing this product exists to surface, and the governing rule at the top of this document requires them to carry the hue. This is the one sanctioned case of amber as a large fill. It is stated explicitly so that an audit of brand usage does not keep reading the signature surface as a violation of its own design system.
+This document previously specified amber as the brand, on the reasoning that in a product whose subject is money, the brand hue and the money hue being the same color was the thesis rather than a collision.
+
+**Rendered, it was a collision.** The two were never distinguishable in practice — in dark mode `border-focus` and the bench fill resolved to the *identical value*, so the ring marking where you were typing and the field marking unrecovered cost were the same color on the same screen. The reasoning had been sound and the result was not, which is the class of finding this prototype exists to produce.
+
+**The fix is separation, not neutrality.** Brand moved to its own orange at roughly 30° while amber stayed at 38–45°, giving 8–13° of hue separation and leaving amber reserved for cost alone. The alternative considered — making focus neutral on cost surfaces — would have solved the collision by removing a signal rather than by distinguishing two.
+
+#### The ration
+
+**Brand color is rationed, and the ration counts signals rather than pixels.** Brand marks exactly three *signals*: the primary action on a screen, the current selection or focus, and **now** — the today line on the Bench Forecast, and today's column on the timesheet grid, which are one signal in two geometries rather than two signals.
+
+A signal points. It says where to act, what is selected, or where the viewer is in time. A signal is never a heading color and never indicates status, and a screen carrying a fourth kind of brand signal has one too many.
 
 **Which page a person is on is not one of the three.** Location is not selection, so navigation items and segmented controls take a neutral active treatment. A neutral active state needs more than a fill to carry what a brand fill carried alone — separation from its own background, plus a change of label weight or color.
 
-**The workspace mark is exempt.** A mark is not a signal and not a cost figure; it is an identity, and rendering the workspace's own initial in the brand color is what a logo is for. This exemption is stated so that an audit of brand usage does not keep reopening it — the ration is about signals, and the mark is not competing with them.
+**The workspace mark is exempt.** A mark is not a signal; it is an identity, and rendering the workspace's own initial in the brand color is what a logo is for. Stated so that an audit does not keep reopening it.
 
-**So an audit of amber on any screen sorts every instance into exactly one of four buckets:** a signal (at most three kinds), the cost field, the workspace mark, or a defect.
+**So an audit of brand on any screen sorts every instance into exactly one of three buckets:** a signal (at most three kinds), the workspace mark, or a defect.
+
+**Amber is not in that audit at all.** Cost and idleness are amber — the bench region and the unrecovered figure — and they are not brand and not signals. They do not point at something elsewhere; they *are* the thing this product exists to surface. That is why the ration above no longer needs a clause exempting them.
+
+#### The contrast exception, recorded because it is deliberate
+
+**Brand pairs with white text everywhere it is filled** — buttons, badges, the today pill, the workspace mark. White on `#FF8000` measures **2.52:1**, below the 4.5:1 body and 3:1 large-text floor this document states below.
+
+This was measured, flagged with the numbers, and **accepted by the founder in favor of one consistent orange**. It is not an oversight and must not be "corrected" to a darker step without asking. The alternative — a darker `brand-700` at rest — was rejected because it produces two different brand oranges on one screen depending on whether text sits on top.
+
+**Where the exception does not apply:** brand as *text on a neutral surface* (`text-brand`, used for the unrecovered figure and today's date label) is not covered by it and is not a filled pairing. Brand as a 1px ring (`border-focus`) is a non-text control boundary reinforced by an offset, and is never the sole indicator of focus.
 
 ### Semantic
 
@@ -90,6 +110,10 @@ Three semantic hues. There is deliberately no fourth.
 | `danger` | `#DC2626` | `#EF4444` | Failed, rejected, blocked, destructive |
 
 `attention` is the most important token in this product and the reason the palette is otherwise starved. Its canonical use is bench time on [[VRS-F005_The_Bench_Forecast|VRS-F005]]; every other use inherits that meaning. A designer applying `attention` to something that does not cost the business money is misusing it, and the resulting dilution is a product defect rather than a stylistic disagreement.
+
+**A semantic color present in the resting state is not a signal.** The timesheet's remaining-hours figure was `attention` whenever anything at all was outstanding, so an untouched Monday — where nothing has happened and nothing is wrong — rendered in the color reserved for cost. A hue that appears by default has stopped carrying information. Any surface applying a semantic color must be able to state the condition under which it does *not*.
+
+**The bench fill is its own token pair and does not vary by theme:** `bench-rest` `#F59E0B` and `bench-fill` `#FBBF24` on row hover, identical in light and dark. It is the `attention` hue in substance, but it is stated separately because a pale value that reads muted on white reads *bright* against a near-black canvas — the same failure this document already records for tinted composites. The bench is the one element where state, not theme, is what changes the color.
 
 There is no separate "warning" hue. Soft, non-financial cautions — a probation date approaching, a certification nearing renewal — are expressed through weight and position, not color. They earn a place in a queue; they do not earn a hue.
 
@@ -123,29 +147,70 @@ The brand now sits inside the already-excluded warm arc. That makes the old sepa
 
 Components reference these, never raw ramp values. This is what makes theming a single switch.
 
-| Token | Light | Dark |
-|---|---|---|
-| `bg-canvas` | `#EFEFF0` | `#09090A` |
-| `bg-surface` | `neutral-0` | `#1A1A1B` |
-| `bg-raised` | `neutral-0` | `#1A1A1B` |
-| `bg-subtle` | `#F9F9FA` | `#111112` |
-| `bg-hover` | `neutral-100` | `#222223` |
-| `bg-active` | `#E6E6E9` | `#1A1A1B` |
-| `bg-selected` | `brand-50` | `#2A2115` |
-| `border-default` | `neutral-200` | `#2A2A2B` |
-| `border-strong` | `neutral-300` | `#3F3F42` |
-| `border-focus` | `brand-600` | `brand-400` |
-| `text-primary` | `neutral-900` | `neutral-50` |
-| `text-secondary` | `neutral-600` | `neutral-400` |
-| `text-tertiary` | `neutral-400` | `neutral-500` |
-| `text-inverse` | `neutral-0` | `neutral-0` |
-| `text-brand` | `brand-700` | `brand-400` |
+| Token | Light | Dark | Notes |
+|---|---|---|---|
+| `bg-canvas` | `#EFEFF0` | `#09090A` | The window. The sidebar sits directly on it |
+| `bg-surface` | `neutral-0` | `#1A1A1B` | |
+| `bg-raised` | `neutral-0` | `#1A1A1B` | |
+| `bg-subtle` | `#F9F9FA` | `#111112` | The workspace inset |
+| `bg-hover` | `#EFEFF1` | `#222223` | Calibrated against `bg-surface` |
+| `bg-canvas-hover` | `#E8E8EB` | `#141416` | Hover for anything sitting on the canvas |
+| `bg-active` | `#E6E6E9` | `#2A2A2E` | Selection. The strongest resting state |
+| `bg-selected` | `#FEF2E7` | `#33210F` | Brand-tinted, per theme |
+| `bg-column-header` | `#EBEBEE` | `#242427` | The Table's inset header strip |
+| `bg-today` | brand @ 5% | brand @ 6% | Today's column body, mixed onto `bg-surface` |
+| `bg-today-header` | brand @ 16% | brand @ 20% | Today's column header |
+| `nonworking` | `#E9E9EB` | `#1E1E21` | Non-working-day shading, on row hover only |
+| `border-default` | `#E7E7E9` | `#2A2A2B` | |
+| `border-strong` | `neutral-300` | `#3F3F42` | Also the scrollbar thumb |
+| `border-focus` | `brand-500` | `brand-500` | One orange, both themes |
+| `text-primary` | `neutral-900` | `neutral-50` | |
+| `text-secondary` | `neutral-600` | `neutral-400` | |
+| `text-tertiary` | `neutral-400` | `neutral-500` | Also the scrollbar thumb on hover |
+| `text-inverse` | `neutral-0` | `neutral-0` | |
+| `text-brand` | `brand-500` | `brand-500` | One orange, both themes |
+| `tag-*` | hue @ 16% | hue @ 22% | Badge fills — see Contrast floor |
+| `tag-neutral` | `#EAEAED` | `#2E2E33` | Neutral tags carry no hue to tint |
 
 Dark mode is a first-class theme, not an inversion. It is likely the majority mode for this audience and is specified with the same care as light. Theme preference is stored per user per device, defaults to system, and never syncs — a founder on a laptop at night and a phone at breakfast should not have to agree with themselves.
 
+### Two rules about surface tokens, both learned by rendering
+
+These are stated as rules because each was violated in more than one place before anyone noticed, and in both cases the symptom looked like a styling mistake rather than a systemic one.
+
+**A hover state must never out-weigh the active state it previews.** Hover says *this is what selecting would do*; active says *this is selected*. Dark mode had this inverted — `bg-hover` was lighter than `bg-active`, so hovering an inactive row shouted louder than the row you were actually on. Any pair of these tokens must be orderable: canvas, then hover, then active, monotonically, in both themes.
+
+**A token calibrated against one surface cannot be reused on another without being re-measured there.** `bg-active` was doing five jobs — the sidebar's active item, the Table's column-header strip, the Table's selected row, the Timeline's date pill and Badge's neutral tone. Four worked. On a Card the fifth was invisible, because dark `bg-active` and dark `bg-surface` were the same value, so the selected row was painted in exactly the color of the card beneath it.
+
+The corollary is why `bg-canvas-hover` and `bg-column-header` exist as their own tokens rather than as reuses: **a state token may not stand in for a structural surface.** When a value needs to read on every surface a component can be placed on, it is structural, and it gets its own name.
+
+### Elevation
+
+Three levels. Only `overlay` casts a shadow; nothing else in this product does.
+
+**The light recipe is a contact layer plus progressively wider, fainter layers**, each pulled in by a negative spread. Alpha *falls* as blur grows, because occlusion is strongest where two surfaces nearly touch. The first version raised alpha as blur grew — 0.04 at 4px rising to 0.12 at 48px — which is the inverse of how a shadow behaves and is most of what makes one read as cheap. Shadows are tinted `neutral-950` rather than pure black; a true-black shadow over a cool-neutral ramp reads muddy.
+
+**Dark elevation is carried by the edge, not by the shadow.** A shadow cannot separate a near-black surface from a near-black canvas — there is no darker to fall back on. An overlay in dark is separated by its border plus an inset top rim catching the implied light, which is what gives a raised surface its lit leading edge. The dark layers beneath are for grounding and direction, not separation.
+
+### Scrollbar
+
+The scrolling surfaces this design system owns carry a token-driven scrollbar: **8px, `border-strong` thumb at `radius-full` resolving to `text-tertiary` on hover, transparent track.** The 8px is a structural dimension delegating to [[VPS-D002_Component_Library|VPS-D002]] rather than an addition to the space set below — it is the size of a piece of chrome, not spacing.
+
+Both engines are styled, and that is a requirement rather than a detail: `scrollbar-width` / `scrollbar-color` for Gecko, the `::-webkit-scrollbar` pseudo-elements for Blink and WebKit. **Styling one and not the other looks correct only on the machine it was written on.** `thin` is Gecko's only expressible narrow width, so the two agree in intent rather than to the pixel; that is a platform limit, recorded rather than worked around.
+
+Applied per surface, never as a global reset — a product decides which surfaces are its own.
+
 ### Contrast floor
 
-All text meets WCAG AA — 4.5:1 for body, 3:1 for text above 18px and for interface controls. `text-tertiary` is permitted only for non-essential text that is never the sole carrier of meaning. Table headers therefore use `text-secondary`, and subtle semantic Badges pair their 10% semantic tint with `text-primary`; both pairings exceed 4.5:1 in both themes. Color is never the only channel for a state: every amber region carries a number, every red state carries a word.
+All text meets WCAG AA — 4.5:1 for body, 3:1 for text above 18px and for interface controls — **with one recorded exception, stated below.** `text-tertiary` is permitted only for non-essential text that is never the sole carrier of meaning. Color is never the only channel for a state: every amber region carries a number, every red state carries a word.
+
+**Table headers use `text-primary`.** They were `text-tertiary`, then `text-secondary`; at 11px, uppercase and tracked, on a filled strip, `text-secondary` still read as supporting text rather than as the label of a column. A column header is a load-bearing label.
+
+A related defect worth stating as a rule: **an unsortable column header is not a disabled button, it is not a button.** Rendering it as one meant this document's own `:disabled` rule — 40% opacity — applied to it, so unsortable columns were drawn at 40% of the weight of the columns beside them. It read as a contrast failure in the type and was a control state leaking onto a label. **A control state must never be applied to something that is not a control.**
+
+**Badge's subtle intensity is a per-theme tint with hue-derived ink**, not one alpha with `text-primary`. It was the hue at 10% in both themes and failed in each for a different reason: over white, 10% of a hue is a wash reading as no color at all; and `neutral` resolved to `bg-active`, which in dark was the same value as `bg-surface`, so a tag on a Card was invisible until a row hover moved the surface out from under it. The tint is now stated per theme and the ink is mixed from the same hue, so no new color enters the system and a tag reads as a status rather than as a gray chip that happens to be tinted.
+
+**The exception: white on filled brand, at 2.52:1.** Buttons, badges, the today pill and the workspace mark all pair white text with `#FF8000`. This is below the floor, was measured and flagged before implementation, and was **accepted by the founder in favor of one consistent orange**. It is recorded here — in the section stating the rule — rather than only in the Brand section, so that no future audit finds the rule without finding its one sanctioned breach. Every other pairing in this product meets the floor.
 
 ---
 

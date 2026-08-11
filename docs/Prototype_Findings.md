@@ -1683,3 +1683,55 @@ This generalizes: *a semantic color that is present in the resting state is not 
 * **Keyboard focus now carries the hover treatment.** The row tint and the cell fill were pointer-only, on the one grid whose acceptance criterion is a keyboard speed run. `focus-within:` and `focus:` rather than tracked state, so it covers every route to a cell rather than the ones we remembered.
 * **The Timeline's scrollbar moved into the gutter** — `-mb-2 pb-2`. A horizontal scrollbar paints at the bottom of its container's padding box, so it was landing on the last row. 8px rather than 16 so it fills the strip exactly, flush beneath the grid; at 16px it cleared the rows but drifted to the far side of the gap, reading as attached to the inset edge rather than to the grid it scrolls.
 * **People's filters default to every option selected.** An empty selection and a full one filter identically, but the popover is where a user finds out which is which, and opening it to a column of empty checkboxes above a table showing every row states the opposite of what is true.
+
+---
+
+# FDN-71 — the consolidated amendment, and the close of this log
+
+**This is what the project was for.** Its own description: *"The deliverable of this project is a corrected VPS-D001 through VPS-D004. The Roster screens built here are the instrument, not the output. If this project ends with polished screens and no changes to the design documents, it has failed."*
+
+Every round since FDN-37 deferred its amendment under the standing rule — *amend once at the end, not piecemeal while the founder is still directing changes*. The founder closed the last round; this is that end.
+
+## What changed in the documents
+
+### `VPS-D001` — the largest correction, and the one the prototype most earned
+
+**The Brand section was wrong in its premise, not its details.** It specified amber as the brand and argued that in a product whose subject is money, the brand hue and the money hue being identical was *the thesis rather than a collision*. The argument was coherent and the result was not: rendered, `border-focus` and the bench fill resolved to the **identical value** in dark mode, so the ring marking where you were typing and the field marking unrecovered cost were the same color on the same screen.
+
+Brand is now its own orange at ~30° with amber reserved for cost at 38–45°. The ration still counts signals rather than pixels, but it no longer needs a clause exempting the cost field, because cost is no longer brand.
+
+**The contrast exception is now stated where the rule is stated.** White on `#FF8000` is 2.52:1, below this document's own floor. It was measured, flagged with the numbers, and accepted by the founder in favor of one consistent orange. It previously lived only in a code comment and a Linear issue — so the document stated a rule the product knowingly broke, without saying so, which is worse than either choice made openly.
+
+**Two rules were added that the prototype proved rather than assumed:**
+
+1. *A hover state must never out-weigh the active state it previews.* Any canvas/hover/active triple must be monotonically orderable in both themes. Dark had it inverted.
+2. *A token calibrated against one surface cannot be reused on another without being re-measured there.* Its corollary: **a state token may not stand in for a structural surface.** That is why `bg-canvas-hover` and `bg-column-header` exist as their own names.
+
+A third was added to the Semantic section: **a semantic color present in the resting state is not a signal.** Any surface applying one must be able to state the condition under which it does not.
+
+The surface-token table gained the six tokens that existed only in code, and Elevation and Scrollbar sections were added.
+
+### `VPS-D002`
+Badge's per-theme tint with hue-derived ink; the Avatar scale at 24/28/32/40 with initials in `label` and the general rule about tracking decentering a centered box; Table's `bg-column-header` strip and `text-primary` header, the 52px two-fact row, the cells-carry-the-fill rule, and column order as a setting edited by two gestures onto one state.
+
+### `VPS-D003`
+`Alt+Arrow` as the keyboard path for every reorder; drag-to-reorder specified as pointer events rather than the native API, with the three reasons; the insertion-line indicator; and **whatever marks the pointer's position must also mark the keyboard's.**
+
+### `VPS-D004`
+Home's role variants (added during FDN-41), and **Empty is a statement about data and only ever that** — a feature not built, not licensed, or not permitted is not empty.
+
+### `VPS-002`
+A fourth kind of specification defect, alongside the three it already listed: **an instruction that is internally consistent, followable, and produces the wrong result on screen.** Where building reveals that, the implementation stands and the specification is corrected. Two worked examples. Explicitly not a licence to disagree with a decision because you would have made a different one.
+
+## What changed in the code
+
+Dead scaffolding the token file's own comments said should have been deleted: the two rejected categorical palettes and their type union, the bench candidate block. Every `PROVISIONAL` and `draft` marker was either settled or removed — F2, F26, F30 and F36 have been in the settled table for some time while the code still described them as open. The `/foundations` proof sheet was corrected: it pointed at candidates that no longer existed and stated the superseded `text-secondary` header rule.
+
+## What is carried forward, and why
+
+* **Firefox was never reached.** The scrollbar's Gecko path is verified at the CSS level — the standard properties compute to the token pair, which is exactly what Gecko reads — but has not been seen rendered. Recorded on FDN-43 rather than closed.
+* **`CLAUDE.md` and `AGENTS.md` remain byte-identical duplicates**, both stating the prototype phase. Correctly deferred: the phase has not changed, and they are updated together when implementation begins. The duplication is a standing drift risk to resolve at that point.
+* **Team Member self-service has a Home variant and no feature document.** `VPS-D004` names the surface; nothing specifies it. Built from reasoning rather than from a document, and flagged so the eventual owner knows it was.
+* **Inbox remains outside prototype scope**, deliberately, and its sidebar destination is navigation furniture rather than an unfinished screen.
+
+**Every other finding in this log is applied.** The instrument did its job: eleven of the corrections above exist because something was rendered and looked wrong, and could not have been reached by reading the documents against each other.

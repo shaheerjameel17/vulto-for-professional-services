@@ -209,6 +209,10 @@ An empty state means the query succeeded and the answer is none. It is rendered 
 
 The copy names the thing and the action: *"No one is on the bench in this window."* *"No leave requests waiting on you."* Where empty is genuinely good news — nobody on the bench, nothing awaiting approval — the copy says so plainly rather than treating absence as a deficiency to be corrected.
 
+**Empty is a statement about data, and it is only ever that.** A feature the viewer's plan does not include, a destination not yet built, a surface awaiting a permission — none of these are empty. They are not the answer *none*; they are the absence of a question. Rendering them as Empty tells the viewer a working feature is sitting idle, which is false and, for anything a customer might be sold, misleading.
+
+This is recorded because the prototype's placeholder destinations were specified to compose the Empty treatment, and building it showed that doing so would contradict the same issue's own requirement that no placeholder be mistakable for a built-but-empty feature. **The correct treatment for "this does not exist yet" is the dashed placeholder language** — the one this design system already uses for a Ghost Resource, a dashed Avatar and a dashed Badge, applied at the scale of a screen. A dashed outline around the region says the area is reserved; a paragraph of body text says a query returned nothing.
+
 ---
 
 ## Error states

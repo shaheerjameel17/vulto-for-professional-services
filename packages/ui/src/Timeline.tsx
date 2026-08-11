@@ -24,14 +24,15 @@ import { Tooltip, TooltipProvider } from "./Tooltip";
  * as an index and a span into the `days` array it is handed, so every calendar
  * fact stays inside VRS-F004's index and none of it leaks into rendering.
  *
- * PROVISIONAL, pending the look-at-it questions in Prototype_Findings:
- *  - F2  no document gives a day-column width. The caller passes a minimum and
+ * The decisions below were provisional during the build and are now settled in
+ * Prototype_Findings' "Settled prototype decisions" table:
+ *  - F2  no document gave a day-column width. The caller passes a minimum and
  *        the region scrolls rather than compressing the window to fit.
  *  - F3  the cost figure is `text-primary`.
  *  - F5  a restricted region drops the figure and keeps the day count.
  *  - F7  rows carry no separator, matching Table.
- *  - F29 the bench region fills the row height; VPS-D002 gives the bar a
- *        height and the region none.
+ *  - F29 the bench region matches an assignment bar's height rather than
+ *        filling the row.
  */
 
 /**

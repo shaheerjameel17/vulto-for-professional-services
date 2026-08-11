@@ -34,7 +34,7 @@
    * an inactive item shouted louder than the page you were actually on.
    */
   --vt-bg-canvas-hover: #e8e8eb;
-  --vt-bg-selected: #fef2e7; /* draft, FDN-40: orange tint, not the old amber-50 */
+  --vt-bg-selected: #fef2e7; /* FDN-40: orange tint, not the old amber-50 */
   --vt-bg-active: #e6e6e9;
   --vt-bg-scrim: rgb(9 9 11 / 0.36);
 
@@ -156,7 +156,7 @@
    *
    * Neither value is expressible in VPS-D001's ramp — see Findings F19.
    */
-  --vt-nonworking-fill: #e9e9eb; /* FDN-40 draft: darker on founder direction, was too faint on hover */
+  --vt-nonworking-fill: #e9e9eb; /* FDN-40: darker on founder direction, was too faint on hover */
 
   /*
    * Elevation — VPS-D001. Only `overlay` casts a shadow.
@@ -227,7 +227,7 @@
   /* Between canvas (#09090a) and active (#1a1a1b), so hover stays subordinate
    * to active — see the light-column note. */
   --vt-bg-canvas-hover: #141416;
-  --vt-bg-selected: #33210f; /* draft, FDN-40: orange tint, not the old amber-900 */
+  --vt-bg-selected: #33210f; /* FDN-40: orange tint, not the old amber-900 */
   /*
    * FDN-44: raised off #1a1a1b, which was `bg-surface`'s exact value.
    *
@@ -329,27 +329,14 @@
 }
 
 /*
- * ─────────────────────────────────────────────────────────────────────────
- * FDN-12 — candidate fills, to be chosen by looking.
+ * The bench fill — the signature element.
  *
- * VPS-D001's governing rule is that the interface is color-starved so money
- * is the only thing on screen with a hue. The first build inverted it: the
- * assignment bars were the loudest thing on the canvas and the bench region
- * the quietest. These two sets exist so the correction can be judged rather
- * than argued.
- *
- * TEMPORARY. One candidate from each pair becomes the token and the rest of
- * this block is deleted.
- * ─────────────────────────────────────────────────────────────────────────
+ * FDN-12 chose it by looking, from candidates that lived here; FDN-71 deleted
+ * them. VPS-D001's governing rule is that the interface is color-starved so
+ * money is the only thing on screen with a hue, and the first build inverted
+ * it: the assignment bars were the loudest thing on the canvas and the bench
+ * region the quietest.
  */
-
-/* Bench region. Solid, chosen per theme. The cost figure sits on it in
- * text-primary, so each candidate is checked against that in both themes. */
-
-/* The attribute selectors deliberately omit `:root` so a candidate can also be
- * scoped to a subtree, which is how the comparison strip shows all of them at
- * once without restating a single hex value. A scoping element carries both
- * data-theme and the candidate attribute so the dark pairs still resolve. */
 
 /*
  * FDN-15. The bench bar's amber is chosen per theme, not mixed against the
@@ -369,7 +356,7 @@
  * near-black field needs more luminance to carry the same perceived weight.
  */
 /*
- * FDN-40 draft. Bench is deliberately NOT theme-varying — founder direction:
+ * FDN-40. Bench is deliberately NOT theme-varying — founder direction:
  * amber is reserved for cost regardless of theme, and a pale rest color that
  * reads muted on white was found to read bright, not muted, against a
  * near-black canvas (the same failure mode F32 already diagnosed once).
@@ -400,38 +387,25 @@
  */
 
 /*
- * ─────────────────────────────────────────────────────────────────────────
- * FDN-20 — categorical palette candidates.
+ * The categorical palette. FDN-20 settled it; FDN-71 deleted the candidates.
  *
- * The assignment rule is not changing: a hue is assigned by hashing the
- * Project's UUID, so a project is the same color everywhere without storing a
- * color on the node. What was wrong is the palette it draws from.
+ * A hue is assigned by hashing the Project's UUID, so a project is the same
+ * color everywhere without storing a color on the node. What FDN-20 changed was
+ * the palette it draws from.
  *
- * Three exclusions now, and the third is new:
- *   the warm arc          protects `attention`, which means money
- *   green and teal        protects `success`
- *   the brand's hue band  a project bar must not read as a brand element
+ * Two exclusions, and the palette is what remains:
+ *   the warm arc     protects `attention`, which means money — and brand,
+ *                    which sits inside it at ~30°
+ *   green and teal   protects `success`
  *
- * The brand is now amber and is already protected by the warm-arc exclusion.
- * Project markers remain on the cool arc, where they cannot read as either
- * brand or cost.
- *
- * THE CONSEQUENCE IS WORTH STATING. After all three exclusions the cool arc
- * supports about four distinguishable hue families — cyan near 192°, sky near
- * 200°, blue near 217°, and fuchsia near 293° — plus a hue-neutral slate. Eight
- * categorical tokens therefore cannot come from hue alone. Every candidate
- * below spends lightness to reach eight, and they differ mainly in how much.
- *
- * Values are per theme: a 600-level source in light, a 400-level source in dark,
- * mirroring what VPS-D001 already does for its semantic hues.
- *
- * TEMPORARY. One palette becomes the token set.
- * ─────────────────────────────────────────────────────────────────────────
+ * THE CONSEQUENCE IS WORTH STATING. After the exclusions the cool arc supports
+ * about four distinguishable hue families — cyan near 192°, sky near 200°, blue
+ * near 217°, and fuchsia near 293° — plus a hue-neutral slate. Eight tokens
+ * therefore cannot come from hue alone; the rest are lightness steps, which is a
+ * consequence of the exclusions rather than a shortage of imagination.
  */
 
-/* `current` — the palette as built, for comparison. One value per theme. */
-:root,
-[data-cat-palette="current"] {
+:root {
   --vt-cat-1: #3b82f6;
   --vt-cat-2: #8b5cf6;
   --vt-cat-3: #06b6d4;
@@ -442,34 +416,7 @@
   --vt-cat-8: #ec4899;
 }
 
-/* `spread` — four hues at two lightness steps each. Leans on hue. */
-[data-cat-palette="spread"] {
-  --vt-cat-1: #2563eb; /* blue-600 · 217° */
-  --vt-cat-2: #0891b2; /* cyan-600 · 192° */
-  --vt-cat-3: #c026d3; /* fuchsia-600 · 293° */
-  --vt-cat-4: #64748b; /* slate-500 · hue-neutral */
-  --vt-cat-5: #1e3a8a; /* blue-900 */
-  --vt-cat-6: #164e63; /* cyan-900 */
-  --vt-cat-7: #701a75; /* fuchsia-900 */
-  --vt-cat-8: #0369a1; /* sky-700 · 200° */
-}
-
-/* `ladder` — two hues at three steps each, plus one accent and a slate. Leans
- * on lightness, which stays distinguishable in a dense field where hue at low
- * mix percentages does not. */
-[data-cat-palette="ladder"] {
-  --vt-cat-1: #2563eb; /* blue-600 */
-  --vt-cat-2: #0891b2; /* cyan-600 */
-  --vt-cat-3: #1e40af; /* blue-800 */
-  --vt-cat-4: #155e75; /* cyan-800 */
-  --vt-cat-5: #60a5fa; /* blue-400 */
-  --vt-cat-6: #22d3ee; /* cyan-400 */
-  --vt-cat-7: #a21caf; /* fuchsia-700 */
-  --vt-cat-8: #475569; /* slate-600 */
-}
-
-:root[data-theme="dark"],
-[data-theme="dark"][data-cat-palette="current"] {
+:root[data-theme="dark"] {
   --vt-cat-1: #3b82f6;
   --vt-cat-2: #8b5cf6;
   --vt-cat-3: #06b6d4;
@@ -478,28 +425,6 @@
   --vt-cat-6: #a855f7;
   --vt-cat-7: #64748b;
   --vt-cat-8: #ec4899;
-}
-
-[data-theme="dark"][data-cat-palette="spread"] {
-  --vt-cat-1: #60a5fa; /* blue-400 */
-  --vt-cat-2: #22d3ee; /* cyan-400 */
-  --vt-cat-3: #e879f9; /* fuchsia-400 */
-  --vt-cat-4: #94a3b8; /* slate-400 */
-  --vt-cat-5: #bfdbfe; /* blue-200 */
-  --vt-cat-6: #a5f3fc; /* cyan-200 */
-  --vt-cat-7: #f5d0fe; /* fuchsia-200 */
-  --vt-cat-8: #7dd3fc; /* sky-300 */
-}
-
-[data-theme="dark"][data-cat-palette="ladder"] {
-  --vt-cat-1: #60a5fa; /* blue-400 */
-  --vt-cat-2: #22d3ee; /* cyan-400 */
-  --vt-cat-3: #93c5fd; /* blue-300 */
-  --vt-cat-4: #67e8f9; /* cyan-300 */
-  --vt-cat-5: #1d4ed8; /* blue-700 */
-  --vt-cat-6: #0e7490; /* cyan-700 */
-  --vt-cat-7: #e879f9; /* fuchsia-400 */
-  --vt-cat-8: #94a3b8; /* slate-400 */
 }
 
 /*

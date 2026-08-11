@@ -29,8 +29,11 @@ const SURFACE_TOKENS: { name: string; className: string; light: string; dark: st
   { name: "bg-raised", className: "bg-bg-raised", light: "#FFFFFF", dark: "#1A1A1B" },
   { name: "bg-subtle", className: "bg-bg-subtle", light: "#F9F9FA", dark: "#111112" },
   { name: "bg-hover", className: "bg-bg-hover", light: "#EFEFF1", dark: "#222223" },
-  { name: "bg-selected", className: "bg-bg-selected", light: "brand-50", dark: "brand-900" },
-  { name: "bg-active", className: "bg-bg-active", light: "#E6E6E9", dark: "#1A1A1B" },
+  { name: "bg-canvas-hover", className: "bg-bg-canvas-hover", light: "#E8E8EB", dark: "#141416" },
+  { name: "bg-selected", className: "bg-bg-selected", light: "#FEF2E7", dark: "#33210F" },
+  { name: "bg-active", className: "bg-bg-active", light: "#E6E6E9", dark: "#2A2A2E" },
+  { name: "bg-column-header", className: "bg-bg-column-header", light: "#EBEBEE", dark: "#242427" },
+  { name: "bg-today-header", className: "bg-bg-today-header", light: "brand 16%", dark: "brand 20%" },
 ];
 
 const NEUTRAL = [
@@ -198,18 +201,22 @@ export default function FoundationsPage() {
             <Text variant="body" className="text-text-tertiary">
               text-tertiary — non-essential only, per VPS-D001.
             </Text>
-            <Text variant="micro" className="text-text-tertiary">
-              MICRO IN TEXT-TERTIARY — THIS IS WHAT VPS-D002 SPECIFIES FOR EVERY
-              TABLE COLUMN HEADER
+            <Text variant="micro" className="text-text-primary">
+              MICRO IN TEXT-PRIMARY — WHAT EVERY TABLE COLUMN HEADER USES
             </Text>
             <Text variant="body" className="text-text-brand">
-              text-brand — rationed to three things.
+              text-brand — rationed to three signals.
             </Text>
           </div>
           <div className="mt-4">
             <InlineAlert tone="success">
-              FDN-9 closed the header contrast defect. Load-bearing labels use
-              <code className="font-ui text-numeric"> text-secondary</code>;
+              FDN-9 closed the header contrast defect and FDN-44 finished it.
+              Column headers use
+              <code className="font-ui text-numeric"> text-primary</code>: at
+              11px, uppercase and tracked, on a filled strip,
+              <code className="font-ui text-numeric"> text-secondary</code>{" "}
+              still read as supporting text rather than as the label of a
+              column.
               <code className="font-ui text-numeric"> text-tertiary</code> is
               reserved for nonessential metadata.
             </InlineAlert>
@@ -249,9 +256,20 @@ export default function FoundationsPage() {
           <div className="mt-4 flex flex-col gap-2">
             <Text variant="small" className="text-text-secondary">
               attention is the most important token in this product and the
-              reason the palette is otherwise starved. It still marks badges,
-              alerts and over-target states. The bench region no longer
-              composites it at a percentage — see the candidates above.
+              reason the palette is otherwise starved. It marks badges, alerts
+              and over-target states — never anything that does not cost the
+              business money.
+            </Text>
+            <Text variant="small" className="text-text-secondary">
+              A semantic color present in the resting state is not a signal. A
+              surface applying one must be able to state the condition under
+              which it does not.
+            </Text>
+            <Text variant="small" className="text-text-secondary">
+              The bench fill is its own pair — amber-500 at rest, amber-400 on
+              row hover — and is identical in both themes. It is the attention
+              hue in substance, stated separately because a pale value that
+              reads muted on white reads bright against a near-black canvas.
             </Text>
           </div>
         </Section>

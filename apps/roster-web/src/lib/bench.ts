@@ -31,7 +31,7 @@ import {
 export type Horizon = 30 | 90 | 180;
 
 /*
- * PROVISIONAL, F2: no document gives a day-column width. A minimum is set per
+ * F2, settled: no document gave a day-column width. A minimum is set per
  * horizon and the region scrolls rather than compressing the window to fit,
  * because at the 1280px design center ninety days would otherwise be about 9px
  * per day — a five-day bar of 45px, and a bench region too narrow to hold its
@@ -44,7 +44,7 @@ export const DAY_WIDTH: Record<Horizon, number> = {
 };
 
 /*
- * PROVISIONAL, F26: no document says where the window sits relative to today.
+ * F26, settled: no document said where the window sits relative to today.
  * VRS-F005 gives a `T` shortcut to scroll today into view, which implies today
  * can be off-screen, so the window carries a lead-in rather than starting on
  * today.
@@ -52,7 +52,7 @@ export const DAY_WIDTH: Record<Horizon, number> = {
 const LEAD_IN_DAYS = 14;
 
 /*
- * PROVISIONAL, F36: the horizon at which a bench region stops carrying a cost
+ * F36, settled: the horizon at which a bench region stops carrying a cost
  * figure.
  *
  * At the 180-day horizon almost nobody has confirmed assignments covering the
@@ -95,7 +95,7 @@ export type Forecast = {
   days: TimelineDay[];
   rows: ForecastRow[];
   todayIndex: number;
-  /** PROVISIONAL, F30 — see note on `computeUtilization`. */
+  /** F30, settled — see the note on `computeUtilization`. */
   utilization: number;
   ghostContribution: number;
   cohortSize: number;
@@ -314,7 +314,7 @@ function clamp(date: string, dates: string[]): string {
 }
 
 /*
- * PROVISIONAL, F30.
+ * F30, settled.
  *
  * VRS-F005 puts aggregate utilization on this screen as a single `display`
  * figure — the largest number on the canvas — and gives no formula. VRS-F011
