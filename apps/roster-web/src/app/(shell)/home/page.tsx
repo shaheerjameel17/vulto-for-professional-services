@@ -21,6 +21,13 @@ import {
 } from "@vulto/ui";
 import { ASSIGNMENTS, EMPLOYEES, PROJECT_BY_ID } from "../../../fixtures/roster";
 import { profileFor } from "../../../fixtures/profiles";
+import {
+  cohortFor,
+  cohortIdsFor,
+  canSeeCompensation,
+  viewerEmployee,
+  type ViewerRole,
+} from "../../../lib/viewer";
 import { buildForecast, formatMoney } from "../../../lib/bench";
 import {
   MANAGER_QUEUE,
@@ -61,20 +68,12 @@ import {
 type QueueMode = "active" | "clear";
 
 /** Prototype furniture, exactly as on the Bench Forecast: the only way to see
- * the variant the current viewer does not hold. Not a product control. */
-type ViewerRole = "owner" | "manager" | "member";
-
-/*
- * The Manager and Member variants are the same person deliberately.
+ * the variant the current viewer does not hold. Not a product control.
  *
- * Omar Farooq manages six people and is himself managed by Tom Beckett, which
- * is the ordinary case in a firm this size — almost everyone is both. Using one
- * identity for both variants makes the distinction the screen is actually
- * testing visible: not who you are, but which of your two relationships to the
- * workspace Home is answering. He is also the person the timesheet renders, so
- * the Member view and Timesheets agree about whose week it is.
- */
-const VIEWER_NAME = "Omar Farooq";
+ * The role vocabulary, the viewer's identity and the cohort rule all live in
+ * `lib/viewer` — this screen is the only one that shows all three variants, so
+ * it narrows nothing. */
+type HomeViewer = ViewerRole;
 
 /*
  * FDN-44: each kind's mark is a filled chip, not a bare outline glyph.
@@ -106,7 +105,7 @@ const SOURCE_TONE: Record<string, "success" | "attention" | "danger" | "neutral"
 export default function HomePage() {
   const [items, setItems] = useState(MANAGER_QUEUE);
   const [mode, setMode] = useState<QueueMode>("active");
-  const [role, setRole] = useState<ViewerRole>("owner");
+  const [role, setRole] = useState<HomeViewer>("owner");
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [showGlance, setShowGlance] = useState(false);
   const [announcement, setAnnouncement] = useState("");
@@ -114,10 +113,7 @@ export default function HomePage() {
   const owner = role === "owner";
   const member = role === "member";
 
-  const viewer = useMemo(
-    () => EMPLOYEES.find((employee) => employee.fullName === VIEWER_NAME),
-    [],
-  );
+  const viewer = useMemo(() => viewerEmployee(), []);
 
   /*
    * The cohort, resolved once. Everything below counts from it rather than
@@ -127,14 +123,7 @@ export default function HomePage() {
    * it is the same rule at its smallest, and it means every figure on this
    * screen goes through one path regardless of who is looking.
    */
-  const cohort = useMemo(() => {
-    if (member) return viewer ? [viewer] : [];
-    return EMPLOYEES.filter(
-      (employee) =>
-        employee.employeeType === "Employee" &&
-        (owner || profileFor(employee.employeeId)?.managerName === VIEWER_NAME),
-    );
-  }, [owner, member, viewer]);
+  const cohort = useMemo(() => cohortFor(role), [role]);
 
   const cohortNames = useMemo(
     () => new Set(cohort.map((employee) => employee.fullName)),
@@ -200,16 +189,12 @@ export default function HomePage() {
    */
   const forecast = useMemo(
     () =>
-      buildForecast(
-        90,
-        // Compensation is structurally absent for a team member, not hidden
-        // after the fact — the same boundary VRS-F005 draws. Nothing on the
-        // Member view reads a cost figure, and this is what makes that true
-        // rather than incidental.
-        !member,
-        owner ? undefined : new Set(cohort.map((employee) => employee.employeeId)),
-      ),
-    [owner, member, cohort],
+      // Compensation is structurally absent for a team member, not hidden
+      // after the fact — the same boundary VRS-F005 draws. Nothing on the
+      // Member view reads a cost figure, and this is what makes that true
+      // rather than incidental.
+      buildForecast(90, canSeeCompensation(role), cohortIdsFor(role)),
+    [role],
   );
 
   const visibleItems = mode === "clear" ? [] : scopedItems;
@@ -412,7 +397,7 @@ export default function HomePage() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <Text variant="micro" className="text-text-tertiary">Prototype viewer</Text>
-              <ToggleGroup<ViewerRole>
+              <ToggleGroup<HomeViewer>
                 label="Viewing as"
                 value={role}
                 onChange={(next) => {

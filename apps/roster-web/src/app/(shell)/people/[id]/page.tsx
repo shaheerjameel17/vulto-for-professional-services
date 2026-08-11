@@ -10,6 +10,7 @@ import { OverviewTab } from "../../../../components/profile/OverviewTab";
 import { SkillsTab } from "../../../../components/profile/SkillsTab";
 import { DocumentsTab } from "../../../../components/profile/DocumentsTab";
 import { ActivityTab } from "../../../../components/profile/ActivityTab";
+import { canSeeCompensation, type ViewerRole } from "../../../../lib/viewer";
 
 /*
  * VRS-F002 — Atomic Employee Profiles.
@@ -28,17 +29,22 @@ import { ActivityTab } from "../../../../components/profile/ActivityTab";
 
 /** Prototype furniture only, exactly like the Bench Forecast's Owner/Manager
   * toggle: the only way to compare the authorized and unauthorized render of
-  * the compensation Section side by side. Not a real permission system. */
-type ViewerRole = "hr-admin" | "team-member";
+  * the compensation Section side by side. Not a real permission system.
+  *
+  * The role vocabulary lives in `lib/viewer`. This screen previously declared
+  * its own `hr-admin | team-member` union — a third `ViewerRole` type meaning
+  * something different from the other two — which is how a codebase ends up
+  * with three names for the same person. */
+type ProfileViewer = Extract<ViewerRole, "hr-admin" | "member">;
 
 export default function EmployeeProfilePage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const [tab, setTab] = useState("overview");
-  const [role, setRole] = useState<ViewerRole>("hr-admin");
+  const [role, setRole] = useState<ProfileViewer>("hr-admin");
 
-  const canSeeCompensation = role === "hr-admin";
-  const profile = buildEmployeeProfile(params.id, canSeeCompensation);
+  const compensationVisible = canSeeCompensation(role);
+  const profile = buildEmployeeProfile(params.id, compensationVisible);
 
   const index = PROFILED_EMPLOYEE_IDS.indexOf(params.id);
 
@@ -78,13 +84,13 @@ export default function EmployeeProfilePage() {
         * control has no equivalent in the spec. Not a real permission
         * system; see the type above. */}
       <div className="flex justify-end pt-4">
-        <ToggleGroup<ViewerRole>
+        <ToggleGroup<ProfileViewer>
           label="Viewing as"
           value={role}
           onChange={setRole}
           options={[
             { value: "hr-admin", label: "HR Admin" },
-            { value: "team-member", label: "Team Member" },
+            { value: "member", label: "Team Member" },
           ]}
         />
       </div>

@@ -33,7 +33,9 @@ This produces the governing rule of the whole system, which every other decision
 
 > **The interface is deliberately color-starved so that money is the only thing on screen with a hue.**
 
-Ninety percent of any Roster screen is neutral. Amber is the product brand and the signature color for cost and idleness; red remains reserved for failure. The cool half is available for small categorical markers such as project dots, never large fills. Every amber element on a screen has a job — the cost it states, the action it offers, or the day it marks — and the rationing rule under **Brand** below governs which. There are no decorative gradients anywhere in this product, no glass, no blur, no decorative depth, and no color used because a surface looked empty. A gradient used only to communicate a horizontal scroll boundary is the sole exception and carries no decorative color.
+Ninety percent of any Roster screen is neutral. **Amber is the signature color for cost and idleness, and nothing else.** Orange is the product brand, rationed to three signals. The two were once one hue and are now deliberately separated — see **Brand** below for why, because that separation is the most instructive correction this design system has made. Red remains reserved for failure. The cool half is available for small categorical markers such as project dots, never large fills.
+
+Every colored element on a screen has a job — the cost it states, the action it offers, or the day it marks — and the rationing rule under **Brand** governs which. There are no decorative gradients anywhere in this product, no glass, no blur, no decorative depth, and no color used because a surface looked empty. A gradient used only to communicate a horizontal scroll boundary is the sole exception and carries no decorative color.
 
 When a designer or an engineer wants to add color, the question is not "does this look better" but "is this about money going wrong". If it is not, it is neutral.
 
@@ -259,15 +261,18 @@ One information-preserving density, and it is the product default everywhere. Pr
 | Element | Value |
 |---|---|
 | Table row height | 32px |
-| Bench Forecast row height | 48px |
+| Row carrying two stacked facts | 52px |
 | Control height | 28px |
 | Cell padding | `2` |
+| Timeline bar and bench bar height | 20px |
+
+**The 52px row is a rule, not three coincidences.** The People directory, the Bench Forecast and the timesheet's work column all put a primary fact above a secondary one — a name above a role, a project above a client. Two stacked facts are 30px of type, and in a 32px row that reads as text pressed against the cell border. Any row carrying a second line takes 52px; any row carrying one takes 32px.
 
 ### Structural dimensions
 
 The spacing scale governs gaps and padding; it is not a catalog of every legitimate layout dimension. Dimensions intrinsic to a reusable component are defined with that component in [[VPS-D002_Component_Library|VPS-D002]], and dimensions intrinsic to the shell are defined in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]. This is an explicit delegation, not permission for feature-local values.
 
-The current structural registry is: 200px expanded and 48px collapsed sidebar; 48px page header; 360px contextual panel; 220px Timeline identity column; 20px Timeline bars; 6px categorical dots; 24/28/32px Button heights; 20/24/32/40/48px Avatar sizes; and the Command Palette and Modal widths in [[VPS-D002_Component_Library|VPS-D002]]. Changes belong in the owning suite document before implementation.
+The current structural registry is: 200px expanded and 48px collapsed sidebar; 48px page header; 360px contextual panel; 220px Timeline identity column; 20px Timeline bars; 6px categorical dots; **8px scrollbar**; 24/28/32px Button heights; **24/28/32/40/48px Avatar sizes**; and the Command Palette and Modal widths in [[VPS-D002_Component_Library|VPS-D002]]. Changes belong in the owning suite document before implementation.
 
 ---
 

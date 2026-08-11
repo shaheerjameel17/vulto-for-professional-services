@@ -17,10 +17,13 @@ import {
   useShortcuts,
 } from "@vulto/ui";
 import { buildForecast, DAY_WIDTH, formatMoney, type Horizon } from "../../lib/bench";
+import {
+  canSeeCompensation,
+  cohortIdsFor,
+  type ViewerRole,
+} from "../../lib/viewer";
 import { usePanel } from "../../components/panel-context";
 import { ForecastPanel } from "../../components/ForecastPanel";
-import { EMPLOYEES } from "../../fixtures/roster";
-import { profileFor } from "../../fixtures/profiles";
 
 /*
  * VRS-F005 — The Bench Forecast.
@@ -39,39 +42,25 @@ import { profileFor } from "../../fixtures/profiles";
  * Panel.
  */
 
-/** Prototype furniture. The only way to see the restricted state (F5, F6). */
-type ViewerRole = "owner" | "manager";
-const MANAGER_VIEWER_NAME = "Omar Farooq";
+/** Prototype furniture. The only way to see the restricted state (F5, F6).
+ * The role vocabulary and the cohort rule live in `lib/viewer`; this screen
+ * narrows them to the two roles whose difference it can actually show. */
+type ForecastViewer = Extract<ViewerRole, "owner" | "manager">;
 
 export default function BenchForecastPage() {
   const [horizon, setHorizon] = useState<Horizon>(90);
-  const [role, setRole] = useState<ViewerRole>("owner");
+  const [role, setRole] = useState<ForecastViewer>("owner");
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [todayNonce, setTodayNonce] = useState(0);
 
   const filtersRef = useRef<HTMLButtonElement>(null);
   const { setPanel } = usePanel();
 
-  const canSeeCompensation = role === "owner";
-
-  const managerReportIds = useMemo(
-    () => new Set(
-      EMPLOYEES.filter(
-        (employee) =>
-          employee.employeeType === "Employee" &&
-          profileFor(employee.employeeId)?.managerName === MANAGER_VIEWER_NAME,
-      ).map((employee) => employee.employeeId),
-    ),
-    [],
-  );
+  const compensationVisible = canSeeCompensation(role);
 
   const forecast = useMemo(
-    () => buildForecast(
-      horizon,
-      canSeeCompensation,
-      role === "manager" ? managerReportIds : undefined,
-    ),
-    [horizon, canSeeCompensation, role, managerReportIds],
+    () => buildForecast(horizon, compensationVisible, cohortIdsFor(role)),
+    [horizon, compensationVisible, role],
   );
 
   const selected = forecast.rows.find((row) => row.id === selectedId);
@@ -89,11 +78,11 @@ export default function BenchForecastPage() {
           dashedAvatar={selected.ghost}
           onClose={() => setSelectedId(undefined)}
         >
-          <ForecastPanel row={selected} canSeeCompensation={canSeeCompensation} />
+          <ForecastPanel row={selected} canSeeCompensation={compensationVisible} />
         </Panel>
       ) : null,
     );
-  }, [selected, canSeeCompensation, setPanel]);
+  }, [selected, compensationVisible, setPanel]);
 
   // Clear the panel when leaving the screen.
   useEffect(() => () => setPanel(null), [setPanel]);
@@ -154,7 +143,7 @@ export default function BenchForecastPage() {
           // screen control a real user would touch.
           <div className="flex items-center gap-2">
             <Text variant="micro" className="text-text-tertiary">Prototype viewer</Text>
-            <ToggleGroup<ViewerRole>
+            <ToggleGroup<ForecastViewer>
               label="Viewing as"
               value={role}
               onChange={setRole}
@@ -245,7 +234,7 @@ export default function BenchForecastPage() {
                 labelPlacement="below"
                 className="items-end text-right"
               />
-              {canSeeCompensation ? (
+              {compensationVisible ? (
                 <Stat
                   label={`Unrecovered · next ${forecast.costHorizonDays} days`}
                   value={formatMoney(forecast.totalBenchCost)}
