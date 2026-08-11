@@ -17,13 +17,26 @@ const SIZE: Record<Size, string> = {
   identity: "size-12",
 };
 
-/** `micro` below 32px, `label` at and above it, so initials stay legible. */
+/*
+ * FDN-44. Initials are set in `label`, not `micro`, at every size below 32px.
+ *
+ * `micro` is VPS-D001's uppercase treatment and carries +0.04em tracking for
+ * that job. Initials are already uppercase by construction, and letter-spacing
+ * applies to the last glyph as well as between them — so the pair rendered
+ * with a trailing space inside a centered box, sitting visibly left of the
+ * circle's center and running its second letter into the edge. `label` is the
+ * same 11px with no tracking, which centers because there is nothing to
+ * decenter it.
+ *
+ * The two large sizes were also under-set: `body-medium` at 13px in a 40px
+ * circle is a third of the diameter where initials want closer to a half.
+ */
 const TYPE: Record<Size, string> = {
-  sm: "text-micro",
-  md: "text-micro",
-  lg: "text-label",
-  xl: "text-body-medium",
-  identity: "text-body-medium",
+  sm: "text-label",
+  md: "text-label",
+  lg: "text-body-medium",
+  xl: "text-h3",
+  identity: "text-h2",
 };
 
 function initials(name: string): string {

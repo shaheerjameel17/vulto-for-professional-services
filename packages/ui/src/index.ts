@@ -42,6 +42,7 @@ export {
 export { Tooltip, TooltipProvider, type TooltipProps } from "./Tooltip";
 
 export { useShortcuts, type ShortcutMap } from "./useShortcuts";
+export { useReorder, type ReorderAxis, type UseReorderOptions } from "./useReorder";
 export {
   CommandPalette,
   COMMAND_PALETTE_GROUPS,

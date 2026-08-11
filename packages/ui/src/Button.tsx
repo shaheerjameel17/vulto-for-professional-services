@@ -36,6 +36,10 @@ export type ButtonProps = {
   variant?: Variant;
   size?: Size;
   icon?: LucideIcon;
+  /** Overrides the glyph's own size independent of the button's — an
+   * icon-only circular button at `md` can want a smaller mark than a
+   * label-carrying one at the same height. Leave unset everywhere else. */
+  iconSize?: 14 | 16 | 20 | 24;
   /** VPS-D002: `danger` fills solid only at the point of confirmation. */
   confirming?: boolean;
   loading?: boolean;
@@ -47,6 +51,7 @@ export function Button({
   variant = "secondary",
   size = "md",
   icon,
+  iconSize,
   confirming = false,
   loading = false,
   children,
@@ -86,7 +91,7 @@ export function Button({
         </span>
       ) : (
         <>
-          {icon ? <Icon icon={icon} /> : null}
+          {icon ? <Icon icon={icon} size={iconSize} /> : null}
           {children}
         </>
       )}

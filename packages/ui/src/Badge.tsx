@@ -12,11 +12,21 @@ import { cx } from "./cx";
 
 type Tone = "success" | "attention" | "danger" | "neutral";
 
+/*
+ * FDN-44. The tint and its ink are tokens now, stated per theme, rather than
+ * one alpha percentage of the hue and a fixed `text-primary`.
+ *
+ * The hue at 10% over white was a wash that read as no color; `neutral`
+ * resolved to `bg-active`, which in dark is the same value as `bg-raised`, so
+ * a Type tag on a Card was invisible until a row hover moved the surface out
+ * from under it. Coloring the ink with the tag's own hue is what makes a tag
+ * read as a status rather than as a gray chip that happens to be tinted.
+ */
 const SUBTLE: Record<Tone, string> = {
-  success: "bg-success/10 text-text-primary",
-  attention: "bg-attention/10 text-text-primary",
-  danger: "bg-danger/10 text-text-primary",
-  neutral: "bg-bg-active text-text-secondary",
+  success: "bg-tag-success text-tag-success-ink",
+  attention: "bg-tag-attention text-tag-attention-ink",
+  danger: "bg-tag-danger text-tag-danger-ink",
+  neutral: "bg-tag-neutral text-tag-neutral-ink",
 };
 
 const SOLID: Record<Tone, string> = {

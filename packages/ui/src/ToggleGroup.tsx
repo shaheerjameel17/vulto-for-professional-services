@@ -28,6 +28,9 @@ export type ToggleGroupProps<T extends string> = {
   className?: string;
   trackClassName?: string;
   activeClassName?: string;
+  /** `sm` for furniture that sits beside a page title, never for a screen's
+   * primary controls — those stay at the standard control height. */
+  size?: "sm" | "md";
 };
 
 export function ToggleGroup<T extends string>({
@@ -38,7 +41,9 @@ export function ToggleGroup<T extends string>({
   className,
   trackClassName,
   activeClassName,
+  size = "md",
 }: ToggleGroupProps<T>) {
+  const small = size === "sm";
   return (
     <RadixToggleGroup.Root
       type="single"
@@ -88,14 +93,22 @@ export function ToggleGroup<T extends string>({
             <RadixToggleGroup.Item
               value={option.value}
               className={cx(
-                "inline-flex h-control items-center rounded-full px-3",
+                "inline-flex items-center rounded-full",
+                small ? "h-button-sm px-2" : "h-control px-3",
                 "font-ui motion-fast transition-colors",
                 // Active: raised off the track, primary color, heavier weight.
                 // FDN-18 took brand out of here; three neutral channels
                 // replace it. Inactive: lighter weight and secondary color.
                 active
-                  ? cx("bg-segment-active text-body-medium text-text-primary", activeClassName)
-                  : "text-body text-text-secondary hover:text-text-primary",
+                  ? cx(
+                      "bg-segment-active text-text-primary",
+                      small ? "text-label" : "text-body-medium",
+                      activeClassName,
+                    )
+                  : cx(
+                      "text-text-secondary hover:text-text-primary",
+                      small ? "text-label" : "text-body",
+                    ),
               )}
             >
               {option.label}

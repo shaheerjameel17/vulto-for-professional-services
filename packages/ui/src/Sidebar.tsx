@@ -70,7 +70,18 @@ export function Sidebar({
         // creates the separation a border used to.
         "flex shrink-0 flex-col",
         "motion-base transition-[width]",
-        collapsed ? "w-sidebar-collapsed" : "w-sidebar",
+        /*
+         * FDN-44. The left inset is the sidebar's own, and there is no right
+         * inset by design.
+         *
+         * Items used to sit in a px-2 container, so a fill ran from 8px to
+         * 192px — 8px of clearance on the left against 20px on the right, the
+         * 8px plus the 12px of canvas AppShell's `m-3` leaves before the
+         * workspace panel begins. The gap on the right is already there; what
+         * was missing was matching it on the left and then letting the fill
+         * run to the sidebar's own edge. 12px each side, measured the same.
+         */
+        collapsed ? "w-sidebar-collapsed px-2" : "w-sidebar pl-3",
       )}
     >
       {/* FDN-33: one workspace menu owns account, appearance and settings. */}
@@ -80,8 +91,10 @@ export function Sidebar({
             type="button"
             aria-label={`Open ${workspaceName} menu`}
             className={cx(
-              "mt-3 flex h-page-header shrink-0 items-center gap-2 rounded-md px-3",
-              "text-left motion-fast transition-colors hover:bg-bg-hover",
+              // px-2 matches the navigation items below, so the workspace
+              // mark and the navigation icons share one optical left edge.
+              "mt-3 flex h-page-header w-full shrink-0 items-center gap-2 rounded-md px-2",
+              "text-left motion-fast transition-colors hover:bg-bg-canvas-hover",
             )}
           >
             <span
@@ -96,8 +109,13 @@ export function Sidebar({
                   <Text variant="body-medium" className="truncate text-text-primary">
                     {workspaceName}
                   </Text>
+                  {/* FDN-44: `block`. `label` renders a span, and an inline
+                    * span takes the root's 20px line box rather than the 14px
+                    * the token specifies — six stray pixels between the
+                    * workspace name and its jurisdiction that no token asked
+                    * for. Timeline's row label already did this correctly. */}
                   {entityName ? (
-                    <Text variant="label" className="truncate text-text-secondary">
+                    <Text variant="label" className="block truncate text-text-secondary">
                       {entityName}
                     </Text>
                   ) : null}
@@ -119,7 +137,7 @@ export function Sidebar({
         </RadixPopover.Portal>
       </RadixPopover.Root>
 
-      <div className="flex-1 overflow-y-auto px-2 py-2">
+      <div className="scrollbar-slim flex-1 overflow-y-auto py-2">
         {groups.map((group) => (
           <div key={group.label} className="mb-4">
             {/* VPS-D004: group labels share the command palette's quiet micro
@@ -151,9 +169,13 @@ export function Sidebar({
                         // FDN-18: a neutral fill, not brand. Which page you are
                         // on is location, not selection, and brand is reserved
                         // to the today line, primary actions and focus rings.
+                        // FDN-44: `bg-canvas-hover`, not `bg-hover`. The
+                        // latter is calibrated against `bg-surface`; the
+                        // sidebar is on the canvas, where light `bg-hover` is
+                        // one digit off the canvas itself and invisible.
                         active
                           ? "bg-bg-active text-text-primary"
-                          : "text-text-secondary hover:bg-bg-hover",
+                          : "text-text-secondary hover:bg-bg-canvas-hover",
                         collapsed && "justify-center px-0",
                       )}
                     >
@@ -186,9 +208,13 @@ export function Sidebar({
         ))}
       </div>
 
-      {/* FDN-33: sync is the only persistent footer status. */}
-      <div className="shrink-0 border-t border-border-default p-2">
-        <div className={cx("flex items-center gap-2 px-1", collapsed && "justify-center px-0")}>
+      {/* FDN-33: sync is the only persistent footer status.
+        * FDN-44 drops the rule above it. The sidebar carries no other
+        * separator — its groups are divided by space and a `micro` label —
+        * and one hairline for one line of status was the only structural
+        * border on a surface whose whole premise is that it has none. */}
+      <div className="shrink-0 py-3">
+        <div className={cx("flex items-center gap-2 px-2", collapsed && "justify-center px-0")}>
           <span aria-hidden className="size-2 rounded-full bg-success" />
           {collapsed ? null : (
             <Text variant="small" className="text-text-secondary">

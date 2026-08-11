@@ -2,11 +2,12 @@
 
 import * as RadixCheckbox from "@radix-ui/react-checkbox";
 import * as RadixPopover from "@radix-ui/react-popover";
-import { Check, ChevronDown, Search, X } from "lucide-react";
+import { Check, ChevronDown, GripVertical, Search, X } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
 import { Text } from "./Text";
+import { useReorder } from "./useReorder";
 
 /*
  * FDN-30. A bounded filter trigger backed by an unbounded option list.
@@ -31,6 +32,16 @@ export type MultiSelectProps<T extends string> = {
   searchPlaceholder?: string;
   /** A compact white filter pill that exposes state as a dot and clear action. */
   appearance?: "default" | "filter";
+  /**
+   * FDN-44. Enables drag-to-reorder over the option list, for a control where
+   * the order of the options is itself a setting — the People directory's
+   * column list, where checking a column says whether it appears and its
+   * position in this list says where.
+   *
+   * Receives every option value in its new order, selected or not: what is
+   * being reordered is the list, not the selection.
+   */
+  onReorder?: (values: T[]) => void;
 };
 
 export function MultiSelect<T extends string>({
@@ -42,6 +53,7 @@ export function MultiSelect<T extends string>({
   searchable = false,
   searchPlaceholder = "Search",
   appearance = "default",
+  onReorder,
 }: MultiSelectProps<T>) {
   const [query, setQuery] = useState("");
   const optionRefs = useRef<Array<HTMLButtonElement | null>>([]);
@@ -78,9 +90,22 @@ export function MultiSelect<T extends string>({
   const filterAppearance = appearance === "filter";
   const hasActiveFilter = value.length > 0 && !allSelected;
 
+  /*
+   * Reordering is suppressed while a search is narrowing the list. Dropping
+   * one visible row onto another says nothing about where either belongs among
+   * the rows the query is hiding, so the gesture would have to guess.
+   */
+  const canReorder = Boolean(onReorder) && query.trim() === "";
+
+  const reorder = useReorder<T>({
+    items: options.map((option) => option.value),
+    onReorder: (next) => onReorder?.(next),
+    axis: "vertical",
+  });
+
   return (
     <RadixPopover.Root onOpenChange={(open) => !open && setQuery("")}>
-      <div className={cx(filterAppearance && "inline-flex h-control items-center rounded-full bg-bg-raised")}>
+      <div className={cx(filterAppearance && "inline-flex h-control items-center rounded-full border border-border-default bg-bg-raised")}>
         <RadixPopover.Trigger asChild>
           <button
             type="button"
@@ -135,19 +160,81 @@ export function MultiSelect<T extends string>({
             </div>
           ) : null}
 
-          <div role="group" aria-label={label} className="max-h-filter-list overflow-y-auto">
+          <div role="group" aria-label={label} className="scrollbar-slim max-h-filter-list overflow-y-auto">
             {filteredOptions.length > 0 ? (
               filteredOptions.map((option, index) => {
                 const checked = selected.has(option.value);
                 const optionId = `multi-${label}-${option.value}`
                   .toLowerCase()
                   .replace(/[^a-z0-9-]/g, "-");
+                const dragProps = canReorder
+                  ? reorder.dragHandleProps(option.value)
+                  : {};
                 return (
-                  <label
+                  <div
                     key={option.value}
-                    htmlFor={optionId}
-                    className="flex h-control cursor-pointer items-center gap-2 rounded-md px-2 hover:bg-bg-hover"
+                    ref={canReorder ? reorder.register(option.value) : undefined}
+                    {...dragProps}
+                    className={cx(
+                      "relative flex h-control items-center gap-1 rounded-md px-1",
+                      "motion-fast transition-colors hover:bg-bg-hover",
+                      canReorder && "touch-none",
+                      reorder.dragging === option.value && "opacity-40",
+                    )}
                   >
+                    {/*
+                      * The insertion indicator, not a highlighted target row.
+                      * A tinted row says "this one" — the question the gesture
+                      * is actually asking is "between which two", and the gap
+                      * is where the answer belongs. The last row carries a
+                      * second one for the slot past the end of the list.
+                      */}
+                    {canReorder && reorder.dropIndex === index ? (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-0 top-0 border-t-2 border-brand-600"
+                      />
+                    ) : null}
+                    {canReorder &&
+                    reorder.dropIndex === filteredOptions.length &&
+                    index === filteredOptions.length - 1 ? (
+                      <span
+                        aria-hidden
+                        className="pointer-events-none absolute inset-x-0 bottom-0 border-b-2 border-brand-600"
+                      />
+                    ) : null}
+                    {/* The whole row is the drag surface; the grip states that
+                      * it is. Grabbing a row is what people do, and making only
+                      * a 16px glyph draggable meant the gesture silently did
+                      * nothing almost every time it was attempted. */}
+                    {canReorder ? (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        aria-label={`Reorder ${option.label}`}
+                        onKeyDown={(event) => {
+                          if (event.altKey && event.key === "ArrowUp") {
+                            event.preventDefault();
+                            reorder.nudge(option.value, -1);
+                          } else if (event.altKey && event.key === "ArrowDown") {
+                            event.preventDefault();
+                            reorder.nudge(option.value, 1);
+                          }
+                        }}
+                        className={cx(
+                          "flex shrink-0 cursor-grab items-center text-text-tertiary",
+                          "motion-fast transition-colors hover:text-text-secondary",
+                          "focus-visible:outline focus-visible:outline-2",
+                          "focus-visible:outline-border-focus focus-visible:outline-offset-2",
+                        )}
+                      >
+                        <Icon icon={GripVertical} />
+                      </span>
+                    ) : null}
+                    <label
+                      htmlFor={optionId}
+                      className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
+                    >
                     <RadixCheckbox.Root
                       ref={(node) => {
                         optionRefs.current[index] = node;
@@ -180,7 +267,8 @@ export function MultiSelect<T extends string>({
                     <Text variant="body" className="min-w-0 truncate text-text-primary">
                       {option.label}
                     </Text>
-                  </label>
+                    </label>
+                  </div>
                 );
               })
             ) : (

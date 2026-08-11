@@ -81,7 +81,7 @@ export function Stat({
       <Text
         variant="small"
         className={cx(
-          "font-medium",
+          "font-semibold",
           delta.tone === "success" ? "text-success" : "text-attention",
           deltaClassName,
         )}

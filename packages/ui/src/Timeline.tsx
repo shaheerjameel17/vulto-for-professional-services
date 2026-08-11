@@ -44,6 +44,32 @@ const COUNT_MIN_WIDTH = 44;
 /** FDN-19/31: how far the track fades at a horizontal scroll boundary. */
 const SCROLL_FADE_PX = 24;
 
+/*
+ * The date marker's geometry — today's and the cursor's, which are one
+ * mechanism differing only in color and in what drives their position.
+ *
+ * FDN-44 round 3 rebuilds this after measuring the round-2 version: the pill
+ * sat at `-bottom-2`, eight pixels outside the track header's border box, and
+ * the track header carries `scroll-boundary-fade`. A mask brings
+ * `mask-clip: border-box` with it, so everything painted outside that box is
+ * masked away — the pill lost its bottom eight pixels, and the header's own
+ * `pb-2` then left an eight-pixel gap before the line resumed on row one. It
+ * read as a cut-off tab floating above a disconnected line, which is exactly
+ * what it was.
+ *
+ * The rule that replaces it: the marker never leaves the header's border box,
+ * and the header has no bottom padding, so the header's bottom edge *is* the
+ * first row's top edge. The stem runs from the pill's top edge to that
+ * boundary and the pill paints over it, so nothing shows above the pill and
+ * nothing interrupts the line below it.
+ *
+ * The pill is centered in the date row rather than flush to its bottom so it
+ * nests inside the bench range pill, which spans that row's full height.
+ */
+const HEADER_DATE_ROW_PX = 24; /* h-6 */
+const MARKER_PILL_PX = 20; /* h-badge */
+const MARKER_STEM_TOP_PX = (HEADER_DATE_ROW_PX - MARKER_PILL_PX) / 2;
+
 export type TimelineDay = {
   date: string;
   isWorking: boolean;
@@ -129,6 +155,11 @@ export function Timeline({
   const scroller = useRef<HTMLDivElement>(null);
   const [hoveredBench, setHoveredBench] = useState<TimelineBenchRegion>();
   const [cursorDateIndex, setCursorDateIndex] = useState<number>();
+  /** Raw pixel offset within the track — the line follows this continuously.
+   * `cursorDateIndex` is the floored, snapped version the pill uses, so the
+   * line moves with the pointer and the pill's date changes the instant the
+   * pointer crosses into the next column, rather than both stepping together. */
+  const [cursorX, setCursorX] = useState<number>();
   const trackWidth = days.length * dayWidth;
 
   /*
@@ -206,14 +237,16 @@ export function Timeline({
       const track = node.querySelector<HTMLElement>("[data-timeline-track-header]");
       if (!track) return;
       const pointerX = event.clientX - track.getBoundingClientRect().left;
-      if (pointerX < 0) {
+      if (pointerX < 0 || pointerX > trackWidth) {
         setCursorDateIndex(undefined);
+        setCursorX(undefined);
         return;
       }
       const index = Math.floor(pointerX / dayWidth);
+      setCursorX(pointerX);
       setCursorDateIndex(index >= 0 && index < days.length ? index : undefined);
     },
-    [dayWidth, days.length],
+    [dayWidth, days.length, trackWidth],
   );
 
   useEffect(() => {
@@ -238,16 +271,44 @@ export function Timeline({
       ref={scroller}
       onScroll={onScroll}
       onPointerMove={trackCursor}
-      onPointerLeave={() => setCursorDateIndex(undefined)}
+      onPointerLeave={() => {
+        setCursorDateIndex(undefined);
+        setCursorX(undefined);
+      }}
       // FDN-16: flat. The workspace is now the raised surface, and a bordered
       // canvas inside a bordered inset panel is the nested card VPS-D002
       // forbids.
-      className="min-h-0 flex-1 overflow-auto"
+      /*
+       * FDN-43: the scrollbar is the design system's, not the platform's. This
+       * is the surface that reported it — 2308px of track in an 1182px viewport
+       * put an unstyled OS scrollbar across the bottom of the one screen whose
+       * premise is that every value comes from the token set.
+       *
+       * `-mb-2 pb-2` puts it in the gutter rather than on the canvas. A
+       * horizontal scrollbar is painted at the bottom of its container's
+       * padding box, so it was landing on top of the last row. The negative
+       * margin extends the container down into the space the screen already
+       * leaves before the workspace inset, and the matching padding keeps the
+       * rows exactly where they were: net layout unchanged.
+       *
+       * 8px, not 16 — the scrollbar's own thickness. It then fills the strip
+       * it was given exactly, sitting flush beneath the last row with the rest
+       * of the gutter still clear below it. At 16px it cleared the rows but
+       * drifted to the far side of the gap, reading as attached to the inset
+       * edge rather than to the grid it scrolls.
+       */
+      className="scrollbar-slim -mb-2 min-h-0 flex-1 overflow-auto pb-2"
     >
       <div className="min-w-max">
         {/* Column header. Sticky vertically so it survives the row scroll, and
-          * above the row hover outline, which is z-20. */}
-        <div className="sticky top-0 z-30 flex bg-bg-subtle pb-2">
+          * above the row hover outline, which is z-20.
+          *
+          * FDN-44: no bottom padding. The marker has to reach the rows without
+          * a break, so the header's bottom edge and the first row's top edge
+          * are the same line. Nothing is lost visually — a 52px row carries a
+          * 20px bar, so there are already 16px of clear space under the
+          * header before anything is drawn. */}
+        <div className="sticky top-0 z-30 flex bg-bg-subtle">
           <div
             data-timeline-label
             className="sticky left-0 z-40 flex w-timeline-label shrink-0 items-end bg-bg-subtle px-cell pb-1"
@@ -288,10 +349,13 @@ export function Timeline({
               )}
             </div>
             <div className="relative flex h-6 items-center">
+              {/* FDN-44: bordered, matching the horizon toggle, the filter
+                * button and People's filter pills. A bare fill was the only
+                * pill-shaped control surface in the product without one. */}
               {hoveredBench ? (
                 <span
                   aria-hidden
-                  className="pointer-events-none absolute inset-y-0 rounded-full bg-bg-active"
+                  className="pointer-events-none absolute inset-y-0 rounded-full border border-border-default bg-bg-active"
                   style={{
                     left: hoveredBench.start * dayWidth + 2,
                     width: Math.max(0, hoveredBench.span * dayWidth - 4),
@@ -306,13 +370,12 @@ export function Timeline({
                   style={{ width: dayWidth }}
                   className="relative z-10 flex shrink-0 items-center justify-center"
                 >
-                  {index === todayIndex ? (
-                    <Text variant="micro" className="whitespace-nowrap text-text-tertiary">
-                      <span className="inline-flex h-badge items-center rounded-full bg-brand-600 px-2 text-neutral-0">
-                        {day.date.slice(8, 10)}
-                      </span>
-                    </Text>
-                  ) : day.headerLabel ? (
+                  {index === todayIndex ? null : day.headerLabel && !(index === cursorDateIndex && hoveredBench && index >= hoveredBench.start && index < hoveredBench.start + hoveredBench.span) ? (
+                    // The cursor's own date mark paints on top of this cell at
+                    // z-20 regardless, but leaving this label under it reads as
+                    // two overlapping numbers rather than one. Drop just this
+                    // cell's own label — never the pill or the cursor's own
+                    // date — for the one index where they'd actually collide.
                     <Text variant="micro" className="whitespace-nowrap text-text-tertiary">
                       {day.headerLabel}
                     </Text>
@@ -320,31 +383,33 @@ export function Timeline({
                 </div>
                 );
               })}
-            </div>
-            {/* The 6px dot at the top edge of the today line. The only
-              * brand-colored element on the canvas. VPS-D002. */}
-            {todayIndex >= 0 ? (
-              <span
-                aria-hidden
-                className="absolute bottom-0 z-20 size-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-brand-500"
-                style={{ left: todayIndex * dayWidth + dayWidth / 2 }}
-              />
-            ) : null}
-            {cursorDateIndex !== undefined && cursorDateIndex !== todayIndex ? (
-              <>
-                <span
-                  aria-hidden
-                  className="absolute bottom-0 z-20 size-2 -translate-x-1/2 translate-y-1/2 rounded-full bg-border-strong"
-                  style={{ left: cursorDateIndex * dayWidth + dayWidth / 2 }}
+
+              {/* Both markers live inside the date row, so their coordinates
+                * are the same ones the bench range pill uses and nesting one
+                * inside the other needs no arithmetic. */}
+              {todayIndex >= 0 ? (
+                <HeaderMarker
+                  tone="today"
+                  x={todayIndex * dayWidth + dayWidth / 2}
+                  label={days[todayIndex]?.date.slice(8, 10) ?? ""}
                 />
-                <span
-                  className="pointer-events-none absolute bottom-0 z-20 inline-flex h-badge -translate-x-1/2 items-center rounded-full bg-bg-active px-2 font-ui text-micro text-text-primary"
-                  style={{ left: cursorDateIndex * dayWidth + dayWidth / 2 }}
-                >
-                  {days[cursorDateIndex]?.date.slice(8, 10)}
-                </span>
-              </>
-            ) : null}
+              ) : null}
+              {/* FDN-44: the cursor pill takes the pointer's raw pixel
+                * position, exactly as its line does, so the two are one
+                * object that cannot lag behind itself. Only the *label* is
+                * snapped — it names the column under the pointer and changes
+                * the instant that column changes, which is a fact about the
+                * date and not about where the marker is drawn. */}
+              {cursorX !== undefined &&
+              cursorDateIndex !== undefined &&
+              cursorDateIndex !== todayIndex ? (
+                <HeaderMarker
+                  tone="cursor"
+                  x={cursorX}
+                  label={days[cursorDateIndex]?.date.slice(8, 10) ?? ""}
+                />
+              ) : null}
+            </div>
           </div>
         </div>
 
@@ -428,15 +493,18 @@ export function Timeline({
                   * `motion-fast` as the row border, so the two arrive together
                   * as one gesture.
                   */}
-                <div className="absolute inset-0 flex">
-                  {days.map((_, index) => (
+                {/* FDN-44: drawn as runs, not as one element per day. A
+                  * Saturday and a Sunday are one stretch of not-working, and
+                  * shading them as two adjacent cells meant rounding their
+                  * corners would have put a seam down the middle of a single
+                  * period. One block per run rounds correctly and renders far
+                  * fewer nodes at the 180-day horizon besides. */}
+                <div className="absolute inset-0">
+                  {nonWorkingRuns(row.workingDayStates).map((run) => (
                     <div
-                      key={days[index]!.date}
-                      style={{ width: dayWidth }}
-                      className={cx(
-                        "shrink-0 motion-fast transition-colors",
-                        !row.workingDayStates[index] && "group-hover:bg-nonworking",
-                      )}
+                      key={run.start}
+                      style={{ left: run.start * dayWidth, width: run.span * dayWidth }}
+                      className="absolute inset-y-0 rounded-md motion-fast transition-colors group-hover:bg-nonworking"
                     />
                   ))}
                 </div>
@@ -462,22 +530,29 @@ export function Timeline({
                   />
                 ))}
 
-                {/* The neutral inspection line follows the pointer and exposes
-                  * an exact date without adding persistent grid structure. */}
-                {cursorDateIndex !== undefined && cursorDateIndex !== todayIndex ? (
+                {/* The inspection line follows the pointer's raw pixel
+                  * position continuously — no day-column snapping — and the
+                  * pill in the header now takes the same value, so the two
+                  * move as one object. `-translate-x-1/2` matches the pill's
+                  * own centering, which is what keeps them on a single axis
+                  * rather than one pixel apart. */}
+                {cursorX !== undefined && cursorDateIndex !== todayIndex ? (
                   <span
                     aria-hidden
-                    className="pointer-events-none absolute top-0 bottom-0 z-20 w-px bg-border-strong"
-                    style={{ left: cursorDateIndex * dayWidth + dayWidth / 2 }}
+                    className="pointer-events-none absolute top-0 bottom-0 z-20 w-px -translate-x-1/2 bg-border-strong"
+                    style={{ left: cursorX }}
                   />
                 ) : null}
 
                 {/* The today line, drawn per row so it needs no knowledge of
-                  * the label column's responsive width. Above bars. */}
+                  * the label column's responsive width. Above bars.
+                  * FDN-44: `brand-600`, the same token the pill takes — they
+                  * resolve to one value today, and a marker that can come
+                  * apart under a future ramp change is a marker waiting to. */}
                 {todayIndex >= 0 ? (
                   <span
                     aria-hidden
-                    className="absolute top-0 bottom-0 z-10 w-px bg-brand-500"
+                    className="absolute top-0 bottom-0 z-10 w-px -translate-x-1/2 bg-brand-600"
                     style={{ left: todayIndex * dayWidth + dayWidth / 2 }}
                   />
                 ) : null}
@@ -489,6 +564,76 @@ export function Timeline({
     </div>
     </TooltipProvider>
   );
+}
+
+/*
+ * One date marker: a pill naming a day, and the stem that carries it down to
+ * the rows. Today and the cursor are the same object — only the fill and what
+ * drives `x` differ, which is the whole reason they are one component.
+ *
+ * The stem starts at the pill's top edge and the pill paints over it at a
+ * higher layer, so no stroke ever shows above the pill. What is visible is the
+ * two pixels between the pill's bottom and the header's, meeting the per-row
+ * line exactly at the boundary.
+ */
+function HeaderMarker({
+  x,
+  label,
+  tone,
+}: {
+  x: number;
+  label: string;
+  tone: "today" | "cursor";
+}) {
+  const today = tone === "today";
+  return (
+    <>
+      <span
+        aria-hidden
+        className={cx(
+          "pointer-events-none absolute bottom-0 z-20 w-px -translate-x-1/2",
+          today ? "bg-brand-600" : "bg-border-strong",
+        )}
+        style={{ left: x, top: MARKER_STEM_TOP_PX }}
+      />
+      <span
+        aria-hidden
+        className={cx(
+          "pointer-events-none absolute top-1/2 z-30 inline-flex h-badge -translate-x-1/2",
+          "-translate-y-1/2 items-center rounded-full px-2 font-ui text-micro",
+          // FDN-44: the cursor pill was `bg-active` while its line was
+          // `border-strong` — two different values in both themes, and in dark
+          // far apart enough to read as two unrelated marks. One token now
+          // carries both.
+          today ? "bg-brand-600 text-neutral-0" : "bg-border-strong text-text-primary",
+        )}
+        style={{ left: x }}
+      >
+        {label}
+      </span>
+    </>
+  );
+}
+
+/*
+ * Consecutive non-working days, as runs. VRS-F004 supplies the per-day states;
+ * which of them touch is a rendering fact and belongs here.
+ */
+function nonWorkingRuns(states: boolean[]): { start: number; span: number }[] {
+  const runs: { start: number; span: number }[] = [];
+  let start: number | null = null;
+  states.forEach((working, index) => {
+    if (!working) {
+      if (start === null) start = index;
+      return;
+    }
+    if (start !== null) {
+      runs.push({ start, span: index - start });
+      start = null;
+    }
+  });
+  if (start !== null) runs.push({ start, span: states.length - start });
+  return runs;
 }
 
 function Bar({

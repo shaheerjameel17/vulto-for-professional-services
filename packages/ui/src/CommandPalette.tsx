@@ -149,7 +149,7 @@ export function CommandPalette({
               id="command-palette-results"
               role="listbox"
               aria-label="Search results"
-              className="min-h-0 flex-1 overflow-y-auto py-2 md:max-h-palette-results"
+              className="scrollbar-slim min-h-0 flex-1 overflow-y-auto py-2 md:max-h-palette-results"
             >
               {query.trim() === "" ? (
                 <Text variant="body" className="px-4 py-8 text-center text-text-secondary">

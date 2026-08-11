@@ -98,7 +98,7 @@ export function Panel({
         </div>
         <button type="button" onClick={onClose} aria-label="Close panel" title="Close panel · Escape" className="flex size-button-sm shrink-0 items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:bg-bg-hover hover:text-text-primary"><X className="size-icon" /></button>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
+      <div className="scrollbar-slim min-h-0 flex-1 overflow-y-auto p-4">{children}</div>
     </aside>
   );
 }

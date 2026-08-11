@@ -85,7 +85,7 @@ export function Content({ fullBleed, children, className }: ContentProps) {
         "min-h-0 flex-1",
         fullBleed
           ? "flex flex-col overflow-hidden"
-          : "overflow-y-auto px-6 pb-8",
+          : "scrollbar-slim overflow-y-auto px-6 pb-8",
         className,
       )}
     >

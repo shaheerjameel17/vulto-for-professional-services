@@ -15,7 +15,10 @@ export type IconProps = {
   icon: LucideIcon;
   /** Accessible name. Required for an icon-only control, per VPS-D002. */
   label?: string;
-  size?: 16 | 20 | 24;
+  /** 14 exists only for a glyph inside a circular icon-only button, where a
+   * full 16px reads heavy against the surrounding padding — VPS-D002's own
+   * documented floor stays 16px everywhere else. */
+  size?: 14 | 16 | 20 | 24;
   className?: string;
 };
 
