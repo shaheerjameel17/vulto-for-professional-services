@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (**Loro's Movable Tree, the primitive this feature exists to use**), [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee and the `managed_by` edge), [[VRS-F007_Ghost_Resources|VRS-F007]] (Ghost Resources, which appear in the chart), [[VRS-F023_Probation_and_Notice_Period_Tracker|VRS-F023]] (Departure, which a scenario may anticipate), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (OrgScenario), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission — the chart is Standard, scenarios are HR-restricted)
+**Depends On:** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (**Loro's Movable Tree, the primitive this feature exists to use**), [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee and the `managed_by` edge), [[VRS-F007_Ghost_Resources|VRS-F007]] (Ghost Resources, which appear in the chart), [[VRS-F023_Probation_and_Notice_Period_Tracker|VRS-F023]] (Departure, which a scenario may anticipate), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (OrgScenario), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission — the chart is Standard, scenarios are Owner and HR Admin only)
 **Blocks:** Nothing structurally.
 
 This document is the single source of truth for this feature.
@@ -139,7 +139,7 @@ Loro's Movable Tree resolves concurrent moves without producing cycles, by const
 
 ### OrgScenario
 
-HR-restricted, Tier 2.
+Owner and HR Admin only, Tier 2.
 
 ```
 scenario_id:      UUID v4
@@ -163,7 +163,7 @@ committed_by:     user_id, nullable
 
 **A scenario stores changes, not a copy of the organization.** A full duplicate would need reconciling against a live graph that moves beneath it; a change list applied to a base snapshot always tells you what was actually proposed.
 
-### Why OrgScenario is HR-restricted
+### Why OrgScenario is Owner and HR Admin only
 
 A draft restructure showing a role removed reveals a planned departure before the person concerned has been told. That is among the most damaging things this product could leak, and it is why scenarios are Tier 2 and absent for Managers entirely — including a manager modeling changes to their own team.
 
@@ -225,7 +225,7 @@ orgScenario.discard(scenarioId)               -> { success }
 | G05 | A scenario's Remove creates a flagged HR item. It never offboards, never sets an end date, and never creates a Departure |
 | G06 | A scenario stores a change list against a base snapshot, never a duplicate of the organization |
 | G07 | Cost roll-up is computed live on an authorized device and never stored on a chart or scenario node |
-| G08 | OrgScenario is HR-restricted, Tier 2. Managers and Team Members have no access, including to scenarios covering their own team |
+| G08 | OrgScenario is Owner and HR Admin only, Tier 2. Managers and Team Members have no access, including to scenarios covering their own team |
 | G09 | Ghost Resources appear in the live chart, positioned by their manager where one is set |
 
 ---
@@ -310,7 +310,7 @@ orgScenario.discard(scenarioId)               -> { success }
 
 ## Security Considerations
 
-- **OrgScenario's HR-restricted class is the substantive decision.** A draft showing a role removed reveals a planned departure before the person has been told, and there is no version of that leak that is acceptable. The cost — a manager cannot model changes to their own team — is real and accepted.
+- **OrgScenario's Owner and HR Admin only class is the substantive decision.** A draft showing a role removed reveals a planned departure before the person has been told, and there is no version of that leak that is acceptable. The cost — a manager cannot model changes to their own team — is real and accepted.
 - **Cost roll-up is a Tier 1 aggregate over a hierarchy.** In a small branch it approximates individual compensation closely: a manager with two reports whose branch total is visible has effectively disclosed both salaries to anyone who knows one. The roll-up therefore requires Tier 1 access in full, and is not subject to a k-anonymity partial-disclosure model, because a partial answer here is a solvable equation.
 - **The live chart itself is Standard, Tier 0.** Who reports to whom is operational information every employee should be able to see, and the same reasoning [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]] applies to roster visibility applies here.
 - **Commit is audited** per [[VPS-F004_Silent_Audit_Log|VPS-F004]], recording every applied change. A restructure is exactly the operation someone asks about afterwards.
@@ -334,7 +334,7 @@ orgScenario.discard(scenarioId)               -> { success }
 
 **A scenario's Remove never offboards.** It flags an item for HR. A restructure model is a plan; ending employment has legal process attached and runs through the features that own it. Conflating them would let a drag-and-drop gesture end someone's employment.
 
-**Scenarios are HR-restricted, which costs something real.** A manager cannot think out loud about their own team in this tool. Accepted, because the alternative is someone learning about their own redundancy from a chart.
+**Scenarios are Owner and HR Admin only, which costs something real.** A manager cannot think out loud about their own team in this tool. Accepted, because the alternative is someone learning about their own redundancy from a chart.
 
 **Cost roll-up requires full Tier 1 access with no partial-disclosure model.** A branch total over two people is a solvable equation, and k-anonymity does not help where the cohort structure is itself visible.
 

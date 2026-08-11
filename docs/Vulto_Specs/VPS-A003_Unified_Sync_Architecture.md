@@ -76,15 +76,25 @@ Easily conflated, and worth separating cleanly.
 
 The corrected rule: **a Tier 1 document's key is wrapped for exactly the roles its node type's Privacy Class grants read access, per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], and for no others.** Tier 1 means *end-to-end encrypted*. It does not mean *financial*.
 
-The authoritative tier assignment for every node type lives in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]. The mapping from Privacy Class to default tier is mechanical:
+The authoritative tier assignment for every node type lives in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]. The mapping from Privacy Class to default tier is mechanical, and it is **total** — every one of the thirteen classes [[VPS-A004_Graph_Permission_Layer|VPS-A004]] defines appears here, so a newly registered node type always has a default:
 
 | Privacy Class | Default Tier |
 |---|---|
 | Standard | 0 |
+| Recipient-only | 0 |
+| Self only | 0 |
 | Finance-restricted | 1 |
-| HR-restricted, Owner-restricted, Manager-restricted | 2 |
-| Self-only absolute, Sensitive | 3 |
-| Role-dependent, Inherited | Resolved from source, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] Standing Rule 8 |
+| Self and Finance-restricted | 1 |
+| HR-restricted | 2 |
+| Manager-restricted | 2 |
+| Owner and HR Admin only | 2 |
+| HR Admin only | 2 |
+| Owner only | 2 |
+| Sensitive | 3 |
+| Self-only, absolute | 3 |
+| Inherited | Resolved from source, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] Standing Rule 8 |
+
+**This produces a default, not the assignment.** Because Privacy Class and Tier are orthogonal, a node may legitimately record a tier this table does not produce — HeadcountSnapshot is the one current case, and [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] marks it. A departure is registered and carries its reason; an unmarked mismatch is a defect.
 
 **A single node may straddle tiers.** Employee is the clearest case: operational fields in a Tier 0 document, compensation fields in a separate Tier 1 document, both carrying the same `employee_id` so the local index stitches them into one record on any device authorized for both — and omits the Tier 1 fields entirely on a device that is not, producing the structural absence [[VPS-A004_Graph_Permission_Layer|VPS-A004]] requires. Pitch, Contract, Requisition, Offer and HRCase follow the same pattern.
 

@@ -33,7 +33,7 @@ It is included because its absence forces the most legally sensitive records in 
 
 ## What It Is
 
-A structured, HR-restricted record of a formal disciplinary or grievance process: who it concerns, what stage it is at, what meetings occurred, what was decided, and what documents were produced.
+A structured, Owner-and-HR-Admin-only record of a formal disciplinary or grievance process: who it concerns, what stage it is at, what meetings occurred, what was decided, and what documents were produced.
 
 ---
 
@@ -57,7 +57,7 @@ The consequences are specific.
 
 An HR Admin opens a case: the type — disciplinary or grievance — the employee it concerns, the date raised, a summary, and where relevant the policy version at issue per [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]].
 
-**A grievance may be raised by an employee against another**, in which case the case concerns the subject and records the raiser. Both are HR-restricted, and neither sees the other's involvement recorded except as the process itself discloses.
+**A grievance may be raised by an employee against another**, in which case the case concerns the subject and records the raiser. Both are Owner and HR Admin only, and neither sees the other's involvement recorded except as the process itself discloses.
 
 ### Recording events
 
@@ -132,7 +132,7 @@ Desktop only below 1024px, and it says so. This is not a surface for a phone.
 
 ### HRCase
 
-Split: identifying half HR-restricted Tier 2, content half Tier 1.
+Owner and HR Admin only on both halves. Split by tier: identifying half Tier 2, content half Tier 1.
 
 ```
 case_id:              UUID v4

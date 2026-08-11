@@ -65,6 +65,10 @@ Every decision this interceptor makes — every denial at any tier, and every su
 
 Unless a node type appears in the detailed matrix with an explicit override, this table is its grant.
 
+**This table is the closed set of Privacy Classes.** [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s registry may carry no value that is not a row here, spelled identically, and a class is added by adding a row rather than by describing one in a registry cell. Thirteen classes, and every one of them is in use.
+
+**A class name is not a description of who reads the node.** `HR-restricted` grants Finance Admin `Read` and grants the subject `Read (own only)`; a node genuinely restricted to two roles is `Owner and HR Admin only`. The distinction reads as pedantic and is not: four documents used the first name while describing the second, and on OrgScenario that would have granted a manager's direct report read access to a draft restructure removing their own role.
+
 `Full` = create, read, update, soft-delete. `Read` = read only. `None` = **structurally absent** from query results, not hidden and not redacted.
 
 | Privacy Class | Owner | HR Admin | Finance Admin | Manager | Team Member |
@@ -76,13 +80,11 @@ Unless a node type appears in the detailed matrix with an explicit override, thi
 | Owner and HR Admin only | Full | Full | None | None | None |
 | HR Admin only | Read | Full | None | None | None |
 | Owner only | Full | None | None | None | None |
-| Owner-restricted | Full | None | None | None | None |
 | Sensitive | Full (aggregate only) | Full (aggregate only) | None | None | Full (own only) |
 | Self and Finance-restricted | Full | Full | Full | None | Read (own only) |
 | Self only | None | None | None | None | Full (own only) |
 | Self-only, absolute | **None, no exceptions** | None | None | None | Full (own only) |
 | Recipient-only | Own only | Own only | Own only | Own only | Own only |
-| Role-dependent | Follows the Privacy Class of the nodes the record references | | | | |
 | Inherited | Follows the referenced or parent node's Privacy Class | | | | |
 
 **Three recurring override patterns** account for nearly every row in the matrix below, and are named here so that a new feature applies them on sight rather than rediscovering them:
@@ -144,6 +146,7 @@ Only node types whose behavior differs from their Privacy Class default, or whos
 | AuditEntry | Full | Full | None | None | None |
 | ImportBatch | Full | Full | None | None | None |
 | ErasureRequest, RetentionPolicy | Full | Full | None | None | None |
+| ApplicationActivation | Full | Read | Read | Read | Read |
 | Notification | Recipient-only, absolute. No role sees another user's | | | | |
 | GraphReference | Visible only where the user has Read on both source and target, per [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | | | | |
 | ApprovalStage | Inherits the grant of the record it gates | | | | |

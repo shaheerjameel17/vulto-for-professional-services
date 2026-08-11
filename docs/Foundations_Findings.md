@@ -15,17 +15,20 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 
 | | Finding | Owner document | State |
 |---|---|---|---|
-| F54 | Privacy Class is prose, not a closed enum | `VPS-A002`, `VPS-A004` | **Open** — FDN-74 |
-| F55 | HeadcountPlan's Privacy Class contradicts its own feature spec | `VPS-A002` | **Open, resolution decided** — FDN-74 |
-| F56 | HRCase's content half claims a narrowing no document implements | `VPS-A002` | **Open, resolution decided** — FDN-74 |
-| F57 | Five Privacy Classes have no Tier default | `VPS-A003` | **Open** — FDN-74 |
-| F58 | Nothing distinguishes a deliberate tier departure from an error | `VPS-A002` | **Open** — FDN-74 |
-| F59 | `Owner only` and `Owner-restricted` are one class under two names | `VPS-A004` | **Open** — FDN-74 |
+| F54 | Privacy Class is prose, not a closed enum | `VPS-A002`, `VPS-A004` | **Closed by FDN-74** — 24 strings resolved to a closed set of 13 |
+| F55 | HeadcountPlan's Privacy Class contradicts its own feature spec | `VPS-A002` | **Closed by FDN-74** — `Finance-restricted`, per `VRS-F027` |
+| F56 | "HR-restricted" is used in four documents to mean a narrower class | `VPS-A002`, `VRS-F037`, `VRS-F046`, `VRS-F057` | **Closed by FDN-74** — labels corrected to the behavior all four already described |
+| F57 | Five Privacy Classes have no Tier default | `VPS-A003` | **Closed by FDN-74** — the mapping is now total |
+| F58 | Nothing distinguishes a deliberate tier departure from an error | `VPS-A002` | **Closed by FDN-74** — `†`, and exactly one departure |
+| F59 | `Owner only` and `Owner-restricted` are one class under two names | `VPS-A004` | **Closed by FDN-74** — `Owner-restricted` removed |
 | F60 | Reified relationships have no registered edges | `VPS-A002` | **Open** — FDN-75 |
 | F61 | The edge registry does not state its own key | `VPS-A002` | **Open** — FDN-75 |
-| F62 | A Rule 11 fact is cited as Rule 10 | `VPS-A002` | **Open** — FDN-74 |
+| F62 | A Rule 11 fact is cited as Rule 10 | `VPS-A002` | **Closed by FDN-74** |
 | F63 | `VPS-A001` describes one build's job in terms of another's | `VPS-A001` | **Open** — FDN-46 |
 | F64 | `CLAUDE.md` and `AGENTS.md` are byte-identical duplicates describing a closed phase | Repository | **Closed by FDN-76** |
+| F65 | `Role-dependent` was a third name for `Inherited` | `VPS-A004` | **Closed by FDN-74** — consolidated |
+
+**After FDN-74 the registry parses.** 110 rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
 ---
 
@@ -58,9 +61,11 @@ Three facts are being conflated, and each is enforced by a different mechanism a
 * **Scope shape** — over which *instances* a grant applies: own only, direct reports, team, recipient. Currently expressed as parentheticals inside `VPS-A004`'s matrix cells, and leaking into `VPS-A002`'s class strings.
 * **Write authority** — which *application* may write. Owned by `VPS-A002`'s Cross-Suite Node Ownership table, enforced by `VPS-F008` at write time.
 
-**Proposed correction.** `VPS-A004` owns the closed set of Privacy Classes and states that it is closed. `VPS-A002`'s Privacy Class column carries exactly one member of that set per node half, and gains separate columns for the facts currently smuggled into it. Where a node departs from its class's default grants, the departure lives in `VPS-A004`'s matrix — which already carries every one of these overrides — rather than being restated as an adjective in `VPS-A002`.
+**Correction.** `VPS-A004` now states that its table is the closed set — thirteen classes, after F59 and F65 removed two duplicate names. `VPS-A002`'s Privacy Class column carries exactly one member of that set per node half, and a new section defines the column's contract: which facts live in it, which were moved out and where they went, and the two notations it uses.
 
-Nothing in the permission model changes. Every grant this correction produces is a grant one of the three documents already states. What changes is that the value becomes checkable.
+Each extracted fact went to the layer that enforces it. ApplicationActivation's Owner-write restriction became a row in `VPS-A004`'s matrix. Project's *"shared with Vulto Projects"* was already stated by the Cross-Suite Node Ownership table and was simply removed — Standing Rule 7 requires one answer, and this was a second. UtilizationSnapshot's *"Employee-shaped scoping"* was a restatement of `Standard`'s own default and was removed. TimesheetAnomalyFlag's and ProbationCheckIn's overrides were already in `VPS-A004`'s matrix and already named there as the signal-clearing pattern.
+
+**Nothing in the permission model changed.** Every grant after this correction is a grant one of the three documents already stated. What changed is that the value became checkable — and checking it immediately produced F56, which had been sitting in four documents since they were written.
 
 ---
 
@@ -82,28 +87,38 @@ The string was a plausible error: it reads like a description of who the plan is
 
 ---
 
-### F56 — HRCase's content half claims a narrowing no document implements
+### F56 — "HR-restricted" is used in four documents to mean a class that is not HR-restricted
 
-`VPS-A002` line 186 records HRCase as `HR-restricted identifying; content narrower still`.
+**This began as one wrong table cell and turned out to be a vocabulary problem.** It is recorded at the length it is because the correction touched four documents, and because the failure mode it describes will recur the moment someone registers a node type for a record that feels like HR's business.
 
-There is no narrowing.
+`VPS-A004` defines `HR-restricted` as a specific grant: Owner `Full`, HR Admin `Full`, **Finance Admin `Read`**, Manager `None`, **Team Member `Read (own only)`**.
 
-* `VPS-A004` gives HRCase identifying and HRCase content **identical** grants: Full, Full, None, None, None.
-* `VRS-F046` line 191, which owns the node, states the reader set once and unambiguously: *"The reader set is Owner and HR Admin only."*
-* `VRS-F046` line 119 states it again for the restricted render: *"Structurally absent for every role but Owner and HR Admin."*
-* `VPS-A002`'s own prose, three rows below the table cell, says the two halves *"follow the identical pattern."*
+Four documents used the name to mean *restricted to HR* — Owner and HR Admin, nobody else. That is a different class, and `VPS-A004` already defines it: `Owner and HR Admin only`. The two differ in exactly the two columns that matter most, and in each case the document's own behavioral prose describes the narrow class while its label names the wide one.
 
-Four statements say the halves are the same. One table cell says one is narrower.
+| Node | The label said | The same document's behavior said | Corrected to |
+|---|---|---|---|
+| HRCase, CaseEvent | `HR-restricted` identifying, *"content narrower still"* | `VRS-F046` line 191: *"The reader set is Owner and HR Admin only."* Line 195: **the subject of a case cannot read the case record**, with three paragraphs of reasoning | `Owner and HR Admin only`, both halves |
+| OrgScenario | `HR-restricted`, in six places including a section heading | `VRS-F037` G08: *"Managers and Team Members have no access, including to scenarios covering their own team"* | `Owner and HR Admin only` |
+| ProbationCheckIn | `HR-restricted; the employee gets None` | `VRS-F057` line 245: *"never seen by its subject."* And `VPS-A004` groups it with BurnoutAlert and TimesheetAnomalyFlag under the signal-clearing pattern, which is an override on **Manager-restricted** | `Manager-restricted` |
 
-The cell is also wrong about the class itself. `HR-restricted` grants Finance Admin `Read` and Team Member `Read (own only)`. Both are `None` here — and the second is the entire point. `VRS-F046` line 195 is explicit: **the subject of a case cannot read the case record**, and lines 197 to 201 give three paragraphs of reasoning for why that is correct and where a jurisdiction's subject-access right is served instead. A class that grants the subject `Read (own only)` is the exact opposite of what the owning document spent a section establishing.
+**OrgScenario is the case that shows why this is not pedantry.** `VRS-F037` spends a section and two decision notes establishing that a draft restructure must not reach the person whose role it removes — *"there is no version of that leak that is acceptable"*. `HR-restricted` grants Team Member `Read (own only)`. Implemented from the label rather than the prose, the class would have granted precisely the read the feature exists to prevent.
 
-**Correction.** HRCase and CaseEvent carry Privacy Class `Owner and HR Admin only` on **both** halves. `VRS-F046` line 135 carries the same error and is corrected with it.
+**ProbationCheckIn fails in the opposite direction.** `HR-restricted` grants Manager `None`. A probation check-in is written by a manager about a direct report. The label would have locked the author out of the record.
 
-**What the split actually is.** The halves differ in Tier — 2 for identifying, 1 for content — and not in Privacy Class. `VRS-F046` line 187 states the principle the split rests on: *"tier model determines protection strength; the reader set derives from Privacy Class."* The content half is Tier 1 because it holds allegations about named individuals and server-readable storage would put a customer's most sensitive employment records in Vulto's plaintext, which line 189 says in as many words. That is a statement about **protection strength**, and it was written into the **reader set** column.
+In all three, `VPS-A004`'s matrix already carried the correct grants. The matrix and the labels have disagreed since both were written, and nothing was positioned to notice, because a Privacy Class that is prose has no checker.
 
-**This is the generalizable finding.** A tier split and a class split are different operations, and the registry's `Split:` notation encourages conflating them. Contract, Offer, Pitch, Requisition and Employee all split *both* — different class and different tier per half. HRCase splits only the tier. The notation gives a reader no way to see the difference, which is how a tier fact ended up in a class column and stayed there.
+**Correction.** The labels are corrected to the class each document already describes, in `VPS-A002` and in `VRS-F037`, `VRS-F046` and `VRS-F057`. **No permission changes anywhere** — every grant after the correction is a grant `VPS-A004`'s matrix already stated. `VPS-A004` gains a sentence saying a class name is not a description of who reads the node, and `VPS-A002` gains the same warning where the column is defined.
+
+#### The original finding, which stands
+
+`VPS-A002` line 186 recorded HRCase as `HR-restricted identifying; content narrower still`. There is no narrowing: `VPS-A004` gives both halves identical grants, and `VPS-A002`'s own prose three rows below the cell says the halves *"follow the identical pattern."*
+
+**What the split actually is.** The halves differ in Tier — 2 and 1 — and not in Privacy Class. `VRS-F046` line 187 states the principle: *"tier model determines protection strength; the reader set derives from Privacy Class."* The content half is Tier 1 because it holds allegations about named individuals and server-readable storage would put a customer's most sensitive employment records in Vulto's plaintext. That is a statement about **protection strength**, written into the **reader set** column.
+
+**The generalizable part.** A tier split and a class split are different operations, and the `Split:` notation encourages conflating them. Employee, Pitch, Contract, Requisition and Offer split both. HRCase and CaseEvent split only the tier. The notation gave a reader no way to see the difference, which is how a tier fact reached a class column and stayed there. `VPS-A002` now says so where splits are introduced.
 
 ---
+
 
 ### F57 — Five Privacy Classes have no Tier default
 
@@ -145,6 +160,23 @@ Identical, adjacent, and one line apart.
 `VPS-A002` uses `Owner only` — IntegrationConfig is the single instance. `VPS-A003`'s tier mapping uses `Owner-restricted`, which no node in the registry carries. So the tier map has a row matching nothing, and the one node that needs that row reaches it only because both names happen to resolve to Tier 2 by coincidence of the author's intent rather than by any stated rule.
 
 **Correction.** One name survives. `Owner only` is the one `VPS-A002` uses and the one that parallels `HR Admin only`, so `Owner-restricted` is removed from `VPS-A004` and `VPS-A003`.
+
+---
+
+### F65 — `Role-dependent` was a third name for `Inherited`
+
+`VPS-A004` defined two adjacent classes:
+
+* `Role-dependent` — *"Follows the Privacy Class of the nodes the record references"*
+* `Inherited` — *"Follows the referenced or parent node's Privacy Class"*
+
+The same mechanism, described twice. Insight carried `Role-dependent`; Document, CustomFieldValue, GraphReference, ReportRun and ApprovalStage carried `Inherited`.
+
+`VPS-A002`'s Standing Rule 8 settles it without ambiguity, and settles it against the split: *"Document, **Insight**, CustomFieldValue, GraphReference, ReportRun and ApprovalStage have no fixed tier: each takes the tier of what it derives from."* All six, named together, governed by one rule. Insight was never doing anything the other five were not.
+
+**The name was also actively misleading.** Every Privacy Class is role-dependent — that is what a Privacy Class is. A reader meeting `Role-dependent` in the registry has no way to know it means *inherited from provenance* rather than *varies by who is asking*, which is the more natural reading and the wrong one.
+
+**Correction.** `Role-dependent` is removed from `VPS-A004`. Insight carries `Inherited`, and `VRS-F055` — which described Insight as *"Role-dependent, no fixed tier, inheriting from what it references"*, using both names in one sentence — now says `Inherited`.
 
 ---
 
@@ -213,3 +245,25 @@ Three statements were stale:
 * **Phase.** Both declared a static prototype with mock data and no backend, and listed a closed seven-item scope.
 
 **The duplication itself is resolved rather than re-synchronized.** `AGENTS.md` is now a symbolic link to `CLAUDE.md`. Two files that must never disagree, kept in agreement by hand, will eventually disagree — which is the same argument `VPS-A001` line 191 makes for one repository over two, applied to two files.
+
+---
+
+## What changed in the specifications
+
+### `VPS-A002`
+A new section, **How the Privacy Class column is written**, defining the column as closed and stating where the three conflated facts now live. The `Class A (half) / Class B (half)` and `Class †` notations. The rule that a split row's identifying half carries its class default while the protected half is the declared split. The distinction between a tier split and a class split, stated where splits are introduced. Twenty-four registry cells rewritten. HeadcountSnapshot's tier departure marked and explained. One citation corrected from Rule 10 to Rule 11.
+
+### `VPS-A004`
+The default mapping table is declared the closed set, and says so. `Owner-restricted` and `Role-dependent` removed as duplicate names. A sentence establishing that **a class name is not a description of who reads the node**, with OrgScenario as the worked example. One matrix row added for ApplicationActivation, carrying the write restriction extracted from `VPS-A002`.
+
+### `VPS-A003`
+The Privacy Class to Tier mapping is now **total** — five missing classes added, and the table reordered by tier so a gap is visible. A statement that the table produces a default rather than the assignment, and that an unmarked mismatch with `VPS-A002` is a defect.
+
+### `VRS-F037`, `VRS-F046`, `VRS-F057`, `VRS-F055`
+Privacy Class labels corrected to the class each document's own behavioral prose already described. Six sites in `VRS-F037` including a section heading and an acceptance criterion, three in `VRS-F046`, two in `VRS-F057`, one in `VRS-F055`.
+
+## What did not change
+
+**No permission grant, anywhere.** Every access decision after this pass is one that `VPS-A004`'s matrix already stated. The corrections moved facts to the layer that enforces them and gave duplicate concepts one name each. A reader who knew the intended behavior before would find nothing new in the behavior — only in whether a machine can now confirm it.
+
+**No tier assignment, except in what it is called.** HeadcountSnapshot was Tier 0 and remains Tier 0; it now says that this is deliberate.

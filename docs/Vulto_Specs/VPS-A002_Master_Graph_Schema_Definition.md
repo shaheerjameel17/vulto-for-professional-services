@@ -114,6 +114,34 @@ Two orthogonal properties govern every node. **Privacy Class** determines who ma
 
 **Field-level tier splitting is an established pattern, not an exception.** Employee, Pitch, Contract, Requisition, Offer and HRCase each carry a Tier 0 or Tier 2 identifying half and a Tier 1 protected half. The rule that produces the split is consistent: *if a field states a compensation figure or a commercial term, it is Tier 1, regardless of what node it sits on.* A signed contract that states a salary receives the same protection as the salary field itself, because the protection followed the figure rather than the container.
 
+**A tier split and a class split are different operations, and a node may have one without the other.** Employee, Pitch, Contract, Requisition and Offer split both: each half carries its own Privacy Class *and* its own tier. HRCase and CaseEvent split only the tier — both halves are readable by the same two roles, and the content half is Tier 1 because it holds allegations about named individuals rather than because a different set of people may read it. Reading the `Split:` notation as implying both is the mistake that put a tier fact in the Privacy Class column and left it there.
+
+---
+
+## How the Privacy Class column is written
+
+The Privacy Class column is **closed**. Every value is exactly one member of the set [[VPS-A004_Graph_Permission_Layer|VPS-A004]] defines, spelled identically. A class is a key into that document's default permission mapping, not a description.
+
+Three separately-enforced facts were previously written into this column and each now lives where it is enforced:
+
+| Fact | Where it lives | Enforced by |
+|---|---|---|
+| Which roles get which grant | this column, plus [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s matrix where a node departs from its class default | [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s query interceptor |
+| Which *instances* a grant covers — own, direct reports, team, recipient | the parentheticals in [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s matrix | the same interceptor |
+| Which *application* may write | the Cross-Suite Node Ownership table below | [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] |
+
+**A departure from a class's default grants is recorded in [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s matrix, never as an adjective here.** `Manager-restricted, Manager gets Full` said in a registry cell what [[VPS-A004_Graph_Permission_Layer|VPS-A004]] already said in a matrix row and named as a recurring pattern, and a fact stated twice is a fact that can disagree with itself.
+
+**Two notations appear in this column.**
+
+`Class A (half) / Class B (half)` — a node whose halves carry different classes. The order matches the `Split:` order in the Tier column.
+
+`Class †` — the recorded tier is a deliberate departure from the default [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] maps this class to. The departure and its reason are stated beneath the table. Without the marker a considered decision is indistinguishable from an error, and a reader checking the registry against [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] has no way to tell which they are looking at.
+
+**On a split row, the identifying half carries its class's default tier and the protected half is the declared split.** `Split:` is itself the declaration, so the protected half needs no `†` — the notation already says a departure is intended. Nine node types split. Every one of them has an identifying half whose tier matches its class default, which is what makes the split legible as a split rather than as two unexplained assignments.
+
+**"HR-restricted" is a class, not a description.** It grants Finance Admin `Read` and grants the subject `Read (own only)`. Four documents used it to mean *restricted to HR*, which is a different and much narrower grant — `Owner and HR Admin only`. Where a document's own behavioral statement said one thing and its class label said another, the behavioral statement was authoritative and the label was corrected.
+
 ---
 
 ## Node type registry
@@ -125,7 +153,7 @@ Nodes marked **A002-owned** have their lifecycle statuses, privacy class and tie
 | Node Type | Lifecycle Statuses | Owner | Privacy Class | Tier |
 |---|---|---|---|---|
 | **User** | Active, Suspended, Deleted | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | Standard | 0 |
-| **Workspace** | Active, Suspended, Canceled | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | Split — see Workspace Configuration Registry | Split: 0 / 2 |
+| **Workspace** | Active, Suspended, Canceled | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | Standard (display) / Owner only (billing) | Split: 0 / 2 |
 | **WorkspaceMembership** | Active, Revoked | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | Standard | 0 |
 | **Device** | Active, Revoked | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | Standard | 0 |
 | **Entity** | Active, Dissolved | [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] | Standard | 0 |
@@ -146,12 +174,12 @@ New. WorkingCalendar defines the working week and holiday set for an Entity; Hol
 
 | Node Type | Lifecycle Statuses | Owner | Privacy Class | Tier |
 |---|---|---|---|---|
-| **Employee** | Active, Inactive, Converted | [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] | Standard for operational; Finance-restricted for compensation | Split: 0 / 1 |
+| **Employee** | Active, Inactive, Converted | [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] | Standard (operational) / Finance-restricted (compensation) | Split: 0 / 1 |
 | **Candidate** | Active, Hired, Rejected, Withdrawn, Converted | [[VRS-F028_Recruitment_Pipeline|VRS-F028]] | Standard | 0 |
 | **GhostResource** | Active, Promoted, Canceled | [[VRS-F007_Ghost_Resources|VRS-F007]] | Standard | 0 |
 | **Assignment** | Active, Completed, Canceled | [[VRS-F005_The_Bench_Forecast|VRS-F005]] | Standard | 0 |
-| **Project** | Pitch, Active, Completed, Archived | [[VRS-F005_The_Bench_Forecast|VRS-F005]] bootstrap | Standard, shared with [[Vulto Projects]] | 0 |
-| **Pitch** | Active, Won, Lost, Converted | [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] | Standard identifying; Finance-restricted commercial | Split: 0 / 1 |
+| **Project** | Pitch, Active, Completed, Archived | [[VRS-F005_The_Bench_Forecast|VRS-F005]] bootstrap | Standard | 0 |
+| **Pitch** | Active, Won, Lost, Converted | [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] | Standard (identifying) / Finance-restricted (commercial) | Split: 0 / 1 |
 | **Client** | Active, Inactive | [[Vulto Sales]] | Standard | 0 |
 | **OpenRole** | Open, Filled, Canceled | [[VRS-F028_Recruitment_Pipeline|VRS-F028]] | Standard | 0 |
 | **Skill** | Active, Deprecated | [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]] | Standard | 0 |
@@ -170,9 +198,9 @@ Assignment's `effective_billing_rate`, added by [[VRS-F006_Rate_Card_Engine|VRS-
 
 | Node Type | Owner | Privacy Class | Tier |
 |---|---|---|---|
-| Contract | [[VRS-F020_Universal_Contract_Builder|VRS-F020]] | HR-restricted identifying; Finance-restricted content | Split: 2 / 1 |
+| Contract | [[VRS-F020_Universal_Contract_Builder|VRS-F020]] | HR-restricted (identifying) / Finance-restricted (content) | Split: 2 / 1 |
 | SignatureRequest | [[VRS-F021_E-Signature_Native|VRS-F021]] | HR-restricted | 2 |
-| Document | [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] | Provenance-determined — see Standing Rule 8 | Inherited |
+| Document | [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] | Inherited | Inherited |
 | LeavePolicy | [[VRS-F018_Leave_Policy_Engine|VRS-F018]] | Standard | 0 |
 | LeaveRequest | [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]] | Standard | 0 |
 | Departure | [[VRS-F023_Probation_and_Notice_Period_Tracker|VRS-F023]] | HR-restricted | 2 |
@@ -183,28 +211,28 @@ Assignment's `effective_billing_rate`, added by [[VRS-F006_Rate_Card_Engine|VRS-
 | Policy | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Standard | 0 |
 | PolicyAcknowledgment | [[VRS-F044_Policy_Library_and_Acknowledgement|VRS-F044]] | Standard | 0 |
 | WorkAuthorization | [[VRS-F045_Right_to_Work_and_Immigration_Compliance|VRS-F045]] | HR-restricted | 2 |
-| HRCase | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | HR-restricted identifying; content narrower still | Split: 2 / 1 |
-| CaseEvent | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | HR-restricted | Split: 2 / 1 |
-| OrgScenario | [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] | HR-restricted | 2 |
+| HRCase | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | Owner and HR Admin only | Split: 2 / 1 |
+| CaseEvent | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | Owner and HR Admin only | Split: 2 / 1 |
+| OrgScenario | [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] | Owner and HR Admin only | 2 |
 
 Contract's content half is Tier 1 rather than Tier 2 because a generated employment contract states the exact salary figure, which cannot sit at weaker, server-readable protection when that same figure enjoys full end-to-end encryption on the Employee node.
 
 HRCase and CaseEvent follow the identical pattern for a different reason: a disciplinary or grievance narrative contains allegations about named individuals, and is among the most consequential text this product will ever hold.
 
-OrgScenario is HR-restricted rather than Standard because a draft restructure showing a role removed reveals a planned departure before the person concerned has been told.
+OrgScenario is Owner and HR Admin only rather than Standard because a draft restructure showing a role removed reveals a planned departure before the person concerned has been told.
 
 ### Recruitment
 
 | Node Type | Owner | Privacy Class | Tier |
 |---|---|---|---|
-| HeadcountPlan | [[VRS-F027_Headcount_Plan_and_Requisition_Approval|VRS-F027]] | Owner and Finance Admin | 1 |
-| Requisition | [[VRS-F027_Headcount_Plan_and_Requisition_Approval|VRS-F027]] | Standard identifying; Finance-restricted budget | Split: 0 / 1 |
+| HeadcountPlan | [[VRS-F027_Headcount_Plan_and_Requisition_Approval|VRS-F027]] | Finance-restricted | 1 |
+| Requisition | [[VRS-F027_Headcount_Plan_and_Requisition_Approval|VRS-F027]] | Standard (identifying) / Finance-restricted (budget) | Split: 0 / 1 |
 | JobPosting | [[VRS-F029_Careers_Site_and_Job_Distribution|VRS-F029]] | Standard | 0 |
 | TalentPool | [[VRS-F033_Talent_Pool_and_Candidate_CRM|VRS-F033]] | HR-restricted | 2 |
 | Referral | [[VRS-F034_Employee_Referral_Program|VRS-F034]] | Standard | 0 |
 | InterviewRound | [[VRS-F031_Interview_Scheduling_and_Scorecards|VRS-F031]] | HR-restricted | 2 |
 | FeedbackEntry | [[VRS-F031_Interview_Scheduling_and_Scorecards|VRS-F031]] | HR-restricted | 2 |
-| Offer | [[VRS-F032_Offer_Management|VRS-F032]] | HR-restricted identifying; Finance-restricted terms | Split: 2 / 1 |
+| Offer | [[VRS-F032_Offer_Management|VRS-F032]] | HR-restricted (identifying) / Finance-restricted (terms) | Split: 2 / 1 |
 | BackgroundCheckProvider | [[VRS-F035_Background_Check_Integration|VRS-F035]] | HR Admin only | 2 |
 | BackgroundCheckRecord | [[VRS-F035_Background_Check_Integration|VRS-F035]] | HR Admin only | 2 |
 | DraftHiringRecord | [[VRS-F036_Opportunity-to-Draft_Hiring_Trigger|VRS-F036]] | Standard | 0 |
@@ -216,20 +244,22 @@ Referral carries no bonus amount. The amount is a compensation adjustment record
 | Node Type | Owner | Privacy Class | Tier |
 |---|---|---|---|
 | TimesheetEntry | [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] | Standard | 0 |
-| TimesheetAnomalyFlag | [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] | Manager-restricted, Manager gets Full | 2 |
-| UtilizationSnapshot | [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]] | Standard, Employee-shaped scoping | 0 |
+| TimesheetAnomalyFlag | [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] | Manager-restricted | 2 |
+| UtilizationSnapshot | [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]] | Standard | 0 |
 | RevenueGapAlert | [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] | Standard | 0 |
 | SkillGap | [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]] | Standard | 0 |
 | PulseCycle | [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] | Standard | 0 |
-| PulseEntry | [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] | Sensitive, self-only | 3 |
+| PulseEntry | [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] | Sensitive | 3 |
 | PulseAggregateContribution | [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] | Standard | 0 |
-| CoffeePulseEntry | [[VRS-F077_Monthly_Coffee_Pulse|VRS-F077]] | Sensitive, self-only | 3 |
+| CoffeePulseEntry | [[VRS-F077_Monthly_Coffee_Pulse|VRS-F077]] | Sensitive | 3 |
 | SharedCoffeeMoment | [[VRS-F077_Monthly_Coffee_Pulse|VRS-F077]] | Standard | 0 |
 | WellnessAggregateContribution | [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]] | Standard | 0 |
 | BurnoutAlert | [[VRS-F052_Workload_Strain_Signal|VRS-F052]] | Manager-restricted | 2 |
 | FlightRiskSignal | [[VRS-F053_Retention_Risk_Indicator|VRS-F053]] | Owner and HR Admin only | 2 |
-| ProbationCheckIn | [[VRS-F057_Probation_Review_Intelligence|VRS-F057]] | HR-restricted; the employee gets None | 2 |
-| HeadcountSnapshot | [[VRS-F058_People_Analytics_Dashboard|VRS-F058]] | Owner, HR Admin, Finance Admin | 0 |
+| ProbationCheckIn | [[VRS-F057_Probation_Review_Intelligence|VRS-F057]] | Manager-restricted | 2 |
+| HeadcountSnapshot | [[VRS-F058_People_Analytics_Dashboard|VRS-F058]] | HR-restricted | 0 † |
+
+**† HeadcountSnapshot is Tier 0 against a class that maps to Tier 2, and this is deliberate.** The node holds an aggregate headcount count and nothing else. Who may open the analytics view is a permission question, answered by the Privacy Class; how strongly the number is encrypted is a protection question, and a count of employees does not need end-to-end treatment or narrow distribution. This is the only tier departure in the registry.
 
 `PulseAggregateContribution` and `WellnessAggregateContribution` each carry a value with **deliberately no edge to Employee at all**. This is anonymization by structural absence of an identifying link, not by permission rule alone, and it is the mechanism that makes team-level sentiment reporting possible without ever putting a Tier 3 record within reach of a role change.
 
@@ -248,7 +278,7 @@ The earlier registry listed a `WellnessAggregate` node. It is removed: the aggre
 | PaySlip | [[VRS-F062_Payroll_Engine_Core|VRS-F062]] | Self and Finance-restricted | 1 |
 | TaxConfig | [[VRS-F063_Tax_and_Compliance_Configuration|VRS-F063]] | Finance-restricted | 1 |
 | ExchangeRate | [[VRS-F064_Multi-Currency_Payroll|VRS-F064]] | Finance-restricted | 1 |
-| ApprovalStage | [[VRS-F065_Payroll_Approval_Workflow|VRS-F065]] | Inherited from the record it gates | Inherited |
+| ApprovalStage | [[VRS-F065_Payroll_Approval_Workflow|VRS-F065]] | Inherited | Inherited |
 | DisbursementBatch | [[VRS-F066_Disbursement_and_Payment_Adapter|VRS-F066]] | Finance-restricted | 1 |
 | DisbursementInstruction | [[VRS-F066_Disbursement_and_Payment_Adapter|VRS-F066]] | Finance-restricted | 1 |
 | Invoice | [[VRS-F067_Contractor_Invoice_Management|VRS-F067]] bootstrap | Finance-restricted | 1 |
@@ -277,20 +307,20 @@ ApprovalStage is generalized beyond payroll. It gates PayRun ([[VRS-F065_Payroll
 |---|---|---|---|
 | Notification | [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] | Recipient-only | 0 |
 | AuditEntry | [[VPS-F004_Silent_Audit_Log|VPS-F004]] | Owner and HR Admin only | 2 |
-| ImportBatch | [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] | HR Admin and Owner | 2 |
+| ImportBatch | [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] | Owner and HR Admin only | 2 |
 | RetentionPolicy | [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] | Owner and HR Admin only | 2 |
 | ErasureRequest | [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] | Owner and HR Admin only | 2 |
-| Insight | [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] | Role-dependent | Inherited |
+| Insight | [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] | Inherited | Inherited |
 | BriefingNode | [[VRS-F056_Proactive_Daily_Briefing|VRS-F056]] | Self only | 0 |
 | ReportDefinition | [[VRS-F061_Reporting_and_Export_Engine|VRS-F061]] | Standard | 0 |
-| ReportRun | [[VRS-F061_Reporting_and_Export_Engine|VRS-F061]] | Inherited from its content | Inherited |
+| ReportRun | [[VRS-F061_Reporting_and_Export_Engine|VRS-F061]] | Inherited | Inherited |
 | BenchmarkRange | [[VRS-F071_Salary_Benchmarking|VRS-F071]] | Finance-restricted | 1 |
 | BenchmarkReference | [[VRS-F072_Agency_Benchmarking|VRS-F072]] | Standard | 0 |
-| ApplicationActivation | [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] | Standard, Owner-write only | 0 |
+| ApplicationActivation | [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] | Standard | 0 |
 | IntegrationConfig | [[VPS-F009_Vulto_Sync_API|VPS-F009]] | Owner only | 2 |
 | CustomFieldDefinition | [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]] | Standard | 0 |
-| CustomFieldValue | [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]] | Inherited from parent node | Inherited |
-| GraphReference | [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | Inherited from source and target | Inherited |
+| CustomFieldValue | [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]] | Inherited | Inherited |
+| GraphReference | [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | Inherited | Inherited |
 | ClientPortalAccess | [[Vulto Comms]] | HR Admin only | 2 |
 
 Notification's recipient-only class is an access shape distinct from every other privacy class: no role, including Owner, reads another user's notifications.
@@ -476,7 +506,7 @@ Registered ahead of implementation so that [[VRS-F005_The_Bench_Forecast|VRS-F00
 | **Brief** | Draft, Agreed, Superseded | [[VPJ-F005]] | Standard | 0 |
 | **Approval** | Pending, Approved, RevisionRequested | [[VPJ-F010]] | Standard | 0 |
 | **RevisionRound** | Open, Closed | [[VPJ-F012]] | Standard | 0 |
-| **ChangeOrder** | Draft, Sent, Accepted, Rejected | [[VPJ-F013]] | Standard identifying; Finance-restricted commercial | Split: 0 / 1 |
+| **ChangeOrder** | Draft, Sent, Accepted, Rejected | [[VPJ-F013]] | Standard (identifying) / Finance-restricted (commercial) | Split: 0 / 1 |
 | **ProjectBudget** | Active, Superseded | [[VPJ-F014]] | Finance-restricted | 1 |
 | **ProjectTemplate** | Active, Archived | [[VPJ-F016]] | Standard | 0 |
 | **ClientStakeholder** | Active, Inactive | [[VPJ-F018]] | Standard | 0 |
@@ -642,7 +672,7 @@ Loro stores node properties as CRDT Maps, which are schema-flexible at the stora
 
 **`WellnessAggregate` is removed from the registry.** It is a computed view, not a stored node, and registering it would have obliged an implementer to build one.
 
-**Four k-anonymity thresholds become one mechanism**, per Rule 10.
+**Four k-anonymity thresholds become one mechanism**, per Rule 11.
 
 **Twenty-four node types are added** for the features introduced in [[VRS-001_Feature_Register|VRS-001]], each classified against the same tier-splitting rule already established rather than a new one.
 

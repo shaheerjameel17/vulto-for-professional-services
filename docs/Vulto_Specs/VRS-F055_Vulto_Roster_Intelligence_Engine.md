@@ -93,7 +93,7 @@ Inline cards work unchanged. The list stacks below 1024px.
 
 ### The Insight schema
 
-Role-dependent, no fixed tier, inheriting from what it references.
+Inherited, with no fixed tier, resolved from what it references.
 
 ```
 insight_id:      UUID v4

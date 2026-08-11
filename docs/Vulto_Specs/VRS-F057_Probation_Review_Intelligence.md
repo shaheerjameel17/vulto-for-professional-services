@@ -121,7 +121,7 @@ Works unchanged. Logging a check-in works at 375px, deliberately — the observa
 
 ### The ProbationCheckIn schema
 
-HR-restricted, Tier 2.
+Manager-restricted, Tier 2.
 
 ```
 check_in_id:        UUID v4
@@ -242,7 +242,7 @@ probationReview.getContext(employeeId) -> {
 
 - **ProbationCheckIn is deliberately withheld from the employee it concerns.** These are a manager's working, sometimes preliminary observations, not a finalized shared assessment — the same distinction [[VRS-F039_Performance_Review_Cycle|VRS-F039]] draws between an in-progress and a submitted review, applied to a lighter record.
 - **The compounding pattern lives in [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] on purpose.** Building it here would have quietly reproduced exactly the cross-signal reasoning Standing Rule 7 concentrates in one reviewed place, and it would have been the easiest place in the whole set to do so without anyone noticing.
-- **A flagged check-in is a consequential record.** Written in seconds, read at a decision that may end someone's employment, and never seen by its subject. It is Tier 2, HR-restricted, and audited on access like any other Tier 2 record — but the honest position is that its weight at decision time exceeds the care with which it was written, and a manager should know that when writing one.
+- **A flagged check-in is a consequential record.** Written in seconds, read at a decision that may end someone's employment, and never seen by its subject. It is Tier 2, Manager-restricted, and audited on access like any other Tier 2 record — but the honest position is that its weight at decision time exceeds the care with which it was written, and a manager should know that when writing one.
 
 ---
 
