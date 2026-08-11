@@ -71,6 +71,31 @@ Unless a node type appears in the detailed matrix with an explicit override, thi
 
 `Full` = create, read, update, soft-delete. `Read` = read only. `None` = **structurally absent** from query results, not hidden and not redacted.
 
+**A denial has two possible outcomes, and they are not interchangeable.** [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] renders them differently because they leak differently:
+
+| Outcome | The query returns | Renders as | Used when |
+|---|---|---|---|
+| `None` | nothing — the row is absent as though it did not exist | structurally absent | the *existence* of the record is itself the sensitive fact |
+| `Restricted` | the record's existence, with its content withheld | visibly restricted, per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] | existence is unremarkable; only the content is sensitive |
+
+**`None` is the default and remains what every cell in the tables below means.** `Restricted` is used only where a document explicitly says so. A cell reading `None` is structural absence, without exception — reading it as "hidden" is the false-security model this document's Decision prohibits.
+
+---
+
+## Subject exclusion
+
+A reader set names roles. For most node types that is sufficient. For a record *about a person*, it is not: the person the record concerns may hold one of the roles that reads it.
+
+**Where a node type registers a subject exclusion, the reader set is its effective grant minus any person who is the subject of that record.** This is a filter applied when the reader set is resolved, not a new Privacy Class and not a parallel mechanism — it composes with the resolution [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s A003-T06 already performs.
+
+**The exclusion makes a role-holder equal to everyone else, not less than them.** [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] establishes that the subject of a case cannot read it, so that an investigating officer can take honest notes. An Owner who is the subject of a case *is* a subject. Writing the reader set as a fixed list of roles rather than "those roles, minus whoever this record concerns" granted the Owner a privilege no other employee has, in the one record type where privilege is least defensible.
+
+**Registered subject exclusions.** HRCase and CaseEvent, both halves, excluding the Employee named by `case_concerns` — per [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]. A node type not listed here has no exclusion.
+
+**A subject excluded from a record still sees that it exists**, as `Restricted` rather than `None`, unless the owning document says otherwise. Every other employee facing a formal procedure is told one is underway, because the procedure requires it; and a workspace administrator who cannot account for a record their own workspace holds has a governance problem under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] and under statutory access rights. Visible-but-unreadable is both fairer and cleaner than hidden.
+
+**Where excluding the subject empties the reader set, the write is refused.** See *Refusal when a reader set would be empty* below.
+
 | Privacy Class | Owner | HR Admin | Finance Admin | Manager | Team Member |
 |---|---|---|---|---|---|
 | Standard | Full | Full | Read | Full (direct reports) | Read (own + team) |
@@ -235,6 +260,20 @@ This check runs inside the same interceptor, immediately after the role check an
 
 ---
 
+## Refusal when a reader set would be empty
+
+**A third gate, and a different kind from the two above.** Both existing write gates ask about the *actor* — what role holds, which application is authoritative. This one asks about the *resulting record*: would creating it produce a node that nobody can read.
+
+That becomes possible once subject exclusion exists. A workspace whose only Owner and only HR Admin are the same person, or where the subject of a case is the sole remaining reader, resolves to a reader set of nobody.
+
+**Where a write would produce a Tier 1 or Tier 3 node with an empty reader set, the interceptor refuses it.** The refusal states plainly that the workspace has no independent reader for a record concerning this person, and that the matter requires escalation outside the product.
+
+**The product must not pretend it can hold a confidential record with no confidential reader.** Encrypting to nobody is theater: it produces a record that exists, consumes a key, appears in the audit log, and can never be opened by anyone — while presenting to the person who created it as though the matter has been handled. A firm in that position needs an external HR consultant or a non-executive director, and **software cannot manufacture independence that the organization does not have.** Refusing is the honest answer and the only one that leaves the firm looking for the right one.
+
+This gate runs after role permission and write authority have both passed. It never widens a write; it only refuses one those two would have allowed.
+
+---
+
 ## Technical specifications
 
 | ID | Specification |
@@ -254,6 +293,9 @@ This check runs inside the same interceptor, immediately after the role check an
 | A004-T13 | An aggregate below threshold MUST be suppressed entirely. Rounding, noising or approximating a sub-threshold aggregate is prohibited |
 | A004-T14 | A filter reducing a cohort by fewer than `k` members MUST return the unfiltered aggregate and indicate that it has done so |
 | A004-T15 | Aggregates MUST be computed over the filtered cohort directly. Deriving one aggregate by subtracting another is prohibited |
+| A004-T16 | For a node type registering a subject exclusion, the resolved reader set MUST exclude the person that record concerns, at both the query layer and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s key-wrapping layer, and MUST be re-resolved when the subject changes or a role changes. A person becoming a subject while already holding a wrapped key is a revocation event under A003-T16 |
+| A004-T17 | The interceptor MUST refuse a write that would produce a Tier 1 or Tier 3 node with an empty reader set, after role permission and write authority have both passed. Creating a record no one can read is prohibited |
+| A004-T18 | A denial MUST resolve to `None` or `Restricted`, and the two MUST render as [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s structurally-absent and visibly-restricted treatments respectively. `Restricted` MUST be used only where a specification states it; every unqualified `None` in this document is structural absence |
 
 ---
 

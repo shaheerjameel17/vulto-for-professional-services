@@ -91,7 +91,7 @@ A case closes with an outcome from a fixed set, plus free-text detail. Closed ca
 | Case detail | Content | One case, its timeline, its documents |
 | Add event | Modal | A meeting or decision |
 
-**There is no employee-facing surface.** A case does not appear on the employee's profile, in [[VRS-F050_Employee_Self-Service_Portal|VRS-F050]]'s self-service portal, or anywhere the subject can reach — a decision explained under Security below.
+**There is no employee-facing surface carrying case content.** A case does not appear on the employee's profile, in [[VRS-F050_Employee_Self-Service_Portal|VRS-F050]]'s self-service portal, or anywhere the subject can read it — a decision explained under Security below. A subject does see that a case concerning them exists, as a visibly-restricted record they cannot open.
 
 ### Layout and components
 
@@ -116,7 +116,8 @@ Standard bindings. No shortcuts for opening or closing a case.
 | State | Treatment |
 |---|---|
 | Syncing | Skeleton |
-| Restricted | Structurally absent for every role but Owner and HR Admin. Absent for the subject |
+| Restricted | Structurally absent for every role but Owner and HR Admin |
+| Restricted, subject-excluded | The subject sees the case exists and cannot open it: *"Restricted — this record concerns you."* Applies whatever role they hold |
 | Aged out | Cases outside [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 1 window render dashed with **Fetch** |
 | Overdue | A stage past its target renders `attention` with the days stated |
 | Empty | *No open cases.* Stated plainly |
@@ -188,7 +189,43 @@ note:          text
 
 A case narrative contains allegations about named individuals. Server-readable storage — Tier 2 — would mean Vulto's own infrastructure holds, in plaintext, a customer's most sensitive employment records. Tier 1 makes them unreadable to Vulto by construction.
 
-**The reader set is Owner and HR Admin only.** Not Finance Admin, despite Tier 1's historical association with financial data — which is precisely the conflation [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] was corrected to prevent.
+**The reader set is Owner and HR Admin only, minus whoever the case concerns.** Not Finance Admin, despite Tier 1's historical association with financial data — which is precisely the conflation [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] was corrected to prevent. And not the subject, **whatever role the subject holds.**
+
+### An Owner who is the subject is a subject
+
+The reader set was previously written as a fixed list of roles. That is wrong for a record *about a person*, because the person it concerns may hold one of those roles — and in the firms this product is built for, usually does. A professional services firm of fifteen to sixty people is typically founder-led, and [[VPS-A004_Graph_Permission_Layer|VPS-A004]] caps Owner at three per workspace. Written as a role list, a grievance raised against the founder was read, by construction, by the founder.
+
+**The correction is not a new privilege for the subject. It is the removal of one.** This section already establishes that a subject cannot read their own case, so that an investigating officer can take honest notes. An Owner who is the subject of a case is a subject. The defect was granting them an exemption no other employee has, in the one record type where an exemption is least defensible.
+
+Implemented as [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s **subject exclusion**: a filter on reader-set resolution, applied at both the query layer and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s key-wrapping layer, removing the Employee named by `case_concerns`. Not a new Privacy Class, and not a mechanism this feature implements for itself. It applies to HRCase and CaseEvent, both halves.
+
+A person who becomes a subject while already holding a wrapped key has that key entry destroyed and a device wipe fired, per A003-T16 — which already treats any change removing Tier 1 access as a revocation, not only offboarding.
+
+### The excluded subject sees that a case exists
+
+**They see it exists. They cannot open it.** Rendered as [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s visibly-restricted treatment, with the subject-excluded copy: *"Restricted — this record concerns you."* Not structural absence.
+
+Two reasons, and they point the same way. **Every other employee facing a formal procedure is told one is underway**, because a fair procedure requires it — concealing the existence of a case from its subject is not a protection this feature ever offered anyone else. And **a workspace administrator who cannot account for a record their own workspace holds has a governance problem**, under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] and under statutory access rights, that hiding the record makes worse rather than better.
+
+Visible-but-unreadable is fairer than hidden, and it is also the honest rendering: the record does exist.
+
+### Creating a case with no reader is refused
+
+Excluding the subject can empty the reader set — a workspace whose only Owner and only HR Admin are the same person, and a case concerning them.
+
+**In that situation case creation is refused at the write layer**, per A004-T17, with the interface stating plainly that the workspace has no independent reader for a case concerning this person and that the matter requires escalation outside the product.
+
+**This product must not pretend it can hold a confidential record with no confidential reader.** Encrypting to nobody is theater. It produces a record that exists, consumes a key, appears in the audit log, and can never be opened by anyone — while presenting to whoever created it as though the matter has been handled, which is worse than refusing. A firm in that position needs an external HR consultant or a non-executive director, and **software cannot manufacture independence that the organization does not have.**
+
+Refusing is the honest answer, and the only one that leaves the firm looking for the right one.
+
+### Export carries ciphertext, and needs no special case
+
+An excluded subject cannot decrypt the case, so it requires nothing of [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. A workspace export runs client-side on an authorized device; a device excluded from this document is not authorized for it, and the export carries ciphertext the subject cannot read. That falls out of the encryption model rather than being arranged, which is the property worth having.
+
+### What this does not settle
+
+**Whether a jurisdiction requires an escalation route that refusal does not satisfy is a legal question this product does not answer.** A firm with no independent reader may be under an obligation that "we refused to create the record" does not discharge. The refusal is the honest engineering answer to an organizational gap; it is not a compliance position, and it is recorded here as a stated limit rather than left as a silence.
 
 ### The subject's access
 
@@ -240,6 +277,9 @@ hrCase.getTimeline(caseId) -> { case, events }
 |---|---|
 | G01 | HRCase and CaseEvent carry the schemas above, split Tier 2 identifying and Tier 1 content |
 | G02 | The Tier 1 reader set is Owner and HR Admin only, derived from Privacy Class per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], never from tier |
+| G11 | The reader set excludes the Employee named by `case_concerns`, whatever role that person holds, at both the query layer and the key-wrapping layer |
+| G12 | An excluded subject sees that a case concerning them exists and cannot open it. Structural absence is not used |
+| G13 | Case creation is refused where excluding the subject would leave no reader, with escalation outside the product stated plainly |
 | G03 | `case_concerns` connects HRCase to its subject. `event_in` connects CaseEvent to its case |
 | G04 | The subject of a case has no read access to the case record. Access rights, where a jurisdiction grants them, are exercised through [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] |
 | G05 | Stage deadlines count working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] and are advisory. No stage transition is ever blocked by one |

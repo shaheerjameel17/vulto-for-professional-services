@@ -184,6 +184,10 @@ Two treatments, and the choice between them is a security decision rather than a
 
 **Visibly restricted** where the existence of the data is unremarkable but its content is not — a salary field, an HR-restricted contract. Rendered with a solid 1px `border-default`, `bg-subtle`, a 16px lock icon and `small` `text-tertiary` copy naming the role that would have access: *"Visible to Finance Admin."* Naming the role tells the person who to ask, which converts a dead end into a next step.
 
+**Where the reader is excluded as a person rather than by role, the copy names the exclusion instead of a role.** [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s subject exclusion removes the person a record concerns from its readers, including where they hold a role that otherwise reads it. *"Visible to Owner and HR Admin"* rendered to an Owner is not a next step, it is a contradiction. The copy states the reason: *"Restricted — this record concerns you."*
+
+Naming the reason rather than a role is right for the same purpose the role-naming convention serves. There is no one to ask, and implying otherwise would send someone to request access to a case about themselves.
+
 **No action is offered.** There is no request-access button anywhere in this product. Access is granted by role, roles are managed in [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]], and a button implying otherwise would manufacture a workflow that does not exist.
 
 Every restricted render, of either kind, writes to [[VPS-F004_Silent_Audit_Log|VPS-F004]]'s audit log as a permission denial. The user is not told this, because telling them would be noise; the record exists for the audit, not the interface.
@@ -195,6 +199,7 @@ Every restricted render, of either kind, writes to [[VPS-F004_Silent_Audit_Log|V
 | Syncing | none | `bg-subtle` | none | none | Waiting |
 | Aged out | 1px dashed `border-strong` | `bg-subtle` | *"Outside your local history window."* | **Fetch** | Fetching |
 | Restricted | 1px solid `border-default` | `bg-subtle` | *"Visible to {role}."* | none | Role change |
+| Restricted, subject-excluded | 1px solid `border-default` | `bg-subtle` | *"Restricted — this record concerns you."* | none | Never, while they are the subject |
 | Restricted, sensitive | — | — | — | — | Nothing rendered |
 
 No feature may invent a fourth state, and no feature may substitute one of these for another. A feature that renders a permission denial as a skeleton has told the user to wait for something that will never arrive.
