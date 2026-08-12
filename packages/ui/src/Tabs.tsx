@@ -68,13 +68,7 @@ export function Tabs({ items, value, onChange, children }: TabsProps) {
   );
 }
 
-export function TabPanel({
-  value,
-  children,
-}: {
-  value: string;
-  children: ReactNode;
-}) {
+export function TabPanel({ value, children }: { value: string; children: ReactNode }) {
   return (
     <RadixTabs.Content value={value} className="pt-6">
       {children}

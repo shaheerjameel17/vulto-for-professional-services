@@ -2,8 +2,21 @@
 
 import * as RadixPopover from "@radix-ui/react-popover";
 import * as RadixSelect from "@radix-ui/react-select";
-import { CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react";
-import { useEffect, useId, useMemo, useState, type KeyboardEventHandler, type Ref } from "react";
+import {
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useState,
+  type KeyboardEventHandler,
+  type Ref,
+} from "react";
 import { Button } from "./Button";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
@@ -21,8 +34,18 @@ export type DatePickerProps = {
 };
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
@@ -37,7 +60,8 @@ function parseIso(value: string) {
     date.getUTCFullYear() !== year ||
     date.getUTCMonth() !== month ||
     date.getUTCDate() !== day
-  ) return null;
+  )
+    return null;
   return { year, month, day };
 }
 
@@ -140,27 +164,67 @@ export function DatePicker({
               className="z-50 w-tooltip rounded-lg border border-border-default bg-bg-raised p-3 elevation-overlay"
             >
               <div className="mb-3 flex items-center gap-2">
-                <Button size="sm" variant="ghost" icon={ChevronLeft} aria-label="Previous month" onClick={() => moveMonth(-1)} />
-                <PickerSelect value={String(month)} onChange={(next) => setMonth(Number(next))} options={MONTHS.map((name, index) => ({ value: String(index), label: name }))} label="Month" />
-                <PickerSelect value={String(year)} onChange={(next) => setYear(Number(next))} options={years.map((item) => ({ value: String(item), label: String(item) }))} label="Year" />
-                <Button size="sm" variant="ghost" icon={ChevronRight} aria-label="Next month" onClick={() => moveMonth(1)} />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={ChevronLeft}
+                  aria-label="Previous month"
+                  onClick={() => moveMonth(-1)}
+                />
+                <PickerSelect
+                  value={String(month)}
+                  onChange={(next) => setMonth(Number(next))}
+                  options={MONTHS.map((name, index) => ({
+                    value: String(index),
+                    label: name,
+                  }))}
+                  label="Month"
+                />
+                <PickerSelect
+                  value={String(year)}
+                  onChange={(next) => setYear(Number(next))}
+                  options={years.map((item) => ({
+                    value: String(item),
+                    label: String(item),
+                  }))}
+                  label="Year"
+                />
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  icon={ChevronRight}
+                  aria-label="Next month"
+                  onClick={() => moveMonth(1)}
+                />
               </div>
               <div className="grid grid-cols-7 gap-1">
                 {WEEKDAYS.map((weekday) => (
-                  <Text key={weekday} variant="micro" className="flex size-control items-center justify-center text-text-tertiary">
+                  <Text
+                    key={weekday}
+                    variant="micro"
+                    className="flex size-control items-center justify-center text-text-tertiary"
+                  >
                     {weekday}
                   </Text>
                 ))}
                 {cells.map((day, index) => {
-                  const selected = day !== null && parsed?.year === year && parsed.month === month && parsed.day === day;
-                  return day === null ? <span key={`empty-${index}`} className="size-control" /> : (
+                  const selected =
+                    day !== null &&
+                    parsed?.year === year &&
+                    parsed.month === month &&
+                    parsed.day === day;
+                  return day === null ? (
+                    <span key={`empty-${index}`} className="size-control" />
+                  ) : (
                     <button
                       key={day}
                       type="button"
                       onClick={() => choose(day)}
                       className={cx(
                         "flex size-control items-center justify-center rounded-full font-ui text-small motion-fast transition-colors",
-                        selected ? "bg-brand-600 text-text-inverse" : "text-text-primary hover:bg-bg-hover",
+                        selected
+                          ? "bg-brand-600 text-text-inverse"
+                          : "text-text-primary hover:bg-bg-hover",
                       )}
                     >
                       {day}
@@ -172,24 +236,53 @@ export function DatePicker({
           </RadixPopover.Portal>
         </RadixPopover.Root>
       </div>
-      {helperText ? <Text id={`${id}-help`} variant="small" className="text-text-secondary">{helperText}</Text> : null}
+      {helperText ? (
+        <Text id={`${id}-help`} variant="small" className="text-text-secondary">
+          {helperText}
+        </Text>
+      ) : null}
     </div>
   );
 }
 
-function PickerSelect({ value, onChange, options, label }: { value: string; onChange: (value: string) => void; options: Array<{ value: string; label: string }>; label: string }) {
+function PickerSelect({
+  value,
+  onChange,
+  options,
+  label,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: Array<{ value: string; label: string }>;
+  label: string;
+}) {
   return (
     <RadixSelect.Root value={value} onValueChange={onChange}>
-      <RadixSelect.Trigger aria-label={label} className="flex h-control min-w-0 flex-1 items-center justify-between gap-1 rounded-full bg-bg-surface px-2 font-ui text-small text-text-primary hover:bg-bg-hover">
+      <RadixSelect.Trigger
+        aria-label={label}
+        className="flex h-control min-w-0 flex-1 items-center justify-between gap-1 rounded-full bg-bg-surface px-2 font-ui text-small text-text-primary hover:bg-bg-hover"
+      >
         <RadixSelect.Value />
         <Icon icon={ChevronDown} className="text-text-tertiary" />
       </RadixSelect.Trigger>
       <RadixSelect.Portal>
-        <RadixSelect.Content position="popper" sideOffset={4} className="z-50 max-h-filter-list min-w-20 overflow-hidden rounded-lg border border-border-default bg-bg-raised p-1 elevation-overlay">
+        <RadixSelect.Content
+          position="popper"
+          sideOffset={4}
+          className="z-50 max-h-filter-list min-w-20 overflow-hidden rounded-lg border border-border-default bg-bg-raised p-1 elevation-overlay"
+        >
           <RadixSelect.Viewport>
             {options.map((option) => (
-              <RadixSelect.Item key={option.value} value={option.value} className="flex h-control cursor-pointer items-center gap-2 rounded-md px-2 font-ui text-small text-text-primary outline-none data-[highlighted]:bg-bg-hover">
-                <span className="flex size-icon items-center justify-center"><RadixSelect.ItemIndicator><Icon icon={Check} /></RadixSelect.ItemIndicator></span>
+              <RadixSelect.Item
+                key={option.value}
+                value={option.value}
+                className="flex h-control cursor-pointer items-center gap-2 rounded-md px-2 font-ui text-small text-text-primary outline-none data-[highlighted]:bg-bg-hover"
+              >
+                <span className="flex size-icon items-center justify-center">
+                  <RadixSelect.ItemIndicator>
+                    <Icon icon={Check} />
+                  </RadixSelect.ItemIndicator>
+                </span>
                 <RadixSelect.ItemText>{option.label}</RadixSelect.ItemText>
               </RadixSelect.Item>
             ))}

@@ -52,7 +52,12 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "People",
     items: [
       { href: "/people", label: "People", icon: Users, shortcut: "G P" },
-      { href: "/development", label: "Development", icon: GraduationCap, shortcut: "G D" },
+      {
+        href: "/development",
+        label: "Development",
+        icon: GraduationCap,
+        shortcut: "G D",
+      },
       { href: "/people-ops", label: "People Ops", icon: UserRoundCog, shortcut: "G O" },
     ],
   },

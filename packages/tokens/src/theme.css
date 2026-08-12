@@ -367,9 +367,21 @@
   /* FDN-44: Badge's `subtle` intensity, stated per theme. The tint is the
    * semantic hue at a theme-specific alpha; the ink is derived from the same
    * hue so no new color enters the system. */
-  --color-tag-success: color-mix(in srgb, var(--vt-success) var(--vt-tag-tint), transparent);
-  --color-tag-attention: color-mix(in srgb, var(--vt-attention) var(--vt-tag-tint), transparent);
-  --color-tag-danger: color-mix(in srgb, var(--vt-danger) var(--vt-tag-tint), transparent);
+  --color-tag-success: color-mix(
+    in srgb,
+    var(--vt-success) var(--vt-tag-tint),
+    transparent
+  );
+  --color-tag-attention: color-mix(
+    in srgb,
+    var(--vt-attention) var(--vt-tag-tint),
+    transparent
+  );
+  --color-tag-danger: color-mix(
+    in srgb,
+    var(--vt-danger) var(--vt-tag-tint),
+    transparent
+  );
   --color-tag-neutral: var(--vt-tag-neutral-bg);
   --color-tag-success-ink: var(--vt-tag-success-ink);
   --color-tag-attention-ink: var(--vt-tag-attention-ink);

@@ -35,7 +35,7 @@ export function AppShell({ sidebar, panel, children }: AppShellProps) {
        * it is canvas.
        */}
       {/* FDN-19: `radius-xl`. The concentric rule in VPS-D001 derives every
-        * nested radius from this one. */}
+       * nested radius from this one. */}
       <div className="relative m-3 flex min-w-0 flex-1 rounded-xl border border-border-default bg-bg-subtle">
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden rounded-xl">
           {children}
@@ -89,7 +89,9 @@ export function Content({ fullBleed, children, className }: ContentProps) {
         className,
       )}
     >
-      {fullBleed ? children : (
+      {fullBleed ? (
+        children
+      ) : (
         <div className="mx-auto w-full max-w-content">{children}</div>
       )}
     </main>

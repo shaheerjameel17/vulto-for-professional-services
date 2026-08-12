@@ -1,6 +1,11 @@
 "use client";
 
-import { useCallback, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useCallback,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 /*
  * Drag-to-reorder, on pointer events rather than HTML5 drag-and-drop.

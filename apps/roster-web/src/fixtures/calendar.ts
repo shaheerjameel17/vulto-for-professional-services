@@ -147,10 +147,7 @@ export function workingDay(entity: EntityId, date: string): WorkingDay {
  * VRS-F010's column source. Consumers receive working days already resolved;
  * they never infer a week boundary or inspect a date's weekday themselves.
  */
-export function workingWeek(
-  entity: EntityId,
-  anchorDate: string,
-): WorkingWeekDay[] {
+export function workingWeek(entity: EntityId, anchorDate: string): WorkingWeekDay[] {
   const anchorWeekday = isoWeekday(anchorDate);
   const weekStart = WEEK_START_ISO_DAY[entity];
   const distanceFromStart = (anchorWeekday - weekStart + 7) % 7;
@@ -162,10 +159,7 @@ export function workingWeek(
   }).filter((day) => day.isWorking);
 }
 
-export function holidayName(
-  entity: EntityId,
-  date: string,
-): string | undefined {
+export function holidayName(entity: EntityId, date: string): string | undefined {
   return HOLIDAYS[entity][date];
 }
 

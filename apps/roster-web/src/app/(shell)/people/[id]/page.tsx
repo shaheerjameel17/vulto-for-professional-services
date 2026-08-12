@@ -28,13 +28,13 @@ import { canSeeCompensation, type ViewerRole } from "../../../../lib/viewer";
  */
 
 /** Prototype furniture only, exactly like the Bench Forecast's Owner/Manager
-  * toggle: the only way to compare the authorized and unauthorized render of
-  * the compensation Section side by side. Not a real permission system.
-  *
-  * The role vocabulary lives in `lib/viewer`. This screen previously declared
-  * its own `hr-admin | team-member` union — a third `ViewerRole` type meaning
-  * something different from the other two — which is how a codebase ends up
-  * with three names for the same person. */
+ * toggle: the only way to compare the authorized and unauthorized render of
+ * the compensation Section side by side. Not a real permission system.
+ *
+ * The role vocabulary lives in `lib/viewer`. This screen previously declared
+ * its own `hr-admin | team-member` union — a third `ViewerRole` type meaning
+ * something different from the other two — which is how a codebase ends up
+ * with three names for the same person. */
 type ProfileViewer = Extract<ViewerRole, "hr-admin" | "member">;
 
 export default function EmployeeProfilePage() {
@@ -50,10 +50,7 @@ export default function EmployeeProfilePage() {
 
   function goTo(delta: number) {
     if (index === -1) return;
-    const next = Math.min(
-      PROFILED_EMPLOYEE_IDS.length - 1,
-      Math.max(0, index + delta),
-    );
+    const next = Math.min(PROFILED_EMPLOYEE_IDS.length - 1, Math.max(0, index + delta));
     const nextId = PROFILED_EMPLOYEE_IDS[next];
     if (nextId) router.push(`/people/${nextId}`);
   }
@@ -80,9 +77,9 @@ export default function EmployeeProfilePage() {
   return (
     <Content>
       {/* Prototype furniture, on its own row above the real header so
-        * ProfileHeader itself stays exactly what VRS-F002 specifies — this
-        * control has no equivalent in the spec. Not a real permission
-        * system; see the type above. */}
+       * ProfileHeader itself stays exactly what VRS-F002 specifies — this
+       * control has no equivalent in the spec. Not a real permission
+       * system; see the type above. */}
       <div className="flex justify-end pt-4">
         <ToggleGroup<ProfileViewer>
           label="Viewing as"

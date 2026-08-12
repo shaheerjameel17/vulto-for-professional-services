@@ -71,8 +71,18 @@ const LEAD_IN_DAYS = 14;
 export const COST_HORIZON_DAYS = 45;
 
 const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
 ];
 
 const money = new Intl.NumberFormat("en-GB", {
@@ -146,8 +156,7 @@ export function buildForecast(
   const rows: ForecastRow[] = scopedEmployees.map((employee) => {
     const assignments = ASSIGNMENTS.filter(
       (assignment) =>
-        assignment.employeeId === employee.employeeId &&
-        assignment.status === "Active",
+        assignment.employeeId === employee.employeeId && assignment.status === "Active",
     );
 
     const covered = new Set<string>();
@@ -215,7 +224,10 @@ export function buildForecast(
       .map((assignment) => {
         const start = Math.max(0, dates.indexOf(clamp(assignment.startDate, dates)));
         const endIndex = dates.indexOf(clamp(assignment.endDate, dates));
-        if (assignment.endDate < dates[0]! || assignment.startDate > dates[dates.length - 1]!) {
+        if (
+          assignment.endDate < dates[0]! ||
+          assignment.startDate > dates[dates.length - 1]!
+        ) {
           return null;
         }
         const project = PROJECT_BY_ID.get(assignment.projectId);
@@ -253,7 +265,9 @@ export function buildForecast(
       referenceLabel: employee.employeeCode,
       ghost: employee.employeeType === "Ghost",
       badge: employee.employeeType === "Ghost" ? "Ghost" : undefined,
-      workingDayStates: dates.map((date) => workingDay(employee.entityId, date).isWorking),
+      workingDayStates: dates.map(
+        (date) => workingDay(employee.entityId, date).isWorking,
+      ),
       bars,
       bench,
       benchWorkingDays,
@@ -296,7 +310,11 @@ export function buildForecast(
  * row of arithmetic rather than a scale. A single number is what a scale mark
  * is: where this cadence lands, not what it covers.
  */
-function horizonLabel(dates: string[], index: number, horizon: Horizon): string | undefined {
+function horizonLabel(
+  dates: string[],
+  index: number,
+  horizon: Horizon,
+): string | undefined {
   const date = dates[index]!;
   const day = String(Number(date.slice(8, 10)));
   if (horizon === 30) return day;

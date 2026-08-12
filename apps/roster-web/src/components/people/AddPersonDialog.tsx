@@ -28,8 +28,7 @@ export function AddPersonDialog({
   const [jobTitle, setJobTitle] = useState("");
   const [department, setDepartment] = useState("");
   const [entityId, setEntityId] = useState<EntityId>("uk");
-  const [employmentType, setEmploymentType] =
-    useState<EmploymentType>("FullTime");
+  const [employmentType, setEmploymentType] = useState<EmploymentType>("FullTime");
 
   function reset() {
     setFullName("");

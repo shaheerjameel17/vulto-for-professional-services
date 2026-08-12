@@ -2,13 +2,7 @@
 
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { ArrowDown, ArrowUp, CornerDownLeft, Search } from "lucide-react";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Badge } from "./Badge";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
@@ -136,7 +130,9 @@ export function CommandPalette({
                 aria-label="Search"
                 aria-controls="command-palette-results"
                 aria-activedescendant={
-                  results[selectedIndex] ? `command-result-${results[selectedIndex]!.id}` : undefined
+                  results[selectedIndex]
+                    ? `command-result-${results[selectedIndex]!.id}`
+                    : undefined
                 }
                 className="h-full min-w-0 flex-1 bg-transparent font-ui text-body text-text-primary outline-none placeholder:text-text-tertiary"
               />
@@ -152,16 +148,25 @@ export function CommandPalette({
               className="scrollbar-slim min-h-0 flex-1 overflow-y-auto py-2 md:max-h-palette-results"
             >
               {query.trim() === "" ? (
-                <Text variant="body" className="px-4 py-8 text-center text-text-secondary">
+                <Text
+                  variant="body"
+                  className="px-4 py-8 text-center text-text-secondary"
+                >
                   Start typing to search the local workspace.
                 </Text>
               ) : results.length === 0 ? (
-                <Text variant="body" className="px-4 py-8 text-center text-text-secondary">
+                <Text
+                  variant="body"
+                  className="px-4 py-8 text-center text-text-secondary"
+                >
                   No matches for “{query.trim()}”.
                 </Text>
               ) : (
                 groups.map((group) => (
-                  <section key={group.name} aria-labelledby={`command-group-${group.name}`}>
+                  <section
+                    key={group.name}
+                    aria-labelledby={`command-group-${group.name}`}
+                  >
                     <Text
                       id={`command-group-${group.name}`}
                       variant="micro"
@@ -191,17 +196,26 @@ export function CommandPalette({
                         >
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-2">
-                              <Text variant="body-medium" className="truncate text-text-primary">
+                              <Text
+                                variant="body-medium"
+                                className="truncate text-text-primary"
+                              >
                                 {result.name}
                               </Text>
                               <Badge dashed={result.dashed}>{result.type}</Badge>
                             </div>
-                            <Text variant="small" className="mt-1 line-clamp-2 text-text-secondary md:truncate">
+                            <Text
+                              variant="small"
+                              className="mt-1 line-clamp-2 text-text-secondary md:truncate"
+                            >
                               {result.context}
                             </Text>
                           </div>
                           {selected ? (
-                            <Icon icon={CornerDownLeft} className="text-text-tertiary" />
+                            <Icon
+                              icon={CornerDownLeft}
+                              className="text-text-tertiary"
+                            />
                           ) : null}
                         </button>
                       );

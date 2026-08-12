@@ -68,8 +68,7 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
   });
 
   function commit(key: keyof FieldState) {
-    return (value: string) =>
-      setFields((prev) => ({ ...prev, [key]: value }));
+    return (value: string) => setFields((prev) => ({ ...prev, [key]: value }));
   }
 
   return (
@@ -77,13 +76,34 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
       <div className="grid grid-cols-1 gap-8 xl:grid-cols-2">
         <Section title="Employment">
           <div className="flex flex-col gap-4">
-            <EditableField label="Job title" value={fields.jobTitle} onCommit={commit("jobTitle")} />
-            <EditableField label="Department" value={fields.department} onCommit={commit("department")} />
+            <EditableField
+              label="Job title"
+              value={fields.jobTitle}
+              onCommit={commit("jobTitle")}
+            />
+            <EditableField
+              label="Department"
+              value={fields.department}
+              onCommit={commit("department")}
+            />
             <div className="grid grid-cols-2 gap-4">
-              <EditableField label="Employment type" value={fields.employmentType} onCommit={commit("employmentType")} />
-              <EditableField label="Seniority" value={fields.seniorityLevel} onCommit={commit("seniorityLevel")} />
+              <EditableField
+                label="Employment type"
+                value={fields.employmentType}
+                onCommit={commit("employmentType")}
+              />
+              <EditableField
+                label="Seniority"
+                value={fields.seniorityLevel}
+                onCommit={commit("seniorityLevel")}
+              />
             </div>
-            <EditableField label="Start date" type="date" value={fields.startDate} onCommit={commit("startDate")} />
+            <EditableField
+              label="Start date"
+              type="date"
+              value={fields.startDate}
+              onCommit={commit("startDate")}
+            />
             {profile.probationStatus ? (
               <EditableField
                 label="Probation"
@@ -93,15 +113,42 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
               />
             ) : null}
             {profile.contractEndDate ? (
-              <EditableField label="Contract end date" type="date" value={profile.contractEndDate} readOnly />
+              <EditableField
+                label="Contract end date"
+                type="date"
+                value={profile.contractEndDate}
+                readOnly
+              />
             ) : null}
-            <EditableField label="Email" type="email" value={fields.email} onCommit={commit("email")} />
-            <EditableField label="Phone" type="phone" value={fields.phone} onCommit={commit("phone")} />
+            <EditableField
+              label="Email"
+              type="email"
+              value={fields.email}
+              onCommit={commit("email")}
+            />
+            <EditableField
+              label="Phone"
+              type="phone"
+              value={fields.phone}
+              onCommit={commit("phone")}
+            />
             <div className="grid grid-cols-2 gap-4">
-              <EditableField label="Timezone" value={fields.timezone} onCommit={commit("timezone")} />
-              <EditableField label="Location" value={fields.location} onCommit={commit("location")} />
+              <EditableField
+                label="Timezone"
+                value={fields.timezone}
+                onCommit={commit("timezone")}
+              />
+              <EditableField
+                label="Location"
+                value={fields.location}
+                onCommit={commit("location")}
+              />
             </div>
-            <EditableField label="Notes" value={fields.notes} onCommit={commit("notes")} />
+            <EditableField
+              label="Notes"
+              value={fields.notes}
+              onCommit={commit("notes")}
+            />
           </div>
         </Section>
 
@@ -182,8 +229,8 @@ export function OverviewTab({ profile }: { profile: EmployeeProfile }) {
             />
           </div>
           <Text variant="small" className="mt-2 text-text-tertiary">
-            Tier 1, end-to-end encrypted. Visible to Owner, Finance Admin, HR
-            Admin and this employee only.
+            Tier 1, end-to-end encrypted. Visible to Owner, Finance Admin, HR Admin and
+            this employee only.
           </Text>
         </Section>
       ) : null}

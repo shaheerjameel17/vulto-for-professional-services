@@ -72,8 +72,8 @@ export function ForecastPanel({
     <div className="flex flex-col gap-6">
       {row.ghost ? (
         <InlineAlert tone="attention">
-          A planned hire, not a person. Assignments are held against the role
-          and carry over on promotion.
+          A planned hire, not a person. Assignments are held against the role and carry
+          over on promotion.
         </InlineAlert>
       ) : null}
 
@@ -91,19 +91,19 @@ export function ForecastPanel({
               {row.benchWorkingDays} working days on the bench
             </Text>
             {/* Structurally absent for a viewer without compensation access —
-              * not zeroed, not redacted, not a lock icon.
-              * F36: the figure covers the cost horizon, and says so. */}
+             * not zeroed, not redacted, not a lock icon.
+             * F36: the figure covers the cost horizon, and says so. */}
             {canSeeCompensation && row.costedBenchWorkingDays > 0 ? (
               <>
                 <Text variant="numeric-lg" className="text-text-primary">
                   {formatMoney(row.benchCost)}
                 </Text>
                 {/* Only worth saying where the two differ. "22 of those 22
-                  * days" is noise. */}
+                 * days" is noise. */}
                 {row.costedBenchWorkingDays < row.benchWorkingDays ? (
                   <Text variant="small" className="text-text-secondary">
-                    {row.costedBenchWorkingDays} of those days fall within the
-                    next {COST_HORIZON_DAYS}
+                    {row.costedBenchWorkingDays} of those days fall within the next{" "}
+                    {COST_HORIZON_DAYS}
                   </Text>
                 ) : null}
               </>

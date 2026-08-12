@@ -43,8 +43,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
     return () => query.removeEventListener("change", sync);
   }, []);
 
-  const resolvedTheme: ResolvedTheme =
-    theme === "system" ? systemTheme : theme;
+  const resolvedTheme: ResolvedTheme = theme === "system" ? systemTheme : theme;
 
   useEffect(() => {
     const root = document.documentElement;
@@ -62,9 +61,7 @@ export function AppearanceProvider({ children }: { children: ReactNode }) {
   );
 
   return (
-    <AppearanceContext.Provider value={value}>
-      {children}
-    </AppearanceContext.Provider>
+    <AppearanceContext.Provider value={value}>{children}</AppearanceContext.Provider>
   );
 }
 

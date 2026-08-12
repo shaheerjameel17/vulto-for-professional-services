@@ -24,7 +24,12 @@ export function Select<T extends string>({
   const inputId = `select-${label.replace(/\s+/g, "-").toLowerCase()}`;
   return (
     <div className="flex flex-col gap-1">
-      <Text as="label" htmlFor={inputId} variant="label" className="text-text-secondary">
+      <Text
+        as="label"
+        htmlFor={inputId}
+        variant="label"
+        className="text-text-secondary"
+      >
         {label}
       </Text>
       <RadixSelect.Root value={value} onValueChange={(next) => onChange(next as T)}>

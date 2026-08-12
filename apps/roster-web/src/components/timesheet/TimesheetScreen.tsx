@@ -133,8 +133,7 @@ export function TimesheetScreen() {
     TIMESHEET_EMPLOYEE.billableTarget - billableHours,
   );
   const mobileSubmitVisible =
-    selectedDayIndex === days.length - 1 ||
-    totalsByDay.every((hours) => hours > 0);
+    selectedDayIndex === days.length - 1 || totalsByDay.every((hours) => hours > 0);
   const firstError = Object.values(errors)[0];
 
   const submitWeek = useCallback(() => {
@@ -156,8 +155,7 @@ export function TimesheetScreen() {
       }
 
       const target = event.target as HTMLElement | null;
-      const inTextEntry =
-        target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
+      const inTextEntry = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA";
       if (modified || inTextEntry) return;
       if (event.key === "[") {
         event.preventDefault();
@@ -250,7 +248,8 @@ export function TimesheetScreen() {
         0,
       );
       if (otherRowsTotal + parsed.value > 24) {
-        nextErrors[targetKey] = `${dayFormatter.format(asDate(targetDay.date))} would exceed 24h.`;
+        nextErrors[targetKey] =
+          `${dayFormatter.format(asDate(targetDay.date))} would exceed 24h.`;
       } else {
         nextValues[targetKey] = displayHours(parsed.value);
         delete nextErrors[targetKey];
@@ -274,10 +273,7 @@ export function TimesheetScreen() {
       if (targetIndex >= 0 && targetIndex < TIMESHEET_ROWS.length * days.length) {
         event.preventDefault();
         commitCell(row.id, dayIndex);
-        moveFocus(
-          Math.floor(targetIndex / days.length),
-          targetIndex % days.length,
-        );
+        moveFocus(Math.floor(targetIndex / days.length), targetIndex % days.length);
       }
       return;
     }
@@ -346,9 +342,7 @@ export function TimesheetScreen() {
                 disabled={totalHours <= 0 || Object.keys(errors).length > 0}
                 onClick={submitWeek}
               >
-                {totalHours > 0
-                  ? `Submit ${displayHours(totalHours)}h`
-                  : "Submit week"}
+                {totalHours > 0 ? `Submit ${displayHours(totalHours)}h` : "Submit week"}
               </Button>
             </div>
           )
@@ -419,30 +413,33 @@ export function TimesheetScreen() {
                 {days.map((day) => {
                   const today = day.date === TODAY;
                   return (
-                  <th
-                    key={day.date}
-                    scope="col"
-                    // FDN-45: today is a filled column, not a stray top border
-                    // on one cell. See the `bg-today` token for why a fill
-                    // rather than an outline.
-                    className={cx(
-                      "h-12 border-l border-border-default px-cell text-right",
-                      today && "bg-bg-today-header",
-                    )}
-                  >
-                    <Text
-                      variant="micro"
-                      className={cx("block", today ? "text-text-brand" : "text-text-tertiary")}
+                    <th
+                      key={day.date}
+                      scope="col"
+                      // FDN-45: today is a filled column, not a stray top border
+                      // on one cell. See the `bg-today` token for why a fill
+                      // rather than an outline.
+                      className={cx(
+                        "h-12 border-l border-border-default px-cell text-right",
+                        today && "bg-bg-today-header",
+                      )}
                     >
-                      {dayFormatter.format(asDate(day.date))}
-                    </Text>
-                    <Text
-                      variant="small"
-                      className={today ? "text-text-primary" : "text-text-secondary"}
-                    >
-                      {dateFormatter.format(asDate(day.date))}
-                    </Text>
-                  </th>
+                      <Text
+                        variant="micro"
+                        className={cx(
+                          "block",
+                          today ? "text-text-brand" : "text-text-tertiary",
+                        )}
+                      >
+                        {dayFormatter.format(asDate(day.date))}
+                      </Text>
+                      <Text
+                        variant="small"
+                        className={today ? "text-text-primary" : "text-text-secondary"}
+                      >
+                        {dateFormatter.format(asDate(day.date))}
+                      </Text>
+                    </th>
                   );
                 })}
               </tr>
@@ -471,7 +468,10 @@ export function TimesheetScreen() {
                     <Text variant="small" className="block truncate text-text-primary">
                       {row.label}
                     </Text>
-                    <Text variant="micro" className="mt-1 block truncate text-text-tertiary">
+                    <Text
+                      variant="micro"
+                      className="mt-1 block truncate text-text-tertiary"
+                    >
                       {row.detail}
                     </Text>
                   </th>
@@ -493,7 +493,9 @@ export function TimesheetScreen() {
                           inputMode="decimal"
                           readOnly={submitted}
                           value={values[key] ?? ""}
-                          onChange={(event) => setRawValue(row.id, day.date, event.target.value)}
+                          onChange={(event) =>
+                            setRawValue(row.id, day.date, event.target.value)
+                          }
                           onBlur={() => commitCell(row.id, dayIndex)}
                           onKeyDown={(event) =>
                             handleCellKeyDown(event, row, rowIndex, dayIndex)
@@ -560,7 +562,12 @@ export function TimesheetScreen() {
                 label: `${dayFormatter.format(asDate(day.date))} ${dateFormatter.format(asDate(day.date))}`,
               }))}
               onChange={(date) =>
-                setSelectedDayIndex(Math.max(0, days.findIndex((day) => day.date === date)))
+                setSelectedDayIndex(
+                  Math.max(
+                    0,
+                    days.findIndex((day) => day.date === date),
+                  ),
+                )
               }
             />
           </div>
@@ -584,7 +591,9 @@ export function TimesheetScreen() {
                     readOnly={submitted}
                     value={values[key] ?? ""}
                     error={errors[key]}
-                    onChange={(event) => setRawValue(row.id, day.date, event.target.value)}
+                    onChange={(event) =>
+                      setRawValue(row.id, day.date, event.target.value)
+                    }
                     onBlur={() => commitCell(row.id, selectedDayIndex)}
                     onStepValue={
                       submitted
@@ -597,30 +606,29 @@ export function TimesheetScreen() {
             })}
           </div>
           <Text variant="small" className="mt-4 text-text-secondary">
-            Logged today {displayHours(totalsByDay[selectedDayIndex] ?? 0)}h · Target {displayHours(days[selectedDayIndex]?.hours ?? 0)}h
+            Logged today {displayHours(totalsByDay[selectedDayIndex] ?? 0)}h · Target{" "}
+            {displayHours(days[selectedDayIndex]?.hours ?? 0)}h
           </Text>
         </div>
 
         {/*
-          * FDN-45. Three pills, and only one of them carries a color.
-          *
-          * This was one amber sentence, amber whenever anything at all was
-          * outstanding — so an untouched Monday, where nothing has happened
-          * yet and nothing is wrong, was rendered in the color this product
-          * reserves for cost and attention. Amber that appears by default
-          * stops meaning anything.
-          *
-          * Target and Logged are facts and stay neutral. Remaining is the only
-          * one with a state, and it has three:
-          *   nothing logged yet  neutral — the week has not started
-          *   short, mid-week     attention — work is underway and it is behind
-          *   met or exceeded     success — and it says so in words, not a color
-          */}
+         * FDN-45. Three pills, and only one of them carries a color.
+         *
+         * This was one amber sentence, amber whenever anything at all was
+         * outstanding — so an untouched Monday, where nothing has happened
+         * yet and nothing is wrong, was rendered in the color this product
+         * reserves for cost and attention. Amber that appears by default
+         * stops meaning anything.
+         *
+         * Target and Logged are facts and stay neutral. Remaining is the only
+         * one with a state, and it has three:
+         *   nothing logged yet  neutral — the week has not started
+         *   short, mid-week     attention — work is underway and it is behind
+         *   met or exceeded     success — and it says so in words, not a color
+         */}
         <div className="mt-4 flex flex-wrap items-center justify-between gap-4 border-t border-border-default pt-4">
           <div className="flex flex-wrap items-center gap-2">
-            <Badge shape="pill">
-              Target {TIMESHEET_EMPLOYEE.billableTarget}h
-            </Badge>
+            <Badge shape="pill">Target {TIMESHEET_EMPLOYEE.billableTarget}h</Badge>
             <Badge shape="pill">Logged {displayHours(billableHours)}h</Badge>
             <Badge shape="pill" tone={remainingTone}>
               {remainingBillable <= 0

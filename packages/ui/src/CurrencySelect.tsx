@@ -15,6 +15,16 @@ export function currencyLabel(value: string) {
   return CURRENCIES.find((currency) => currency.value === value)?.label ?? value;
 }
 
-export function CurrencySelect({ label, value, onChange }: { label: string; value: string; onChange: (value: string) => void }) {
-  return <Select label={label} value={value} options={CURRENCIES} onChange={onChange} />;
+export function CurrencySelect({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Select label={label} value={value} options={CURRENCIES} onChange={onChange} />
+  );
 }

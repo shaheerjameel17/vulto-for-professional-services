@@ -2,7 +2,15 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { CurrencySelect, DatePicker, Input, PhoneInput, Text, currencyLabel, cx } from "@vulto/ui";
+import {
+  CurrencySelect,
+  DatePicker,
+  Input,
+  PhoneInput,
+  Text,
+  currencyLabel,
+  cx,
+} from "@vulto/ui";
 
 /*
  * FDN-24. VRS-F002's keyboard table assigns `E` to open an edit and
@@ -190,8 +198,7 @@ export function EditableField({
     "motion-fast transition-colors",
     !readOnly && "hover:border-border-strong hover:bg-bg-hover",
     !readOnly && "focus-visible:outline focus-visible:outline-2",
-    !readOnly &&
-      "focus-visible:outline-border-focus focus-visible:outline-offset-2",
+    !readOnly && "focus-visible:outline-border-focus focus-visible:outline-offset-2",
   );
 
   const valueNode = (
@@ -231,11 +238,7 @@ export function EditableField({
             type="button"
             onClick={open}
             onKeyDown={(event) => {
-              if (
-                event.key === "e" ||
-                event.key === "E" ||
-                event.key === "Enter"
-              ) {
+              if (event.key === "e" || event.key === "E" || event.key === "Enter") {
                 event.preventDefault();
                 open();
               } else if (event.key === "ArrowUp") {
@@ -274,11 +277,7 @@ export function EditableField({
           type="button"
           onClick={open}
           onKeyDown={(event) => {
-            if (
-              event.key === "e" ||
-              event.key === "E" ||
-              event.key === "Enter"
-            ) {
+            if (event.key === "e" || event.key === "E" || event.key === "Enter") {
               event.preventDefault();
               open();
             }

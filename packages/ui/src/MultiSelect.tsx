@@ -105,21 +105,36 @@ export function MultiSelect<T extends string>({
 
   return (
     <RadixPopover.Root onOpenChange={(open) => !open && setQuery("")}>
-      <div className={cx(filterAppearance && "inline-flex h-control items-center rounded-full border border-border-default bg-bg-raised")}>
+      <div
+        className={cx(
+          filterAppearance &&
+            "inline-flex h-control items-center rounded-full border border-border-default bg-bg-raised",
+        )}
+      >
         <RadixPopover.Trigger asChild>
           <button
             type="button"
             aria-label={`${label}: ${summary}`}
             className={cx(
               "inline-flex h-control items-center gap-2 font-ui text-body text-text-primary",
-              filterAppearance ? "rounded-full px-3 hover:bg-bg-hover" : "rounded-md border border-border-default bg-bg-surface px-3 hover:border-border-strong hover:bg-bg-hover",
+              filterAppearance
+                ? "rounded-full px-3 hover:bg-bg-hover"
+                : "rounded-md border border-border-default bg-bg-surface px-3 hover:border-border-strong hover:bg-bg-hover",
               "motion-fast transition-colors focus-visible:outline focus-visible:outline-2",
               "focus-visible:outline-border-focus focus-visible:outline-offset-2",
             )}
           >
-            {filterAppearance && hasActiveFilter ? <span aria-hidden className="size-dot rounded-full bg-brand-500" /> : null}
-            <span className={filterAppearance ? "text-text-primary" : "text-text-secondary"}>{label}</span>
-            {!filterAppearance ? <span className="text-body-medium">{summary}</span> : null}
+            {filterAppearance && hasActiveFilter ? (
+              <span aria-hidden className="size-dot rounded-full bg-brand-500" />
+            ) : null}
+            <span
+              className={filterAppearance ? "text-text-primary" : "text-text-secondary"}
+            >
+              {label}
+            </span>
+            {!filterAppearance ? (
+              <span className="text-body-medium">{summary}</span>
+            ) : null}
             <Icon icon={ChevronDown} className="text-text-tertiary" />
           </button>
         </RadixPopover.Trigger>
@@ -160,7 +175,11 @@ export function MultiSelect<T extends string>({
             </div>
           ) : null}
 
-          <div role="group" aria-label={label} className="scrollbar-slim max-h-filter-list overflow-y-auto">
+          <div
+            role="group"
+            aria-label={label}
+            className="scrollbar-slim max-h-filter-list overflow-y-auto"
+          >
             {filteredOptions.length > 0 ? (
               filteredOptions.map((option, index) => {
                 const checked = selected.has(option.value);
@@ -183,12 +202,12 @@ export function MultiSelect<T extends string>({
                     )}
                   >
                     {/*
-                      * The insertion indicator, not a highlighted target row.
-                      * A tinted row says "this one" — the question the gesture
-                      * is actually asking is "between which two", and the gap
-                      * is where the answer belongs. The last row carries a
-                      * second one for the slot past the end of the list.
-                      */}
+                     * The insertion indicator, not a highlighted target row.
+                     * A tinted row says "this one" — the question the gesture
+                     * is actually asking is "between which two", and the gap
+                     * is where the answer belongs. The last row carries a
+                     * second one for the slot past the end of the list.
+                     */}
                     {canReorder && reorder.dropIndex === index ? (
                       <span
                         aria-hidden
@@ -204,9 +223,9 @@ export function MultiSelect<T extends string>({
                       />
                     ) : null}
                     {/* The whole row is the drag surface; the grip states that
-                      * it is. Grabbing a row is what people do, and making only
-                      * a 16px glyph draggable meant the gesture silently did
-                      * nothing almost every time it was attempted. */}
+                     * it is. Grabbing a row is what people do, and making only
+                     * a 16px glyph draggable meant the gesture silently did
+                     * nothing almost every time it was attempted. */}
                     {canReorder ? (
                       <span
                         role="button"
@@ -235,38 +254,41 @@ export function MultiSelect<T extends string>({
                       htmlFor={optionId}
                       className="flex min-w-0 flex-1 cursor-pointer items-center gap-2"
                     >
-                    <RadixCheckbox.Root
-                      ref={(node) => {
-                        optionRefs.current[index] = node;
-                      }}
-                      id={optionId}
-                      checked={checked}
-                      onCheckedChange={() => toggle(option.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "ArrowDown") {
-                          event.preventDefault();
-                          moveFocus(index, 1);
-                        } else if (event.key === "ArrowUp") {
-                          event.preventDefault();
-                          moveFocus(index, -1);
-                        }
-                      }}
-                      className={cx(
-                        "flex size-icon shrink-0 items-center justify-center rounded-sm border",
-                        checked
-                          ? "border-brand-600 bg-brand-600 text-text-inverse"
-                          : "border-border-strong bg-bg-surface",
-                        "focus-visible:outline focus-visible:outline-2",
-                        "focus-visible:outline-border-focus focus-visible:outline-offset-2",
-                      )}
-                    >
-                      <RadixCheckbox.Indicator>
-                        <Check className="size-3" strokeWidth={2.5} />
-                      </RadixCheckbox.Indicator>
-                    </RadixCheckbox.Root>
-                    <Text variant="body" className="min-w-0 truncate text-text-primary">
-                      {option.label}
-                    </Text>
+                      <RadixCheckbox.Root
+                        ref={(node) => {
+                          optionRefs.current[index] = node;
+                        }}
+                        id={optionId}
+                        checked={checked}
+                        onCheckedChange={() => toggle(option.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "ArrowDown") {
+                            event.preventDefault();
+                            moveFocus(index, 1);
+                          } else if (event.key === "ArrowUp") {
+                            event.preventDefault();
+                            moveFocus(index, -1);
+                          }
+                        }}
+                        className={cx(
+                          "flex size-icon shrink-0 items-center justify-center rounded-sm border",
+                          checked
+                            ? "border-brand-600 bg-brand-600 text-text-inverse"
+                            : "border-border-strong bg-bg-surface",
+                          "focus-visible:outline focus-visible:outline-2",
+                          "focus-visible:outline-border-focus focus-visible:outline-offset-2",
+                        )}
+                      >
+                        <RadixCheckbox.Indicator>
+                          <Check className="size-3" strokeWidth={2.5} />
+                        </RadixCheckbox.Indicator>
+                      </RadixCheckbox.Root>
+                      <Text
+                        variant="body"
+                        className="min-w-0 truncate text-text-primary"
+                      >
+                        {option.label}
+                      </Text>
                     </label>
                   </div>
                 );

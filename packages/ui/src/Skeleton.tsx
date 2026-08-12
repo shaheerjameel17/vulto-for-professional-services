@@ -17,9 +17,6 @@ export type SkeletonProps = {
 
 export function Skeleton({ className }: SkeletonProps) {
   return (
-    <span
-      aria-hidden
-      className={cx("block rounded-md bg-bg-subtle", className)}
-    />
+    <span aria-hidden className={cx("block rounded-md bg-bg-subtle", className)} />
   );
 }

@@ -9,7 +9,13 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type { CategoricalToken } from "@vulto/tokens";
-import { Building2, CalendarDays, CircleDollarSign, Clock3, FolderKanban } from "lucide-react";
+import {
+  Building2,
+  CalendarDays,
+  CircleDollarSign,
+  Clock3,
+  FolderKanban,
+} from "lucide-react";
 import { cx } from "./cx";
 import { Avatar } from "./Avatar";
 import { Badge } from "./Badge";
@@ -174,8 +180,7 @@ export function Timeline({
     if (!node) return;
     const x = node.scrollLeft;
     const labelWidth =
-      node.querySelector<HTMLElement>("[data-timeline-label]")?.offsetWidth ??
-      0;
+      node.querySelector<HTMLElement>("[data-timeline-label]")?.offsetWidth ?? 0;
     const visibleTrackWidth = Math.max(0, node.clientWidth - labelWidth);
     const rightEdge = Math.min(trackWidth, x + visibleTrackWidth);
     const remaining = Math.max(0, trackWidth - rightEdge);
@@ -184,10 +189,7 @@ export function Timeline({
     node.style.setProperty("--vt-scroll-x", `${x}px`);
     // Clamped to the offset: at rest nothing is hidden, so there is no fade to
     // explain.
-    node.style.setProperty(
-      "--vt-scroll-fade",
-      `${leftFade}px`,
-    );
+    node.style.setProperty("--vt-scroll-fade", `${leftFade}px`);
     node.style.setProperty("--vt-scroll-end", `${rightEdge}px`);
     node.style.setProperty("--vt-scroll-end-fade", `${rightFade}px`);
 
@@ -268,301 +270,311 @@ export function Timeline({
 
   return (
     <TooltipProvider>
-    <div
-      ref={scroller}
-      onScroll={onScroll}
-      onPointerMove={trackCursor}
-      onPointerLeave={() => {
-        setCursorDateIndex(undefined);
-        setCursorX(undefined);
-      }}
-      // FDN-16: flat. The workspace is now the raised surface, and a bordered
-      // canvas inside a bordered inset panel is the nested card VPS-D002
-      // forbids.
-      /*
-       * FDN-43: the scrollbar is the design system's, not the platform's. This
-       * is the surface that reported it — 2308px of track in an 1182px viewport
-       * put an unstyled OS scrollbar across the bottom of the one screen whose
-       * premise is that every value comes from the token set.
-       *
-       * `-mb-2 pb-2` puts it in the gutter rather than on the canvas. A
-       * horizontal scrollbar is painted at the bottom of its container's
-       * padding box, so it was landing on top of the last row. The negative
-       * margin extends the container down into the space the screen already
-       * leaves before the workspace inset, and the matching padding keeps the
-       * rows exactly where they were: net layout unchanged.
-       *
-       * 8px, not 16 — the scrollbar's own thickness. It then fills the strip
-       * it was given exactly, sitting flush beneath the last row with the rest
-       * of the gutter still clear below it. At 16px it cleared the rows but
-       * drifted to the far side of the gap, reading as attached to the inset
-       * edge rather than to the grid it scrolls.
-       */
-      className="scrollbar-slim -mb-2 min-h-0 flex-1 overflow-auto pb-2"
-    >
-      <div className="min-w-max">
-        {/* Column header. Sticky vertically so it survives the row scroll, and
-          * above the row hover outline, which is z-20.
-          *
-          * FDN-44: no bottom padding. The marker has to reach the rows without
-          * a break, so the header's bottom edge and the first row's top edge
-          * are the same line. Nothing is lost visually — a 52px row carries a
-          * 20px bar, so there are already 16px of clear space under the
-          * header before anything is drawn. */}
-        <div className="sticky top-0 z-30 flex bg-bg-subtle">
-          <div
-            data-timeline-label
-            className="sticky left-0 z-40 flex w-timeline-label shrink-0 items-end bg-bg-subtle px-cell pb-1"
-          >
-            <Text variant="micro" className="text-text-tertiary">
-              Person
-            </Text>
-          </div>
-          <div
-            data-timeline-track-header
-            className="scroll-boundary-fade relative shrink-0"
-            style={{ width: trackWidth }}
-          >
-            {/* Month labels get their own band. Positioned against the track
-              * rather than inside a day cell, so a 12px column does not clip
-              * "September". */}
-            <div className="relative h-5">
-              {hoveredBench ? (
-                <Text
-                  variant="micro"
-                  className="absolute top-1 whitespace-nowrap text-text-secondary"
-                  style={{ left: hoveredBench.start * dayWidth + 2 }}
-                >
-                  {formatBenchRange(days, hoveredBench)}
-                </Text>
-              ) : days.map((day, index) =>
-                day.monthLabel ? (
+      <div
+        ref={scroller}
+        onScroll={onScroll}
+        onPointerMove={trackCursor}
+        onPointerLeave={() => {
+          setCursorDateIndex(undefined);
+          setCursorX(undefined);
+        }}
+        // FDN-16: flat. The workspace is now the raised surface, and a bordered
+        // canvas inside a bordered inset panel is the nested card VPS-D002
+        // forbids.
+        /*
+         * FDN-43: the scrollbar is the design system's, not the platform's. This
+         * is the surface that reported it — 2308px of track in an 1182px viewport
+         * put an unstyled OS scrollbar across the bottom of the one screen whose
+         * premise is that every value comes from the token set.
+         *
+         * `-mb-2 pb-2` puts it in the gutter rather than on the canvas. A
+         * horizontal scrollbar is painted at the bottom of its container's
+         * padding box, so it was landing on top of the last row. The negative
+         * margin extends the container down into the space the screen already
+         * leaves before the workspace inset, and the matching padding keeps the
+         * rows exactly where they were: net layout unchanged.
+         *
+         * 8px, not 16 — the scrollbar's own thickness. It then fills the strip
+         * it was given exactly, sitting flush beneath the last row with the rest
+         * of the gutter still clear below it. At 16px it cleared the rows but
+         * drifted to the far side of the gap, reading as attached to the inset
+         * edge rather than to the grid it scrolls.
+         */
+        className="scrollbar-slim -mb-2 min-h-0 flex-1 overflow-auto pb-2"
+      >
+        <div className="min-w-max">
+          {/* Column header. Sticky vertically so it survives the row scroll, and
+           * above the row hover outline, which is z-20.
+           *
+           * FDN-44: no bottom padding. The marker has to reach the rows without
+           * a break, so the header's bottom edge and the first row's top edge
+           * are the same line. Nothing is lost visually — a 52px row carries a
+           * 20px bar, so there are already 16px of clear space under the
+           * header before anything is drawn. */}
+          <div className="sticky top-0 z-30 flex bg-bg-subtle">
+            <div
+              data-timeline-label
+              className="sticky left-0 z-40 flex w-timeline-label shrink-0 items-end bg-bg-subtle px-cell pb-1"
+            >
+              <Text variant="micro" className="text-text-tertiary">
+                Person
+              </Text>
+            </div>
+            <div
+              data-timeline-track-header
+              className="scroll-boundary-fade relative shrink-0"
+              style={{ width: trackWidth }}
+            >
+              {/* Month labels get their own band. Positioned against the track
+               * rather than inside a day cell, so a 12px column does not clip
+               * "September". */}
+              <div className="relative h-5">
+                {hoveredBench ? (
                   <Text
-                    key={`month-${day.date}`}
-                    data-timeline-month
                     variant="micro"
                     className="absolute top-1 whitespace-nowrap text-text-secondary"
-                    style={{ left: index * dayWidth + 2 }}
+                    style={{ left: hoveredBench.start * dayWidth + 2 }}
                   >
-                    {day.monthLabel}
+                    {formatBenchRange(days, hoveredBench)}
                   </Text>
-                ) : null,
-              )}
-            </div>
-            <div className="relative flex h-6 items-center">
-              {/* FDN-44: bordered, matching the horizon toggle, the filter
-                * button and People's filter pills. A bare fill was the only
-                * pill-shaped control surface in the product without one. */}
-              {hoveredBench ? (
-                <span
-                  aria-hidden
-                  className="pointer-events-none absolute inset-y-0 rounded-full border border-border-default bg-bg-active"
-                  style={{
-                    left: hoveredBench.start * dayWidth + 2,
-                    width: Math.max(0, hoveredBench.span * dayWidth - 4),
-                  }}
-                />
-              ) : null}
-              {days.map((day, index) => {
-                return (
-                <div
-                  key={day.date}
-                  title={day.note ?? day.date}
-                  style={{ width: dayWidth }}
-                  className="relative z-10 flex shrink-0 items-center justify-center"
-                >
-                  {index === todayIndex ? null : day.headerLabel && !(index === cursorDateIndex && hoveredBench && index >= hoveredBench.start && index < hoveredBench.start + hoveredBench.span) ? (
-                    // The cursor's own date mark paints on top of this cell at
-                    // z-20 regardless, but leaving this label under it reads as
-                    // two overlapping numbers rather than one. Drop just this
-                    // cell's own label — never the pill or the cursor's own
-                    // date — for the one index where they'd actually collide.
-                    <Text variant="micro" className="whitespace-nowrap text-text-tertiary">
-                      {day.headerLabel}
-                    </Text>
-                  ) : null}
-                </div>
-                );
-              })}
+                ) : (
+                  days.map((day, index) =>
+                    day.monthLabel ? (
+                      <Text
+                        key={`month-${day.date}`}
+                        data-timeline-month
+                        variant="micro"
+                        className="absolute top-1 whitespace-nowrap text-text-secondary"
+                        style={{ left: index * dayWidth + 2 }}
+                      >
+                        {day.monthLabel}
+                      </Text>
+                    ) : null,
+                  )
+                )}
+              </div>
+              <div className="relative flex h-6 items-center">
+                {/* FDN-44: bordered, matching the horizon toggle, the filter
+                 * button and People's filter pills. A bare fill was the only
+                 * pill-shaped control surface in the product without one. */}
+                {hoveredBench ? (
+                  <span
+                    aria-hidden
+                    className="pointer-events-none absolute inset-y-0 rounded-full border border-border-default bg-bg-active"
+                    style={{
+                      left: hoveredBench.start * dayWidth + 2,
+                      width: Math.max(0, hoveredBench.span * dayWidth - 4),
+                    }}
+                  />
+                ) : null}
+                {days.map((day, index) => {
+                  return (
+                    <div
+                      key={day.date}
+                      title={day.note ?? day.date}
+                      style={{ width: dayWidth }}
+                      className="relative z-10 flex shrink-0 items-center justify-center"
+                    >
+                      {index === todayIndex ? null : day.headerLabel &&
+                        !(
+                          index === cursorDateIndex &&
+                          hoveredBench &&
+                          index >= hoveredBench.start &&
+                          index < hoveredBench.start + hoveredBench.span
+                        ) ? (
+                        // The cursor's own date mark paints on top of this cell at
+                        // z-20 regardless, but leaving this label under it reads as
+                        // two overlapping numbers rather than one. Drop just this
+                        // cell's own label — never the pill or the cursor's own
+                        // date — for the one index where they'd actually collide.
+                        <Text
+                          variant="micro"
+                          className="whitespace-nowrap text-text-tertiary"
+                        >
+                          {day.headerLabel}
+                        </Text>
+                      ) : null}
+                    </div>
+                  );
+                })}
 
-              {/* Both markers live inside the date row, so their coordinates
-                * are the same ones the bench range pill uses and nesting one
-                * inside the other needs no arithmetic. */}
-              {todayIndex >= 0 ? (
-                <HeaderMarker
-                  tone="today"
-                  x={todayIndex * dayWidth + dayWidth / 2}
-                  label={days[todayIndex]?.date.slice(8, 10) ?? ""}
-                />
-              ) : null}
-              {/* FDN-44: the cursor pill takes the pointer's raw pixel
-                * position, exactly as its line does, so the two are one
-                * object that cannot lag behind itself. Only the *label* is
-                * snapped — it names the column under the pointer and changes
-                * the instant that column changes, which is a fact about the
-                * date and not about where the marker is drawn. */}
-              {cursorX !== undefined &&
-              cursorDateIndex !== undefined &&
-              cursorDateIndex !== todayIndex ? (
-                <HeaderMarker
-                  tone="cursor"
-                  x={cursorX}
-                  label={days[cursorDateIndex]?.date.slice(8, 10) ?? ""}
-                />
-              ) : null}
+                {/* Both markers live inside the date row, so their coordinates
+                 * are the same ones the bench range pill uses and nesting one
+                 * inside the other needs no arithmetic. */}
+                {todayIndex >= 0 ? (
+                  <HeaderMarker
+                    tone="today"
+                    x={todayIndex * dayWidth + dayWidth / 2}
+                    label={days[todayIndex]?.date.slice(8, 10) ?? ""}
+                  />
+                ) : null}
+                {/* FDN-44: the cursor pill takes the pointer's raw pixel
+                 * position, exactly as its line does, so the two are one
+                 * object that cannot lag behind itself. Only the *label* is
+                 * snapped — it names the column under the pointer and changes
+                 * the instant that column changes, which is a fact about the
+                 * date and not about where the marker is drawn. */}
+                {cursorX !== undefined &&
+                cursorDateIndex !== undefined &&
+                cursorDateIndex !== todayIndex ? (
+                  <HeaderMarker
+                    tone="cursor"
+                    x={cursorX}
+                    label={days[cursorDateIndex]?.date.slice(8, 10) ?? ""}
+                  />
+                ) : null}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Rows. No separators — separation comes from hover and alignment
-          * alone, matching Table. VPS-D002. */}
-        {rows.map((row, rowIndex) => {
-          const selected = row.id === selectedRowId;
-          return (
-            <div
-              key={row.id}
-              role="button"
-              tabIndex={-1}
-              aria-label={`${row.primaryLabel}, ${row.secondaryLabel}`}
-              aria-pressed={selected}
-              onClick={() => onSelectRow?.(row.id)}
-              className="group relative flex h-timeline-row cursor-default"
-            >
+          {/* Rows. No separators — separation comes from hover and alignment
+           * alone, matching Table. VPS-D002. */}
+          {rows.map((row, rowIndex) => {
+            const selected = row.id === selectedRowId;
+            return (
               <div
-                className={cx(
-                  "sticky left-0 z-10 flex w-timeline-label shrink-0 items-center bg-bg-subtle px-cell",
-                  // The sticky column needs its own fill or the track shows
-                  // through as it scrolls beneath. It is now unconditional.
-                )}
+                key={row.id}
+                role="button"
+                tabIndex={-1}
+                aria-label={`${row.primaryLabel}, ${row.secondaryLabel}`}
+                aria-pressed={selected}
+                onClick={() => onSelectRow?.(row.id)}
+                className="group relative flex h-timeline-row cursor-default"
               >
                 <div
                   className={cx(
-                    "flex w-full items-start gap-2 rounded-md px-2 py-1 motion-fast transition-colors",
-                    selected ? "bg-bg-selected" : "group-hover:bg-bg-hover",
+                    "sticky left-0 z-10 flex w-timeline-label shrink-0 items-center bg-bg-subtle px-cell",
+                    // The sticky column needs its own fill or the track shows
+                    // through as it scrolls beneath. It is now unconditional.
                   )}
                 >
-                  <Avatar
-                    name={row.primaryLabel}
-                    size="sm"
-                    dashed={row.ghost}
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className="flex min-w-0 items-baseline gap-1">
-                      <Text
-                        variant="body-medium"
-                        className="min-w-0 flex-1 truncate text-text-primary"
-                      >
-                        {row.primaryLabel}
-                      </Text>
-                      {row.referenceLabel ? (
-                        <Text variant="micro" className="shrink-0 text-text-tertiary">
-                          {row.referenceLabel}
+                  <div
+                    className={cx(
+                      "flex w-full items-start gap-2 rounded-md px-2 py-1 motion-fast transition-colors",
+                      selected ? "bg-bg-selected" : "group-hover:bg-bg-hover",
+                    )}
+                  >
+                    <Avatar name={row.primaryLabel} size="sm" dashed={row.ghost} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex min-w-0 items-baseline gap-1">
+                        <Text
+                          variant="body-medium"
+                          className="min-w-0 flex-1 truncate text-text-primary"
+                        >
+                          {row.primaryLabel}
                         </Text>
-                      ) : null}
+                        {row.referenceLabel ? (
+                          <Text variant="micro" className="shrink-0 text-text-tertiary">
+                            {row.referenceLabel}
+                          </Text>
+                        ) : null}
+                      </span>
+                      <Text
+                        variant="label"
+                        className="block truncate text-text-secondary"
+                      >
+                        {row.secondaryLabel}
+                      </Text>
                     </span>
-                    <Text
-                      variant="label"
-                      className="block truncate text-text-secondary"
-                    >
-                      {row.secondaryLabel}
-                    </Text>
-                  </span>
-                  {row.badge ? (
-                    <Badge tone="neutral" dashed={row.ghost}>
-                      {row.badge}
-                    </Badge>
+                    {row.badge ? (
+                      <Badge tone="neutral" dashed={row.ghost}>
+                        {row.badge}
+                      </Badge>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* FDN-19/31: the track carries the scroll-boundary mask, so
+                 * content fades under the person column and at the viewport's
+                 * right edge. The person column is a sibling and is not masked. */}
+                <div
+                  className="scroll-boundary-fade relative shrink-0"
+                  style={{ width: trackWidth }}
+                >
+                  {/*
+                   * Non-working days, per VRS-F004's index.
+                   *
+                   * FDN-20: barely there at rest, full weight on row hover. Whose
+                   * Saturday is a working day is a fact about that person, and it
+                   * matters while you are looking at them rather than while you
+                   * are scanning fifteen rows.
+                   *
+                   * It transitions on the same `group-hover` and at the same
+                   * `motion-fast` as the row border, so the two arrive together
+                   * as one gesture.
+                   */}
+                  {/* FDN-44: drawn as runs, not as one element per day. A
+                   * Saturday and a Sunday are one stretch of not-working, and
+                   * shading them as two adjacent cells meant rounding their
+                   * corners would have put a seam down the middle of a single
+                   * period. One block per run rounds correctly and renders far
+                   * fewer nodes at the 180-day horizon besides. */}
+                  <div className="absolute inset-0">
+                    {nonWorkingRuns(row.workingDayStates).map((run) => (
+                      <div
+                        key={run.start}
+                        style={{
+                          left: run.start * dayWidth,
+                          width: run.span * dayWidth,
+                        }}
+                        className="absolute inset-y-0 rounded-md motion-fast transition-colors group-hover:bg-nonworking"
+                      />
+                    ))}
+                  </div>
+
+                  {/* Bench bars, on the same plane as the assignment bars. */}
+                  {row.bench.map((region) => (
+                    <BenchRegion
+                      key={region.id}
+                      region={region}
+                      dayWidth={dayWidth}
+                      tooltipSide={rowIndex < 2 ? "bottom" : "top"}
+                      onHoverChange={setHoveredBench}
+                    />
+                  ))}
+
+                  {/* Assignment bars. */}
+                  {row.bars.map((bar) => (
+                    <Bar
+                      key={bar.id}
+                      bar={bar}
+                      dayWidth={dayWidth}
+                      tooltipSide={rowIndex < 2 ? "bottom" : "top"}
+                    />
+                  ))}
+
+                  {/* The inspection line follows the pointer's raw pixel
+                   * position continuously — no day-column snapping — and the
+                   * pill in the header now takes the same value, so the two
+                   * move as one object. `-translate-x-1/2` matches the pill's
+                   * own centering, which is what keeps them on a single axis
+                   * rather than one pixel apart. */}
+                  {cursorX !== undefined && cursorDateIndex !== todayIndex ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute top-0 bottom-0 z-20 w-px -translate-x-1/2 bg-border-strong"
+                      style={{ left: cursorX }}
+                    />
+                  ) : null}
+
+                  {/* The today line, drawn per row so it needs no knowledge of
+                   * the label column's responsive width. Above bars.
+                   * FDN-44: `brand-600`, the same token the pill takes — they
+                   * resolve to one value today, and a marker that can come
+                   * apart under a future ramp change is a marker waiting to. */}
+                  {todayIndex >= 0 ? (
+                    <span
+                      aria-hidden
+                      className="absolute top-0 bottom-0 z-10 w-px -translate-x-1/2 bg-brand-600"
+                      style={{ left: todayIndex * dayWidth + dayWidth / 2 }}
+                    />
                   ) : null}
                 </div>
               </div>
-
-              {/* FDN-19/31: the track carries the scroll-boundary mask, so
-                * content fades under the person column and at the viewport's
-                * right edge. The person column is a sibling and is not masked. */}
-              <div
-                className="scroll-boundary-fade relative shrink-0"
-                style={{ width: trackWidth }}
-              >
-                {/*
-                  * Non-working days, per VRS-F004's index.
-                  *
-                  * FDN-20: barely there at rest, full weight on row hover. Whose
-                  * Saturday is a working day is a fact about that person, and it
-                  * matters while you are looking at them rather than while you
-                  * are scanning fifteen rows.
-                  *
-                  * It transitions on the same `group-hover` and at the same
-                  * `motion-fast` as the row border, so the two arrive together
-                  * as one gesture.
-                  */}
-                {/* FDN-44: drawn as runs, not as one element per day. A
-                  * Saturday and a Sunday are one stretch of not-working, and
-                  * shading them as two adjacent cells meant rounding their
-                  * corners would have put a seam down the middle of a single
-                  * period. One block per run rounds correctly and renders far
-                  * fewer nodes at the 180-day horizon besides. */}
-                <div className="absolute inset-0">
-                  {nonWorkingRuns(row.workingDayStates).map((run) => (
-                    <div
-                      key={run.start}
-                      style={{ left: run.start * dayWidth, width: run.span * dayWidth }}
-                      className="absolute inset-y-0 rounded-md motion-fast transition-colors group-hover:bg-nonworking"
-                    />
-                  ))}
-                </div>
-
-                {/* Bench bars, on the same plane as the assignment bars. */}
-                {row.bench.map((region) => (
-                  <BenchRegion
-                    key={region.id}
-                    region={region}
-                    dayWidth={dayWidth}
-                    tooltipSide={rowIndex < 2 ? "bottom" : "top"}
-                    onHoverChange={setHoveredBench}
-                  />
-                ))}
-
-                {/* Assignment bars. */}
-                {row.bars.map((bar) => (
-                  <Bar
-                    key={bar.id}
-                    bar={bar}
-                    dayWidth={dayWidth}
-                    tooltipSide={rowIndex < 2 ? "bottom" : "top"}
-                  />
-                ))}
-
-                {/* The inspection line follows the pointer's raw pixel
-                  * position continuously — no day-column snapping — and the
-                  * pill in the header now takes the same value, so the two
-                  * move as one object. `-translate-x-1/2` matches the pill's
-                  * own centering, which is what keeps them on a single axis
-                  * rather than one pixel apart. */}
-                {cursorX !== undefined && cursorDateIndex !== todayIndex ? (
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute top-0 bottom-0 z-20 w-px -translate-x-1/2 bg-border-strong"
-                    style={{ left: cursorX }}
-                  />
-                ) : null}
-
-                {/* The today line, drawn per row so it needs no knowledge of
-                  * the label column's responsive width. Above bars.
-                  * FDN-44: `brand-600`, the same token the pill takes — they
-                  * resolve to one value today, and a marker that can come
-                  * apart under a future ramp change is a marker waiting to. */}
-                {todayIndex >= 0 ? (
-                  <span
-                    aria-hidden
-                    className="absolute top-0 bottom-0 z-10 w-px -translate-x-1/2 bg-brand-600"
-                    style={{ left: todayIndex * dayWidth + dayWidth / 2 }}
-                  />
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
-    </div>
     </TooltipProvider>
   );
 }
@@ -730,8 +742,8 @@ function BenchRegion({
               </Text>
             ) : null}
             {/* Weight, not hue: the day count is the same color as the figure
-              * and a lighter weight, because it is the same kind of fact stated
-              * smaller. This is why `numeric` stays at 400 — see F40. */}
+             * and a lighter weight, because it is the same kind of fact stated
+             * smaller. This is why `numeric` stays at 400 — see F40. */}
             {showCount ? (
               <Text variant="numeric" className="truncate text-bench-figure">
                 {region.workingDays}d
@@ -799,7 +811,11 @@ function BenchTooltip({ region }: { region: TimelineBenchRegion }) {
         label="Unrecovered"
         value={region.costLabel ?? "Outside the 45-day cost horizon"}
       />
-      <DetailRow icon={CalendarDays} label="Range" value={region.title ?? "Bench period"} />
+      <DetailRow
+        icon={CalendarDays}
+        label="Range"
+        value={region.title ?? "Bench period"}
+      />
     </div>
   );
 }
@@ -809,8 +825,10 @@ function formatBenchRange(days: TimelineDay[], region: TimelineBenchRegion) {
   const end = days[region.start + region.span - 1]?.date;
   if (!start || !end) return "Bench range";
   const format = (date: string) => {
-    const month = new Intl.DateTimeFormat("en", { month: "short", timeZone: "UTC" })
-      .format(new Date(`${date}T00:00:00Z`));
+    const month = new Intl.DateTimeFormat("en", {
+      month: "short",
+      timeZone: "UTC",
+    }).format(new Date(`${date}T00:00:00Z`));
     return `${month} ${Number(date.slice(8, 10))}`;
   };
   return `${format(start)}–${format(end)}`;

@@ -75,9 +75,9 @@ function HeaderLabel<T>({
   const content = (
     <>
       {/* FDN-44: `text-primary`. FDN-9 already moved these off `text-tertiary`
-        * on the grounds that a column header is a load-bearing label; at 11px,
-        * uppercase and tracked, on a filled strip, `text-secondary` was still
-        * reading as supporting text rather than as the label of a column. */}
+       * on the grounds that a column header is a load-bearing label; at 11px,
+       * uppercase and tracked, on a filled strip, `text-secondary` was still
+       * reading as supporting text rather than as the label of a column. */}
       <Text variant="micro" className="text-text-primary">
         {column.header}
       </Text>
@@ -141,7 +141,8 @@ export function Table<T>({
   function toggleSort(column: TableColumn<T>) {
     if (!column.sortable) return;
     setSort((prev) => {
-      if (!prev || prev.key !== column.key) return { key: column.key, direction: "asc" };
+      if (!prev || prev.key !== column.key)
+        return { key: column.key, direction: "asc" };
       if (prev.direction === "asc") return { key: column.key, direction: "desc" };
       return null;
     });
@@ -168,7 +169,11 @@ export function Table<T>({
   const insetHeader = appearance !== "default";
 
   return (
-    <div className={cx(!insetHeader && "overflow-hidden rounded-md border border-border-default")}>
+    <div
+      className={cx(
+        !insetHeader && "overflow-hidden rounded-md border border-border-default",
+      )}
+    >
       <table
         className={cx(
           "w-full",
@@ -190,77 +195,85 @@ export function Table<T>({
               : "border-collapse",
         )}
       >
-        <thead className={cx("sticky top-0 z-10", insetHeader ? "bg-transparent" : "bg-bg-surface", stickyHeaderClassName)}>
+        <thead
+          className={cx(
+            "sticky top-0 z-10",
+            insetHeader ? "bg-transparent" : "bg-bg-surface",
+            stickyHeaderClassName,
+          )}
+        >
           <tr>
             {columns.map((column, index) => {
               const movable = Boolean(onReorderColumns) && !column.pinned;
               return (
-              <th
-                key={column.key}
-                scope="col"
-                style={column.width ? { width: column.width } : undefined}
-                /*
-                 * The header cell is the drag source, and the sort button
-                 * inside it keeps the click. A press that never moves fires
-                 * `click` and no drag; a press that moves fires the drag and
-                 * no click, so the two gestures do not have to be arbitrated.
-                 */
-                ref={onReorderColumns ? reorder.register(column.key) : undefined}
-                {...(movable ? reorder.dragHandleProps(column.key) : {})}
-                className={cx(
-                  // FDN-44: `bg-column-header`, not `bg-active` — see the
-                  // token's own note. A state token was standing in for a
-                  // structural surface and only worked in one of the two
-                  // places this table is used.
-                  "relative",
-                  insetHeader ? "h-control bg-bg-column-header px-cell first:rounded-l-md last:rounded-r-md" : "h-8 border-b border-border-default px-cell",
-                  column.align === "right" ? "text-right" : "text-left",
-                  movable && "cursor-grab touch-none",
-                  reorder.dragging === column.key && "opacity-40",
-                  "motion-fast transition-colors",
-                )}
-              >
-                {/*
-                  * The insertion indicator sits in the gap between two columns,
-                  * because that is the question the gesture asks — between
-                  * which two, not onto which one. Absolutely positioned so it
-                  * occupies no width: an indicator that takes space reflows
-                  * every column to its right at the exact moment you are aiming
-                  * at one of them.
-                  */}
-                {onReorderColumns && reorder.dropIndex === index ? (
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute inset-y-0 left-0 border-l-2 border-brand-600"
+                <th
+                  key={column.key}
+                  scope="col"
+                  style={column.width ? { width: column.width } : undefined}
+                  /*
+                   * The header cell is the drag source, and the sort button
+                   * inside it keeps the click. A press that never moves fires
+                   * `click` and no drag; a press that moves fires the drag and
+                   * no click, so the two gestures do not have to be arbitrated.
+                   */
+                  ref={onReorderColumns ? reorder.register(column.key) : undefined}
+                  {...(movable ? reorder.dragHandleProps(column.key) : {})}
+                  className={cx(
+                    // FDN-44: `bg-column-header`, not `bg-active` — see the
+                    // token's own note. A state token was standing in for a
+                    // structural surface and only worked in one of the two
+                    // places this table is used.
+                    "relative",
+                    insetHeader
+                      ? "h-control bg-bg-column-header px-cell first:rounded-l-md last:rounded-r-md"
+                      : "h-8 border-b border-border-default px-cell",
+                    column.align === "right" ? "text-right" : "text-left",
+                    movable && "cursor-grab touch-none",
+                    reorder.dragging === column.key && "opacity-40",
+                    "motion-fast transition-colors",
+                  )}
+                >
+                  {/*
+                   * The insertion indicator sits in the gap between two columns,
+                   * because that is the question the gesture asks — between
+                   * which two, not onto which one. Absolutely positioned so it
+                   * occupies no width: an indicator that takes space reflows
+                   * every column to its right at the exact moment you are aiming
+                   * at one of them.
+                   */}
+                  {onReorderColumns && reorder.dropIndex === index ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-0 left-0 border-l-2 border-brand-600"
+                    />
+                  ) : null}
+                  {onReorderColumns &&
+                  reorder.dropIndex === columns.length &&
+                  index === columns.length - 1 ? (
+                    <span
+                      aria-hidden
+                      className="pointer-events-none absolute inset-y-0 right-0 border-r-2 border-brand-600"
+                    />
+                  ) : null}
+                  {/*
+                   * FDN-44: an unsortable header is not a disabled button, it
+                   * is not a button.
+                   *
+                   * Every header used to render as one, `disabled` when the
+                   * column had no sort — and VPS-D002's own base rule puts
+                   * `:disabled` at 40% opacity. So on the People directory,
+                   * Status and Name-only columns were drawn at 40% of the
+                   * weight of the columns beside them, which read as a
+                   * contrast failure in the type and was actually a control
+                   * state leaking onto a label. A label with nothing to press
+                   * is a label.
+                   */}
+                  <HeaderLabel
+                    column={column}
+                    sort={sort}
+                    onSort={() => toggleSort(column)}
                   />
-                ) : null}
-                {onReorderColumns &&
-                reorder.dropIndex === columns.length &&
-                index === columns.length - 1 ? (
-                  <span
-                    aria-hidden
-                    className="pointer-events-none absolute inset-y-0 right-0 border-r-2 border-brand-600"
-                  />
-                ) : null}
-                {/*
-                  * FDN-44: an unsortable header is not a disabled button, it
-                  * is not a button.
-                  *
-                  * Every header used to render as one, `disabled` when the
-                  * column had no sort — and VPS-D002's own base rule puts
-                  * `:disabled` at 40% opacity. So on the People directory,
-                  * Status and Name-only columns were drawn at 40% of the
-                  * weight of the columns beside them, which read as a
-                  * contrast failure in the type and was actually a control
-                  * state leaking onto a label. A label with nothing to press
-                  * is a label.
-                  */}
-                <HeaderLabel
-                  column={column}
-                  sort={sort}
-                  onSort={() => toggleSort(column)}
-                />
-              </th>
+                </th>
               );
             })}
           </tr>
@@ -270,43 +283,43 @@ export function Table<T>({
             const key = rowKey(row);
             const selected = selectedRowKey === key;
             return (
-            /*
-             * FDN-44. The row's fill lives on its cells, not on the row.
-             *
-             * A `<tr>` accepts `border-radius` and does nothing with it — the
-             * background is painted by the cells, so the corners a row appears
-             * to have are its first and last cell's. Carrying the fill down to
-             * the cells and rounding the outer two is what actually gives a
-             * hovered or selected row corners, and `group` keeps the hover a
-             * whole-row gesture rather than a per-cell one.
-             */
-            <tr
-              key={key}
-              aria-selected={selected || undefined}
-              onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={cx(
-                "group",
-                directory && "h-timeline-row",
-                onRowClick && "cursor-pointer",
-                rowClassName,
-              )}
-            >
-              {columns.map((column) => (
-                <td
-                  key={column.key}
-                  className={cx(
-                    "px-cell motion-fast transition-colors",
-                    insetHeader && "first:rounded-l-md last:rounded-r-md",
-                    onRowClick && "group-hover:bg-bg-hover",
-                    selected && "bg-bg-active",
-                    column.align === "right" ? "text-right" : "text-left",
-                    column.cellClassName,
-                  )}
-                >
-                  {column.render(row)}
-                </td>
-              ))}
-            </tr>
+              /*
+               * FDN-44. The row's fill lives on its cells, not on the row.
+               *
+               * A `<tr>` accepts `border-radius` and does nothing with it — the
+               * background is painted by the cells, so the corners a row appears
+               * to have are its first and last cell's. Carrying the fill down to
+               * the cells and rounding the outer two is what actually gives a
+               * hovered or selected row corners, and `group` keeps the hover a
+               * whole-row gesture rather than a per-cell one.
+               */
+              <tr
+                key={key}
+                aria-selected={selected || undefined}
+                onClick={onRowClick ? () => onRowClick(row) : undefined}
+                className={cx(
+                  "group",
+                  directory && "h-timeline-row",
+                  onRowClick && "cursor-pointer",
+                  rowClassName,
+                )}
+              >
+                {columns.map((column) => (
+                  <td
+                    key={column.key}
+                    className={cx(
+                      "px-cell motion-fast transition-colors",
+                      insetHeader && "first:rounded-l-md last:rounded-r-md",
+                      onRowClick && "group-hover:bg-bg-hover",
+                      selected && "bg-bg-active",
+                      column.align === "right" ? "text-right" : "text-left",
+                      column.cellClassName,
+                    )}
+                  >
+                    {column.render(row)}
+                  </td>
+                ))}
+              </tr>
             );
           })}
         </tbody>

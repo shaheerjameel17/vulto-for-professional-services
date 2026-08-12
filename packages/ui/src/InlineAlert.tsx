@@ -26,12 +26,7 @@ export type InlineAlertProps = {
   className?: string;
 };
 
-export function InlineAlert({
-  tone,
-  children,
-  action,
-  className,
-}: InlineAlertProps) {
+export function InlineAlert({ tone, children, action, className }: InlineAlertProps) {
   return (
     <div
       className={cx(

@@ -93,7 +93,7 @@ export function Stat({
   return (
     <div className={cx("flex flex-col gap-1", className)}>
       {/* The delta stays with the value rather than being flipped with the
-        * label, so it reads as a qualification of the figure either way. */}
+       * label, so it reads as a qualification of the figure either way. */}
       {labelPlacement === "above" ? (
         <>
           {labelNode}

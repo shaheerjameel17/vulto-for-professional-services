@@ -134,7 +134,11 @@
    * in dark where the same ratio over near-black disappears.
    */
   --vt-bg-today: color-mix(in srgb, var(--vt-text-brand) 5%, var(--vt-bg-surface));
-  --vt-bg-today-header: color-mix(in srgb, var(--vt-text-brand) 16%, var(--vt-bg-surface));
+  --vt-bg-today-header: color-mix(
+    in srgb,
+    var(--vt-text-brand) 16%,
+    var(--vt-bg-surface)
+  );
 
   /*
    * Non-working day columns on the Timeline. FDN-15.
@@ -177,10 +181,8 @@
    * a cool-neutral ramp reads muddy, and this ramp is zinc.
    */
   --vt-shadow-overlay:
-    0 1px 2px -1px rgb(9 9 11 / 0.12),
-    0 2px 6px -2px rgb(9 9 11 / 0.10),
-    0 8px 16px -6px rgb(9 9 11 / 0.10),
-    0 20px 32px -12px rgb(9 9 11 / 0.10);
+    0 1px 2px -1px rgb(9 9 11 / 0.12), 0 2px 6px -2px rgb(9 9 11 / 0.1),
+    0 8px 16px -6px rgb(9 9 11 / 0.1), 0 20px 32px -12px rgb(9 9 11 / 0.1);
 
   /*
    * FDN-43. The scrollbar, which had been the operating system's.
@@ -280,7 +282,11 @@
    * than the header cell that names the date — a column-length band at the
    * header's strength stops being a marker and becomes the background. */
   --vt-bg-today: color-mix(in srgb, var(--vt-text-brand) 6%, var(--vt-bg-surface));
-  --vt-bg-today-header: color-mix(in srgb, var(--vt-text-brand) 20%, var(--vt-bg-surface));
+  --vt-bg-today-header: color-mix(
+    in srgb,
+    var(--vt-text-brand) 20%,
+    var(--vt-bg-surface)
+  );
 
   /*
    * FDN-44 round 3. Still lighter than the surface, and that is correct.
@@ -308,10 +314,8 @@
    * The dark layers below are for grounding and direction, not separation.
    */
   --vt-shadow-overlay:
-    inset 0 1px 0 0 rgb(255 255 255 / 0.06),
-    0 1px 2px -1px rgb(0 0 0 / 0.6),
-    0 8px 16px -6px rgb(0 0 0 / 0.55),
-    0 20px 32px -12px rgb(0 0 0 / 0.5);
+    inset 0 1px 0 0 rgb(255 255 255 / 0.06), 0 1px 2px -1px rgb(0 0 0 / 0.6),
+    0 8px 16px -6px rgb(0 0 0 / 0.55), 0 20px 32px -12px rgb(0 0 0 / 0.5);
 }
 
 /*

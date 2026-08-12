@@ -220,9 +220,10 @@ export default function HomePage() {
   function moveSelection(delta: number) {
     if (visibleItems.length === 0) return;
     const current = visibleItems.findIndex((item) => item.id === activeId);
-    const next = current === -1
-      ? 0
-      : Math.min(visibleItems.length - 1, Math.max(0, current + delta));
+    const next =
+      current === -1
+        ? 0
+        : Math.min(visibleItems.length - 1, Math.max(0, current + delta));
     setSelectedId(visibleItems[next]!.id);
   }
 
@@ -331,8 +332,12 @@ export default function HomePage() {
         return (
           <div className="py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={SOURCE_TONE[item.source] ?? "neutral"} shape="pill">{item.source}</Badge>
-              <Text variant="body-medium" className="text-text-primary">{item.title}</Text>
+              <Badge tone={SOURCE_TONE[item.source] ?? "neutral"} shape="pill">
+                {item.source}
+              </Badge>
+              <Text variant="body-medium" className="text-text-primary">
+                {item.title}
+              </Text>
             </div>
             <div className="mt-2 flex items-start gap-2">
               <Avatar name={employee?.fullName ?? item.subject} size="md" />
@@ -349,7 +354,9 @@ export default function HomePage() {
                 </div>
                 {item.escalated ? (
                   <div className="mt-1 rounded-md border-l-2 border-attention bg-bg-hover px-3 py-2">
-                    <Text variant="small" className="text-text-secondary">Escalated · {item.context}</Text>
+                    <Text variant="small" className="text-text-secondary">
+                      Escalated · {item.context}
+                    </Text>
                   </div>
                 ) : (
                   <Text variant="small" className="mt-1 block text-text-secondary">
@@ -381,9 +388,9 @@ export default function HomePage() {
   return (
     <>
       {/* FDN-41: the destination is called Home in the sidebar, in the URL and
-        * here. The subtitle carries what the viewer is actually looking at,
-        * which is where the role belongs — a title should not name a role the
-        * viewer does not hold. */}
+       * here. The subtitle carries what the viewer is actually looking at,
+       * which is where the role belongs — a title should not name a role the
+       * viewer does not hold. */}
       <PageHeader
         title="Home"
         subtitle={
@@ -396,7 +403,9 @@ export default function HomePage() {
         actions={
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
-              <Text variant="micro" className="text-text-tertiary">Prototype viewer</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                Prototype viewer
+              </Text>
               <ToggleGroup<HomeViewer>
                 label="Viewing as"
                 value={role}
@@ -430,12 +439,12 @@ export default function HomePage() {
       />
       <Content>
         {/*
-          * The Owner variant. Figures first, queue beneath — VPS-D004's
-          * "operational overview" for an administrative role. An owner's first
-          * question is how the business stands; the approvals are real work but
-          * they are not the headline, and putting them at the top was what made
-          * this read as a manager's screen regardless of what it was called.
-          */}
+         * The Owner variant. Figures first, queue beneath — VPS-D004's
+         * "operational overview" for an administrative role. An owner's first
+         * question is how the business stands; the approvals are real work but
+         * they are not the headline, and putting them at the top was what made
+         * this read as a manager's screen regardless of what it was called.
+         */}
         {owner ? (
           <section aria-labelledby="firm-at-a-glance" className="pt-8">
             <div className="mb-3 flex items-center justify-between">
@@ -470,8 +479,8 @@ export default function HomePage() {
                 />
               </Card>
               {/* The one figure on this screen that is money, and the only one
-                * that takes a hue — the same rationing the Bench Forecast's
-                * summary band applies to the same number. */}
+               * that takes a hue — the same rationing the Bench Forecast's
+               * summary band applies to the same number. */}
               <Card title="Unrecovered">
                 <Stat
                   label={`Next ${forecast.costHorizonDays} days`}
@@ -496,19 +505,19 @@ export default function HomePage() {
         ) : null}
 
         {/*
-          * The Team Member variant. VPS-D004 named it and no feature document
-          * claims it, so this is derived rather than specified: what a person
-          * needs on landing is their own week — what they are on, how much of
-          * it is theirs to fill, and the small number of things actually
-          * waiting on them. It is not a queue, because a team member's queue is
-          * almost always empty and a screen built around an empty list is a
-          * screen that says nothing; and it is not an overview, because the
-          * figures an owner reads are none of their business.
-          *
-          * Everything here is their own record. Nothing on this screen states a
-          * fact about anybody else, which is the substantive difference between
-          * this variant and the other two rather than a matter of scope.
-          */}
+         * The Team Member variant. VPS-D004 named it and no feature document
+         * claims it, so this is derived rather than specified: what a person
+         * needs on landing is their own week — what they are on, how much of
+         * it is theirs to fill, and the small number of things actually
+         * waiting on them. It is not a queue, because a team member's queue is
+         * almost always empty and a screen built around an empty list is a
+         * screen that says nothing; and it is not an overview, because the
+         * figures an owner reads are none of their business.
+         *
+         * Everything here is their own record. Nothing on this screen states a
+         * fact about anybody else, which is the substantive difference between
+         * this variant and the other two rather than a matter of scope.
+         */}
         {member ? (
           <section aria-labelledby="your-week" className="pt-8">
             <div className="mb-3 flex items-center justify-between">
@@ -540,8 +549,8 @@ export default function HomePage() {
                 />
               </Card>
               {/* Their own bench time, not the firm's. A person is entitled to
-                * know when they are about to be unassigned; the cost of it is
-                * the firm's fact and stays on the Owner's Home. */}
+               * know when they are about to be unassigned; the cost of it is
+               * the firm's fact and stays on the Owner's Home. */}
               <Card title="Unassigned time">
                 <Stat
                   label="Working days, next 90"
@@ -584,7 +593,11 @@ export default function HomePage() {
         >
           <Card
             title="Needs Your Action"
-            action={<Badge intensity="solid" tone="attention" shape="circle">{visibleItems.length}</Badge>}
+            action={
+              <Badge intensity="solid" tone="attention" shape="circle">
+                {visibleItems.length}
+              </Badge>
+            }
             className={cx(
               "min-w-0",
               // Owner: full width beneath the figures. Manager: two of three
@@ -608,7 +621,9 @@ export default function HomePage() {
                   <Text variant="small" className="text-text-secondary">
                     {kind}s
                   </Text>
-                  <Badge intensity="solid" tone="neutral" shape="circle">{count}</Badge>
+                  <Badge intensity="solid" tone="neutral" shape="circle">
+                    {count}
+                  </Badge>
                 </div>
               ))}
             </div>
@@ -644,76 +659,85 @@ export default function HomePage() {
           </Card>
 
           {/* Manager only. An owner has Firm at a Glance above; a team member
-            * has no business reading aggregates about a team they do not
-            * manage, which is a permission boundary rather than a layout
-            * preference. */}
+           * has no business reading aggregates about a team they do not
+           * manage, which is a permission boundary rather than a layout
+           * preference. */}
           {owner || member ? null : (
-          <div className="order-1 min-w-0 xl:order-none">
-            <div className="mb-3 lg:hidden">
-              <Button
-                variant="secondary"
-                onClick={() => setShowGlance((current) => !current)}
-                aria-expanded={showGlance}
+            <div className="order-1 min-w-0 xl:order-none">
+              <div className="mb-3 lg:hidden">
+                <Button
+                  variant="secondary"
+                  onClick={() => setShowGlance((current) => !current)}
+                  aria-expanded={showGlance}
+                >
+                  {showGlance ? "Hide team overview" : "Show team overview"}
+                </Button>
+              </div>
+              <section
+                aria-labelledby="team-at-a-glance"
+                className={cx(showGlance ? "block" : "hidden", "lg:block")}
               >
-                {showGlance ? "Hide team overview" : "Show team overview"}
-              </Button>
-            </div>
-            <section
-              aria-labelledby="team-at-a-glance"
-              className={cx(showGlance ? "block" : "hidden", "lg:block")}
-            >
-              <div className="mb-3 flex items-center justify-between">
-                <Text id="team-at-a-glance" variant="h2" className="text-text-primary">
-                  Team at a Glance
-                </Text>
-                {/* FDN-41: counted, not typed. This said "9 reports" beside a
-                  * cohort of six. */}
-                <Badge>{cohort.length} reports</Badge>
-              </div>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
-                <Card title="Utilization">
-                  <Stat
-                    label="Next 90 days"
-                    value={`${forecast.utilization}%`}
-                    denominator={`of ${forecast.cohortSize} reports`}
-                    scale="numeric-lg"
-                    delta={{ text: "1% below target. Target 75%.", tone: "attention" }}
-                  />
-                </Card>
-                {/* VRS-F049's four glance cards, kept. Bench exposure is
-                  * deliberately not among them: a manager reads their cohort's
-                  * bench on the Bench Forecast, which FDN-38 already scopes to
-                  * direct reports. It appears in the Owner overview because an
-                  * owner has no other summary of it on this screen. */}
-                <Card title="Skill coverage">
-                  <Stat
-                    label="Hold a verified skill"
-                    value={`${verifiedSkillCoverage} of ${cohort.length}`}
-                    denominator="reports"
-                    scale="numeric-lg"
-                  />
-                </Card>
-                <Card title="Pulse sentiment">
-                  <Stat
-                    label="Current pulse"
-                    value=""
-                    suppressedReason="Suppressed · 6 responses, threshold is 8"
-                  />
-                </Card>
-                <Card title="Probation reviews">
-                  <Stat
-                    label="Due in the next 30 days"
-                    value="2"
-                    denominator="reviews"
-                    scale="numeric-lg"
-                  />
-                  <Text variant="small" className="mt-2 text-text-secondary">
-                    Zara Hussain · Aug 18<br />Mateo Silva · Sep 2
+                <div className="mb-3 flex items-center justify-between">
+                  <Text
+                    id="team-at-a-glance"
+                    variant="h2"
+                    className="text-text-primary"
+                  >
+                    Team at a Glance
                   </Text>
-                </Card>
-              </div>
-            </section>
-          </div>
+                  {/* FDN-41: counted, not typed. This said "9 reports" beside a
+                   * cohort of six. */}
+                  <Badge>{cohort.length} reports</Badge>
+                </div>
+                <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-1">
+                  <Card title="Utilization">
+                    <Stat
+                      label="Next 90 days"
+                      value={`${forecast.utilization}%`}
+                      denominator={`of ${forecast.cohortSize} reports`}
+                      scale="numeric-lg"
+                      delta={{
+                        text: "1% below target. Target 75%.",
+                        tone: "attention",
+                      }}
+                    />
+                  </Card>
+                  {/* VRS-F049's four glance cards, kept. Bench exposure is
+                   * deliberately not among them: a manager reads their cohort's
+                   * bench on the Bench Forecast, which FDN-38 already scopes to
+                   * direct reports. It appears in the Owner overview because an
+                   * owner has no other summary of it on this screen. */}
+                  <Card title="Skill coverage">
+                    <Stat
+                      label="Hold a verified skill"
+                      value={`${verifiedSkillCoverage} of ${cohort.length}`}
+                      denominator="reports"
+                      scale="numeric-lg"
+                    />
+                  </Card>
+                  <Card title="Pulse sentiment">
+                    <Stat
+                      label="Current pulse"
+                      value=""
+                      suppressedReason="Suppressed · 6 responses, threshold is 8"
+                    />
+                  </Card>
+                  <Card title="Probation reviews">
+                    <Stat
+                      label="Due in the next 30 days"
+                      value="2"
+                      denominator="reviews"
+                      scale="numeric-lg"
+                    />
+                    <Text variant="small" className="mt-2 text-text-secondary">
+                      Zara Hussain · Aug 18
+                      <br />
+                      Mateo Silva · Sep 2
+                    </Text>
+                  </Card>
+                </div>
+              </section>
+            </div>
           )}
         </div>
       </Content>

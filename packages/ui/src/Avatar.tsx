@@ -54,21 +54,14 @@ export type AvatarProps = {
   className?: string;
 };
 
-export function Avatar({
-  name,
-  size = "md",
-  dashed = false,
-  className,
-}: AvatarProps) {
+export function Avatar({ name, size = "md", dashed = false, className }: AvatarProps) {
   return (
     <span
       aria-hidden
       className={cx(
         "inline-flex items-center justify-center rounded-full",
         "font-ui text-text-secondary select-none",
-        dashed
-          ? "border border-dashed border-border-strong"
-          : "bg-avatar-fallback",
+        dashed ? "border border-dashed border-border-strong" : "bg-avatar-fallback",
         SIZE[size],
         TYPE[size],
         className,

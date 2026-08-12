@@ -27,29 +27,23 @@ import { Content, PageHeader, Text } from "@vulto/ui";
  * already exist.
  */
 
-export function NotInPrototype({
-  title,
-  step,
-}: {
-  title: string;
-  step: string;
-}) {
+export function NotInPrototype({ title, step }: { title: string; step: string }) {
   return (
     <>
       <PageHeader title={title} />
       <Content>
         {/* The panel runs the full content width on purpose: a dashed outline
-          * around the whole region says "this area is reserved and nothing is
-          * in it yet", which a small card in the corner would not. The copy
-          * inside keeps a reading measure rather than stretching to match it.
-          * Left-aligned, not centered — VPS-D004's house style for a state with
-          * nothing in it, which this borrows even though it is not Empty. */}
+         * around the whole region says "this area is reserved and nothing is
+         * in it yet", which a small card in the corner would not. The copy
+         * inside keeps a reading measure rather than stretching to match it.
+         * Left-aligned, not centered — VPS-D004's house style for a state with
+         * nothing in it, which this borrows even though it is not Empty. */}
         <div className="pt-8">
           <div className="rounded-lg border border-dashed border-border-strong px-6 py-10">
             <div className="max-w-palette">
               {/* The scaffolding label leads, in the same `micro` treatment the
-                * Bench Forecast uses to mark its prototype viewer control. What
-                * this is comes before what it will hold. */}
+               * Bench Forecast uses to mark its prototype viewer control. What
+               * this is comes before what it will hold. */}
               <Text variant="micro" className="block text-text-tertiary">
                 Not in this prototype
               </Text>

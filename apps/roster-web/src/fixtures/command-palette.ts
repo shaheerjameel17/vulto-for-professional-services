@@ -26,13 +26,55 @@ const AVAILABILITY: Record<string, string> = {
 };
 
 const COMMANDS: IndexedResult[] = [
-  command("go-bench", "Go to Bench Forecast", "Open the 90-day capacity view", "/", "bench forecast capacity"),
-  command("go-people", "Go to People", "Browse and filter the employee roster", "/people", "employees roster"),
-  command("go-timesheets", "Go to Timesheets", "Open this week’s speed-run grid", "/timesheets", "time entries week"),
-  command("go-home", "Go to Home", "Open your role-aware home and action queue", "/home", "manager dashboard queue approvals overview"),
-  command("create-employee", "Create employee", "Start a new employee record", "/people", "add person"),
-  command("add-assignment", "Add assignment", "Plan work from the Bench Forecast", "/", "create project allocation"),
-  command("submit-timesheet", "Submit timesheet", "Review and submit the current week", "/timesheets", "send week"),
+  command(
+    "go-bench",
+    "Go to Bench Forecast",
+    "Open the 90-day capacity view",
+    "/",
+    "bench forecast capacity",
+  ),
+  command(
+    "go-people",
+    "Go to People",
+    "Browse and filter the employee roster",
+    "/people",
+    "employees roster",
+  ),
+  command(
+    "go-timesheets",
+    "Go to Timesheets",
+    "Open this week’s speed-run grid",
+    "/timesheets",
+    "time entries week",
+  ),
+  command(
+    "go-home",
+    "Go to Home",
+    "Open your role-aware home and action queue",
+    "/home",
+    "manager dashboard queue approvals overview",
+  ),
+  command(
+    "create-employee",
+    "Create employee",
+    "Start a new employee record",
+    "/people",
+    "add person",
+  ),
+  command(
+    "add-assignment",
+    "Add assignment",
+    "Plan work from the Bench Forecast",
+    "/",
+    "create project allocation",
+  ),
+  command(
+    "submit-timesheet",
+    "Submit timesheet",
+    "Review and submit the current week",
+    "/timesheets",
+    "send week",
+  ),
 ];
 
 const PEOPLE: IndexedResult[] = EMPLOYEES.map((employee) => ({
@@ -42,7 +84,8 @@ const PEOPLE: IndexedResult[] = EMPLOYEES.map((employee) => ({
   type: employee.employeeType === "Ghost" ? "Ghost" : "Person",
   context: AVAILABILITY[employee.employeeId] ?? "Availability not scheduled",
   dashed: employee.employeeType === "Ghost",
-  href: employee.employeeType === "Employee" ? `/people/${employee.employeeId}` : undefined,
+  href:
+    employee.employeeType === "Employee" ? `/people/${employee.employeeId}` : undefined,
   keywords: `${employee.jobTitle} ${employee.entityId}`,
 }));
 
@@ -79,19 +122,21 @@ const CLIENT_RESULTS: IndexedResult[] = PROJECTS.map((project) => ({
   href: "/",
 }));
 
-const DOCUMENT_RESULTS: IndexedResult[] = PROFILED_EMPLOYEE_IDS.flatMap((employeeId) => {
-  const employee = EMPLOYEES.find((candidate) => candidate.employeeId === employeeId);
-  const profile = profileFor(employeeId);
-  if (!employee || !profile) return [];
-  return profile.documents.map((document, index) => ({
-    id: `document-${employeeId}-${index}`,
-    group: "Documents" as const,
-    name: document.name,
-    type: "Document",
-    context: `${document.category} · ${employee.fullName}`,
-    href: `/people/${employeeId}`,
-  }));
-});
+const DOCUMENT_RESULTS: IndexedResult[] = PROFILED_EMPLOYEE_IDS.flatMap(
+  (employeeId) => {
+    const employee = EMPLOYEES.find((candidate) => candidate.employeeId === employeeId);
+    const profile = profileFor(employeeId);
+    if (!employee || !profile) return [];
+    return profile.documents.map((document, index) => ({
+      id: `document-${employeeId}-${index}`,
+      group: "Documents" as const,
+      name: document.name,
+      type: "Document",
+      context: `${document.category} · ${employee.fullName}`,
+      href: `/people/${employeeId}`,
+    }));
+  },
+);
 
 const POLICY_RESULTS: IndexedResult[] = [
   {
@@ -136,7 +181,7 @@ export function searchCommandPalette(query: string): CommandPaletteResult[] {
     // person's name or job title must not fan out every skill they hold.
     const haystack = normalize(
       result.group === "Skill matches"
-        ? result.keywords ?? ""
+        ? (result.keywords ?? "")
         : `${result.name} ${result.type} ${result.context} ${result.keywords ?? ""}`,
     );
     return terms.every((term) => haystack.includes(term));
@@ -154,7 +199,10 @@ function command(
 }
 
 function normalize(value: string): string {
-  return value.trim().toLocaleLowerCase().replace(/[^a-z0-9]+/g, " ");
+  return value
+    .trim()
+    .toLocaleLowerCase()
+    .replace(/[^a-z0-9]+/g, " ");
 }
 
 function slug(value: string): string {

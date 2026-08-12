@@ -37,12 +37,7 @@ export type TooltipProps = {
   children: ReactElement;
 };
 
-export function Tooltip({
-  content,
-  shortcut,
-  side = "top",
-  children,
-}: TooltipProps) {
+export function Tooltip({ content, shortcut, side = "top", children }: TooltipProps) {
   return (
     <RadixTooltip.Root>
       <RadixTooltip.Trigger asChild>{children}</RadixTooltip.Trigger>

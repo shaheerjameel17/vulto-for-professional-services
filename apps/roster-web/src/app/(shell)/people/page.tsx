@@ -16,10 +16,7 @@ import {
   type TableColumn,
 } from "@vulto/ui";
 import { EMPLOYEES, type Employee } from "../../../fixtures/roster";
-import {
-  profileFor,
-  type EmploymentType,
-} from "../../../fixtures/profiles";
+import { profileFor, type EmploymentType } from "../../../fixtures/profiles";
 import { ENTITY_NAMES, type EntityId } from "../../../fixtures/calendar";
 import {
   AddPersonDialog,
@@ -53,7 +50,8 @@ type DirectoryRow = {
   contractedHours?: number;
 };
 
-type DirectoryColumnKey = "code" | "role" | "department" | "entity" | "type" | "status" | "manager" | "hours";
+type DirectoryColumnKey =
+  "code" | "role" | "department" | "entity" | "type" | "status" | "manager" | "hours";
 
 const ENTITY_FILTERS: { value: EntityId; label: string; keywords: string }[] = [
   { value: "uk", label: ENTITY_NAMES.uk, keywords: "UK London" },
@@ -130,11 +128,13 @@ export default function PeoplePage() {
   );
 
   const filteredRows = rows.filter((row) => {
-    if (entityFilter.length > 0 && !entityFilter.includes(row.employee.entityId)) return false;
+    if (entityFilter.length > 0 && !entityFilter.includes(row.employee.entityId))
+      return false;
     if (
       typeFilter.length > 0 &&
       !typeFilter.includes(row.employmentType as EmploymentType)
-    ) return false;
+    )
+      return false;
     return true;
   });
 
@@ -204,12 +204,20 @@ export default function PeoplePage() {
       header: "Type",
       sortable: true,
       sortValue: (row) => row.employmentType,
-      render: (row) => <Badge tone="neutral" shape="pill">{row.employmentType}</Badge>,
+      render: (row) => (
+        <Badge tone="neutral" shape="pill">
+          {row.employmentType}
+        </Badge>
+      ),
     },
     {
       key: "status",
       header: "Status",
-      render: () => <Badge tone="success" shape="pill">Active</Badge>,
+      render: () => (
+        <Badge tone="success" shape="pill">
+          Active
+        </Badge>
+      ),
     },
     {
       key: "manager",
@@ -249,7 +257,9 @@ export default function PeoplePage() {
    * state holds only the movable ones. */
   const orderedColumnOptions = columnOrder
     .map((key) => COLUMN_OPTIONS.find((option) => option.value === key))
-    .filter((option): option is (typeof COLUMN_OPTIONS)[number] => option !== undefined);
+    .filter(
+      (option): option is (typeof COLUMN_OPTIONS)[number] => option !== undefined,
+    );
 
   return (
     <>
@@ -296,8 +306,8 @@ export default function PeoplePage() {
 
         {lastCreated ? (
           <InlineAlert tone="success" className="mt-4">
-            {lastCreated.fullName} was added to this prototype session. Reloading
-            clears the mock change.
+            {lastCreated.fullName} was added to this prototype session. Reloading clears
+            the mock change.
           </InlineAlert>
         ) : null}
 
@@ -327,7 +337,7 @@ export default function PeoplePage() {
                 // drains a shared queue is not idempotent.
                 const queue = [...moved];
                 return current.map((key) =>
-                  visibleColumns.includes(key) ? queue.shift() ?? key : key,
+                  visibleColumns.includes(key) ? (queue.shift() ?? key) : key,
                 );
               });
             }}

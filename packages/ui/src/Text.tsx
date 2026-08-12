@@ -75,13 +75,7 @@ export type TextProps = {
   style?: CSSProperties;
 };
 
-export function Text({
-  variant,
-  as,
-  className,
-  children,
-  ...rest
-}: TextProps) {
+export function Text({ variant, as, className, children, ...rest }: TextProps) {
   const Component = as ?? DEFAULT_ELEMENT[variant];
   return (
     <Component

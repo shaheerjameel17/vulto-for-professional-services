@@ -23,17 +23,42 @@ import { TYPE_TOKENS } from "@vulto/tokens";
  * It is prototype furniture, not a product screen.
  */
 
-const SURFACE_TOKENS: { name: string; className: string; light: string; dark: string }[] = [
+const SURFACE_TOKENS: {
+  name: string;
+  className: string;
+  light: string;
+  dark: string;
+}[] = [
   { name: "bg-canvas", className: "bg-bg-canvas", light: "#EFEFF0", dark: "#09090A" },
   { name: "bg-surface", className: "bg-bg-surface", light: "#FFFFFF", dark: "#1A1A1B" },
   { name: "bg-raised", className: "bg-bg-raised", light: "#FFFFFF", dark: "#1A1A1B" },
   { name: "bg-subtle", className: "bg-bg-subtle", light: "#F9F9FA", dark: "#111112" },
   { name: "bg-hover", className: "bg-bg-hover", light: "#EFEFF1", dark: "#222223" },
-  { name: "bg-canvas-hover", className: "bg-bg-canvas-hover", light: "#E8E8EB", dark: "#141416" },
-  { name: "bg-selected", className: "bg-bg-selected", light: "#FEF2E7", dark: "#33210F" },
+  {
+    name: "bg-canvas-hover",
+    className: "bg-bg-canvas-hover",
+    light: "#E8E8EB",
+    dark: "#141416",
+  },
+  {
+    name: "bg-selected",
+    className: "bg-bg-selected",
+    light: "#FEF2E7",
+    dark: "#33210F",
+  },
   { name: "bg-active", className: "bg-bg-active", light: "#E6E6E9", dark: "#2A2A2E" },
-  { name: "bg-column-header", className: "bg-bg-column-header", light: "#EBEBEE", dark: "#242427" },
-  { name: "bg-today-header", className: "bg-bg-today-header", light: "brand 16%", dark: "brand 20%" },
+  {
+    name: "bg-column-header",
+    className: "bg-bg-column-header",
+    light: "#EBEBEE",
+    dark: "#242427",
+  },
+  {
+    name: "bg-today-header",
+    className: "bg-bg-today-header",
+    light: "brand 16%",
+    dark: "brand 20%",
+  },
 ];
 
 const NEUTRAL = [
@@ -115,9 +140,7 @@ const SAMPLE: Record<string, string> = {
 function Swatch({ className, label }: { className: string; label: string }) {
   return (
     <div className="flex flex-col gap-1">
-      <div
-        className={`h-10 rounded-md border border-border-default ${className}`}
-      />
+      <div className={`h-10 rounded-md border border-border-default ${className}`} />
       <Text variant="micro" className="text-text-tertiary">
         {label}
       </Text>
@@ -135,13 +158,12 @@ export default function FoundationsPage() {
       <Content>
         <Section title="Type scale">
           <Text variant="small" className="mb-4 text-text-secondary">
-            FDN-29. Inter Variable carries the whole product. Figures use its
-            tabular numeral feature for alignment without changing typeface.
-            Line heights remain derived against Inter&rsquo;s 1.21em content box,
-            which moved exactly one of them —{" "}
-            <code className="font-ui text-numeric">display</code>, from 36 to 40.
-            Tracking derived from Inter&rsquo;s own metric curve and applied
-            above 20px only.
+            FDN-29. Inter Variable carries the whole product. Figures use its tabular
+            numeral feature for alignment without changing typeface. Line heights remain
+            derived against Inter&rsquo;s 1.21em content box, which moved exactly one of
+            them — <code className="font-ui text-numeric">display</code>, from 36 to 40.
+            Tracking derived from Inter&rsquo;s own metric curve and applied above 20px
+            only.
           </Text>
           <div className="flex flex-col gap-4">
             {TYPE_TOKENS.map((token) => (
@@ -184,8 +206,8 @@ export default function FoundationsPage() {
 
           <div className="mt-4">
             <InlineAlert tone="success">
-              FDN-9 closed the dark-surface collision. Canvas, inset, control,
-              and hover surfaces now occupy distinct contrast steps.
+              FDN-9 closed the dark-surface collision. Canvas, inset, control, and hover
+              surfaces now occupy distinct contrast steps.
             </InlineAlert>
           </div>
         </Section>
@@ -210,15 +232,14 @@ export default function FoundationsPage() {
           </div>
           <div className="mt-4">
             <InlineAlert tone="success">
-              FDN-9 closed the header contrast defect and FDN-44 finished it.
-              Column headers use
-              <code className="font-ui text-numeric"> text-primary</code>: at
-              11px, uppercase and tracked, on a filled strip,
-              <code className="font-ui text-numeric"> text-secondary</code>{" "}
-              still read as supporting text rather than as the label of a
-              column.
-              <code className="font-ui text-numeric"> text-tertiary</code> is
-              reserved for nonessential metadata.
+              FDN-9 closed the header contrast defect and FDN-44 finished it. Column
+              headers use
+              <code className="font-ui text-numeric"> text-primary</code>: at 11px,
+              uppercase and tracked, on a filled strip,
+              <code className="font-ui text-numeric"> text-secondary</code> still read
+              as supporting text rather than as the label of a column.
+              <code className="font-ui text-numeric"> text-tertiary</code> is reserved
+              for nonessential metadata.
             </InlineAlert>
           </div>
         </Section>
@@ -255,21 +276,19 @@ export default function FoundationsPage() {
           </div>
           <div className="mt-4 flex flex-col gap-2">
             <Text variant="small" className="text-text-secondary">
-              attention is the most important token in this product and the
-              reason the palette is otherwise starved. It marks badges, alerts
-              and over-target states — never anything that does not cost the
-              business money.
+              attention is the most important token in this product and the reason the
+              palette is otherwise starved. It marks badges, alerts and over-target
+              states — never anything that does not cost the business money.
             </Text>
             <Text variant="small" className="text-text-secondary">
-              A semantic color present in the resting state is not a signal. A
-              surface applying one must be able to state the condition under
-              which it does not.
+              A semantic color present in the resting state is not a signal. A surface
+              applying one must be able to state the condition under which it does not.
             </Text>
             <Text variant="small" className="text-text-secondary">
-              The bench fill is its own pair — amber-500 at rest, amber-400 on
-              row hover — and is identical in both themes. It is the attention
-              hue in substance, stated separately because a pale value that
-              reads muted on white reads bright against a near-black canvas.
+              The bench fill is its own pair — amber-500 at rest, amber-400 on row hover
+              — and is identical in both themes. It is the attention hue in substance,
+              stated separately because a pale value that reads muted on white reads
+              bright against a near-black canvas.
             </Text>
           </div>
         </Section>
@@ -306,63 +325,88 @@ export default function FoundationsPage() {
           <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
             <div className="flex flex-col gap-1">
               <div className="h-16 rounded-sm border border-border-default bg-bg-surface" />
-              <Text variant="micro" className="text-text-tertiary">radius-sm · 4px</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                radius-sm · 4px
+              </Text>
             </div>
             <div className="flex flex-col gap-1">
               <div className="h-16 rounded-md border border-border-default bg-bg-surface" />
-              <Text variant="micro" className="text-text-tertiary">radius-md · 6px</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                radius-md · 6px
+              </Text>
             </div>
             <div className="flex flex-col gap-1">
               <div className="h-16 rounded-lg border border-border-default bg-bg-surface" />
-              <Text variant="micro" className="text-text-tertiary">radius-lg · 8px</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                radius-lg · 8px
+              </Text>
             </div>
             <div className="flex flex-col gap-1">
               <div className="size-16 rounded-full border border-border-default bg-bg-surface" />
-              <Text variant="micro" className="text-text-tertiary">radius-full</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                radius-full
+              </Text>
             </div>
           </div>
 
           <div className="mt-6 grid grid-cols-3 gap-4">
             <div className="flex flex-col gap-1">
               <div className="h-16 rounded-md" />
-              <Text variant="micro" className="text-text-tertiary">flat</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                flat
+              </Text>
             </div>
             <div className="flex flex-col gap-1">
               <div className="elevation-raised h-16 rounded-md" />
-              <Text variant="micro" className="text-text-tertiary">raised</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                raised
+              </Text>
             </div>
             <div className="flex flex-col gap-1">
               <div className="elevation-overlay h-16 rounded-lg" />
-              <Text variant="micro" className="text-text-tertiary">overlay</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                overlay
+              </Text>
             </div>
           </div>
         </Section>
 
         <Section title="Product geometry">
           <Text variant="small" className="mb-4 text-text-secondary">
-            FDN-33 settles one information-preserving density. Browser zoom is
-            the accessibility mechanism; product geometry does not hide fields.
+            FDN-33 settles one information-preserving density. Browser zoom is the
+            accessibility mechanism; product geometry does not hide fields.
           </Text>
           <div className="flex flex-col gap-4">
             <div>
-              <Text variant="micro" className="text-text-tertiary">Table row · 32</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                Table row · 32
+              </Text>
               <div className="mt-1 flex flex-col rounded-md border border-border-default bg-bg-surface">
                 {["Priya Sharma", "Omar Farooq", "Hannah Weiss"].map((name) => (
                   <div
                     key={name}
                     className="flex h-row items-center px-cell hover:bg-bg-hover"
                   >
-                    <Text variant="body-medium" className="text-text-primary">{name}</Text>
+                    <Text variant="body-medium" className="text-text-primary">
+                      {name}
+                    </Text>
                   </div>
                 ))}
               </div>
             </div>
             <div>
-              <Text variant="micro" className="text-text-tertiary">Bench Forecast row · 36</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                Bench Forecast row · 36
+              </Text>
               <div className="mt-1 flex flex-col rounded-md border border-border-default bg-bg-surface">
                 {["Priya Sharma", "Omar Farooq"].map((name) => (
                   <div key={name} className="flex h-timeline-row items-center px-cell">
-                    <Text variant="body-medium" className="w-20 shrink-0 text-text-primary">{name}</Text>
+                    <Text
+                      variant="body-medium"
+                      className="w-20 shrink-0 text-text-primary"
+                    >
+                      {name}
+                    </Text>
                     <div className="flex h-bar flex-1 items-center gap-2 rounded-md border border-border-default bg-bg-subtle px-2">
                       <span className="size-dot rounded-full bg-cat-1" />
                     </div>
@@ -371,7 +415,9 @@ export default function FoundationsPage() {
               </div>
             </div>
             <div>
-              <Text variant="micro" className="text-text-tertiary">Control height · 28</Text>
+              <Text variant="micro" className="text-text-tertiary">
+                Control height · 28
+              </Text>
               <div className="mt-1 flex gap-2">
                 <Button variant="secondary">Assign</Button>
                 <Button variant="primary">Approve</Button>
@@ -387,9 +433,15 @@ export default function FoundationsPage() {
               <Button variant="secondary">Create an assignment</Button>
               <Button variant="ghost">Filters</Button>
               <Button variant="danger">Cancel assignment</Button>
-              <Button variant="danger" confirming>Cancel assignment</Button>
-              <Button variant="secondary" disabled>Send for signature</Button>
-              <Button variant="primary" loading>Approve</Button>
+              <Button variant="danger" confirming>
+                Cancel assignment
+              </Button>
+              <Button variant="secondary" disabled>
+                Send for signature
+              </Button>
+              <Button variant="primary" loading>
+                Approve
+              </Button>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -397,9 +449,15 @@ export default function FoundationsPage() {
               <Badge tone="attention">On bench</Badge>
               <Badge tone="danger">Rejected</Badge>
               <Badge tone="neutral">Full time</Badge>
-              <Badge tone="neutral" dashed>Ghost</Badge>
-              <Badge tone="neutral" intensity="solid">7</Badge>
-              <Badge tone="attention" intensity="solid">3</Badge>
+              <Badge tone="neutral" dashed>
+                Ghost
+              </Badge>
+              <Badge tone="neutral" intensity="solid">
+                7
+              </Badge>
+              <Badge tone="attention" intensity="solid">
+                3
+              </Badge>
             </div>
 
             <div className="flex items-end gap-3">

@@ -17,11 +17,7 @@ import {
   useShortcuts,
 } from "@vulto/ui";
 import { buildForecast, DAY_WIDTH, formatMoney, type Horizon } from "../../lib/bench";
-import {
-  canSeeCompensation,
-  cohortIdsFor,
-  type ViewerRole,
-} from "../../lib/viewer";
+import { canSeeCompensation, cohortIdsFor, type ViewerRole } from "../../lib/viewer";
 import { usePanel } from "../../components/panel-context";
 import { ForecastPanel } from "../../components/ForecastPanel";
 
@@ -91,7 +87,8 @@ export default function BenchForecastPage() {
     const rows = forecast.rows;
     if (rows.length === 0) return;
     const current = rows.findIndex((row) => row.id === selectedId);
-    const next = current === -1 ? 0 : Math.min(rows.length - 1, Math.max(0, current + delta));
+    const next =
+      current === -1 ? 0 : Math.min(rows.length - 1, Math.max(0, current + delta));
     setSelectedId(rows[next]!.id);
   }
 
@@ -114,8 +111,8 @@ export default function BenchForecastPage() {
   return (
     <TooltipProvider>
       {/* FDN-17: the subtitle is gone. The figures it carried are the band's
-        * job now, and at `small` in a header they were the smallest statement of
-        * the most important fact on the screen. */}
+       * job now, and at `small` in a header they were the smallest statement of
+       * the most important fact on the screen. */}
       <PageHeader
         title="Bench Forecast"
         titleAccessory={
@@ -125,12 +122,18 @@ export default function BenchForecastPage() {
               <div className="flex max-w-tooltip flex-col gap-2">
                 <Text variant="body-medium">Bench Forecast</Text>
                 <Text variant="small" className="text-text-secondary">
-                  Amber shows periods without an active assignment. Cost is counted from each person&apos;s working calendar for the next {forecast.costHorizonDays} days.
+                  Amber shows periods without an active assignment. Cost is counted from
+                  each person&apos;s working calendar for the next{" "}
+                  {forecast.costHorizonDays} days.
                 </Text>
               </div>
             }
           >
-            <button type="button" aria-label="About the Bench Forecast" className="flex size-button-md items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:text-text-secondary">
+            <button
+              type="button"
+              aria-label="About the Bench Forecast"
+              className="flex size-button-md items-center justify-center rounded-full text-text-tertiary motion-fast transition-colors hover:text-text-secondary"
+            >
               <Icon icon={Info} size={14} />
             </button>
           </Tooltip>
@@ -142,7 +145,9 @@ export default function BenchForecastPage() {
           // reads as scaffolding beside the page identity rather than as a
           // screen control a real user would touch.
           <div className="flex items-center gap-2">
-            <Text variant="micro" className="text-text-tertiary">Prototype viewer</Text>
+            <Text variant="micro" className="text-text-tertiary">
+              Prototype viewer
+            </Text>
             <ToggleGroup<ForecastViewer>
               label="Viewing as"
               value={role}
@@ -159,15 +164,15 @@ export default function BenchForecastPage() {
 
       <Content fullBleed>
         {/*
-          * The summary row, sticky at the top. Two bands rather than one:
-          * VPS-D004's page header is 56px and a `display` figure with a `micro`
-          * denominator does not fit inside it — the arithmetic decided this.
-          */}
+         * The summary row, sticky at the top. Two bands rather than one:
+         * VPS-D004's page header is 56px and a `display` figure with a `micro`
+         * denominator does not fit inside it — the arithmetic decided this.
+         */}
         {/* FDN-44: symmetric padding. `pt-2 pb-4` put every control eight
-          * pixels closer to the rule above than the one below — `items-center`
-          * centers within the content box, and an asymmetric box centers
-          * asymmetrically. Measured 8px top against 17px bottom before, equal
-          * after, at the same overall row height. */}
+         * pixels closer to the rule above than the one below — `items-center`
+         * centers within the content box, and an asymmetric box centers
+         * asymmetrically. Measured 8px top against 17px bottom before, equal
+         * after, at the same overall row height. */}
         <div className="flex shrink-0 items-center justify-between gap-8 border-b border-border-default px-4 py-3">
           <div className="flex items-center gap-2">
             <ToggleGroup<string>
@@ -183,16 +188,23 @@ export default function BenchForecastPage() {
               activeClassName="bg-bg-active"
             />
             {/* VPS-D003: single-letter shortcuts are documented on hover of the
-              * control they trigger, which is how they are discovered without a
-              * manual. Now through VPS-D002's Tooltip rather than the browser's
-              * own box. */}
+             * control they trigger, which is how they are discovered without a
+             * manual. Now through VPS-D002's Tooltip rather than the browser's
+             * own box. */}
             <Tooltip content="Filter the cohort" shortcut="F">
-              <Button ref={filtersRef} size="md" variant="secondary" icon={SlidersHorizontal} iconSize={14} aria-label="Filter the cohort" />
+              <Button
+                ref={filtersRef}
+                size="md"
+                variant="secondary"
+                icon={SlidersHorizontal}
+                iconSize={14}
+                aria-label="Filter the cohort"
+              />
             </Tooltip>
             {/* FDN-44: `md`, matching the filter button beside it. At `sm` the
-              * hover fill was 24px tall with 8px of horizontal padding — a
-              * label in a fill barely larger than the label — and it also sat
-              * four pixels shorter than every other control in the row. */}
+             * hover fill was 24px tall with 8px of horizontal padding — a
+             * label in a fill barely larger than the label — and it also sat
+             * four pixels shorter than every other control in the row. */}
             <Tooltip content="Scroll today into view" shortcut="T">
               <Button
                 variant="ghost"
@@ -206,19 +218,19 @@ export default function BenchForecastPage() {
 
           <div className="flex items-center">
             {/*
-              * FDN-17. Three compact figures at one size; money leads by hue.
-              *
-              * The hierarchy was inverted: utilization held a 32px `display`
-              * figure while the unrecovered total sat at 13px in a subtitle, on
-              * a screen whose entire thesis is that money is what matters.
-              *
-              * The three values share geometry so the group scans as one row.
-              * The unrecovered total takes the now-amber brand treatment,
-              * connecting the summary to the bench regions it totals.
-              */}
+             * FDN-17. Three compact figures at one size; money leads by hue.
+             *
+             * The hierarchy was inverted: utilization held a 32px `display`
+             * figure while the unrecovered total sat at 13px in a subtitle, on
+             * a screen whose entire thesis is that money is what matters.
+             *
+             * The three values share geometry so the group scans as one row.
+             * The unrecovered total takes the now-amber brand treatment,
+             * connecting the summary to the bench regions it totals.
+             */}
             {/* FDN-44: `items-center`. The three figures are one visual block
-              * and are centered in the row as one, rather than hung from a
-              * shared baseline that ignores the row they sit in. */}
+             * and are centered in the row as one, rather than hung from a
+             * shared baseline that ignores the row they sit in. */}
             <div className="flex items-center gap-10">
               <Stat
                 label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
@@ -256,8 +268,8 @@ export default function BenchForecastPage() {
           </div>
         ) : (
           /* FDN-17: the two-line legend is gone, which returns its height to
-            * rows. On a screen where vertical space is people visible, that was
-            * the worst trade in the layout. */
+           * rows. On a screen where vertical space is people visible, that was
+           * the worst trade in the layout. */
           <div className="flex min-h-0 flex-1 flex-col px-4 pb-4 pt-2">
             <Timeline
               days={forecast.days}

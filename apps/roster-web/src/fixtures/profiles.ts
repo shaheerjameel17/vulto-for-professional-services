@@ -13,12 +13,7 @@ import { EMPLOYEES } from "./roster";
 
 export type EmploymentType = "FullTime" | "PartTime" | "Contractor" | "Intern";
 export type SeniorityLevel =
-  | "Junior"
-  | "Mid"
-  | "Senior"
-  | "Lead"
-  | "Principal"
-  | "Director";
+  "Junior" | "Mid" | "Senior" | "Lead" | "Principal" | "Director";
 export type ProficiencyLevel = "Beginner" | "Intermediate" | "Advanced" | "Expert";
 
 export type ProfileSkill = {
@@ -93,7 +88,8 @@ const PROFILES: Record<string, ProfileDetail> = {
     workingPatternNote: "Follows Northgate Ltd · UK calendar",
     timezone: "Europe/London",
     location: "London, UK",
-    notes: "Leads the Acme and Orchard design work. Prefers async review over standing meetings.",
+    notes:
+      "Leads the Acme and Orchard design work. Prefers async review over standing meetings.",
     managerName: "Tom Beckett",
     skills: [
       { name: "Brand systems", proficiency: "Expert", verified: true },
@@ -102,12 +98,29 @@ const PROFILES: Record<string, ProfileDetail> = {
       { name: "Motion design", proficiency: "Intermediate", verified: false },
     ],
     certifications: [
-      { name: "Certified Scrum Product Owner", issuingBody: "Scrum Alliance", issueDate: "2023-06-01", expiryDate: "2026-06-01" },
+      {
+        name: "Certified Scrum Product Owner",
+        issuingBody: "Scrum Alliance",
+        issueDate: "2023-06-01",
+        expiryDate: "2026-06-01",
+      },
     ],
     documents: [
-      { name: "Employment Contract — Priya Sharma.pdf", category: "Contract", uploadedAt: "2022-03-10" },
-      { name: "Right to Work — Passport.pdf", category: "ID", uploadedAt: "2022-03-10" },
-      { name: "Handbook Acknowledgment 2026.pdf", category: "Policy Acknowledgment", uploadedAt: "2026-01-08" },
+      {
+        name: "Employment Contract — Priya Sharma.pdf",
+        category: "Contract",
+        uploadedAt: "2022-03-10",
+      },
+      {
+        name: "Right to Work — Passport.pdf",
+        category: "ID",
+        uploadedAt: "2022-03-10",
+      },
+      {
+        name: "Handbook Acknowledgment 2026.pdf",
+        category: "Policy Acknowledgment",
+        uploadedAt: "2026-01-08",
+      },
     ],
     activity: [
       { date: "2026-08-01", description: "Rolled off Acme Rebrand" },
@@ -130,7 +143,8 @@ const PROFILES: Record<string, ProfileDetail> = {
     workingPatternNote: "Follows Northgate Karachi · PK calendar",
     timezone: "Asia/Karachi",
     location: "Karachi, PK",
-    notes: "Team lead for the platform engineers. Runs the fortnightly architecture review.",
+    notes:
+      "Team lead for the platform engineers. Runs the fortnightly architecture review.",
     managerName: "Tom Beckett",
     skills: [
       { name: "TypeScript", proficiency: "Expert", verified: true },
@@ -140,11 +154,18 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Omar Farooq.pdf", category: "Contract", uploadedAt: "2021-08-28" },
+      {
+        name: "Employment Contract — Omar Farooq.pdf",
+        category: "Contract",
+        uploadedAt: "2021-08-28",
+      },
       { name: "National ID.pdf", category: "ID", uploadedAt: "2021-08-28" },
     ],
     activity: [
-      { date: "2026-07-14", description: "Committed above 100% capacity, override logged" },
+      {
+        date: "2026-07-14",
+        description: "Committed above 100% capacity, override logged",
+      },
       { date: "2024-02-19", description: "Promoted to Lead Engineer" },
     ],
     compensation: { baseAmount: 54000, frequency: "Annual", currency: "GBP" },
@@ -163,7 +184,8 @@ const PROFILES: Record<string, ProfileDetail> = {
     workingPatternNote: "Follows Northgate Ltd · UK calendar",
     timezone: "Europe/London",
     location: "Manchester, UK",
-    notes: "Split across Acme (60%) and Meridian (40%). Reports directly to the founder.",
+    notes:
+      "Split across Acme (60%) and Meridian (40%). Reports directly to the founder.",
     managerName: "Nadia Rahman",
     skills: [
       { name: "Roadmapping", proficiency: "Expert", verified: true },
@@ -171,10 +193,18 @@ const PROFILES: Record<string, ProfileDetail> = {
       { name: "SQL", proficiency: "Intermediate", verified: false },
     ],
     certifications: [
-      { name: "Pragmatic Institute Certified", issuingBody: "Pragmatic Institute", issueDate: "2021-04-15" },
+      {
+        name: "Pragmatic Institute Certified",
+        issuingBody: "Pragmatic Institute",
+        issueDate: "2021-04-15",
+      },
     ],
     documents: [
-      { name: "Employment Contract — Hannah Weiss.pdf", category: "Contract", uploadedAt: "2020-01-15" },
+      {
+        name: "Employment Contract — Hannah Weiss.pdf",
+        category: "Contract",
+        uploadedAt: "2020-01-15",
+      },
       { name: "Passport.pdf", category: "ID", uploadedAt: "2020-01-15" },
     ],
     activity: [
@@ -206,7 +236,11 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Daniel Okonkwo.pdf", category: "Contract", uploadedAt: "2023-05-03" },
+      {
+        name: "Employment Contract — Daniel Okonkwo.pdf",
+        category: "Contract",
+        uploadedAt: "2023-05-03",
+      },
     ],
     activity: [
       { date: "2023-08-08", description: "Probation confirmed" },
@@ -228,7 +262,8 @@ const PROFILES: Record<string, ProfileDetail> = {
     workingPatternNote: "Follows Northgate Karachi · PK calendar",
     timezone: "Asia/Karachi",
     location: "Lahore, PK",
-    notes: "Remote from Lahore; the Karachi office calendar applies to her contract, not Lahore's.",
+    notes:
+      "Remote from Lahore; the Karachi office calendar applies to her contract, not Lahore's.",
     managerName: "Omar Farooq",
     skills: [
       { name: "React", proficiency: "Advanced", verified: true },
@@ -237,7 +272,11 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Ayesha Malik.pdf", category: "Contract", uploadedAt: "2022-10-27" },
+      {
+        name: "Employment Contract — Ayesha Malik.pdf",
+        category: "Contract",
+        uploadedAt: "2022-10-27",
+      },
       { name: "CNIC.pdf", category: "ID", uploadedAt: "2022-10-27" },
     ],
     activity: [
@@ -265,11 +304,13 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Tom Beckett.pdf", category: "Contract", uploadedAt: "2018-03-28" },
+      {
+        name: "Employment Contract — Tom Beckett.pdf",
+        category: "Contract",
+        uploadedAt: "2018-03-28",
+      },
     ],
-    activity: [
-      { date: "2019-01-14", description: "Promoted to Creative Director" },
-    ],
+    activity: [{ date: "2019-01-14", description: "Promoted to Creative Director" }],
     compensation: { baseAmount: 88000, frequency: "Annual", currency: "GBP" },
   },
   "emp-07": {
@@ -294,7 +335,11 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Contractor Agreement — Lena Petrova.pdf", category: "Contract", uploadedAt: "2024-02-14" },
+      {
+        name: "Contractor Agreement — Lena Petrova.pdf",
+        category: "Contract",
+        uploadedAt: "2024-02-14",
+      },
     ],
     activity: [
       { date: "2024-02-19", description: "Engaged as UX Researcher, fixed term" },
@@ -321,13 +366,25 @@ const PROFILES: Record<string, ProfileDetail> = {
       { name: "CI/CD", proficiency: "Expert", verified: false },
     ],
     certifications: [
-      { name: "AWS Certified Solutions Architect", issuingBody: "AWS", issueDate: "2024-03-01", expiryDate: "2027-03-01" },
+      {
+        name: "AWS Certified Solutions Architect",
+        issuingBody: "AWS",
+        issueDate: "2024-03-01",
+        expiryDate: "2027-03-01",
+      },
     ],
     documents: [
-      { name: "Employment Contract — Bilal Ahmed.pdf", category: "Contract", uploadedAt: "2021-06-10" },
+      {
+        name: "Employment Contract — Bilal Ahmed.pdf",
+        category: "Contract",
+        uploadedAt: "2021-06-10",
+      },
     ],
     activity: [
-      { date: "2024-03-01", description: "AWS Solutions Architect certification renewed" },
+      {
+        date: "2024-03-01",
+        description: "AWS Solutions Architect certification renewed",
+      },
     ],
     compensation: { baseAmount: 49000, frequency: "Annual", currency: "GBP" },
   },
@@ -351,7 +408,11 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Grace Adeyemi.pdf", category: "Contract", uploadedAt: "2022-08-17" },
+      {
+        name: "Employment Contract — Grace Adeyemi.pdf",
+        category: "Contract",
+        uploadedAt: "2022-08-17",
+      },
     ],
     activity: [
       { date: "2025-09-30", description: "Completed annual performance review" },
@@ -379,10 +440,17 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Marcus Hale.pdf", category: "Contract", uploadedAt: "2021-01-27" },
+      {
+        name: "Employment Contract — Marcus Hale.pdf",
+        category: "Contract",
+        uploadedAt: "2021-01-27",
+      },
     ],
     activity: [
-      { date: "2026-08-05", description: "Logged pitch time against Halo Phase 2 opportunity" },
+      {
+        date: "2026-08-05",
+        description: "Logged pitch time against Halo Phase 2 opportunity",
+      },
     ],
     compensation: { baseAmount: 70000, frequency: "Annual", currency: "GBP" },
   },
@@ -400,7 +468,8 @@ const PROFILES: Record<string, ProfileDetail> = {
     workingPatternNote: "Three-day week, effective 2023-01-16",
     timezone: "Asia/Karachi",
     location: "Karachi, PK",
-    notes: "Part-time by arrangement since joining. Wednesdays and Fridays are not working days.",
+    notes:
+      "Part-time by arrangement since joining. Wednesdays and Fridays are not working days.",
     managerName: "Omar Farooq",
     skills: [
       { name: "Manual QA", proficiency: "Expert", verified: true },
@@ -410,11 +479,13 @@ const PROFILES: Record<string, ProfileDetail> = {
       { name: "ISTQB Foundation Level", issuingBody: "ISTQB", issueDate: "2022-05-01" },
     ],
     documents: [
-      { name: "Employment Contract — Sana Iqbal.pdf", category: "Contract", uploadedAt: "2023-01-11" },
+      {
+        name: "Employment Contract — Sana Iqbal.pdf",
+        category: "Contract",
+        uploadedAt: "2023-01-11",
+      },
     ],
-    activity: [
-      { date: "2023-01-16", description: "Joined at three days a week" },
-    ],
+    activity: [{ date: "2023-01-16", description: "Joined at three days a week" }],
     compensation: { baseAmount: 38000, frequency: "Annual", currency: "GBP" },
   },
   "emp-12": {
@@ -439,11 +510,13 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Elliot Bruce.pdf", category: "Contract", uploadedAt: "2023-09-06" },
+      {
+        name: "Employment Contract — Elliot Bruce.pdf",
+        category: "Contract",
+        uploadedAt: "2023-09-06",
+      },
     ],
-    activity: [
-      { date: "2023-12-11", description: "Probation confirmed" },
-    ],
+    activity: [{ date: "2023-12-11", description: "Probation confirmed" }],
     compensation: { baseAmount: 52000, frequency: "Annual", currency: "GBP" },
   },
   "emp-13": {
@@ -459,18 +532,21 @@ const PROFILES: Record<string, ProfileDetail> = {
     workingPatternNote: "Follows Northgate Ltd · UK calendar",
     timezone: "Europe/London",
     location: "London, UK",
-    notes: "Holds three concurrent accounts. First point of contact for Acme, Kestrel and Meridian.",
+    notes:
+      "Holds three concurrent accounts. First point of contact for Acme, Kestrel and Meridian.",
     skills: [
       { name: "Account management", proficiency: "Expert", verified: true },
       { name: "Contract negotiation", proficiency: "Advanced", verified: false },
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Nadia Rahman.pdf", category: "Contract", uploadedAt: "2019-05-29" },
+      {
+        name: "Employment Contract — Nadia Rahman.pdf",
+        category: "Contract",
+        uploadedAt: "2019-05-29",
+      },
     ],
-    activity: [
-      { date: "2022-04-01", description: "Promoted to Account Director" },
-    ],
+    activity: [{ date: "2022-04-01", description: "Promoted to Account Director" }],
     compensation: { baseAmount: 79000, frequency: "Annual", currency: "GBP" },
   },
   "emp-14": {
@@ -493,11 +569,13 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Employment Contract — Kwame Mensah.pdf", category: "Contract", uploadedAt: "2020-09-30" },
+      {
+        name: "Employment Contract — Kwame Mensah.pdf",
+        category: "Contract",
+        uploadedAt: "2020-09-30",
+      },
     ],
-    activity: [
-      { date: "2026-08-07", description: "Rolled off Halo Phase 2" },
-    ],
+    activity: [{ date: "2026-08-07", description: "Rolled off Halo Phase 2" }],
     compensation: { baseAmount: 63000, frequency: "Annual", currency: "GBP" },
   },
   "emp-15": {
@@ -521,11 +599,13 @@ const PROFILES: Record<string, ProfileDetail> = {
     ],
     certifications: [],
     documents: [
-      { name: "Internship Agreement — Zara Hussain.pdf", category: "Contract", uploadedAt: "2026-05-13" },
+      {
+        name: "Internship Agreement — Zara Hussain.pdf",
+        category: "Contract",
+        uploadedAt: "2026-05-13",
+      },
     ],
-    activity: [
-      { date: "2026-05-18", description: "Started six-month internship" },
-    ],
+    activity: [{ date: "2026-05-18", description: "Started six-month internship" }],
     compensation: { baseAmount: 22000, frequency: "Annual", currency: "GBP" },
   },
 };
