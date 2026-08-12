@@ -6,7 +6,18 @@ services:
   workspace:
     image: mcr.microsoft.com/devcontainers/base:trixie
     volumes:
-      - ..:/workspace:cached
+      # `.`, not `..`.
+      #
+      # Compose resolves a relative path against the PROJECT directory — the
+      # directory of the first compose file, which is the repository root where
+      # docker-compose.yml lives — not against the file the path is written in.
+      # So `..` from here resolved to the repository's PARENT, and the container
+      # opened a folder containing the repository rather than the repository.
+      #
+      # Verified against the merged configuration in the failed Codespace build,
+      # which showed `source: /var/lib/docker/codespacemount/workspace` where the
+      # repository is at .../workspace/vulto.
+      - .:/workspaces/vulto:cached
     command: sleep infinity
     environment:
       DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto

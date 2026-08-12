@@ -7,7 +7,12 @@
   // the compose file cannot disagree with it, because it is the same file.
   "dockerComposeFile": ["../docker-compose.yml", "docker-compose.devcontainer.yml"],
   "service": "workspace",
-  "workspaceFolder": "/workspace",
+
+  // Must match the mount target in docker-compose.devcontainer.yml, and must be
+  // the repository rather than its parent. Codespaces independently mounts the
+  // parent directory at /workspaces, so /workspaces/vulto is the repository in
+  // both environments and the two mounts agree rather than compete.
+  "workspaceFolder": "/workspaces/vulto",
 
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "24.18.0" },
@@ -43,5 +48,13 @@
     }
   },
 
-  "remoteUser": "node"
+  // `vscode`, not `node`. The `node` user exists in the javascript-node images;
+  // the `base` images this overlay uses create `vscode`. Naming a user the image
+  // does not have builds every layer successfully and then discards the whole
+  // container with "unable to find user node: no matching entries in passwd
+  // file" — the last line of a log whose every prior step passed.
+  //
+  // Installing the Node feature does not create a user called `node`. It
+  // installs Node into /usr/local/share/nvm and leaves users alone.
+  "remoteUser": "vscode"
 }
