@@ -132,7 +132,7 @@ Prettier and ESLint, including the custom rules [[VPS-A001_Technology_Stack_and_
 - **No arbitrary Tailwind values.** A color or spacing value outside `packages/tokens` fails here rather than reaching review, per [[VPS-D001_Design_Foundations|VPS-D001]].
 - **No vendor SDK imported in feature code.** Every external service goes through an interface in `packages/schema`, per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]. This is what keeps [[VRS-F066_Disbursement_and_Payment_Adapter|VRS-F066]]'s adapter and [[VRS-F035_Background_Check_Integration|VRS-F035]]'s provider abstraction real.
 - **No `localStorage` or `sessionStorage`.** The local graph is the store.
-- **No direct Loro access outside the sync engine and materialization worker**, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T05.
+- **No direct Loro access outside the sync engine and materialization worker**, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T06.
 
 ### 2. Type check
 

@@ -2,10 +2,15 @@ node_modules/
 .next/
 out/
 dist/
+target/
 .turbo/
 .DS_Store
-.env
-.env.*
 *.log
 .obsidian/
 *.tsbuildinfo
+
+# Local secrets. .env.example is committed deliberately — it is the documented
+# shape of the environment, and a bootstrap nobody can reproduce is not one.
+.env
+.env.*
+!.env.example

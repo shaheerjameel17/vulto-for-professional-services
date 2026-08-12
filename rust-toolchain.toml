@@ -1,0 +1,12 @@
+# Pinned per VPS-A001's engineering foundations and VPS-A007's Pinning section.
+#
+# A toolchain range is not a pin. This file is what makes `services/sync-engine`
+# build identically in CI, in a Codespace, and inside the container that ships it.
+#
+# Nobody outside services/sync-engine needs this installed. A001-T04 requires a
+# TypeScript contributor to run the full local stack with no host Rust toolchain,
+# and the compose stack satisfies that by building the crate inside a container.
+[toolchain]
+channel = "1.97.1"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
