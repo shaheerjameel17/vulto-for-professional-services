@@ -34,7 +34,7 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F70 | FlightRiskSignal has the same subject-reads-own-record shape as HRCase | `VRS-F053` | **Open, raised not decided** — FDN-81 |
 | F71 | `A007-T18` is not satisfied and cannot be yet | `VPS-A007` | **Open, recorded boundary** |
 | F72 | `VPS-A007`'s first gate cites `A001-T05` for a rule `A001-T06` states | `VPS-A007` | **Closed by FDN-47** |
-| F73 | `services/cross-tenant-aggregation` is specified, isolation-constrained, and owned by no issue | `VPS-A001` | **Open, raised not decided** |
+| F73 | `services/cross-tenant-aggregation` is specified, isolation-constrained, and owned by no issue | `VPS-A001` | **Open, raised not decided** — FDN-82 |
 
 **Twenty findings, fifteen closed.** Five stay open. F63 rides with FDN-46. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built.
 
