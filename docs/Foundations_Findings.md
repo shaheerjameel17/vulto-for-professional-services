@@ -31,9 +31,12 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F67 | No document says who reads an HRCase concerning the Owner | `VRS-F046` | **Closed by FDN-79** — subject exclusion, founder decision |
 | F68 | Client is registered twice, with different owner attributions | `VPS-A002` | **Closed by FDN-75** — one row |
 | F69 | `VPS-A004` has one denial outcome where `VPS-D004` has two, and they disagree on the salary field | `VPS-A004`, `VPS-D004` | **Partly closed by FDN-79** — the outcomes are now distinct; which nodes use which is unresolved |
-| F70 | FlightRiskSignal has the same subject-reads-own-record shape as HRCase | `VRS-F053` | **Open, raised not decided** |
+| F70 | FlightRiskSignal has the same subject-reads-own-record shape as HRCase | `VRS-F053` | **Open, raised not decided** — FDN-81 |
+| F71 | `A007-T18` is not satisfied and cannot be yet | `VPS-A007` | **Open, recorded boundary** |
+| F72 | `VPS-A007`'s first gate cites `A001-T05` for a rule `A001-T06` states | `VPS-A007` | **Closed by FDN-47** |
+| F73 | `services/cross-tenant-aggregation` is specified, isolation-constrained, and owned by no issue | `VPS-A001` | **Open, raised not decided** |
 
-**Seventeen findings, fourteen closed.** Three stay open: F63 rides with FDN-46, where the scope decision it caused is being recorded; F69 needs a decision about scope this log should not make alone; and F70 is raised rather than decided, for the same reason F67 was.
+**Twenty findings, fifteen closed.** Five stay open. F63 rides with FDN-46. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -365,6 +368,57 @@ FlightRiskSignal is `Owner and HR Admin only` and carries a `triggered_by` edge 
 
 ---
 
+### F71 — `A007-T18` is not satisfied and cannot be yet
+
+**A recorded boundary, not a defect.** It closes when the issues named below are built, and it is written down so that a reader meeting a three-service compose file can tell a deliberate gap from drift.
+
+> **A007-T18** — `docker compose` MUST bring up the full local stack, with synthetic fixtures, in one command.
+
+What comes up today is Postgres, Redis and the sync-engine placeholder. What does not exist:
+
+| Missing | Owner |
+|---|---|
+| `services/jobs` | FDN-57 |
+| `services/render` | FDN-70 |
+| Synthetic fixtures | FDN-55 |
+| `services/cross-tenant-aggregation` | **nothing — see F73** |
+
+`VPS-A007` is not the Core Engineering phase's specification and FDN-55 owns the pipeline, so nothing in `VPS-A007` is amended for this. The gap is recorded here and in `docs/Bootstrap.md`, which carries the same table beside the bootstrap path a reader is following when they notice it.
+
+---
+
+### F72 — `VPS-A007`'s first gate cites the wrong requirement
+
+`VPS-A007`'s first gate lists the lint rules `VPS-A001` requires, and ends with:
+
+> **No direct Loro access outside the sync engine and materialization worker**, per `VPS-A001`'s **A001-T05**.
+
+`A001-T05` is the one-repository rule — new applications live under `apps/` and a repository per application is prohibited. It has nothing to do with Loro. The requirement being cited is **A001-T06**, which puts Loro merge and SQLite materialization in a dedicated Web Worker and forbids the main thread from importing `wa-sqlite` or processing a delta.
+
+**This is F62 in a different document**, and F62's argument applies unchanged: a gate section is where a reader goes to find out why a rule exists, and a citation landing on an unrelated requirement sends them somewhere useless.
+
+**How it surfaced is the part worth keeping.** The rule was implemented correctly — the lint harness cites A001-T06 — because the requirement was read rather than the pointer followed. The right answer was reached while holding a document that gave the wrong number. That is the argument for this log continuing to exist: a citation defect produces no symptom at the point where it is wrong, only later, for someone with less context.
+
+**Correction.** `VPS-A007`'s gate now cites A001-T06. Nothing else in `VPS-A007` is touched.
+
+---
+
+### F73 — `services/cross-tenant-aggregation` is owned by no issue
+
+**Open. Raised, not decided.**
+
+`VPS-A001`'s repository structure names ten services and applications. Nine map to an issue. This one maps to nothing.
+
+It is not an incidental service. `VPS-A001` calls it *"the one deliberate exception to this stack's per-workspace model"*, and `A001-T08` gives it the hardest isolation constraint in the document:
+
+> MUST NOT share a database, connection pool or process boundary with per-workspace data paths, and MUST receive only anonymized, pre-bucketed contributions.
+
+It serves `VRS-F071` and `VRS-F072`, both late-phase, so its absence from the current plan is reasonable. What is not reasonable is that **a service with a stated isolation requirement has nobody scheduled to build it correctly** — and isolation constraints are the kind that get satisfied by accident and then quietly violated by a later convenience.
+
+Recorded rather than resolved: whether it needs an issue now, or a note in the register saying it is deliberately unscheduled until `VRS-F071`, is a planning decision.
+
+---
+
 ## What changed in the specifications
 
 ### `VPS-A002`
@@ -391,6 +445,12 @@ Four new sections: an Owner who is the subject is a subject; the excluded subjec
 
 ### `VPS-A003` — FDN-79
 A003-T06 resolves a reader set of **people**, not roles, less any registered subject exclusion. Prose stating that becoming a subject is a revocation event under A003-T16, which needs no new mechanism because A003-T07 already requires readers removable without re-encrypting.
+
+### `VPS-A001` — FDN-47
+The Loro version pin recorded under CRDT library selection — `loro-crdt@1.14.1`, declared in `packages/schema` — satisfying A001-T02. The Decisions entry that called the version *"a specification requirement, not an open item"* now says what it was settled to, and cites the drift this repository had already suffered from ranges: `typescript@^5.7.3` had reached `5.9.3` and `turbo@^2.3.4` had reached `2.10.8`.
+
+### `VPS-A007` — FDN-47
+One citation, A001-T05 to A001-T06, per F72. Nothing else.
 
 ### `VPS-D004` — FDN-79
 A copy variant for person-level exclusion. The role-naming convention — *"Visible to Finance Admin"* — renders as *"Visible to Owner and HR Admin"* to an excluded Owner, which is a contradiction rather than a next step. The copy now names the reason: *"Restricted — this record concerns you."* One new row in the state table.
