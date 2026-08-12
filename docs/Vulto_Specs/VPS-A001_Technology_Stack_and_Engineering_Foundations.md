@@ -92,6 +92,12 @@ Loro is MIT licensed and in active production use. Its ecosystem is younger than
 
 A bespoke CRDT implementation is explicitly prohibited.
 
+**The pinned version is `loro-crdt@1.14.1`**, declared exactly — not as a range — in `packages/schema`, and pinned transitively in `pnpm-lock.yaml`. Recorded here per A001-T02, in the commit that pinned it.
+
+`packages/schema` declares it because that package is the first legitimate importer: [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Schema Evolution Protocol makes the schema package the enforcement point and prohibits raw untyped access to CRDT documents anywhere outside the sync engine and the materialization worker, so the Loro document shapes are defined there.
+
+**The pin lands before anything imports it, deliberately.** A001-T02 says *implementation start*, and the monorepo and runtime foundation is implementation start; deferring until the first import would make that phrase mean whenever someone happens to feel like it. The cost is that a dependency nothing yet imports looks like dead weight to a later cleanup — which would delete this record along with it. Naming the declaring package here is the mitigation: the specification and the manifest point at each other, so removing one means confronting the other.
+
 ---
 
 ## Local graph query layer
@@ -276,7 +282,7 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 
 **Rust ownership is decided as a scoped engagement, not a hiring track.** The sync engine is owned by a single specialized contract engineer under a defined statement of work, or by the CTO function directly when one is engaged. It is deliberately not a role the team recruits for, because a team that must hire Rust engineers to make progress has forfeited the reason this boundary exists.
 
-**The Loro version is a specification requirement, not an open item.** A001-T02 requires it pinned and recorded in the same commit as implementation start. An unpinned dependency in a system meant to run for years is a defect, and describing it as an open question deferred the fix rather than scheduling it.
+**The Loro version is a specification requirement, not an open item.** A001-T02 requires it pinned and recorded in the same commit as implementation start. An unpinned dependency in a system meant to run for years is a defect, and describing it as an open question deferred the fix rather than scheduling it. **Settled: `loro-crdt@1.14.1`**, recorded under CRDT library selection above. The repository had already demonstrated the cost of the alternative — `typescript@^5.7.3` had drifted to `5.9.3` and `turbo@^2.3.4` to `2.10.8` before anyone intended an upgrade.
 
 ---
 

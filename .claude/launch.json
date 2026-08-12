@@ -4,7 +4,12 @@
     {
       "name": "roster-web",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["--filter", "roster-web", "exec", "next", "dev", "--port", "3100"],
+      "runtimeArgs": [
+        "--filter",
+        "roster-web",
+        "run",
+        "dev"
+      ],
       "port": 3100
     }
   ]

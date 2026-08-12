@@ -1,0 +1,67 @@
+# Vulto local development stack.
+#
+# What this brings up is the *dependencies* — Postgres, Redis, and the sync
+# engine container. The web app and the API run on the host via `pnpm dev`,
+# because fast reload matters more for them than isolation does, and because
+# FDN-47's scope is containerized local *dependencies*.
+#
+# Base images are pinned by digest, never by tag, per A007-T16. A tag moves; a
+# digest does not, and an image rebuilt six months from now must be the image
+# that was tested.
+#
+# NOT YET PRESENT, and each absence is owned:
+#   services/jobs                      FDN-57
+#   services/render                    FDN-70
+#   services/cross-tenant-aggregation  no issue exists — see docs/Bootstrap.md
+#   synthetic fixtures                 FDN-55
+# A007-T18 requires this file to bring up the full stack with fixtures in one
+# command. It does not yet. That gap is recorded as F71 in
+# docs/Foundations_Findings.md rather than left for a reader to infer.
+
+name: vulto
+
+services:
+  postgres:
+    image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+    environment:
+      POSTGRES_USER: vulto
+      POSTGRES_PASSWORD: vulto
+      POSTGRES_DB: vulto
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vulto -d vulto"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine@sha256:978f0e01593e65eed801f2402944efcd936d43b5027e4908a7897baf88ed6241
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # The reason this service is here at all is A001-T04. It has no sync logic.
+  # See services/sync-engine/README.md.
+  sync-engine:
+    build:
+      context: ./services/sync-engine
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    # No healthcheck. The runtime image carries a binary and libc and nothing
+    # else — no curl, no wget — because A007-T17 keeps build and probe tooling
+    # out of a service image. Adding a probe utility to a placeholder would be
+    # surface for no benefit. `docker compose up --wait` therefore waits on
+    # postgres and redis; the sync engine is confirmed by `curl :8080/health`
+    # from the host, which is documented in docs/Bootstrap.md.
+
+volumes:
+  postgres-data:

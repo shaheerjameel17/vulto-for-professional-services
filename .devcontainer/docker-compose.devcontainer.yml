@@ -1,0 +1,18 @@
+# The workspace container, added on top of the same docker-compose.yml the local
+# path uses. Only this file is Codespaces-specific; every service definition is
+# shared, so the two environments cannot drift apart.
+
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/base:trixie
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    environment:
+      DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

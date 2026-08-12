@@ -1,0 +1,20 @@
+{
+  "name": "@vulto/schema",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "loro-crdt": "1.14.1"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

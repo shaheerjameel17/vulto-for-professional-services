@@ -1,0 +1,20 @@
+# The only Rust in this repository, per VPS-A001's A001-T01. A second Rust
+# service requires a superseding decision document.
+#
+# PLACEHOLDER. Content arrives with FDN-51. See src/main.rs.
+
+[package]
+name = "vulto-sync-engine"
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.97.1"
+publish = false
+description = "Vulto sync engine. Placeholder: boundary only, no sync logic."
+
+[dependencies]
+# Intentionally empty. See the module docs in src/main.rs.
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

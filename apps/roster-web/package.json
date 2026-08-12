@@ -3,12 +3,15 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3100",
+    "dev": "VULTO_DIAGNOSTICS=1 next dev --port 3100",
     "build": "next build",
     "start": "next start --port 3100",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@vulto/api": "workspace:*",
     "@vulto/tokens": "workspace:*",
     "@vulto/ui": "workspace:*",
     "lucide-react": "^0.474.0",

@@ -1,0 +1,30 @@
+{
+  "name": "@vulto/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./router": "./src/router.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "lint": "eslint src",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@fastify/cors": "11.3.0",
+    "@trpc/server": "11.18.0",
+    "@vulto/schema": "workspace:*",
+    "drizzle-orm": "0.45.2",
+    "fastify": "5.11.3",
+    "postgres": "3.4.9"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.3",
+    "tsx": "4.23.12",
+    "typescript": "5.9.3"
+  }
+}
