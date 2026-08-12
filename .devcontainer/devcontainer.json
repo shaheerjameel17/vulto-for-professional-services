@@ -16,7 +16,23 @@
 
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "24.18.0" },
-    "ghcr.io/devcontainers/features/rust:1": { "version": "1.97.1" }
+    "ghcr.io/devcontainers/features/rust:1": { "version": "1.97.1" },
+    // docker-outside-of-docker, not docker-in-docker. The workspace container
+    // needs to run `docker compose` against the SAME daemon that already runs
+    // its siblings — postgres, redis, sync-engine, brought up by the outer
+    // compose file this devcontainer extends. docker-in-docker would start a
+    // second, isolated daemon inside the workspace container that cannot see
+    // those siblings at all: `docker compose ps` from a terminal in the
+    // Codespace would show nothing, because the containers it's asking about
+    // aren't on that daemon. Outside-of-docker mounts the host's socket
+    // instead, so `docker` commands here see and control the stack that is
+    // already running rather than a second one nested inside it. Also
+    // lighter: no nested daemon to boot.
+    //
+    // Neither VPS-A007's Docker section nor A007-T14 states a preference
+    // between the two — checked before adding this, so this is a fresh
+    // decision rather than a contradiction of one already made.
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
   },
 
   // Rust is present here and absent from a contributor's laptop, and that is
