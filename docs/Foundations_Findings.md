@@ -37,8 +37,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F73 | `services/cross-tenant-aggregation` is specified, isolation-constrained, and owned by no issue | `VPS-A001` | **Open, raised not decided** — FDN-82 |
 | F74 | A driver's return type is not stable across runtimes, and one error handler reported a healthy database as down | Repository | **Closed by FDN-47** |
 | F75 | The devcontainer named a user its image does not have, and mounted the repository's parent | Repository | **Closed by FDN-47** |
+| F76 | Rebuilding a Codespace does not pull latest — it re-reads the existing checkout | Tooling | **Not a defect, recorded as an operational fact** |
 
-**Twenty-two findings, seventeen closed.** Five stay open. F63 rides with FDN-46. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built.
+**Twenty-three findings, seventeen closed.** Six stay open. F63 rides with FDN-46. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -493,6 +494,16 @@ Had `remoteUser` been right, the Codespace would have opened successfully **on t
 `A007-T14` exists because the Codespace is a security control, and this is the second time in two issues that a thing which passed every static check failed on first execution — F74 was the first. Both were found by running something, neither could have been found by reading it.
 
 **A configuration file that has never been executed is a draft**, whatever its review status.
+
+---
+
+### F76 — rebuilding a Codespace does not pull latest
+
+Not a specification defect and not a repository defect. Recorded because it cost a diagnostic cycle: F75's fix was correct and pushed, and two rebuild attempts still failed with the pre-fix error.
+
+**A Codespace rebuild re-reads `.devcontainer/` from the checkout already inside the Codespace.** It does not fetch or pull from origin first. A commit pushed after the Codespace was created is invisible to a rebuild until something inside the Codespace pulls it — `git pull`, or a fresh Codespace created after the push.
+
+**The reliable fix is deleting and recreating the Codespace**, not rebuilding it. A rebuild on a stale checkout reproduces the old failure exactly, which reads as "the fix didn't work" when the fix was never in the container that ran.
 
 ---
 
