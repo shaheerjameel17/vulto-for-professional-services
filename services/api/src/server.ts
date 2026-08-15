@@ -1,6 +1,7 @@
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import cors from "@fastify/cors";
 import Fastify from "fastify";
+import { env } from "./env.js";
 import { appRouter } from "./router.js";
 
 /**
@@ -11,13 +12,12 @@ import { appRouter } from "./router.js";
  * note on the diagnostics route about why that is a bounded absence rather than
  * a precedent.
  */
-const port = Number(process.env.API_PORT ?? 3101);
-const host = process.env.API_HOST ?? "127.0.0.1";
+const { API_PORT: port, API_HOST: host } = env;
 
-const app = Fastify({ logger: { level: process.env.LOG_LEVEL ?? "info" } });
+const app = Fastify({ logger: { level: env.LOG_LEVEL } });
 
 await app.register(cors, {
-  origin: process.env.WEB_ORIGIN ?? "http://localhost:3100",
+  origin: env.WEB_ORIGIN,
 });
 
 await app.register(fastifyTRPCPlugin, {

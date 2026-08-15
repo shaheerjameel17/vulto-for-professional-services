@@ -41,8 +41,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F77 | The devcontainer had no Docker client, and was never run before F75 exposed it | Repository | **Closed by FDN-47** |
 | F78 | The Docker feature's default packaging is unavailable on the base image's distribution | Repository | **Closed by FDN-47** |
 | F79 | The development image was pinned by tag, which `A007-T16` prohibits | Repository | **Closed by FDN-47** |
+| F80 | Turborepo strips undeclared environment variables, and a localhost default hid it | Repository | **Closed by FDN-47** |
 
-**Twenty-six findings, twenty closed.** Six stay open. F63 rides with FDN-46. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
+**Twenty-seven findings, twenty-one closed.** Six stay open. F63 rides with FDN-46. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -578,7 +579,56 @@ Every other base image in the repository was already pinned: `postgres`, `redis`
 
 ---
 
-## What changed in the specifications
+### F80 — Turborepo strips undeclared environment variables, and a localhost default hid it
+
+The Codespace reached Postgres from every direction except the one that mattered: containers healthy, `psql` fine, and the API reporting
+
+```
+unreachable — ECONNREFUSED connect ECONNREFUSED 127.0.0.1:5432
+```
+
+while `docker-compose.devcontainer.yml` set `DATABASE_URL=postgres://vulto:vulto@postgres:5432/vulto`. The API was dialling `127.0.0.1`, a value nothing in the repository configures.
+
+**Two defects compounding, and the second is the one worth keeping.**
+
+#### Turborepo's strict environment mode
+
+Turborepo 2.x defaults `envMode` to `strict`: a task receives a built-in system allowlist and **nothing else** unless declared in `turbo.json`. `DATABASE_URL` was declared nowhere. `pnpm dev` runs the API through `turbo run dev`, so the container's correctly-set variable was stripped before the process started.
+
+Demonstrated rather than inferred — same command, same shell, one through Turborepo and one not:
+
+```
+through turbo : {"DATABASE_URL": null,   "PATH": true}
+directly      : {"DATABASE_URL": "postgres://…@postgres:5432/vulto", "PATH": true}
+```
+
+`PATH` survives because it is on the system allowlist. `DATABASE_URL` does not, because nobody said it should.
+
+#### The default that made it invisible
+
+`db.ts` read `process.env.DATABASE_URL ?? "postgres://vulto:vulto@localhost:5432/vulto"`.
+
+**On a laptop that default is correct.** Compose port-maps Postgres to the host, the API runs on the host, and `localhost:5432` *is* the database. In a Codespace it is wrong: the API runs inside the workspace container, where `localhost` is that container and Postgres is the sibling host `postgres`.
+
+So the environment variable was never reaching the process **on the laptop either.** The same defect was present in every local run from the day the API was written, and produced three green hops and a passing acceptance transcript, because the guess happened to match. It became visible only when an environment arrived where the guess was wrong.
+
+**A default that is right in one environment is not a default. It is an undetected failure with a local alibi.**
+
+That is F74's shape again — there, an error handler reported a healthy database as unreachable; here, a fallback reported a broken configuration as working. Both convert a real problem into a plausible-looking answer, and the plausible answer is worse than the error, because an error gets investigated.
+
+#### Correction
+
+`turbo.json` declares `globalPassThroughEnv` for runtime configuration — `DATABASE_URL`, `REDIS_URL`, and the API's host, port and origin. `passThroughEnv` rather than `env` because these are runtime values, not build inputs: changing a database URL should not invalidate a typecheck cache. `VULTO_DIAGNOSTICS` goes in `build.env` instead, since it genuinely changes build output.
+
+`services/api/src/env.ts` resolves configuration once, in a stated order:
+
+1. the real environment, whatever the container or shell already set;
+2. `.env` at the repository root, for local development;
+3. nothing — throw, naming the variable.
+
+`process.loadEnvFile` fills gaps and never overwrites, verified rather than assumed. **That ordering is load-bearing:** `.env.example` says `localhost`, and a `.env` copied from it inside a Codespace would otherwise override the container's correct value and reintroduce this exact bug.
+
+Verified end to end against a running database, including that precedence holds where it matters — with both a `.env` and an environment variable present, Postgres's own `pg_stat_activity` confirms the connection arrived from the environment variable, not the file.
 
 ### `VPS-A002`
 `Client` deduplicated to one registry row. A new section, **When a relationship is a node instead of an edge**, carrying the one-sentence rule, why lifecycle is the test, the naming convention for a relationship-node's endpoint edges, the statement that an endpoint pair is not itself an edge, and the edge registry's key. Four edges registered; `member_of` deleted; `assigned_to` re-endpointed.

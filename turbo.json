@@ -1,5 +1,14 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "REDIS_URL",
+    "API_PORT",
+    "API_HOST",
+    "API_URL",
+    "WEB_ORIGIN",
+    "LOG_LEVEL"
+  ],
   "tasks": {
     "dev": {
       "cache": false,
@@ -7,7 +16,8 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"],
+      "env": ["VULTO_DIAGNOSTICS"]
     },
     "typecheck": {
       "dependsOn": ["^typecheck"]
