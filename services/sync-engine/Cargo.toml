@@ -1,7 +1,26 @@
 # The only Rust in this repository, per VPS-A001's A001-T01. A second Rust
 # service requires a superseding decision document.
 #
-# PLACEHOLDER. Content arrives with FDN-51. See src/main.rs.
+# PLACEHOLDER. Content arrives with FDN-51. See src/lib.rs and src/main.rs.
+#
+# One package, two build targets, per FDN-46:
+#
+#   [lib]    the shared core, A003-T10's "single shared core library used
+#            identically across all platforms." Built three ways — native
+#            rlib (linked into the bin below), wasm32-unknown-unknown, and
+#            cdylib/staticlib for mobile FFI linking — via `cargo build --lib
+#            --target <target>`, which never touches [[bin]].
+#   [[bin]]  the native server placeholder in main.rs. Depends on the lib,
+#            never built for wasm32 or a mobile target.
+#
+#            Checked rather than assumed: main.rs's TcpListener currently
+#            compiles for wasm32-unknown-unknown too (std ships stub network
+#            types there), so "it would not compile" is not the reason for
+#            the split today. The reason that holds: `--lib` produces the
+#            43-byte artifact the shared core actually is, instead of a
+#            22.7KB bin nothing will ever load, and it is insurance against
+#            the day main.rs gains a real native dependency with no wasm32
+#            story at all.
 
 [package]
 name = "vulto-sync-engine"
@@ -11,8 +30,22 @@ rust-version = "1.97.1"
 publish = false
 description = "Vulto sync engine. Placeholder: boundary only, no sync logic."
 
+[lib]
+name = "vulto_sync_engine"
+path = "src/lib.rs"
+# rlib: linked into the [[bin]] below, and into any future native mobile host
+#   app via a Rust dependency rather than C FFI.
+# cdylib: C-ABI dynamic library — what wasm-bindgen's toolchain and Android's
+#   JNI both link against.
+# staticlib: what an iOS/Xcode build links statically.
+crate-type = ["rlib", "cdylib", "staticlib"]
+
+[[bin]]
+name = "vulto-sync-engine"
+path = "src/main.rs"
+
 [dependencies]
-# Intentionally empty. See the module docs in src/main.rs.
+# Intentionally empty. See the module docs in src/lib.rs.
 
 [profile.release]
 strip = true

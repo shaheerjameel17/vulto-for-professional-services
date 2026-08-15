@@ -1,6 +1,13 @@
-//! Vulto sync engine — PLACEHOLDER.
+//! Vulto sync engine — the native server binary, PLACEHOLDER.
 //!
-//! # This service has no sync logic and is not the sync engine
+//! # This binary is one of three targets built from `lib.rs`, and it is server-only
+//!
+//! `lib.rs` is the shared core FDN-46 proves compiles to all three of A007's
+//! sixth gate's targets. This file is not one of them — it is a separate
+//! Cargo build target (`cargo build --bin vulto-sync-engine`), and the WASM
+//! and mobile proofs build `--lib` only and never touch it. See `lib.rs`'s
+//! module doc for why, and for a claim in an earlier version of this comment
+//! that testing found to be false.
 //!
 //! It exists so that the *boundary* is real from the first commit. It gets its
 //! content in **FDN-51**, "Deliver encrypted multi-device delta synchronization
@@ -40,12 +47,20 @@
 use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 
-const BODY: &str = concat!(
-    r#"{"service":"vulto-sync-engine","status":"placeholder","#,
-    r#""sync":"not implemented","content_owner":"FDN-51","#,
-    r#""note":"Scaffolding for container readiness. Not an API surface. "#,
-    r#"See VPS-A003 for the sync protocol and FDN-46 for the delta contract."}"#,
-);
+use vulto_sync_engine::placeholder_info;
+
+/// Built from the shared core's own self-description, not a second copy of
+/// it — see `lib.rs`'s module doc for why that distinction is the point.
+fn body() -> String {
+    let info = placeholder_info();
+    format!(
+        "{{\"service\":\"{}\",\"status\":\"placeholder\",\"sync\":\"{}\",\
+         \"content_owner\":\"{}\",\"note\":\"Scaffolding for container readiness. \
+         Not an API surface. See VPS-A003 for the sync protocol and FDN-46 for \
+         the delta contract.\"}}",
+        info.service, info.status, info.content_owner
+    )
+}
 
 fn main() {
     let port = std::env::var("SYNC_ENGINE_PORT").unwrap_or_else(|_| "8080".into());
@@ -76,12 +91,15 @@ fn handle(mut stream: TcpStream) {
     let path = line.split_whitespace().nth(1).unwrap_or("/");
 
     let response = match path {
-        "/health" | "/" => format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
-             Content-Length: {}\r\nConnection: close\r\n\r\n{}",
-            BODY.len(),
-            BODY
-        ),
+        "/health" | "/" => {
+            let body = body();
+            format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\
+                 Content-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            )
+        }
         _ => "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
             .to_string(),
     };

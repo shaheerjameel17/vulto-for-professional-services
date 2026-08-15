@@ -24,7 +24,7 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F60 | Reified relationships have no registered edges | `VPS-A002` | **Closed by FDN-75** — one rule, four edges registered |
 | F61 | The edge registry does not state its own key | `VPS-A002` | **Closed by FDN-75** — the key is a triple |
 | F62 | A Rule 11 fact is cited as Rule 10 | `VPS-A002` | **Closed by FDN-74** |
-| F63 | `VPS-A001` describes one build's job in terms of another's | `VPS-A001` | **Open** — FDN-46 |
+| F63 | `VPS-A001` describes one build's job in terms of another's | `VPS-A001` | **Closed by FDN-46** |
 | F64 | `CLAUDE.md` and `AGENTS.md` are byte-identical duplicates describing a closed phase | Repository | **Closed by FDN-76** |
 | F65 | `Role-dependent` was a third name for `Inherited` | `VPS-A004` | **Closed by FDN-74** — consolidated |
 | F66 | Tier 1 keys are wrapped against the class default, ignoring `VPS-A004`'s overrides | `VPS-A003` | **Closed by FDN-78** |
@@ -42,8 +42,10 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F78 | The Docker feature's default packaging is unavailable on the base image's distribution | Repository | **Closed by FDN-47** |
 | F79 | The development image was pinned by tag, which `A007-T16` prohibits | Repository | **Closed by FDN-47** |
 | F80 | Turborepo strips undeclared environment variables, and a localhost default hid it | Repository | **Closed by FDN-47** |
+| F81 | A doc comment claimed a WASM compile failure that testing proved false | Repository | **Closed by FDN-46** |
+| F82 | `FDN-46` and `FDN-49` both claimed "package dependency boundaries" in their own scope | Linear | **Closed by FDN-46** |
 
-**Twenty-seven findings, twenty-one closed.** Six stay open. F63 rides with FDN-46. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
+**Twenty-nine findings, twenty-five closed.** Four stay open. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -265,6 +267,8 @@ Three of those four are server responsibilities, and *persist to Postgres* is on
 **This is imprecision rather than contradiction**, and it is recorded because it produced a real scope question at the start of this phase: what, exactly, does the client's WASM build do before `VPS-A003` exists? The answer turned out to be *nothing this project needs*, which is why the Rust sync engine is deferred — but the sentence should not have required reading a second document to resolve.
 
 **Correction.** `VPS-A001` states the shared core's job and the server deployment's additional job separately.
+
+**Closed by FDN-46**, which needed the answer before it could scope the TypeScript–Rust boundary: knowing which sync-engine responsibilities cross into the WASM build and which never do is what the package-boundary work depends on.
 
 ---
 
@@ -630,6 +634,32 @@ That is F74's shape again — there, an error handler reported a healthy databas
 
 Verified end to end against a running database, including that precedence holds where it matters — with both a `.env` and an environment variable present, Postgres's own `pg_stat_activity` confirms the connection arrived from the environment variable, not the file.
 
+---
+
+### F81 — a doc comment claimed a WASM compile failure that testing proved false
+
+Found while building FDN-46's multi-target proof for `services/sync-engine`, and worth recording precisely because it is the same mistake this log has caught twice already (F55's HeadcountPlan wording, F74's error handler) in a new shape: an assertion written with confidence and never run against reality.
+
+The crate was restructured into a `[lib]` (the shared core) and a `[[bin]]` (the native placeholder server), and the reason given — in both `Cargo.toml`'s comments and `main.rs`'s module doc — was that `main.rs`'s `TcpListener` *"needs an OS socket, which neither WASM nor a mobile FFI target has,"* stated as why building `--lib` alone was necessary rather than merely tidy.
+
+**Building the whole package for `wasm32-unknown-unknown` proved that false.** It compiled cleanly, producing a 22.7KB artifact. Rust's `std` ships stub network types for that target rather than refusing to build them — `TcpListener::bind` exists at compile time and would fail only at runtime, which is a different and much weaker claim than "cannot compile."
+
+**The split was kept, for a reason that survived being checked.** `--lib` alone produces the 43-byte artifact the shared core actually is, rather than a 22.7KB bin nothing will ever load, and it is insurance against the day `main.rs` gains a genuinely native-only dependency — a Postgres driver, `tokio`'s epoll bindings — that has no `wasm32` story at all and would fail for real. That argument does not need the false one to stand.
+
+**Corrected** in `Cargo.toml`'s comment and `lib.rs`'s module doc, both stating what was tried, what was found, and why the false claim's conclusion still held for a different reason. Left the wrong reasoning visible rather than deleting it silently — a future reader re-deriving the same false shortcut is exactly what a corrected-in-place comment prevents.
+
+---
+
+### F82 — `FDN-46` and `FDN-49` both claimed "package dependency boundaries"
+
+Not a specification defect — a Linear defect, the same shape as F68's duplicate Client registration. Found while writing FDN-46's decision memo and confirmed by the person reviewing it before any code existed to paper over the disagreement.
+
+FDN-49's scope read *"Enforce approved graph access and package dependency boundaries."* FDN-46's own done criteria independently read *"Automated verification detects a dependency-direction or boundary violation."* Two issues, the same enforcement claimed by each, written months apart with no reference to the other.
+
+**Correction.** FDN-46 keeps package dependency direction — it is generic across every package, not specific to the graph, and was already in FDN-46's own done criteria rather than borrowed from FDN-49's. FDN-49 keeps *graph* access enforcement specifically — raw Loro reads and raw SQL bypassing the typed query interface, per A001-T03 and A002-T05 — because that check is meaningless without the registry context FDN-49 already owns and FDN-46 does not. Recorded in both issues, each stating why the other kept what it kept rather than one silently losing a line.
+
+---
+
 ### `VPS-A002`
 `Client` deduplicated to one registry row. A new section, **When a relationship is a node instead of an edge**, carrying the one-sentence rule, why lifecycle is the test, the naming convention for a relationship-node's endpoint edges, the statement that an endpoint pair is not itself an edge, and the edge registry's key. Four edges registered; `member_of` deleted; `assigned_to` re-endpointed.
 
@@ -660,6 +690,9 @@ The Loro version pin recorded under CRDT library selection — `loro-crdt@1.14.1
 
 ### `VPS-A007` — FDN-47
 One citation, A001-T05 to A001-T06, per F72. Nothing else.
+
+### `VPS-A001` — FDN-46
+The two-language boundary table's `services/sync-engine` row, per F63: one job description covering two builds replaced with the shared core's job stated once and the server deployment's additional relay-and-persistence responsibility stated separately. A Decisions-section entry recording why and what it was found while scoping.
 
 ### `VPS-D004` — FDN-79
 A copy variant for person-level exclusion. The role-naming convention — *"Visible to Finance Admin"* — renders as *"Visible to Owner and HR Admin"* to an excluded Owner, which is a contradiction rather than a next step. The copy now names the reason: *"Restricted — this record concerns you."* One new row in the state table.

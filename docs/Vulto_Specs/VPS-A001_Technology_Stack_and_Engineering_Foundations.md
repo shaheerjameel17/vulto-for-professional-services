@@ -60,7 +60,7 @@ Four constraints produced this stack, and they are recorded because they are the
 
 | Surface | Language | Reasoning |
 |---|---|---|
-| `services/sync-engine` | Rust | Compiled native for the server, WASM for the client. One job: receive CRDT deltas, enforce permission-filtered relay per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], persist to Postgres, relay to authorized devices. No business logic |
+| `services/sync-engine` | Rust | A single shared core — CRDT merge, encryption, wire protocol — compiled three ways from one source: native binary for the server, WASM for the client, native bindings for mobile, per A003-T10. The **server deployment** additionally relays deltas between authorized devices per [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s permission filter and persists them to Postgres for durability. The **client and mobile builds** produce and apply deltas against the local graph and hold no server responsibilities. No business logic in any target |
 | `apps/roster-web` and every future application under `apps/` | TypeScript | Consumes the sync engine's WASM build as an ordinary npm package. Never touches Rust |
 | `services/api` | TypeScript | Auth, workspace management, billing, every feature's server-side logic |
 | Every future suite application | TypeScript | Shares the same sync engine and API conventions |
@@ -283,6 +283,8 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 **Rust ownership is decided as a scoped engagement, not a hiring track.** The sync engine is owned by a single specialized contract engineer under a defined statement of work, or by the CTO function directly when one is engaged. It is deliberately not a role the team recruits for, because a team that must hire Rust engineers to make progress has forfeited the reason this boundary exists.
 
 **The Loro version is a specification requirement, not an open item.** A001-T02 requires it pinned and recorded in the same commit as implementation start. An unpinned dependency in a system meant to run for years is a defect, and describing it as an open question deferred the fix rather than scheduling it. **Settled: `loro-crdt@1.14.1`**, recorded under CRDT library selection above. The repository had already demonstrated the cost of the alternative — `typescript@^5.7.3` had drifted to `5.9.3` and `turbo@^2.3.4` to `2.10.8` before anyone intended an upgrade.
+
+**The two-language boundary table's `services/sync-engine` row described one job for two builds that do different things.** "Receive CRDT deltas… persist to Postgres, relay to authorized devices" is the server deployment's job; a WASM build running in a browser tab cannot persist anything to Postgres. Corrected to state the shared core's job once — CRDT merge, encryption, wire protocol, identical across all three targets per A003-T10 — and the server deployment's additional relay-and-persistence responsibility separately. Found while scoping FDN-46's package boundaries, which needed to know which of the sync engine's responsibilities cross into the WASM build and which never do. Recorded as F63.
 
 ---
 
