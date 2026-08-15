@@ -100,7 +100,20 @@ not an owner is given access.
 control under time pressure is how it gets done badly, and because `A007-T19`
 makes the development image the thing that satisfies `A001-T04`.
 
-**It is unverified.** See FDN-47 for the steps to verify it.
+**Verified — `A007-T14`.** A fresh Codespace built clean from `main` and the
+full checklist passed: `rustc`/`cargo` present, `docker` working via
+`docker-outside-of-docker`, the stack up, `/diagnostics` showing Web, API and
+Postgres all green. Six defects were found and fixed getting here — F75
+through F80 in `Foundations_Findings.md` — none of which showed up until the
+devcontainer was actually run.
+
+**A forwarded port opening as private is expected, not a seventh defect.**
+Codespaces forwards ports behind GitHub auth by default, so opening
+`/diagnostics` through the forwarded URL for the first time in a browser can
+return a 401 until the port's visibility is set to Public (or the browser is
+already authenticated to the Codespace's GitHub org). Switch it back afterward
+— this is Codespaces' normal port-auth behavior, not something this
+repository's configuration controls.
 
 ---
 
