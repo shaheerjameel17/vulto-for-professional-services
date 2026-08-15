@@ -32,7 +32,20 @@
     // Neither VPS-A007's Docker section nor A007-T14 states a preference
     // between the two — checked before adding this, so this is a fresh
     // decision rather than a contradiction of one already made.
-    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+    //
+    // `moby: false` installs Docker CE's CLI from Docker's own apt repository
+    // instead of Moby's packages from Debian's. The feature defaults `moby` to
+    // true, and Debian trixie does not carry `moby-cli`, so the default fails
+    // the feature's install step outright:
+    //
+    //   (!) The 'moby' option is not supported on debian 'trixie' because
+    //       'moby-cli' and related system packages are not available in that
+    //       distribution.
+    //
+    // Docker CE does publish for trixie, so this is the fix the feature itself
+    // recommends first. The alternative it offers — moving the base image to
+    // bookworm — is rejected below.
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false }
   },
 
   // Rust is present here and absent from a contributor's laptop, and that is
