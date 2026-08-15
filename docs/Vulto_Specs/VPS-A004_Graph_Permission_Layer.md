@@ -80,6 +80,22 @@ Unless a node type appears in the detailed matrix with an explicit override, thi
 
 **`None` is the default and remains what every cell in the tables below means.** `Restricted` is used only where a document explicitly says so. A cell reading `None` is structural absence, without exception — reading it as "hidden" is the false-security model this document's Decision prohibits.
 
+### The rule that decides which outcome a cell gets
+
+**`Restricted` where the record exists for everyone in that position. `None` where its existence is a fact about that particular person.**
+
+A locked box tells the viewer a record exists. Where everyone in a role has one — every Employee has a compensation half, every workspace has one billing state — that discloses nothing, and naming the role converts a dead end into a next step. Where only some people have one — an HRCase, a FlightRiskSignal, a wellness entry — the lock *is* the disclosure. Protecting the content does not fix a leak the interface commits by rendering at all.
+
+**This is not a new principle, and it governs by extension rather than invention.** [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] already bars every Tier 1 and Tier 3 node type from the mention picker, for exactly this reasoning: *"a reference a viewer cannot decrypt still reveals that something was mentioned"* (A005-T07). The picker and a profile's restricted field are the same leak on two different surfaces. Nothing here creates an exception to A005-T07 — no node type is reclassified into a picker-eligible state, and the reclassifications below apply only to how a query denial renders on a record the viewer already has partial, legitimate access to.
+
+**Checked rather than assumed, since it would have been a false claim otherwise:** not every node type kept at `None` below is Tier 1 or Tier 3. WellnessTriggerEvent, PulseEntry and CoffeePulseEntry are, and A005-T07 already governs them directly. FlightRiskSignal is Tier 2 — A005-T07 does not reach it, and it stays `None` on this rule's own merits: its existence for a given employee is not universal, so a Manager or Finance Admin learning one exists learns a true and damaging fact about that specific person regardless of A005.
+
+**The test, applied precisely: does a guaranteed field-level split exist on a node instance the viewer can already see part of, or is the hidden thing a separate, optional, cardinality-variable related record?** Employee's compensation half is guaranteed — every Employee node has one, by schema, whether or not a value was ever set. A Manager who can already see an Employee's operational half loses nothing new by learning the compensation half exists too. An HRCase is not guaranteed — most employees never have one — so a Manager learning an HRCase exists for a direct report learns something true and damaging about that specific person that no amount of content-hiding undoes. The same distinction separates a Contract *node* (every active employee has at least one, by definition of being employed) from a Document *row in the vault* (a specific uploaded file's presence is optional and instance-informative) — [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] already reasons through the second case correctly; see its cross-reference below.
+
+**Restricted must be renderable from schema knowledge alone, never from received data.** For a Tier 1 or Tier 3 field, [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] guarantees an unauthorized device receives no ciphertext, no metadata and no indication of existence for that field — there is nothing locally present to build a locked box from. A `Restricted` placeholder is therefore drawn from the fact that this is an instance of a node type whose registry entry guarantees the field, not from anything the device received about this specific instance. This is what makes `Restricted` safe to use on a field the device may hold zero bytes for: the box says "this node type always has this," which is public information about the schema, not private information about the row.
+
+**The asymmetry to hold onto as this rule gets applied further.** Moving a cell from `Restricted` to `None` is always safe — it only removes information a viewer had. Moving a cell from `None` to `Restricted` is a disclosure decision and needs the same review any other access change gets, because it adds information a viewer did not have, even if that information is "this type of thing exists." Where a cell does not obviously sort — where it cannot be determined whether existence is universal for the node type or contingent on the individual — it stays `None`. Conservative is the correct default for anything ambiguous, and this rule is revisable on user evidence after launch precisely because the safe direction to be wrong in is already known.
+
 ---
 
 ## Subject exclusion
@@ -128,8 +144,9 @@ Only node types whose behavior differs from their Privacy Class default, or whos
 
 | Node Type | Owner | HR Admin | Finance Admin | Manager | Team Member |
 |---|---|---|---|---|---|
+| Workspace (billing) | Full | **Restricted** — "Visible to Owner" | **Restricted** — "Visible to Owner" | **Restricted** — "Visible to Owner" | **Restricted** — "Visible to Owner" |
 | Employee (operational) | Full | Full | Read | Full (direct reports) | Read (own + team) |
-| Employee (compensation) | Full | Full | Full | None | Read (own only) |
+| Employee (compensation) | Full | Full | Full | **Restricted** — "Visible to Finance Admin" | Read (own only) |
 | WellnessTriggerEvent | None | None | None | None | Full (own only) |
 | PulseEntry, CoffeePulseEntry | Aggregate only | Aggregate only | None | None | Full (own only) |
 | BurnoutAlert | Full | Full | None | Full (direct reports) | None |
@@ -143,8 +160,8 @@ Only node types whose behavior differs from their Privacy Class default, or whos
 | Invoice | Full | Read | Full | None | Full (own only) |
 | PayRun | Full | Full | Full | None | None |
 | PaySlip | Full | Full | Full | None | Read (own only) |
-| Contract (identifying) | Full | Full | Read | None | Read (own only) |
-| Contract (content) | Full | Full | Full | None | Read (own only) |
+| Contract (identifying) | Full | Full | Read | **Restricted** — "Visible to HR Admin" | Read (own only) |
+| Contract (content) | Full | Full | Full | **Restricted** — "Visible to Finance Admin" | Read (own only) |
 | HRCase, CaseEvent (identifying) | Full | Full | None | None | None |
 | HRCase, CaseEvent (content) | Full | Full | None | None | None |
 | WorkAuthorization | Full | Full | None | None | Read (own only) |
@@ -157,7 +174,7 @@ Only node types whose behavior differs from their Privacy Class default, or whos
 | Offer (identifying) | Full | Full | Read | None | None |
 | Offer (terms) | Full | Full | Full | None | None |
 | Requisition (identifying) | Full | Full | Read | Read | None |
-| Requisition (budget) | Full | Read | Full | None | None |
+| Requisition (budget) | Full | Read | Full | **Restricted** — "Visible to Finance Admin" | None |
 | HeadcountPlan | Full | Read | Full | None | None |
 | CompensationBand | Full | Read | Full | None | Read (own band only) |
 | CompensationChange | Full | Full | Full | None | Read (own only) |
@@ -175,6 +192,10 @@ Only node types whose behavior differs from their Privacy Class default, or whos
 | Notification | Recipient-only, absolute. No role sees another user's | | | | |
 | GraphReference | Visible only where the user has Read on both source and target, per [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | | | | |
 | ApprovalStage | Inherits the grant of the record it gates | | | | |
+
+**Five cells above are marked `Restricted` under the rule stated earlier**, each because the node type guarantees the field for every instance: Workspace always has a billing state; every Employee node has a compensation half; every active employee has at least one employment Contract, both halves; a Requisition a Manager can already read (its identifying half) always has a budget half too. Every other `None` in this matrix was checked against the same rule and kept, because the node type's existence is contingent on the individual rather than guaranteed by the schema — an HRCase, a FlightRiskSignal, a Document in the vault, an ErasureRequest. The reasoning for each is recorded in `docs/Foundations_Findings.md`, not repeated per cell here, per this document's own note that the previous matrix read as a changelog when it carried reasoning inline.
+
+**Three cells did not sort and were left `None` rather than guessed at**, per this rule's own instruction to default conservative on ambiguity: PayRun and HeadcountPlan (Manager, Team Member) and HeadcountSnapshot (Manager). Each is a workspace-scoped operational or analytics object rather than a record *about* a specific person, so the "does everyone in this position have one" test does not cleanly apply — and HeadcountPlan is not a split node at all, so there is no partially-visible sibling half for a lock to sit next to. Recorded as open findings rather than resolved.
 
 **Participant-scoped grants** appear three times above and are a distinct mechanism from role-based access: an Employee with a `participating_in` edge to an InterviewRound reads that round regardless of organizational role; the interviewer on a FeedbackEntry has Full on that entry only; the assignee on an OnboardingTask has Full on that task only. A Team Member asked to sit on a panel needs to see the panel they are on, which the role columns alone cannot express.
 
@@ -296,6 +317,7 @@ This gate runs after role permission and write authority have both passed. It ne
 | A004-T16 | For a node type registering a subject exclusion, the resolved reader set MUST exclude the person that record concerns, at both the query layer and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s key-wrapping layer, and MUST be re-resolved when the subject changes or a role changes. A person becoming a subject while already holding a wrapped key is a revocation event under A003-T16 |
 | A004-T17 | The interceptor MUST refuse a write that would produce a Tier 1 or Tier 3 node with an empty reader set, after role permission and write authority have both passed. Creating a record no one can read is prohibited |
 | A004-T18 | A denial MUST resolve to `None` or `Restricted`, and the two MUST render as [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s structurally-absent and visibly-restricted treatments respectively. `Restricted` MUST be used only where a specification states it; every unqualified `None` in this document is structural absence |
+| A004-T19 | A `Restricted` render for a Tier 1 or Tier 3 field MUST be derived from the node type's schema — that this node type always carries this field — and MUST NOT depend on any ciphertext, metadata or sync-status signal received for the specific instance, since [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] guarantees an unauthorized device holds none of those for such a field |
 
 ---
 
@@ -370,6 +392,8 @@ This gate runs after role permission and write authority have both passed. It ne
 **The matrix is rewritten without correction archeology.** The previous version carried the reasoning for each historical fix inside the table cells, which made a reference table read as a changelog. The three recurring override patterns are named once above, so a new feature applies them on sight.
 
 **Rows are added for twenty-four new node types** introduced in [[VRS-001_Feature_Register|VRS-001]], each classified against the same patterns rather than new ones.
+
+**The `None`/`Restricted` split is founder-decided and revisable on user evidence.** Five cells moved to `Restricted` and three were left `None` as genuinely ambiguous, per the rule and the reasoning recorded above and in `docs/Foundations_Findings.md`. The direction to revise in matters more than the current assignment: moving a cell from `Restricted` to `None` only removes information a viewer had and is always safe to do without review. Moving a cell from `None` to `Restricted` adds information — even "this type of thing exists" is information — and needs the same scrutiny any other access widening gets. A future change tightening toward `None` is a bug fix; a future change loosening toward `Restricted` is a decision.
 
 ---
 

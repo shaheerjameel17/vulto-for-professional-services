@@ -85,7 +85,7 @@ Static. Mock data. No backend, no state persistence, no authentication.
 - The application shell per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] — sidebar, page header, contextual panel
 - Both themes at the one information-preserving product density settled by [[VPS-D001_Design_Foundations|VPS-D001]]
 - **The Bench Forecast**, with real-shaped data: fifteen people, assignment bars, ghost rows, bench regions with cost figures, the today line
-- **An employee profile**, showing the tab structure and the structurally-absent compensation section
+- **An employee profile**, showing the tab structure and the restricted compensation section — asked for as "structurally-absent" at prototype scope; [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s later rule for `None` versus `Restricted` denials revised the specific rendering to visibly-restricted, since every Employee node guarantees a compensation half
 - **The timesheet grid**, with the keyboard model working — `Tab`, natural language entry, `Cmd+Enter`
 - **The command palette**, opening on `Cmd+K` with grouped results
 - **The manager queue** per [[VRS-F049_Manager_Dashboard|VRS-F049]], showing age-ordered items

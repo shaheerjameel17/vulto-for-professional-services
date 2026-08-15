@@ -69,6 +69,8 @@ Results are grouped by node type in this display order:
 
 This is a permanent architectural constraint, not a deferral. The picker must not surface these node types regardless of how tier assignments evolve elsewhere.
 
+**Confirmed unaffected by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s later `None`-versus-`Restricted` rule for how a query denial renders.** That rule governs a profile field on a node the viewer already has partial access to, derived from schema knowledge rather than any per-instance signal, and reclassifies five cells — none of them this picker's eligibility. No node type this rule excludes becomes picker-eligible, and no exception to A005-T07 exists anywhere in this document as a result of that work.
+
 ### Selection
 
 Selecting a result performs two operations:

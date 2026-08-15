@@ -44,8 +44,11 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F80 | Turborepo strips undeclared environment variables, and a localhost default hid it | Repository | **Closed by FDN-47** |
 | F81 | A doc comment claimed a WASM compile failure that testing proved false | Repository | **Closed by FDN-46** |
 | F82 | `FDN-46` and `FDN-49` both claimed "package dependency boundaries" in their own scope | Linear | **Closed by FDN-46** |
+| F83 | `None` and `Restricted` had a stated distinction but no rule for which cell gets which | `VPS-A004` | **Closed by FDN-80** — five cells reclassified |
+| F84 | `VPS-D004`'s "an HR-restricted contract" example conflated a guaranteed node with an optional vault document | `VPS-D004` | **Closed by FDN-80** |
+| F85 | PayRun, HeadcountPlan and HeadcountSnapshot don't sort under the `None`/`Restricted` rule | `VPS-A004` | **Open, raised not decided** — FDN-83 |
 
-**Twenty-nine findings, twenty-five closed.** Four stay open. F69 needs a scope decision this log should not make alone. F70 and F73 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
+**Thirty-two findings, twenty-seven closed.** Five stay open. F69 needs a scope decision this log should not make alone. F70, F73 and F85 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -660,6 +663,72 @@ FDN-49's scope read *"Enforce approved graph access and package dependency bound
 
 ---
 
+### F83 — `None` and `Restricted` had a stated distinction but no rule for which cell gets which
+
+FDN-79 gave `VPS-A004` the vocabulary — two denial outcomes instead of one, a table stating what each returns — and applied `Restricted` to exactly one case, HRCase's excluded subject. Everything else stayed `None`, including cells where two documents and a working prototype already disagreed about which was correct (F69). The vocabulary existed; the rule for using it did not.
+
+**The rule, decided:** `Restricted` where the record exists for everyone in that position — a locked box discloses nothing if everyone has one. `None` where its existence is a fact about that particular person — the lock *is* the disclosure there, and protecting the content does not fix a leak the interface commits by rendering at all.
+
+**Not a new principle.** `VPS-A005`'s A005-T07 already bars every Tier 1 and Tier 3 node type from the mention picker on identical reasoning — *"a reference a viewer cannot decrypt still reveals that something was mentioned."* The picker and a profile's restricted field are the same leak on two surfaces. FDN-80 extends a decided principle rather than inventing one, and a cross-reference now sits in `VPS-A005` confirming A005-T07 is unaffected — checked explicitly rather than assumed, since the two rules governing adjacent surfaces is exactly the situation where one could be silently weakened by the other.
+
+**Checked and corrected before it shipped:** a first draft of the extension claimed WellnessTriggerEvent, PulseEntry, CoffeePulseEntry *and FlightRiskSignal* all fell under A005-T07's Tier 1/3 bar. FlightRiskSignal is Tier 2 — verified against `VPS-A002`'s registry rather than assumed from memory. It stays `None` on this rule's own merits (its existence per employee is not universal), not because A005-T07 reaches it. The sentence was corrected rather than left as a plausible-sounding overclaim.
+
+#### Three checks, done before any cell was touched
+
+**Can a locked box even be rendered, given a Tier 1 field's ciphertext never reaches an unauthorized device?** Yes, and the mechanism is the whole reason the rule works at all: `Restricted` is drawn from the node *type's* schema — "this node type always has this field" — never from data received about the specific instance. `VPS-A002`'s registry already guarantees Employee's compensation half exists on every Employee node; the client needs no bytes about a particular employee to know that, only its own copy of the schema, which every device has regardless of tier authorization. Recorded as A004-T19: a `Restricted` render for a Tier 1 or Tier 3 field must be schema-derived, never instance-derived. This is also what keeps the rule from ever applying to an optional, cardinality-variable related record — an HRCase, a FlightRiskSignal — where the device may hold nothing at all and there is nothing but the sensitive fact itself to render from.
+
+**`VRS-F022`'s second contradiction, resolved.** See F84.
+
+**Does anything here weaken A005-T07's absolute bar?** No, confirmed explicitly in both directions — a note in `VPS-A004` stating no node type is reclassified into picker-eligibility, and the cross-reference now in `VPS-A005` itself.
+
+#### Five cells reclassified
+
+Employee (compensation), Manager: `None` → `Restricted`, "Visible to Finance Admin" — the flagship case, where the documents already disagreed.
+
+Contract (identifying), Manager → `Restricted`, "Visible to HR Admin." Contract (content), Manager → `Restricted`, "Visible to Finance Admin." Every active employee has at least one employment Contract, by definition of being employed — distinguished carefully from a *Document* in `VRS-F022`'s vault, which is not guaranteed the same way. See F84.
+
+Requisition (budget), Manager → `Restricted`, "Visible to Finance Admin." Manager already reads Requisition's identifying half; the budget half is a guaranteed sibling on the same node.
+
+Workspace (billing) — a gap the existing matrix never named as its own row. Every workspace has exactly one billing and subscription state, structurally guaranteed, and the four non-Owner roles previously got an undifferentiated `None` from the `Owner only` class default. Now `Restricted`, "Visible to Owner," for HR Admin, Finance Admin, Manager and Team Member alike.
+
+#### Everything else, checked and kept at `None`
+
+WellnessTriggerEvent, PulseEntry, CoffeePulseEntry — absolute, Tier 3, A005-T07 and A003's own acceptance criterion both require it. BurnoutAlert, TimesheetAnomalyFlag, ProbationCheckIn, FlightRiskSignal — each an optional signal about a specific person; the signal-clearing pattern's own reasoning already explains why the subject is not automatically its audience, and the same logic bars an unrelated role. Invoice, WorkAuthorization, CompensationChange — instance-informative (not every employee has one). HRCase, CaseEvent, OrgScenario — the case this project has already reasoned through twice (F56, FDN-79); existence itself is the sensitive fact. Document (provenance-elevated) — the vault case, see F84. Candidate-pipeline node types, TalentPool, SubVendor — mostly moot, no anchor screen for the roles in question. AuditEntry, ImportBatch, ErasureRequest, RetentionPolicy — access-event metadata, existence is exactly what these protect.
+
+**Three cells did not sort**, and per the rule's own instruction to default conservative on ambiguity, none were forced. See F85.
+
+#### The asymmetry, recorded as the thing worth keeping
+
+Moving a cell from `Restricted` to `None` only removes information a viewer had, and needs no review to be safe. Moving a cell from `None` to `Restricted` adds information — even "this type of thing exists" is information — and needs the same scrutiny any other access widening gets. Recorded in `VPS-A004`'s Decisions section so a future change tightening toward `None` reads as a bug fix and one loosening toward `Restricted` reads as a decision, rather than both reading as equally casual.
+
+---
+
+### F84 — `VPS-D004`'s "an HR-restricted contract" example conflated a guaranteed node with an optional vault document
+
+The second contradiction the founder asked to be checked before implementing anything, and it resolved cleanly once F83's rule existed to resolve it against.
+
+`VRS-F022` already states, explicitly and with reasoning: *"A Tier 1 document a viewer cannot open does not appear as a locked row. It is structurally absent... because the existence of a signed contract for a specific person is itself an inference a Manager should not draw from a grayed-out entry."* `VPS-D004` separately named *"an HR-restricted contract"* as its own worked example of the opposite treatment, visibly restricted.
+
+**Both are correct, and they were never actually describing the same object.** `VRS-F022`'s claim is about a `Document` row in the encrypted vault — a specific uploaded file, whose presence is optional and whose cardinality varies per employee. Which document types exist for a given person is informative, exactly as `VRS-F022` argues. `VPS-D004`'s intended example was the Contract *node* — the structured record of employment terms, which every active employee has at least one of, by definition of being employed. A guaranteed field on a guaranteed node, and a variable-cardinality related record, are the two branches F83's rule exists to separate, and `VPS-D004`'s illustrative phrase sat exactly on the seam between them.
+
+**Correction.** `VPS-D004`'s example changed to *"a Contract's own commercial terms once its identifying half is already visible"* and a Requisition budget-line example, both unambiguously the guaranteed-node case. A new paragraph states the distinction directly and cross-references `VRS-F022`'s reasoning rather than repeating it, so the vault case's correct treatment is confirmed rather than silently left to look like a leftover contradiction.
+
+**Nothing in `VRS-F022` changed.** Its resolution was correct from the start; only `VPS-D004`'s example needed correcting to match it.
+
+---
+
+### F85 — PayRun, HeadcountPlan and HeadcountSnapshot don't sort under the `None`/`Restricted` rule
+
+**Open. Raised, not decided**, per the founder's own instruction: where a cell genuinely doesn't sort, it stays `None` and gets listed rather than guessed at.
+
+All three are workspace-scoped operational or analytics objects rather than records *about* a specific person, so F83's test — does everyone in this position have one — does not cleanly apply to any of them. A PayRun is not "a thing an employee has"; it is a scheduled company-wide event a specific PaySlip belongs to. HeadcountPlan is not a split node at all — it is `Finance-restricted` in full, per `VPS-A002`'s registry — so there is no partially-visible identifying half for a lock to sit next to, which is the structural precondition every one of the five reclassified cells shares. HeadcountSnapshot is an aggregate headcount count, closer to an analytics artifact than a record with a subject.
+
+**Why forcing an answer would have been the wrong instinct.** A `PayRun`'s existence is arguably common knowledge — every company running payroll has PayRuns on a schedule — which would suggest `Restricted` costs nothing. But `HeadcountPlan`'s existence might carry real strategic sensitivity even without content — a Manager learning "a Finance-restricted plan exists for Q3" is arguably learning something already, before any lock is rendered. The two pull in different directions under intuitions this rule was not built to adjudicate, and `HeadcountSnapshot` sits closer to a tooling-scope question than a privacy one. Three different shapes of ambiguity, not one.
+
+**What is needed:** a founder decision per cell, or a decision that the current conservative default is correct and should stay. Either is a fine answer, consistent with `VPS-A004`'s own note that the direction to be wrong in is known — leaving these at `None` costs nothing to reverse later. Tracked as **FDN-83**, low priority, since conservative is safe and nothing depends on this resolving first.
+
+---
+
 ### `VPS-A002`
 `Client` deduplicated to one registry row. A new section, **When a relationship is a node instead of an edge**, carrying the one-sentence rule, why lifecycle is the test, the naming convention for a relationship-node's endpoint edges, the statement that an endpoint pair is not itself an edge, and the edge registry's key. Four edges registered; `member_of` deleted; `assigned_to` re-endpointed.
 
@@ -696,6 +765,18 @@ The two-language boundary table's `services/sync-engine` row, per F63: one job d
 
 ### `VPS-D004` — FDN-79
 A copy variant for person-level exclusion. The role-naming convention — *"Visible to Finance Admin"* — renders as *"Visible to Owner and HR Admin"* to an excluded Owner, which is a contradiction rather than a next step. The copy now names the reason: *"Restricted — this record concerns you."* One new row in the state table.
+
+### `VPS-A004` — FDN-80
+A new section stating the `None`/`Restricted` rule: existence universal to the position renders `Restricted`, existence contingent on the individual renders `None`. Explicit extension of A005-T07's already-decided reasoning rather than a new principle, with the FlightRiskSignal overclaim caught and corrected before it shipped. A004-T19, requiring a `Restricted` render to be schema-derived rather than instance-derived, since an unauthorized device holds nothing for a Tier 1 or Tier 3 field to derive one from. Five matrix cells reclassified — Employee compensation, both Contract halves, Requisition budget, and a new Workspace billing row the matrix had never carried. Three cells (PayRun, HeadcountPlan, HeadcountSnapshot) checked and left `None`, recorded as F85 rather than guessed at. A Decisions-section entry recording the `Restricted`-to-`None`-is-always-safe asymmetry.
+
+### `VPS-D004` — FDN-80
+The *"an HR-restricted contract"* visibly-restricted example replaced — it was actually describing `VRS-F022`'s vault-document case, which is the opposite treatment. New examples unambiguous for the guaranteed-node case, and a paragraph distinguishing a guaranteed node from an optional related record, cross-referencing rather than duplicating `VRS-F022`'s own reasoning.
+
+### `VPS-A005` — FDN-80
+A confirming cross-reference beside A005-T07: FDN-80's `None`/`Restricted` rule reclassifies five profile-field cells and none of them are picker eligibility, so A005-T07's absolute bar is unaffected. Checked and stated explicitly rather than left implicit, since two rules governing adjacent surfaces is exactly the situation where one could be silently weakened by the other.
+
+### `VPS-002` — FDN-80
+The prototype scope list's *"structurally-absent compensation section"* corrected to reflect the revised rendering, with a note that the prototype-era description is superseded rather than silently rewritten.
 
 ## What did not change
 
