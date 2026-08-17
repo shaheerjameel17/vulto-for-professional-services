@@ -137,6 +137,8 @@ The failure this prevents is specific and would otherwise be real: two administr
 
 Loro's Movable Tree resolves concurrent moves without producing cycles, by construction. This is the specific guarantee the library was chosen for.
 
+**This feature writes the Tree only, never the edge.** Move and Commit below rewrite `managed_by` through its single-active-with-history pattern, but that rewrite is the materialization worker's deterministic response to the Tree's resolved state after merge — not a second write this feature performs itself. The Tree is authoritative for who reports to whom right now; the edge is authoritative for the history. Per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] and [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]], no application code, this feature included, ever writes `managed_by` directly.
+
 ### OrgScenario
 
 Owner and HR Admin only, Tier 2.

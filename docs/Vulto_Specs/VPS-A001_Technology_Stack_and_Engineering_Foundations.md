@@ -90,6 +90,8 @@ Loro is MIT licensed and in active production use. Its ecosystem is younger than
 
 **On the Movable Tree specifically.** This primitive is a material part of why Loro was chosen over two more mature alternatives, and the specification set must actually use it. [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] is the feature that does, and its existence is partly a consequence of this decision. A future proposal to model the reporting hierarchy as flat parent pointers in application code would forfeit the reason this library was selected and requires a superseding decision, not an implementation shortcut.
 
+**A Movable-Tree-backed edge is derived, not independently maintained.** `managed_by` is registered in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] both as a Tree-backed relationship and as a temporal edge under the single-active-outgoing-edge-with-history pattern. The Tree is the sole write target and sole authority on the current answer; the edge is a one-way materialization of the Tree's resolved state, and no application code writes it directly. A future feature adding a second write path to `managed_by` — an edge write that bypasses the Tree — is the same category of violation as replacing the Tree with flat parent pointers: it forfeits the concurrent-merge guarantee this library was selected for, and requires a superseding decision rather than an implementation shortcut. Recorded as F104.
+
 A bespoke CRDT implementation is explicitly prohibited.
 
 **The pinned version is `loro-crdt@1.14.1`**, declared exactly — not as a range — in `packages/schema`, and pinned transitively in `pnpm-lock.yaml`. Recorded here per A001-T02, in the commit that pinned it.
@@ -294,6 +296,8 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 **The Worker boundary has a package home.** `packages/graph` owns the public Worker client and its runtime-validated local protocol. Its private Worker runtime is the only TypeScript browser surface that imports Loro or `wa-sqlite`; application code consumes the client without gaining raw graph access. FDN-49 owns the future automated import-boundary enforcement. Recorded as F96.
 
 **Local-storage encryption ownership named the wrong issue.** F103 moved the sealed local device store and its cold-restart online unlock from FDN-52 to FDN-84, and reordered the chain to FDN-84 → FDN-50 → FDN-52 so canonical Loro persistence is never written unencrypted. This document's own statement of that ownership was never updated to match, leaving FDN-52 named as the owner of work F103 had already reassigned. Corrected above. Recorded as F116.
+
+**The Movable Tree and the `managed_by` edge had no stated authority relationship.** Both were required by name — the Tree here, the temporal edge in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] — with no rule for which one is written to, or how a concurrent move on the same employee produces one converged edge history rather than two. The Tree is now the sole write target; the edge is a one-way materialization of its resolved state. Recorded as F104, blocking FDN-50 until closed.
 
 ---
 

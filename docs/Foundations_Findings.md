@@ -65,7 +65,7 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F101 | FDN-48 assigned itself persistence before the required local encryption system exists | `VPS-A001`, Linear | **Closed by FDN-48 scope correction** — SQLite is disposable; FDN-50 persists Loro and FDN-52 owns encryption |
 | F102 | Additive record properties were preserved without proving they were JSON-native | `VPS-A002`, Repository | **Closed by FDN-48** — complete records reject runtime-specific values before materialization |
 | F103 | FDN-50 was required to persist Loro before the issue owning mandatory local encryption | `VPS-A003`, Linear | **Closed by FDN-84 extraction** — sealed local storage now blocks FDN-50, which continues to block the remaining FDN-52 work |
-| F104 | `managed_by` has two canonical representations and no reconciliation rule | `VPS-A001`, `VPS-A002`, `VRS-F037` | **Open, raised not decided** — must close before FDN-50 defines the Loro layout |
+| F104 | `managed_by` has two canonical representations and no reconciliation rule | `VPS-A001`, `VPS-A002`, `VRS-F037` | **Closed by founder ruling** — the Movable Tree is sole write target and authority on the current answer; the edge is a one-way materialization, keyed to the Tree's causal ordering |
 | F105 | FDN-50 claimed an application-facing read/write path before the permission interceptor | `VPS-A004`, Linear | **Closed by FDN-50 scope correction** — only Worker-private proof seams exist before FDN-53 |
 | F106 | A session-token-keyed store cannot state how it reopens after an offline cold restart | `VPS-A003`, `VPS-F001`, Linear | **Closed by founder ruling** — every cold restart requires one online, server-authorized unlock; offline operation continues after it |
 | F107 | FDN-84's selected unlock still depends on session infrastructure owned downstream, while FDN-63 also claimed local encrypted storage | `VPS-F001`, Linear | **Closed by FDN-60 split and implementation** — FDN-60 now provides the upstream exact-workspace session guard; FDN-63's duplicate was removed |
@@ -81,8 +81,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F117 | `VPS-D004`'s system states are all region-level; the whole-shell locked condition F106 created has no specified render | `VPS-D004` | **Closed by source correction** — a locked-shell section added, distinct from the three region-level states |
 | F118 | `VPS-A003` and `VPS-F001` both cite `VPS-D004` for a SyncStatus / Offline indicator render that `VPS-D004` never defines | `VPS-A003`, `VPS-F001`, `VPS-D004` | **Open, raised not decided** — logged separately, not owned by FDN-84 |
 | F119 | "Current process" left it undecided whether a tab reload requires the same online unlock as a device cold restart | `VPS-A003` | **Closed by founder ruling** — strict: any new Worker instance requires an online unlock; a SharedWorker alternative is logged as an available future softening |
+| F120 | A document a client is too old to open has no specified render — not `SealedStore`'s "cannot open," not silent partial data, not any of `VPS-D004`'s existing states | `VPS-D004` | **Open, raised not decided** — FDN-50 |
 
-**Sixty-two findings, fifty-six closed.** Six stay open. F70, F73, F85 and F104 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Sixty-three findings, fifty-six closed.** Six stay open. F70, F73, F85 and F120 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -917,7 +918,13 @@ That order is impossible. A serialized Loro snapshot or update is readable graph
 
 The documents never state which representation owns the current parent or how a winning concurrent tree move deterministically creates, closes or rejects the corresponding temporal edges. Persisting both without that rule creates two answers to “who manages this employee”; deriving the tree from edges forfeits the guarantee Loro was selected to provide; deriving edges naively from the tree loses UUID provenance and temporal history.
 
-**Open.** F104 is not part of FDN-84 and does not block its sealed byte store. It must be decided before FDN-50 defines the canonical document layout. The correction must name one authority and a deterministic reconciliation protocol, then prove concurrent moves involving the same employee rather than only moves in different branches.
+**Closed by founder ruling.** The Movable Tree is the sole write target and sole authority on "who manages this person right now"; the `managed_by` edge is a deterministic, one-way materialization of the Tree's resolved state and is never written to directly by any code path, from any surface. This is forced rather than preferred: deriving the Tree from the edges forfeits the concurrent-merge guarantee `VPS-A001` selected Loro for, while deriving the edge from the Tree loses nothing, because the Tree has already resolved the conflict by the time the edge is written.
+
+The reconciliation protocol keys the materializer's edge transitions to the Tree operation's own causal ordering, not local arrival time or wall-clock timestamps: whenever a device observes its Tree's merged state differ from the currently-active edge for an employee, it closes that edge and opens a new one to the Tree's resolved target, timestamped to the Tree operation itself. Because every device performs this same deterministic comparison against the same converged Tree state, every device computes the identical edge history once fully synced, regardless of merge order — the CRDT convergence property applied one level up to the derived edge, rather than a second conflict-resolution mechanism invented for it.
+
+This closes the concurrent-same-employee case F104 named specifically: two devices, offline, each move the same employee to a different manager. Neither creates a cycle — it isn't a cycle, just a conflicting single-parent assignment — and each device's local materializer correctly, if provisionally, reflects what it currently knows. On merge, Loro's Movable Tree resolves the two moves to one deterministic outcome, which is the guarantee `VRS-F037` already cites Loro for and whose own acceptance criterion states resolves "with no manual resolution required." The losing move never becomes a separately materialized active period once the merge superseding it has been observed.
+
+`VPS-A001`, `VPS-A002` and `VRS-F037` are corrected: the Tree-backed edge is now stated as derived rather than independently maintained, and no application code — including `VRS-F037`'s own Move and Commit actions — writes `managed_by` directly. FDN-50 proves the concurrent-same-employee scenario above in its own verification, with a real Loro merge of two genuinely offline devices, not a simulated one.
 
 ---
 
@@ -1077,11 +1084,26 @@ This is `VPS-002`'s first named signal for a defect: a field referenced by more 
 
 ---
 
+### F120 — a document a client is too old to open has no specified render
+
+FDN-50's decision memo established a document-level schema-version gate, separate from the record-level tolerance F102 already built: a client too old for a document a newer client already wrote refuses to open it, distinct from `SealedStore`'s "cannot open" (which is specifically an authentication failure) and distinct from silent partial data.
+
+`VPS-D004` has no render for this. It is not Locked (F117's condition — no unlock has completed), not any of the three region-level system states, and not Empty (the query didn't return none; it never ran). Forcing it into an existing state would misrepresent what's actually happening, the same mistake F117 named and avoided for the sealed-store case.
+
+**Open, raised not decided.** Not blocking FDN-50 — the gate itself needs no UI to exist and be correct; only the render is missing. Logged as a future finding rather than built now, per founder instruction, the same way F118's SyncStatus gap was logged separately rather than folded into the issue that surfaced it.
+
+---
+
 ### `VPS-A001` — FDN-84
 The Local graph query layer section corrected per F116: FDN-84 named as the owner of the sealed local device store and its cold-restart online unlock, FDN-50 as writing canonical Loro persistence into that sealed store, and FDN-52 as owning privacy-tier partitioning, envelope-wrapped reader keys and any later encrypted SQLite cache or VFS. A Decisions-section entry recording the correction.
 
 ### `VPS-A003` — FDN-84
 A clarifying paragraph in Offline behavior, and a Decisions-section entry, closing F119: "current process" means the Worker instance, so a tab reload requires the same online unlock as a device cold restart. A SharedWorker alternative is named as an available future softening rather than built now.
+
+---
+
+### `VPS-A002`, `VPS-A001`, `VRS-F037` — F104
+Closing the blocker on FDN-50. `VPS-A002`'s single-active-outgoing-edge-with-history section now states that a Movable-Tree-backed edge is a downstream materialization of the Tree's resolved state, never independently written, with the reconciliation protocol's causal-ordering rule stated once and cited from both other documents. `VPS-A001`'s Movable Tree section gets the matching statement, framed as the same category of violation as replacing the Tree with flat pointers. `VRS-F037` gains one clarifying sentence that its Move and Commit actions write the Tree only — the edge rewrite already described there was always the materializer's response, not a second write the feature performs. Decisions-section entries added to `VPS-A001` and `VPS-A002`.
 
 ---
 
