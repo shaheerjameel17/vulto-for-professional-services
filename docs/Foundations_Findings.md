@@ -891,7 +891,7 @@ The executable record schemas preserved unknown additive properties, but Zod's p
 
 ### F103 — FDN-50 was required to persist Loro before the issue owning mandatory local encryption
 
-FDN-48 correctly stayed in memory because A003-T04 requires every local device store to be AES-256 encrypted with a key derived from the authenticated session and never stored alongside the data. Its F101 correction assigned canonical Loro persistence to FDN-50 and local-storage encryption to FDN-52. Linear then made FDN-50 block FDN-52.
+FDN-48 correctly stayed in memory because A003-T04 requires every local device store to be AES-256 encrypted and forbids persisting its plaintext key alongside the data. Its then-current wording tied that key to the authenticated session. The F101 correction assigned canonical Loro persistence to FDN-50 and local-storage encryption to FDN-52. Linear then made FDN-50 block FDN-52.
 
 That order is impossible. A serialized Loro snapshot or update is readable graph state. Tier 0 and Tier 2 are not exceptions to A003-T04, and Tier 1 or Tier 3 end-to-end encryption does not substitute for the device-store layer. FDN-50 could satisfy its restart criterion only by writing prohibited plaintext or by presenting a test-only fake as durable production behavior.
 
@@ -921,9 +921,9 @@ Exposing either path from FDN-50 would make the issue intended to add persistenc
 
 ### F106 — offline cold restart has no stated key-recovery path
 
-`VPS-A003` says every feature works offline, and FDN-50 requires local changes to survive process and device restarts. A003-T04 and `VPS-F001` G04 say the local AES-256 store is keyed from the session token and the key is never stored alongside the data. On web, `VPS-F001` also makes the session a secure httpOnly cookie.
+Before this ruling, `VPS-A003` said every feature worked offline without qualifying cold restart, while FDN-50 required local changes to survive process and device restarts. A003-T04 and `VPS-F001` G04 said the local AES-256 store was keyed from the session token and the key was never stored alongside the data. On web, `VPS-F001` also made the session a secure httpOnly cookie.
 
-After a browser or device restart without connectivity, the Worker cannot read that cookie and a memory-only derived key no longer exists. Storing the raw token or AES key would defeat the requirement. The documents therefore specify both offline cold reopening and a key source unavailable to the component that must reopen the store, without stating the bridge between them.
+After a browser or device restart without connectivity, the Worker could not read that cookie and a memory-only derived key no longer existed. Storing the raw token or AES key would have defeated the requirement. The documents therefore specified both offline cold reopening and a key source unavailable to the component that had to reopen the store, without stating the bridge between them.
 
 **Closed by founder ruling.** Every cold restart requires one online, server-authorized unlock. The deciding factor is revocation, not convenience: Vulto Roster holds salaries, grievance cases, wellness records and performance reviews. If a local WebAuthn credential could unlock the store by itself, an offboarded person could continue decrypting that HR data indefinitely while the device remained disconnected, despite central revocation and the commitments in [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. Under the selected behavior, every cold restart is a revocation checkpoint. An offboarded person cannot reopen the product after a fresh boot because the server denies the unlock.
 
