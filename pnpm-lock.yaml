@@ -56,6 +56,9 @@ importers:
       better-auth:
         specifier: 1.6.29
         version: 1.6.29(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(kysely@0.29.5)(postgres@3.4.9))(next@15.1.6(@playwright/test@1.62.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(vitest@4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)))
+      loro-crdt:
+        specifier: 1.14.1
+        version: 1.14.1
       lucide-react:
         specifier: ^0.474.0
         version: 0.474.0(react@19.0.0)

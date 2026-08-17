@@ -20,3 +20,5 @@ export {
 } from "./protocol";
 
 export { graphQuerySchema, parseGraphQuery, type GraphQuery } from "./query";
+
+export { graphSnapshotStoreKey } from "./worker/storage/storage-keys";

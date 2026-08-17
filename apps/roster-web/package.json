@@ -17,6 +17,7 @@
     "@vulto/tokens": "workspace:*",
     "@vulto/ui": "workspace:*",
     "better-auth": "1.6.29",
+    "loro-crdt": "1.14.1",
     "lucide-react": "^0.474.0",
     "nanostores": "1.5.1",
     "next": "15.1.6",
