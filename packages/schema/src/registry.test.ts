@@ -245,6 +245,14 @@ describe("wire records", () => {
     ]);
   });
 
+  it("rejects a future anonymity-protected type with wildcard adjacency at import", async () => {
+    await expect(
+      import("./registry/fixtures/future-anonymity-wildcard.fixture.js"),
+    ).rejects.toThrow(
+      /Anonymity-protected FutureAnonymousContribution has non-exact outgoing endpoint on future_broad_relationship/,
+    );
+  });
+
   it("requires coherent soft-delete provenance and UTC string timestamps", () => {
     expect(() =>
       nodeRecordSchema.parse({

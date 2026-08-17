@@ -54,8 +54,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F90 | Broad relationship endpoints could reconnect an anonymous contribution to an Employee | `VPS-A002`, `VPS-A005`, `VPS-A007` | **Closed by FDN-45** — protected-node connectivity is explicit and closed |
 | F91 | “Registered both directions” required feature schema that does not exist yet | `VPS-A007`, Linear | **Open, recorded boundary** — FDN-49 checks each direction only when its artifact exists |
 | F92 | `FDN-77`, `FDN-48` and `FDN-49` all claimed the same architecture enforcement | Linear | **Closed by scope amendment** — the first two define; FDN-49 enforces |
+| F93 | F90's validator was generic by design but tested only the two current protected types | Repository | **Closed by FDN-45** — a synthetic future type with wildcard adjacency fails at import |
 
-**Thirty-nine findings, thirty-four closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Forty findings, thirty-five closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -792,6 +793,14 @@ FDN-77 claimed the Worker-boundary lint, FDN-48 claimed prevention of raw graph 
 
 ---
 
+### F93 — The future-node anonymity rule was designed but not proven
+
+F90's validator derives the protected set from the registry, so its design covered a future third anonymity-protected type. Its test asserted only the two current registrations, however, which proved today's data rather than the generic failure path.
+
+**Correction.** A deliberately malformed fixture module registers a synthetic `FutureAnonymousContribution` and gives it an `Any Node` adjacency. Dynamically importing that module must reject during initialization with the future type and offending edge named. The test now proves that the closed rule applies to a type that does not exist in the product registry, not only to Pulse and Wellness as currently written.
+
+---
+
 ### `VPS-A002`
 `Client` deduplicated to one registry row. A new section, **When a relationship is a node instead of an edge**, carrying the one-sentence rule, why lifecycle is the test, the naming convention for a relationship-node's endpoint edges, the statement that an endpoint pair is not itself an edge, and the edge registry's key. Four edges registered; `member_of` deleted; `assigned_to` re-endpointed.
 
@@ -832,7 +841,7 @@ The two-language boundary table's `services/sync-engine` row, per F63: one job d
 The runtime validation pin recorded under the settled stack: `zod@4.4.3`, declared exactly in `packages/schema`, with TypeScript types inferred from the runtime validator rather than maintained as a second representation.
 
 ### `VPS-A007`, `VRS-F048` — FDN-45
-The schema-conformance gate now enumerates AuditEntry's five omitted universal fields and the two anonymous nodes' six identifying provenance omissions exactly. Its structural-anonymity gate requires every current and future protected node to enumerate its complete permitted connectivity without a wildcard or endpoint set. Pulse Survey and Wellness prose carry the same closed field and edge contracts rather than treating AuditEntry's separate immutability rule as the same shape.
+The schema-conformance gate now enumerates AuditEntry's five omitted universal fields and the two anonymous nodes' six identifying provenance omissions exactly. Its structural-anonymity gate requires every current and future protected node to enumerate its complete permitted connectivity without a wildcard or endpoint set. A synthetic third protected type with wildcard adjacency proves that the generic import-time failure path works before such a product type exists. Pulse Survey and Wellness prose carry the same closed field and edge contracts rather than treating AuditEntry's separate immutability rule as the same shape.
 
 ### Linear — FDN-48, FDN-49, FDN-77
 The ownership split is explicit: FDN-77 defines the Worker boundary, FDN-48 defines the typed query and raw local-SQL boundary, and FDN-49 alone implements the automated enforcement and violating fixtures. FDN-49's two-way registration check is staged so registration-before-implementation remains valid.

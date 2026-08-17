@@ -1,15 +1,6 @@
-import {
-  EDGE_REGISTRY,
-  matchesRegistryEndpoint,
-  type EdgeType,
-  type RegistryEndpoint,
-} from "./edges.js";
-import {
-  isAnonymityProtectedNodeType,
-  isNodeType,
-  NODE_REGISTRY,
-  type NodeType,
-} from "./nodes.js";
+import { EDGE_REGISTRY, ENDPOINT_SETS, type EdgeType } from "./edges.js";
+import { NODE_REGISTRY, type NodeType } from "./nodes.js";
+import { type NodeRegistrationShape } from "./types.js";
 
 export interface AllowedAnonymousRelationship {
   readonly edgeType: EdgeType;
@@ -20,6 +11,27 @@ export interface AllowedAnonymousRelationship {
 export interface AnonymityRegistration {
   readonly nodeType: NodeType;
   readonly allowedRelationships: readonly AllowedAnonymousRelationship[];
+}
+
+interface AnonymityDefinition {
+  readonly nodes: readonly Pick<
+    NodeRegistrationShape,
+    "nodeType" | "universalFields"
+  >[];
+  readonly edges: readonly {
+    readonly edgeType: string;
+    readonly fromNodeType: string;
+    readonly toNodeType: string;
+  }[];
+  readonly registrations: readonly {
+    readonly nodeType: string;
+    readonly allowedRelationships: readonly {
+      readonly edgeType: string;
+      readonly direction: "incoming" | "outgoing";
+      readonly otherNodeType: string;
+    }[];
+  }[];
+  readonly endpointSets: readonly string[];
 }
 
 /**
@@ -45,17 +57,22 @@ export const ANONYMITY_REGISTRY = [
   },
 ] as const satisfies readonly AnonymityRegistration[];
 
-const endpointCanMatch = (endpoint: RegistryEndpoint, nodeType: NodeType): boolean =>
-  matchesRegistryEndpoint(endpoint, nodeType);
-
 const actualRelationships = (
-  nodeType: NodeType,
-): readonly AllowedAnonymousRelationship[] =>
-  EDGE_REGISTRY.flatMap((edge) => {
-    const relationships: AllowedAnonymousRelationship[] = [];
+  definition: AnonymityDefinition,
+  nodeType: string,
+): readonly AnonymityDefinition["registrations"][number]["allowedRelationships"][number][] => {
+  const nodeTypes = new Set(definition.nodes.map((node) => node.nodeType));
+  const endpointSets = new Set(definition.endpointSets);
 
-    if (endpointCanMatch(edge.fromNodeType, nodeType)) {
-      if (isNodeType(edge.toNodeType)) {
+  return definition.edges.flatMap((edge) => {
+    const relationships: {
+      edgeType: string;
+      direction: "incoming" | "outgoing";
+      otherNodeType: string;
+    }[] = [];
+
+    if (edge.fromNodeType === nodeType) {
+      if (nodeTypes.has(edge.toNodeType) && !endpointSets.has(edge.toNodeType)) {
         relationships.push({
           edgeType: edge.edgeType,
           direction: "outgoing",
@@ -68,8 +85,8 @@ const actualRelationships = (
       }
     }
 
-    if (endpointCanMatch(edge.toNodeType, nodeType)) {
-      if (isNodeType(edge.fromNodeType)) {
+    if (edge.toNodeType === nodeType) {
+      if (nodeTypes.has(edge.fromNodeType) && !endpointSets.has(edge.fromNodeType)) {
         relationships.push({
           edgeType: edge.edgeType,
           direction: "incoming",
@@ -84,17 +101,23 @@ const actualRelationships = (
 
     return relationships;
   });
+};
 
-const relationshipKey = (relationship: AllowedAnonymousRelationship): string =>
+const relationshipKey = (relationship: {
+  readonly edgeType: string;
+  readonly direction: "incoming" | "outgoing";
+  readonly otherNodeType: string;
+}): string =>
   `${relationship.edgeType}\u0000${relationship.direction}\u0000${relationship.otherNodeType}`;
 
-export const assertAnonymityRegistry = (): void => {
-  const protectedNodeTypes = NODE_REGISTRY.filter(({ nodeType }) =>
-    isAnonymityProtectedNodeType(nodeType),
-  ).map(({ nodeType }) => nodeType);
+/** Internal validator exported for malformed-registry fixtures, not package API. */
+export const validateAnonymityDefinition = (definition: AnonymityDefinition): void => {
+  const protectedNodeTypes = definition.nodes
+    .filter(({ universalFields }) => universalFields === "anonymous-contribution")
+    .map(({ nodeType }) => nodeType);
 
-  const registeredNodeTypes = new Set<NodeType>(
-    ANONYMITY_REGISTRY.map(({ nodeType }) => nodeType),
+  const registeredNodeTypes = new Set(
+    definition.registrations.map(({ nodeType }) => nodeType),
   );
 
   if (
@@ -106,9 +129,9 @@ export const assertAnonymityRegistry = (): void => {
     );
   }
 
-  for (const registration of ANONYMITY_REGISTRY) {
+  for (const registration of definition.registrations) {
     const expected = registration.allowedRelationships.map(relationshipKey).sort();
-    const actual = actualRelationships(registration.nodeType)
+    const actual = actualRelationships(definition, registration.nodeType)
       .map(relationshipKey)
       .sort();
 
@@ -119,3 +142,11 @@ export const assertAnonymityRegistry = (): void => {
     }
   }
 };
+
+export const assertAnonymityRegistry = (): void =>
+  validateAnonymityDefinition({
+    nodes: NODE_REGISTRY,
+    edges: EDGE_REGISTRY,
+    registrations: ANONYMITY_REGISTRY,
+    endpointSets: ENDPOINT_SETS,
+  });
