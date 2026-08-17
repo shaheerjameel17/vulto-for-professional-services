@@ -1,15 +1,21 @@
 # @vulto/schema
 
-**Empty and buildable. Content arrives with FDN-45.**
+The canonical, immutable contract compiled from `VPS-A002`:
 
-This package will hold `VPS-A002`'s node and edge registry as typed contracts,
-the Universal Node and Edge Conventions, and the Zod validators shared by the
-client, the API and the sync engine. FDN-47 creates it as a placeholder because
-it owns repository structure; it does not own what goes in it.
+- 109 node registrations, including fixed versus feature-owned lifecycle policy
+- 79 edge labels normalized to 110 exact endpoint triples
+- 13 closed Privacy Classes and nine guaranteed split-node partitions
+- ten cross-suite ownership rules and three conversion registrations
+- JSON-native Zod validators for universal node and edge records
 
-Nothing may be added before FDN-45. `A002-T09` makes registration precede
-implementation, and `VPS-A007`'s third gate fails any type here with no row in
-`VPS-A002`'s registry.
+Consumers import only from `@vulto/schema`. There is no mutable registration API
+and no supported deep-import surface. FDN-49 owns the conformance checks that
+compare future specification and implementation changes; this package validates
+its own canonical data and record shapes at import and in unit tests.
+
+The registry deliberately does not define feature fields, permission grants,
+reader sets, encryption envelopes or worker behavior. A feature-owned lifecycle
+is recorded as feature-owned rather than guessed here.
 
 ## Why `loro-crdt` is declared here, and declared before anything imports it
 
@@ -26,8 +32,8 @@ once by calling the version _"a specification requirement, not an open item."_
 **This package declares it because this package is the first legitimate
 importer.** `VPS-A002`'s Schema Evolution Protocol makes the schema package the
 enforcement point, and prohibits raw untyped access to CRDT documents anywhere
-outside the sync engine and the materialization worker. The Loro document shapes
-are therefore defined here, by FDN-45.
+outside the sync engine and the materialization worker. FDN-45 defines the
+JSON-native graph boundary here; FDN-48 owns the actual local Loro graph layer.
 
 **The risk this creates, stated so it is not discovered.** A pinned dependency
 that nothing imports looks like dead weight, and a later cleanup deletes it —
@@ -41,3 +47,10 @@ at each other and a cleanup has to confront the specification rather than only a
 and this repository has already been bitten by that: `typescript@^5.7.3` had
 silently drifted to `5.9.3` and `turbo@^2.3.4` to `2.10.8` before FDN-47 froze
 them.
+
+## Zod pin
+
+`zod@4.4.3` is pinned exactly and was verified against the npm registry before
+being recorded. It owns runtime validation of the JSON-native TypeScript–Rust
+boundary. Types are inferred from those validators so the runtime and compile-
+time representations do not drift into two independent definitions.

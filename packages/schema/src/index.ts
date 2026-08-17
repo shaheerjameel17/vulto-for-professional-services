@@ -1,20 +1,67 @@
-/**
- * @vulto/schema — the graph schema, shared types and Zod validators.
- *
- * PLACEHOLDER. This package is created empty and buildable by FDN-47, which
- * owns repository structure and nothing else.
- *
- * Its content is VPS-A002's node and edge registry, and it arrives with
- * FDN-45. Nothing may be added here before then: A002-T09 makes registration
- * precede implementation, and VPS-A007's third gate fails a type in this
- * package with no row in VPS-A002's registry.
- */
+/** Canonical VPS-A002 graph contracts. No runtime mutation API is exposed. */
+import "./registry/validate.js";
 
-/**
- * The schema package's version of the graph contract it will expose.
- *
- * Present so the package has a compiled export and an importable surface. It
- * carries no meaning yet and is not a schema version — VPS-A002's
- * `schema_version` is per node type and is registered with the node.
- */
-export const SCHEMA_PACKAGE_PLACEHOLDER = true;
+export {
+  NODE_REGISTRY,
+  NODE_TYPES,
+  getNodeRegistration,
+  isNodeType,
+  type NodeRegistration,
+  type NodeType,
+} from "./registry/nodes.js";
+
+export {
+  ANY_NODE,
+  EDGE_REGISTRY,
+  EDGE_SOURCE_ROW_COUNT,
+  EDGE_TYPES,
+  assertRegisteredRelationship,
+  getEdgeRegistrations,
+  type EdgeRegistration,
+  type EdgeType,
+  type RegistryEndpoint,
+} from "./registry/edges.js";
+
+export {
+  PRIVACY_CLASSES,
+  type DataTier,
+  type LifecyclePolicy,
+  type PrivacyClass,
+  type ProtectionPartition,
+  type ProtectionPolicy,
+  type UniversalFieldPolicy,
+} from "./registry/types.js";
+
+export {
+  OWNERSHIP_REGISTRY,
+  getOwnershipRegistration,
+  type OwnershipMode,
+  type OwnershipRegistration,
+} from "./registry/ownership.js";
+
+export {
+  CONVERSION_REGISTRY,
+  type ConversionRegistration,
+} from "./registry/conversions.js";
+
+export {
+  getProtectionPartitions,
+  resolveInheritedTier,
+} from "./registry/protection.js";
+
+export {
+  edgeRecordSchema,
+  edgeTypeSchema,
+  jsonValueSchema,
+  nodeRecordSchema,
+  nodeTypeSchema,
+  parseEdgeRecord,
+  parseNodeRecord,
+  utcTimestampSchema,
+  uuidV4Schema,
+  type EdgeRecord,
+  type JsonValue,
+  type NodeRecord,
+  type WireEdgeType,
+  type WireNodeType,
+} from "./records.js";

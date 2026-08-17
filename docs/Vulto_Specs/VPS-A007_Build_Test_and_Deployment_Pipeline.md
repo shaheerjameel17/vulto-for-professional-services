@@ -144,7 +144,7 @@ The gate that makes [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s proto
 
 - **Additive-only.** A removed or renamed property fails. Deprecation with a `deprecated_at` timestamp passes.
 - **Every node type is registered.** A type in `packages/schema` with no row in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s registry fails, per Standing Rule 6.
-- **Every node carries the Universal Node Conventions**, excepting the two documented exemptions — AuditEntry's soft-delete fields per [[VPS-F004_Silent_Audit_Log|VPS-F004]], and `created_by` on the two anonymous contribution nodes per [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] and [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]. **The exemptions are enumerated in the check**, so a third one cannot be introduced silently.
+- **Every node carries the Universal Node Conventions**, except for the closed field omissions [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] enumerates: AuditEntry omits `updated_at`, `updated_by` and all three soft-delete fields per [[VPS-F004_Silent_Audit_Log|VPS-F004]]; `PulseAggregateContribution` and `WellnessAggregateContribution` omit `created_by` only, per [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] and [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]. **Every omitted field and node type is enumerated in the check**, so another omission cannot be introduced silently.
 - **Every tier assignment matches the registry.**
 
 ### 4. Unit and integration tests

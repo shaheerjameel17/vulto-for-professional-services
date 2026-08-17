@@ -12,7 +12,8 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
-    "loro-crdt": "1.14.1"
+    "loro-crdt": "1.14.1",
+    "zod": "4.4.3"
   },
   "devDependencies": {
     "typescript": "5.9.3"

@@ -172,7 +172,7 @@ submitted_at:     timestamp — DATE PRECISION ONLY, see below
 — Universal Node Conventions per VPS-A002, excepting created_by —
 ```
 
-**`created_by` is deliberately omitted from this node type**, the only such omission in the product besides [[VPS-F004_Silent_Audit_Log|VPS-F004]]'s. The Universal Node Conventions record who created a node; recording it here would reintroduce exactly the identifying link the node's design exists to avoid.
+**`created_by` is deliberately omitted from this node type**, one of the product's two anonymous-contribution omissions, alongside `WellnessAggregateContribution` in [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]. The Universal Node Conventions record who created a node; recording it here would reintroduce exactly the identifying link the node's design exists to avoid. `AuditEntry` has a separate immutability exception under [[VPS-F004_Silent_Audit_Log|VPS-F004]] and is not the precedent for anonymous contributions.
 
 **`submitted_at` carries date precision only.** A full timestamp on an anonymous contribution, correlated against a Tier 0 audit trail or a device sync time, narrows the submitter substantially in a small team. Rounding to the day is what keeps the anonymization genuine rather than nominal.
 
@@ -322,7 +322,7 @@ pulseAggregate.getTrend(teamGrouping?, cycleCount?) -> {
 
 **The threshold moves to [[VPS-A004_Graph_Permission_Layer|VPS-A004]].** This feature previously carried one of four independent k-anonymity implementations. The unified mechanism additionally provides differencing protection, which none of the four had, and which is what actually defeats a determined query against a small team.
 
-**`created_by` is omitted from the contribution node.** The Universal Node Conventions require it; requiring it here would reintroduce the exact link the node's design exists to avoid. One of two deliberate exemptions in the product, alongside [[VPS-F004_Silent_Audit_Log|VPS-F004]]'s.
+**`created_by` is omitted from the contribution node.** The Universal Node Conventions require it; requiring it here would reintroduce the exact link the node's design exists to avoid. It is one of two anonymous-contribution omissions, alongside `WellnessAggregateContribution` in [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]. `AuditEntry`'s omissions under [[VPS-F004_Silent_Audit_Log|VPS-F004]] are a separate immutability rule.
 
 **`submitted_at` carries date precision only.** A full timestamp is a correlation channel against device sync times in a small team.
 

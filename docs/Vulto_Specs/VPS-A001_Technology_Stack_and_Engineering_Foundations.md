@@ -155,7 +155,7 @@ These were not previously specified and each would otherwise be decided inconsis
 | Server state | tRPC with TanStack Query. Local graph reads bypass both and query the worker directly |
 | Client state | React state and context. No global store library; local-first means most state is the graph |
 | Forms | React Hook Form with Zod resolvers |
-| Validation | Zod schemas in `packages/schema`, shared by client, API and sync engine. A validation rule is written once |
+| Validation | `zod@4.4.3`, pinned exactly in `packages/schema`. Schemas are shared by client, API and sync engine; a validation rule is written once and TypeScript types are inferred from it |
 | Dates and time | `date-fns` v4 with IANA time zone support. All timestamps stored UTC ISO-8601. **All working-day arithmetic delegates to [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] without exception** |
 | Tables | TanStack Table, headless, styled per [[VPS-D002_Component_Library|VPS-D002]] |
 | Charts | Recharts, constrained to the three chart types [[VPS-D002_Component_Library|VPS-D002]] permits |

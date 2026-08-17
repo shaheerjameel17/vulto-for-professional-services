@@ -30,7 +30,7 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F66 | Tier 1 keys are wrapped against the class default, ignoring `VPS-A004`'s overrides | `VPS-A003` | **Closed by FDN-78** |
 | F67 | No document says who reads an HRCase concerning the Owner | `VRS-F046` | **Closed by FDN-79** — subject exclusion, founder decision |
 | F68 | Client is registered twice, with different owner attributions | `VPS-A002` | **Closed by FDN-75** — one row |
-| F69 | `VPS-A004` has one denial outcome where `VPS-D004` has two, and they disagree on the salary field | `VPS-A004`, `VPS-D004` | **Partly closed by FDN-79** — the outcomes are now distinct; which nodes use which is unresolved |
+| F69 | `VPS-A004` has one denial outcome where `VPS-D004` has two, and they disagree on the salary field | `VPS-A004`, `VPS-D004` | **Closed by FDN-80** — the outcomes are distinct and the universal-existence rule assigns them |
 | F70 | FlightRiskSignal has the same subject-reads-own-record shape as HRCase | `VRS-F053` | **Open, raised not decided** — FDN-81 |
 | F71 | `A007-T18` is not satisfied and cannot be yet | `VPS-A007` | **Open, recorded boundary** |
 | F72 | `VPS-A007`'s first gate cites `A001-T05` for a rule `A001-T06` states | `VPS-A007` | **Closed by FDN-47** |
@@ -47,8 +47,11 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F83 | `None` and `Restricted` had a stated distinction but no rule for which cell gets which | `VPS-A004` | **Closed by FDN-80** — five cells reclassified |
 | F84 | `VPS-D004`'s "an HR-restricted contract" example conflated a guaranteed node with an optional vault document | `VPS-D004` | **Closed by FDN-80** |
 | F85 | PayRun, HeadcountPlan and HeadcountSnapshot don't sort under the `None`/`Restricted` rule | `VPS-A004` | **Open, raised not decided** — FDN-83 |
+| F86 | `FDN-45` claimed all lifecycle statuses and all A002 schema where most lifecycle enums are feature-owned | Linear | **Closed by FDN-45** — scope corrected to 28 fixed and 81 feature-owned policies |
+| F87 | The universal-node claim contradicted three deliberate field-omission shapes | `VPS-A002`, `VPS-A007`, `VRS-F048` | **Closed by FDN-45** — omissions are exact and closed |
+| F88 | The conversion protocol forced `Converted` onto GhostResource, whose feature owns `Promoted` | `VPS-A002` | **Closed by FDN-45** — each conversion registers its domain-correct terminal status |
 
-**Thirty-two findings, twenty-seven closed.** Five stay open. F69 needs a scope decision this log should not make alone. F70, F73 and F85 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
+**Thirty-five findings, thirty-one closed.** Four stay open. F70, F73 and F85 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -729,8 +732,34 @@ All three are workspace-scoped operational or analytics objects rather than reco
 
 ---
 
+### F86 — `FDN-45` claimed schema ownership broader than `VPS-A002` actually carries
+
+`FDN-45` said the canonical registry would contain *all lifecycle statuses* and *100% of A002's schema*. Parsing the registry proved that only 28 of its 109 node rows declare a lifecycle enum; the other 81 point to feature specifications that own those states. Workspace configuration is likewise field-level schema owned by its features, not a node-registration fact.
+
+**Correction.** The issue now distinguishes 28 fixed lifecycle policies from 81 feature-owned policies and excludes workspace field configuration. The registry records that ownership boundary explicitly instead of inventing values to make an over-broad done criterion pass.
+
+---
+
+### F87 — “Universal without exception” contradicted three deliberate omission shapes
+
+`VPS-A002` said every node carries the universal shape *without exception*. `VPS-F004` intentionally omits `updated_at`, `updated_by` and all soft-delete fields from immutable `AuditEntry`; `VRS-F048` and `VRS-F078` intentionally omit `created_by` from their anonymous contribution nodes. `VPS-A007` named only AuditEntry's soft-delete fields, while `VRS-F048` described AuditEntry as though it were the other anonymous omission.
+
+**Correction.** The omissions are now a closed field-by-field list in `VPS-A002`, and `VPS-A007` points its conformance gate at that exact list. `VRS-F048` names `WellnessAggregateContribution` as the matching anonymity case and keeps AuditEntry's immutability rule separate. Every unlisted field remains required; an implementation cannot infer a fourth exception.
+
+---
+
+### F88 — The conversion protocol overwrote domain vocabulary with `Converted`
+
+`VPS-A002` required every conversion source to become `Converted`, but the shipped Ghost Resources feature deliberately uses `Promoted` and the `promoted_to` edge when a GhostResource becomes an Employee. Renaming that state would break a feature that already owns and correctly names the transition.
+
+**Correction.** The protocol now registers a terminal status and directed edge per source/destination pair: Candidate and Pitch use `Converted`; GhostResource uses `Promoted`. The universal part is retention, traversal and a registered conversion edge — not one status word imposed on every domain.
+
+---
+
 ### `VPS-A002`
 `Client` deduplicated to one registry row. A new section, **When a relationship is a node instead of an edge**, carrying the one-sentence rule, why lifecycle is the test, the naming convention for a relationship-node's endpoint edges, the statement that an endpoint pair is not itself an edge, and the edge registry's key. Four edges registered; `member_of` deleted; `assigned_to` re-endpointed.
+
+FDN-45 closed the implementation boundary: 28 lifecycle policies are fixed here and 81 remain explicitly feature-owned; nine split registrations guarantee partition identity while feature schemas own field membership. The universal-node claim now carries its exact three omission shapes instead of saying “without exception.” The conversion protocol now registers each domain's terminal status, preserving GhostResource's shipped `Promoted` vocabulary alongside Candidate and Pitch's `Converted`.
 
 A new section, **How the Privacy Class column is written**, defining the column as closed and stating where the three conflated facts now live. The `Class A (half) / Class B (half)` and `Class †` notations. The rule that a split row's identifying half carries its class default while the protected half is the declared split. The distinction between a tier split and a class split, stated where splits are introduced. Twenty-four registry cells rewritten. HeadcountSnapshot's tier departure marked and explained. One citation corrected from Rule 10 to Rule 11.
 
@@ -762,6 +791,12 @@ One citation, A001-T05 to A001-T06, per F72. Nothing else.
 
 ### `VPS-A001` — FDN-46
 The two-language boundary table's `services/sync-engine` row, per F63: one job description covering two builds replaced with the shared core's job stated once and the server deployment's additional relay-and-persistence responsibility stated separately. A Decisions-section entry recording why and what it was found while scoping.
+
+### `VPS-A001` — FDN-45
+The runtime validation pin recorded under the settled stack: `zod@4.4.3`, declared exactly in `packages/schema`, with TypeScript types inferred from the runtime validator rather than maintained as a second representation.
+
+### `VPS-A007`, `VRS-F048` — FDN-45
+The schema-conformance gate now enumerates AuditEntry's five omitted universal fields and the two anonymous nodes' `created_by` omission exactly. Pulse Survey's prose now names WellnessAggregateContribution as its matching anonymity case rather than treating AuditEntry's separate immutability rule as the same shape.
 
 ### `VPS-D004` — FDN-79
 A copy variant for person-level exclusion. The role-naming convention — *"Visible to Finance Admin"* — renders as *"Visible to Owner and HR Admin"* to an excluded Owner, which is a contradiction rather than a next step. The copy now names the reason: *"Restricted — this record concerns you."* One new row in the state table.

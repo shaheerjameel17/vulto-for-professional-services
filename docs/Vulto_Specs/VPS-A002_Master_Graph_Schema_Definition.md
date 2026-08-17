@@ -49,7 +49,7 @@ Two naming decisions from this document's history remain load-bearing and are re
 
 ## Universal node conventions
 
-Every node type carries this base shape without exception.
+Every node type carries this base shape except for the three closed omissions enumerated below.
 
 ```
 node_id:           UUID v4, globally unique
@@ -69,6 +69,8 @@ is_soft_deleted:   boolean, default false
 soft_deleted_at:   ISO 8601 timestamp, null if not deleted
 soft_deleted_by:   user_id UUID, null if not deleted
 ```
+
+**The omissions are closed, not extensible by convention.** `AuditEntry` omits `updated_at`, `updated_by`, `is_soft_deleted`, `soft_deleted_at` and `soft_deleted_by`, because [[VPS-F004_Silent_Audit_Log|VPS-F004]] makes the audit record immutable and non-deletable. `PulseAggregateContribution` and `WellnessAggregateContribution` omit `created_by` only, because the field would recreate the identifying link their anonymity depends on, per [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] and [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]. Every other universal field is required on those nodes, and every universal field is required on every other node type. A fourth omission is a specification change, not an implementation choice.
 
 `updated_by` and `schema_version` are additions to the original convention. The first closes a genuine audit gap — the graph could previously say when a node changed but not who changed it, which is insufficient for an HR product whose records are read in disputes. The second makes the Schema Evolution Protocol enforceable per node rather than inferred from field presence.
 
@@ -156,13 +158,15 @@ Three separately-enforced facts were previously written into this column and eac
 
 **On a split row, the identifying half carries its class's default tier and the protected half is the declared split.** `Split:` is itself the declaration, so the protected half needs no `†` — the notation already says a departure is intended. Nine node types split. Every one of them has an identifying half whose tier matches its class default, which is what makes the split legible as a split rather than as two unexplained assignments.
 
+**A split registration guarantees that both named partitions exist for every instance of that node type; it does not centrally own the fields inside them.** The owning feature's public schema assigns its guaranteed fields to those partition keys. That combination is the schema-only input [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s A004-T19 requires to render a visibly-restricted placeholder without receiving or inspecting any instance data. Optional related records cannot be inferred from this registry and remain structurally absent.
+
 **"HR-restricted" is a class, not a description.** It grants Finance Admin `Read` and grants the subject `Read (own only)`. Four documents used it to mean *restricted to HR*, which is a different and much narrower grant — `Owner and HR Admin only`. Where a document's own behavioral statement said one thing and its class label said another, the behavioral statement was authoritative and the label was corrected.
 
 ---
 
 ## Node type registry
 
-Nodes marked **A002-owned** have their lifecycle statuses, privacy class and tier fixed here and unvarying by feature. All nodes list the feature that owns their full field-level schema, per Standing Rule 6.
+Nodes marked **A002-owned** have their lifecycle statuses, privacy class and tier fixed here and unvarying by feature. All nodes list the feature that owns their full field-level schema, per Standing Rule 6. The registry therefore carries 28 fixed lifecycle policies and 81 explicitly feature-owned policies. A feature-owned policy is a boundary, not an invitation for this registry to mine or invent an enum before the owning feature is implemented.
 
 ### Identity and workspace — A002-owned
 
@@ -562,14 +566,22 @@ Several node types are not exclusively one application's to own. This table stat
 
 ## Conversion Event Protocol
 
-When any entity converts to another type — Candidate to Employee, GhostResource to Employee, Pitch to Project, and any future conversion — these rules apply without exception:
+When an entity converts to another type, its registration declares the source type, destination type, source terminal status, conversion-edge triple and direction. The protocol guarantees retention and traversal; it does not overwrite domain vocabulary with one universal status word.
 
-1. The source node is never deleted. Its `lifecycle_status` becomes `Converted`.
-2. A directed conversion edge is created between source and destination.
+| Source | Destination | Source terminal status | Conversion edge |
+|---|---|---|---|
+| Candidate | Employee | `Converted` | Employee → Candidate, `converted_from` |
+| GhostResource | Employee | `Promoted` | GhostResource → Employee, `promoted_to` |
+| Pitch | Project | `Converted` | Project → Pitch, `originated_from` |
+
+For every registered conversion:
+
+1. The source node is never deleted. Its `lifecycle_status` becomes the terminal status registered for that conversion.
+2. The registered directed conversion edge is created between source and destination.
 3. All edges connected to the source are preserved and remain traversable via the conversion edge.
-4. The graph must always be able to answer: *show me everything about this employee from before they were an employee.*
+4. The graph must always be able to answer: *show me everything about this destination from before it had its destination type.*
 
-This is a reusable pattern. Any future node-type transition follows it rather than defining its own.
+This is a reusable pattern. A future node-type transition registers its own domain-correct terminal status and edge rather than inheriting `Converted` by accident.
 
 ---
 
