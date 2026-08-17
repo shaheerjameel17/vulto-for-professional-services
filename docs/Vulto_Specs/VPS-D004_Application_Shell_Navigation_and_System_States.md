@@ -152,6 +152,22 @@ Every Inbox item is actionable in place. Approving leave, dismissing a bench ale
 
 ---
 
+## The locked shell
+
+A whole-application condition, distinct from the three region-level states below. Those describe a piece of content inside an already-rendered shell; this describes the shell being unable to render anything yet, because the local store [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s F106 ruling requires stays sealed until a server-authorized online unlock succeeds.
+
+**When it renders.** Immediately on cold start — including a Worker restart from a tab reload, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s current-process clarification — before the sidebar, page header, panel or any content mounts, whenever that unlock has not yet succeeded in this process. Nothing else on screen: no skeleton, no Empty state, no Restricted placeholder, because nothing has been fetched yet to be empty or restricted.
+
+**What it shows.** Full-bleed, centered, no illustration, `body` text stating plainly what is happening and why — *"Reconnect to continue. Vulto needs to verify your session before opening your workspace."* Not a spinner: a spinner implies imminent completion, and the wait is indefinite while offline. A `primary` **Retry** action, and, only when the device is offline, that fact named directly rather than implied by the retry failing silently.
+
+**Locked and Offline are different conditions.** A device can be Offline while already unlocked — full product, the `Offline` SyncStatus state, no interruption. Locked is stricter: no unlock has completed in this process yet. An already-unlocked device that later loses connectivity never shows Locked.
+
+**A denied revocation and an unreachable server render identically.** The workspace-session guard's failure is non-enumerating by design — telling a specifically revoked user that they were revoked, rather than showing the same retry state as any other failure, would leak exactly the fact non-enumeration exists to protect.
+
+**No feature may invent a fifth state, or use this treatment for anything but this exact condition.** This section governs the shell before content mounts; the three system states that follow continue to govern regions once content is streaming in.
+
+---
+
 ## The three system states
 
 [[VPS-A004_Graph_Permission_Layer|VPS-A004]] establishes that three conditions must never be conflated, and specifies no visual treatment for any of them. That gap sits directly on top of a security requirement: a user who cannot distinguish *you may not see this* from *this has not arrived yet* will either assume a permission problem is a bug and escalate, or assume a sync delay is a permission wall and stop asking. This document closes it.

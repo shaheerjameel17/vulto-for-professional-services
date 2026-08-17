@@ -133,6 +133,8 @@ The authoritative tier assignment for every node type lives in [[VPS-A002_Master
 
 After one online, session-authorized local-store unlock in the current process, every feature works without connectivity until the next cold restart. A cold restart while offline leaves the encrypted local store locked; connectivity and a currently valid server session are required to unlock it. This qualification affects cold-start availability only: once unlocked, sync runs in the background whenever connectivity is available, and its absence never blocks or interrupts a workflow. The application exposes a SyncStatus observable at all times — `Synced`, `Syncing`, `PendingChanges`, `Offline` — surfaced per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]].
 
+**"Current process" means the Worker instance, and a tab reload ends it.** The unlock material lives only in the Worker's memory, per A003-T04, and a new browser tab or a page reload starts a new Worker with nothing carried over. A tab reload therefore requires an online unlock exactly as a device cold restart does — the specification's own "current process" wording already implies this, and it is stated explicitly here so an implementer does not read "cold restart" as excluding it. A SharedWorker surviving tab reloads while keeping the key in-memory-only would satisfy A003-T04 and could soften this later on customer evidence; it is not built now, because it would revise the Worker topology settled for `packages/graph` without a demonstrated need. The asymmetry is the same one recorded for the cold-restart ruling itself: loosening later is additive, tightening after people rely on the looser behavior would take access away.
+
 ---
 
 ## The encryption architecture
@@ -334,6 +336,8 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 **Tier 3 key derivation is aligned with [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]** on WebAuthn PRF, with platform keychain backup. The two documents previously described the same mechanism in incompatible terms.
 
 **The resolved-question entry in Out of Scope is retired.** How wellness aggregates compute over Tier 3 records is answered by structural anonymization in [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] and [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]], and belongs in those documents rather than as archeology here.
+
+**A tab reload requires the same online unlock as a device cold restart.** Scoping FDN-84 surfaced that "current process" was ambiguous about whether it meant the device or the Worker instance specifically. The unlock material exists only in Worker memory, so a new tab genuinely has none of it — the strict reading was already implied, and is now stated so it cannot be read the other way by accident. A SharedWorker that survived a tab reload could soften this later; it is not built now, because it would revise the Worker topology this project just settled without evidence the reload cost is worth that trade. Recorded as F119, same restrained-default asymmetry as the cold-restart ruling itself.
 
 ---
 

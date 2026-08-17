@@ -77,6 +77,10 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F113 | The session schedule is undefined, and Better Auth cookie caching can delay revocation | `VPS-F001`, Registry | **Closed by FDN-60** — seven-day rolling database sessions refresh after one day and authorization uses no cookie cache |
 | F114 | FDN-60 is blocked by work downstream of FDN-84 even though FDN-84 now needs FDN-60's session substrate first | Linear | **Closed by issue split** — FDN-85 and FDN-86 hold the graph/email remainder and FDN-60 now blocks FDN-84 without a cycle |
 | F115 | Better Auth could not infer the client IP through the Fastify-to-Fetch bridge, collapsing rate limits into one shared bucket | Repository, Browser verification | **Closed by FDN-60** — Fastify overwrites a private bridge header from its unproxied socket address before Better Auth rate-limit keying |
+| F116 | `VPS-A001` still named FDN-52 as the owner of local-storage encryption after F103 moved that ownership to FDN-84 | `VPS-A001` | **Closed by source correction** — FDN-84 named as the owner of the sealed local store and its cold-restart unlock; FDN-52 keeps the later encrypted SQLite cache or VFS |
+| F117 | `VPS-D004`'s system states are all region-level; the whole-shell locked condition F106 created has no specified render | `VPS-D004` | **Closed by source correction** — a locked-shell section added, distinct from the three region-level states |
+| F118 | `VPS-A003` and `VPS-F001` both cite `VPS-D004` for a SyncStatus / Offline indicator render that `VPS-D004` never defines | `VPS-A003`, `VPS-F001`, `VPS-D004` | **Open, raised not decided** — logged separately, not owned by FDN-84 |
+| F119 | "Current process" left it undecided whether a tab reload requires the same online unlock as a device cold restart | `VPS-A003` | **Closed by founder ruling** — strict: any new Worker instance requires an online unlock; a SharedWorker alternative is logged as an available future softening |
 
 **Sixty-two findings, fifty-six closed.** Six stay open. F70, F73, F85 and F104 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
@@ -1034,6 +1038,50 @@ The first real-Chromium run emitted a Better Auth warning that rate limiting cou
 Trusting an incoming `X-Forwarded-For` header would have replaced the shared bucket with a spoofable one. Fastify's `trustProxy` remains disabled. The bridge now overwrites a private `x-vulto-client-ip` header from `request.ip`, and Better Auth reads only that header for rate-limit and session IP behavior. A caller cannot choose its value. The subsequent real browser run is warning-free, while hostile API tests still prove password and passkey authentication limits.
 
 **Closed by FDN-60.** The correction is executable at the Fastify/Better Auth boundary and was found by real transport proof rather than a simulated request alone.
+
+---
+
+### F116 — `VPS-A001` still assigned local-storage encryption to FDN-52
+
+F103 moved the sealed local device store and its cold-restart online unlock from FDN-52 to FDN-84, and reordered the chain to FDN-84 → FDN-50 → FDN-52 so canonical Loro persistence is never written unencrypted. `VPS-A001`'s own statement of that ownership, in its Local graph query layer section, was never updated to match — it still read "FDN-50 owns durable canonical Loro persistence, and FDN-52 owns local-storage encryption," naming an issue the chain no longer permits to hold that work first.
+
+**Closed by source correction**, scoping FDN-84. `VPS-A001` now names FDN-84 as the owner of the sealed local device store and its cold-restart unlock, FDN-50 as writing canonical Loro persistence into that sealed store, and FDN-52 as owning privacy-tier partitioning, envelope-wrapped reader keys and any later encrypted SQLite cache or VFS.
+
+---
+
+### F117 — `VPS-D004` has no render for the whole-shell locked condition F106 created
+
+F106's ruling made every cold restart a revocation checkpoint: the local store stays sealed until the server validates a current session. That is a new, user-visible, whole-application condition — signed in, store sealed, nothing to show — and nobody has specified what it looks like.
+
+`VPS-002`'s own lookup table sends an implementer to `VPS-D004` for "what does absent, restricted or loading look like." `VPS-D004`'s system-states section is explicitly region-level: Syncing, Aged out, and the two Restricted variants each describe a piece of content inside an already-rendered shell, and the document states plainly that "no feature may invent a fourth state." A sealed store is not a fourth region-level state and is not any of the three that exist — it is a precondition on the shell rendering at all.
+
+**Closed by source correction.** A locked-shell section, distinct from the region-level three, is now in `VPS-D004`, immediately before "The three system states." It defines when the locked render appears, what it shows, how it differs from an already-unlocked Offline device, and why a denied revocation and an unreachable server render identically under the workspace-session guard's non-enumeration requirement.
+
+---
+
+### F118 — `VPS-A003` and `VPS-F001` cite `VPS-D004` for a SyncStatus indicator `VPS-D004` never defines
+
+Scoping F117 surfaced a second, separate gap. `VPS-A003`'s Offline behavior section states the application "exposes a SyncStatus observable at all times... surfaced per `VPS-D004`." `VPS-F001`'s offline acceptance criterion says "the Offline indicator shows." `VPS-D004` does not mention SyncStatus, an Offline indicator, or any shell-level status treatment anywhere in the document — its sidebar diagram reserves a `Status` row, but the row is never specified.
+
+This is `VPS-002`'s first named signal for a defect: a field referenced by more than one document and defined by none.
+
+**Open, raised not decided.** Logged here rather than folded into FDN-84, per founder instruction — FDN-84 needs only the locked-shell render (F117) to define its own unlock UI; the ongoing SyncStatus indicator is a standing shell concern with no obvious single owner among the issues currently open, and deciding that owner is a separate question from FDN-84's sealed store.
+
+---
+
+### F119 — "current process" left the tab-reload case undecided
+
+`VPS-A003`'s offline-behavior prose said the online unlock holds "in the current process" without stating whether a browser tab reload starts a new one. The unlock material lives only in the Worker's memory per A003-T04, and a new tab genuinely starts a new Worker with nothing carried over — so the ambiguity was whether the specification's own wording already meant a reload requires a fresh unlock, or left room for some carried-over convenience the text never described.
+
+**Closed by founder ruling.** Strict: any new Worker instance requires an online unlock, matching the specification's literal wording. A SharedWorker that survived a tab reload while keeping the key in-memory-only would satisfy A003-T04 and remains available as a future softening if customer evidence shows the reload cost is worth the added complexity; it is not built now because it would revise the Worker topology `packages/graph` just settled without a demonstrated need. Recorded with the same restrained-default asymmetry as F80 and F106: loosening later is additive, tightening after people rely on the looser behavior would take something away.
+
+---
+
+### `VPS-A001` — FDN-84
+The Local graph query layer section corrected per F116: FDN-84 named as the owner of the sealed local device store and its cold-restart online unlock, FDN-50 as writing canonical Loro persistence into that sealed store, and FDN-52 as owning privacy-tier partitioning, envelope-wrapped reader keys and any later encrypted SQLite cache or VFS. A Decisions-section entry recording the correction.
+
+### `VPS-A003` — FDN-84
+A clarifying paragraph in Offline behavior, and a Decisions-section entry, closing F119: "current process" means the Worker instance, so a tab reload requires the same online unlock as a device cold restart. A SharedWorker alternative is named as an available future softening rather than built now.
 
 ---
 
