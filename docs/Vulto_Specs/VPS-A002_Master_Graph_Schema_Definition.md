@@ -49,7 +49,7 @@ Two naming decisions from this document's history remain load-bearing and are re
 
 ## Universal node conventions
 
-Every node type carries this base shape except for the three closed omissions enumerated below.
+Every node type carries this base shape except for the closed omission policies enumerated below.
 
 ```
 node_id:           UUID v4, globally unique
@@ -70,9 +70,9 @@ soft_deleted_at:   ISO 8601 timestamp, null if not deleted
 soft_deleted_by:   user_id UUID, null if not deleted
 ```
 
-**The omissions are closed, not extensible by convention.** `AuditEntry` omits `updated_at`, `updated_by`, `is_soft_deleted`, `soft_deleted_at` and `soft_deleted_by`, because [[VPS-F004_Silent_Audit_Log|VPS-F004]] makes the audit record immutable and non-deletable. `PulseAggregateContribution` and `WellnessAggregateContribution` omit `created_by` only, because the field would recreate the identifying link their anonymity depends on, per [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] and [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]. Every other universal field is required on those nodes, and every universal field is required on every other node type. A fourth omission is a specification change, not an implementation choice.
+**The omissions are closed, not extensible by convention.** `AuditEntry` omits `updated_at`, `updated_by`, `is_soft_deleted`, `soft_deleted_at` and `soft_deleted_by`, because [[VPS-F004_Silent_Audit_Log|VPS-F004]] makes the audit record immutable and non-deletable. `PulseAggregateContribution` and `WellnessAggregateContribution` omit `created_at`, `updated_at`, `created_by`, `updated_by`, `soft_deleted_at` and `soft_deleted_by`. They retain `is_soft_deleted`, but no actor UUID or exact universal timestamp: an actor UUID resolves through User to Employee, and an exact timestamp can be correlated against the private companion record. Their feature-owned date- or month-precision field is the only temporal provenance the contribution carries; audit provenance remains on the private record written in the same client-side action. Every other universal field is required on those nodes, and every universal field is required on every other node type. Another omission policy is a specification change, not an implementation choice.
 
-`updated_by` and `schema_version` are additions to the original convention. The first closes a genuine audit gap — the graph could previously say when a node changed but not who changed it, which is insufficient for an HR product whose records are read in disputes. The second makes the Schema Evolution Protocol enforceable per node rather than inferred from field presence.
+`updated_by` and `schema_version` are additions to the original convention. The first closes a genuine audit gap — the graph could previously say when a node changed but not who changed it, which is insufficient for an HR product whose records are read in disputes. Anonymous contributions are the deliberate exception because carrying that actor would defeat the record's purpose; their private companion record retains the audit trail. The second makes the Schema Evolution Protocol enforceable per node rather than inferred from field presence.
 
 All timestamps are stored UTC ISO-8601. Local time is a presentation concern resolved against the Workspace timezone and, where working hours matter, against [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]].
 
@@ -281,7 +281,9 @@ Referral carries no bonus amount. The amount is a compensation adjustment record
 
 **† HeadcountSnapshot is Tier 0 against a class that maps to Tier 2, and this is deliberate.** The node holds an aggregate headcount count and nothing else. Who may open the analytics view is a permission question, answered by the Privacy Class; how strongly the number is encrypted is a protection question, and a count of employees does not need end-to-end treatment or narrow distribution. This is the only tier departure in the registry.
 
-`PulseAggregateContribution` and `WellnessAggregateContribution` each carry a value with **deliberately no edge to Employee at all**. This is anonymization by structural absence of an identifying link, not by permission rule alone, and it is the mechanism that makes team-level sentiment reporting possible without ever putting a Tier 3 record within reach of a role change.
+`PulseAggregateContribution` and `WellnessAggregateContribution` each carry a value with **deliberately no identifying field or edge to Employee at all**. This is anonymization by structural absence of an identifying link, not by permission rule alone, and it is the mechanism that makes team-level sentiment reporting possible without ever putting a Tier 3 record within reach of a role change.
+
+**An anonymity-protected node never inherits a wildcard or endpoint-set relationship.** The registry explicitly enumerates every edge triple it may participate in, even when that permitted set is empty. `PulseAggregateContribution` may connect only to PulseCycle through its exact outgoing `part_of` registration. `WellnessAggregateContribution` has no registered connection. The rule applies unchanged to every future anonymity-protected node: there is no “Any Node,” mentionable, importable, custom-field or other broad endpoint exception, ever.
 
 The earlier registry listed a `WellnessAggregate` node. It is removed: the aggregate is a computed view over `WellnessAggregateContribution`, not a stored node, and registering a node type that is never written would have obliged an implementer to build one.
 
@@ -480,7 +482,7 @@ Where an edge connects several node type pairs, each pair is listed explicitly. 
 | `logged_by` | WellnessTriggerEvent → Employee | [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]] | Tier 3; no device but the owner's decrypts it |
 | `checked_in_on` | ProbationCheckIn → Employee | [[VRS-F057_Probation_Review_Intelligence|VRS-F057]] | |
 | `triggered_by` | BurnoutAlert \| FlightRiskSignal \| RevenueGapAlert \| TimesheetAnomalyFlag → Employee | [[VRS-F052_Workload_Strain_Signal|VRS-F052]], [[VRS-F053_Retention_Risk_Indicator|VRS-F053]], [[VRS-F012_Revenue_Gap_Alert|VRS-F012]], [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] | |
-| `affects` | Insight → Any Node | [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] | |
+| `affects` | Insight → Any non-anonymity-protected node | [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] | An anonymous contribution is consumed only through its cohort aggregate, never as an individually referenced source |
 
 ### Finance
 
@@ -504,14 +506,21 @@ Where an edge connects several node type pairs, each pair is listed explicitly. 
 
 ### Platform
 
+The endpoint-set names below are executable registry concepts rather than aliases for “Any Node.” **None can match an anonymity-protected node**, whose complete connectivity is enumerated above.
+
+- **Any non-anonymity-protected node** means every registered node except an anonymity-protected one.
+- **Mentionable Node** follows [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]]'s tier eligibility and permanent exclusions.
+- **Custom-field-enabled Node** is [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]]'s curated allowlist.
+- **Importable Node** is the set of node-producing import types registered by [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] and future applications.
+
 | Edge | From → To | Owner | Notes |
 |---|---|---|---|
 | `supersedes` | RateCard \| LeavePolicy \| TaxConfig \| Policy \| WorkingCalendar \| CompensationBand → same type | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | **Consolidated.** The previous draft defined this edge twice with overlapping scope. Content-versioning: updating creates a new node rather than editing in place, so records already pointing at an older version keep their original figures |
-| `references` | GraphReference → Any Node | [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | |
-| `referenced_in` | Any Node → GraphReference | [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | Inverse, created automatically |
-| `has_custom_value` | Any Node → CustomFieldValue | [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]] | |
+| `references` | GraphReference → Mentionable Node | [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | Never an anonymity-protected node |
+| `referenced_in` | Mentionable Node → GraphReference | [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | Inverse, created automatically; never an anonymity-protected node |
+| `has_custom_value` | Custom-field-enabled Node → CustomFieldValue | [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]] | Never an anonymity-protected node |
 | `defined_by` | CustomFieldValue → CustomFieldDefinition | [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]] | |
-| `imported_in` | Any Node → ImportBatch | [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] | Provenance for bulk-created records |
+| `imported_in` | Importable Node → ImportBatch | [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] | Provenance for bulk-created records; never an anonymity-protected node |
 | `erasure_targets` | ErasureRequest → Employee \| Candidate | [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] | |
 
 ---
@@ -639,6 +648,7 @@ Loro stores node properties as CRDT Maps, which are schema-flexible at the stora
 | A002-T10 | Provenance-derived node types MUST resolve their tier at write time from their source and MUST NOT default to Tier 0 |
 | A002-T11 | No node MUST be hard-deleted. Cryptographic erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] is the only permitted content removal, and it MUST preserve the node, its edges and its audit trail |
 | A002-T12 | Any change to this document requires a pull request with engineering leadership review once that function is staffed; until then, changes are recorded by the founder |
+| A002-T13 | Every anonymity-protected node MUST enumerate every permitted edge triple explicitly. No wildcard or endpoint-set registration may match it, even where the owning feature otherwise permits broad connectivity |
 
 ---
 

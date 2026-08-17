@@ -61,7 +61,7 @@ Results are grouped by node type in this display order:
 6. Open Roles
 7. Policies
 
-**Eligibility is a rule, not a fixed list.** Only node types classed **Tier 0** in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] are eligible as mentionable targets by default. As new Tier 0 node types are registered, they become mentionable automatically, without amending this document.
+**Eligibility is a rule, not a fixed list.** Only node types classed **Tier 0** in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] are eligible as mentionable targets by default. As new Tier 0 node types are registered, they become mentionable automatically, without amending this document — **unless the registry marks the node anonymity-protected**. An anonymity-protected node is never a member of Mentionable Node regardless of tier, role or future configuration; VPS-A002 requires every connection it may carry to be enumerated explicitly, and a GraphReference is not one of them.
 
 **Tier 2 node types may be made mentionable case by case** — Contract is a plausible example — but the resulting edge inherits the more restrictive tier of its endpoints for sync purposes. This is a deliberate per-node-type decision made when the relevant feature is specified, never a default.
 
@@ -129,7 +129,7 @@ Deleting a mention token soft-deletes the corresponding edge, per [[VPS-A002_Mas
 | A005-T06 | `context_excerpt` MUST reflect the text at creation time, with `excerpt_is_stale` set if surrounding text has since been modified |
 | A005-T07 | The picker MUST NOT surface any Tier 1 or Tier 3 node type as a selectable result, under any configuration, for any role including Owner |
 | A005-T08 | A GraphReference MUST sync per the edge-tier-inheritance rule in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], taking the more restrictive tier of its endpoints, not its source's tier alone |
-| A005-T09 | A node type newly registered as Tier 0 in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] becomes mentionable automatically, without a change to this document |
+| A005-T09 | A node type newly registered as Tier 0 in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] becomes mentionable automatically without a change to this document, unless it is anonymity-protected; an anonymity-protected node MUST never become mentionable |
 | A005-T10 | Where a mention's target is later erased under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]], the token MUST render as an inert label retaining no identifying content, and the edge MUST remain soft-deleted rather than dangling |
 
 ---

@@ -800,3 +800,6 @@ export const getNodeRegistration = (nodeType: NodeType): NodeRegistration => {
 
 export const isNodeType = (value: string): value is NodeType =>
   nodeRegistryByType.has(value as NodeType);
+
+export const isAnonymityProtectedNodeType = (nodeType: NodeType): boolean =>
+  getNodeRegistration(nodeType).universalFields === "anonymous-contribution";

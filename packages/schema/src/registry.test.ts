@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ANY_NODE,
+  ANONYMITY_REGISTRY,
   CONVERSION_REGISTRY,
   EDGE_REGISTRY,
   EDGE_SOURCE_ROW_COUNT,
@@ -94,7 +94,7 @@ describe("canonical registry", () => {
     ]);
   });
 
-  it("registers exact triples and keeps Any Node as a wildcard sentinel", () => {
+  it("registers exact triples and keeps endpoint sets away from anonymous nodes", () => {
     expect(
       assertRegisteredRelationship("assigned_to", "Assignment", "Project"),
     ).toMatchObject({
@@ -103,7 +103,14 @@ describe("canonical registry", () => {
     });
     expect(
       assertRegisteredRelationship("affects", "Insight", "Employee"),
-    ).toMatchObject({ toNodeType: ANY_NODE });
+    ).toMatchObject({ toNodeType: "Any non-anonymity-protected node" });
+    expect(() =>
+      assertRegisteredRelationship(
+        "references",
+        "GraphReference",
+        "PulseAggregateContribution",
+      ),
+    ).toThrow(/Unregistered relationship/);
     expect(() =>
       assertRegisteredRelationship("assigned_to", "Employee", "Project"),
     ).toThrow(/Unregistered relationship/);
@@ -196,16 +203,46 @@ describe("wire records", () => {
     expect(() => nodeRecordSchema.parse({ ...audit, updated_at: NOW })).toThrow();
 
     const anonymous = {
-      ...standardEmployee,
+      node_id: ID,
+      workspace_id: OTHER_ID,
       node_type: "PulseAggregateContribution",
+      schema_version: 1,
       lifecycle_status: "Recorded",
+      is_soft_deleted: false,
     } as const;
-    const { created_by: _createdBy, ...withoutCreator } = anonymous;
 
-    expect(nodeRecordSchema.parse(withoutCreator).node_type).toBe(
+    expect(nodeRecordSchema.parse(anonymous).node_type).toBe(
       "PulseAggregateContribution",
     );
-    expect(() => nodeRecordSchema.parse(anonymous)).toThrow();
+    for (const forbidden of [
+      { created_at: NOW },
+      { created_by: ID },
+      { updated_at: NOW },
+      { updated_by: ID },
+      { soft_deleted_at: NOW },
+      { soft_deleted_by: ID },
+    ]) {
+      expect(() => nodeRecordSchema.parse({ ...anonymous, ...forbidden })).toThrow();
+    }
+  });
+
+  it("enumerates every relationship permitted for anonymity-protected nodes", () => {
+    expect(ANONYMITY_REGISTRY).toEqual([
+      {
+        nodeType: "PulseAggregateContribution",
+        allowedRelationships: [
+          {
+            edgeType: "part_of",
+            direction: "outgoing",
+            otherNodeType: "PulseCycle",
+          },
+        ],
+      },
+      {
+        nodeType: "WellnessAggregateContribution",
+        allowedRelationships: [],
+      },
+    ]);
   });
 
   it("requires coherent soft-delete provenance and UTC string timestamps", () => {

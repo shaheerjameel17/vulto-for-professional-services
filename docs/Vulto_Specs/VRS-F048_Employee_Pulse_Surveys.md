@@ -169,10 +169,10 @@ team_grouping:    string, nullable — a SNAPSHOT of the submitter's team or
 sentiment_score:  integer, 1–5
 submitted_at:     timestamp — DATE PRECISION ONLY, see below
 
-— Universal Node Conventions per VPS-A002, excepting created_by —
+— Universal Node Conventions per VPS-A002, excepting the anonymous-contribution provenance fields —
 ```
 
-**`created_by` is deliberately omitted from this node type**, one of the product's two anonymous-contribution omissions, alongside `WellnessAggregateContribution` in [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]. The Universal Node Conventions record who created a node; recording it here would reintroduce exactly the identifying link the node's design exists to avoid. `AuditEntry` has a separate immutability exception under [[VPS-F004_Silent_Audit_Log|VPS-F004]] and is not the precedent for anonymous contributions.
+**The actor and exact-time Universal Node provenance is deliberately omitted from this node type**, one of the product's two anonymous-contribution policies, alongside `WellnessAggregateContribution` in [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]. Specifically: `created_at`, `updated_at`, `created_by`, `updated_by`, `soft_deleted_at` and `soft_deleted_by`. It retains the non-identifying `is_soft_deleted` flag. An actor UUID resolves through User to Employee, and an exact timestamp can be correlated against the private PulseEntry; carrying either would reintroduce the identifying link the node exists to avoid. The private companion record holds the audit provenance. `AuditEntry` has a separate immutability exception under [[VPS-F004_Silent_Audit_Log|VPS-F004]] and is not the precedent for anonymous contributions.
 
 **`submitted_at` carries date precision only.** A full timestamp on an anonymous contribution, correlated against a Tier 0 audit trail or a device sync time, narrows the submitter substantially in a small team. Rounding to the day is what keeps the anonymization genuine rather than nominal.
 
@@ -219,7 +219,7 @@ pulseAggregate.getTrend(teamGrouping?, cycleCount?) -> {
 | ID | Specification |
 |---|---|
 | G01 | The three node types carry the schemas above |
-| G02 | PulseAggregateContribution carries no edge to Employee, ever, and omits `created_by`. Enforced as a schema-level absence, not a permission rule |
+| G02 | PulseAggregateContribution carries no identifying actor or exact-time provenance and may connect only to PulseCycle through `part_of`. Every permitted edge is enumerated; no wildcard or endpoint set may match it. Enforced as schema-level absence, not a permission rule |
 | G03 | `submitted_at` on a contribution carries date precision only |
 | G04 | Aggregates pass through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control at `k_anonymity_minimum_sensitive`. This feature defines no threshold |
 | G05 | This feature never writes to, reads from, or interacts with any node type in [[VRS-F052_Workload_Strain_Signal|VRS-F052]]'s or [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]]'s domain |

@@ -1,7 +1,23 @@
-import { type NodeType } from "./nodes.js";
+import {
+  getNodeRegistration,
+  isAnonymityProtectedNodeType,
+  type NodeType,
+} from "./nodes.js";
 
-export const ANY_NODE = "Any Node" as const;
-export type RegistryEndpoint = NodeType | typeof ANY_NODE;
+export const NON_ANONYMOUS_NODE = "Any non-anonymity-protected node" as const;
+export const MENTIONABLE_NODE = "Mentionable Node" as const;
+export const CUSTOM_FIELD_ENABLED_NODE = "Custom-field-enabled Node" as const;
+export const IMPORTABLE_NODE = "Importable Node" as const;
+
+export const ENDPOINT_SETS = [
+  NON_ANONYMOUS_NODE,
+  MENTIONABLE_NODE,
+  CUSTOM_FIELD_ENABLED_NODE,
+  IMPORTABLE_NODE,
+] as const;
+
+export type EndpointSet = (typeof ENDPOINT_SETS)[number];
+export type RegistryEndpoint = NodeType | EndpointSet;
 
 type EndpointPair = readonly [from: RegistryEndpoint, to: RegistryEndpoint];
 
@@ -363,7 +379,7 @@ export const EDGE_GROUPS = [
   edgeGroup({
     edgeType: "affects",
     owner: "VRS-F055",
-    pairs: [["Insight", ANY_NODE]],
+    pairs: [["Insight", NON_ANONYMOUS_NODE]],
   }),
 
   // Finance.
@@ -461,17 +477,17 @@ export const EDGE_GROUPS = [
   edgeGroup({
     edgeType: "references",
     owner: "VPS-A005",
-    pairs: [["GraphReference", ANY_NODE]],
+    pairs: [["GraphReference", MENTIONABLE_NODE]],
   }),
   edgeGroup({
     edgeType: "referenced_in",
     owner: "VPS-A005",
-    pairs: [[ANY_NODE, "GraphReference"]],
+    pairs: [[MENTIONABLE_NODE, "GraphReference"]],
   }),
   edgeGroup({
     edgeType: "has_custom_value",
     owner: "VPS-F010",
-    pairs: [[ANY_NODE, "CustomFieldValue"]],
+    pairs: [[CUSTOM_FIELD_ENABLED_NODE, "CustomFieldValue"]],
   }),
   edgeGroup({
     edgeType: "defined_by",
@@ -481,7 +497,7 @@ export const EDGE_GROUPS = [
   edgeGroup({
     edgeType: "imported_in",
     owner: "VPS-F006",
-    pairs: [[ANY_NODE, "ImportBatch"]],
+    pairs: [[IMPORTABLE_NODE, "ImportBatch"]],
   }),
   edgeGroup({
     edgeType: "erasure_targets",
@@ -539,8 +555,61 @@ const edgeRegistryByKey = new Map(
   ]),
 );
 
-const matchesEndpoint = (registered: RegistryEndpoint, actual: NodeType): boolean =>
-  registered === ANY_NODE || registered === actual;
+const CUSTOM_FIELD_ENABLED_NODE_TYPES = new Set<NodeType>([
+  "Employee",
+  "Project",
+  "Client",
+  "Candidate",
+  "Assignment",
+  "OpenRole",
+  "SubVendor",
+]);
+
+const IMPORTABLE_NODE_TYPES = new Set<NodeType>([
+  "Employee",
+  "Assignment",
+  "Project",
+  "Client",
+  "Skill",
+]);
+
+const isMentionableNodeType = (nodeType: NodeType): boolean => {
+  const protection = getNodeRegistration(nodeType).protection;
+
+  return (
+    (protection.kind === "fixed" && protection.tier === 0) ||
+    (protection.kind === "split" &&
+      protection.partitions.some(({ tier }) => tier === 0))
+  );
+};
+
+export const matchesRegistryEndpoint = (
+  registered: RegistryEndpoint,
+  actual: NodeType,
+): boolean => {
+  if (registered === actual) {
+    return true;
+  }
+
+  // F90: endpoint sets never include an anonymity-protected node. Every
+  // permitted connection for such a node must name it in an exact triple.
+  if (isAnonymityProtectedNodeType(actual)) {
+    return false;
+  }
+
+  switch (registered) {
+    case NON_ANONYMOUS_NODE:
+      return true;
+    case MENTIONABLE_NODE:
+      return isMentionableNodeType(actual);
+    case CUSTOM_FIELD_ENABLED_NODE:
+      return CUSTOM_FIELD_ENABLED_NODE_TYPES.has(actual);
+    case IMPORTABLE_NODE:
+      return IMPORTABLE_NODE_TYPES.has(actual);
+    default:
+      return false;
+  }
+};
 
 export const getEdgeRegistrations = (edgeType: EdgeType): readonly EdgeRegistration[] =>
   EDGE_REGISTRY.filter((registration) => registration.edgeType === edgeType);
@@ -553,8 +622,8 @@ export const assertRegisteredRelationship = (
   const registration = EDGE_REGISTRY.find(
     (candidate) =>
       candidate.edgeType === edgeType &&
-      matchesEndpoint(candidate.fromNodeType, fromNodeType) &&
-      matchesEndpoint(candidate.toNodeType, toNodeType),
+      matchesRegistryEndpoint(candidate.fromNodeType, fromNodeType) &&
+      matchesRegistryEndpoint(candidate.toNodeType, toNodeType),
   );
 
   if (registration === undefined) {

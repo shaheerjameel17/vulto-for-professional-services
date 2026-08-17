@@ -40,6 +40,12 @@ const baseNodeFields = {
   created_at: utcTimestampSchema,
 } as const;
 
+const anonymousBaseNodeFields = {
+  node_id: uuidV4Schema,
+  schema_version: z.int().positive(),
+  lifecycle_status: z.string().min(1),
+} as const;
+
 const mutableNodeFields = {
   updated_at: utcTimestampSchema,
   updated_by: uuidV4Schema,
@@ -101,14 +107,18 @@ const standardUnscopedNodeSchema = z
 
 const anonymousContributionNodeSchema = z
   .object({
-    ...baseNodeFields,
+    ...anonymousBaseNodeFields,
     node_type: z.enum(["PulseAggregateContribution", "WellnessAggregateContribution"]),
     workspace_id: uuidV4Schema,
+    created_at: z.never().optional(),
     created_by: z.never().optional(),
-    ...mutableNodeFields,
+    updated_at: z.never().optional(),
+    updated_by: z.never().optional(),
+    is_soft_deleted: z.boolean(),
+    soft_deleted_at: z.never().optional(),
+    soft_deleted_by: z.never().optional(),
   })
-  .passthrough()
-  .superRefine(addSoftDeleteIssues);
+  .passthrough();
 
 const auditEntryNodeSchema = z
   .object({

@@ -165,10 +165,10 @@ team_grouping:      string, nullable — a snapshot of the contributor's team at
 trigger_category:   string
 contribution_month: "YYYY-MM" — month precision only
 
-— Universal Node Conventions per VPS-A002, excepting created_by —
+— Universal Node Conventions per VPS-A002, excepting the anonymous-contribution provenance fields —
 ```
 
-**`created_by` is omitted deliberately**, the same exemption [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]]'s contribution carries. Recording who created it would reintroduce exactly the identifying link the node exists to avoid.
+**The actor and exact-time Universal Node provenance is omitted deliberately**, the same policy [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]]'s contribution carries: `created_at`, `updated_at`, `created_by`, `updated_by`, `soft_deleted_at` and `soft_deleted_by`. The node retains only the non-identifying `is_soft_deleted` flag from the deletion fields. An actor UUID resolves through User to Employee, and an exact timestamp defeats this feature's month precision by correlation; the private companion record carries the audit provenance.
 
 **No field on this node, and no edge from it, ever resolves back to a specific Employee.** This is the entire mechanism; there is no second layer standing behind it.
 
@@ -225,7 +225,7 @@ wellnessAggregate.getTeamTrend(teamGrouping, month) -> {
 | ID | Specification |
 |---|---|
 | G01 | Both node types carry the schemas above. `logged_by` connects the private event to Employee |
-| G02 | WellnessAggregateContribution carries no edge to Employee, ever, and omits `created_by`. Enforced as a schema-level absence |
+| G02 | WellnessAggregateContribution carries no identifying actor or exact-time provenance and has no registered graph connection. Every permitted edge is enumerated as the empty set; no wildcard or endpoint set may match it. Enforced as schema-level absence |
 | G03 | `wellness.log` writes both records in one client-side action. The contribution is never derived from the private record afterwards |
 | G04 | The trend is withheld below `k_anonymity_minimum_sensitive`, checked before any count is computed |
 | G05 | This feature never reads [[VRS-F052_Workload_Strain_Signal|VRS-F052]] or [[VRS-F053_Retention_Risk_Indicator|VRS-F053]]. The boundary is kept equally clean from this side |

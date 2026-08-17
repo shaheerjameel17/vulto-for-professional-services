@@ -5,22 +5,34 @@ export {
   NODE_REGISTRY,
   NODE_TYPES,
   getNodeRegistration,
+  isAnonymityProtectedNodeType,
   isNodeType,
   type NodeRegistration,
   type NodeType,
 } from "./registry/nodes.js";
 
 export {
-  ANY_NODE,
+  CUSTOM_FIELD_ENABLED_NODE,
   EDGE_REGISTRY,
   EDGE_SOURCE_ROW_COUNT,
   EDGE_TYPES,
+  ENDPOINT_SETS,
+  IMPORTABLE_NODE,
+  MENTIONABLE_NODE,
+  NON_ANONYMOUS_NODE,
   assertRegisteredRelationship,
   getEdgeRegistrations,
   type EdgeRegistration,
   type EdgeType,
+  type EndpointSet,
   type RegistryEndpoint,
 } from "./registry/edges.js";
+
+export {
+  ANONYMITY_REGISTRY,
+  type AllowedAnonymousRelationship,
+  type AnonymityRegistration,
+} from "./registry/anonymity.js";
 
 export {
   PRIVACY_CLASSES,

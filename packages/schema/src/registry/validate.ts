@@ -1,11 +1,12 @@
 import {
-  ANY_NODE,
+  ENDPOINT_SETS,
   EDGE_GROUPS,
   EDGE_REGISTRY,
   EDGE_SOURCE_ROW_COUNT,
   type EdgeRegistration,
   type RegistryEndpoint,
 } from "./edges.js";
+import { assertAnonymityRegistry } from "./anonymity.js";
 import { CONVERSION_REGISTRY } from "./conversions.js";
 import { NODE_REGISTRY, type NodeType } from "./nodes.js";
 import { OWNERSHIP_REGISTRY } from "./ownership.js";
@@ -77,7 +78,10 @@ export const validateRegistryDefinition = (definition: RegistryDefinition): void
     }
 
     for (const endpoint of [edge.fromNodeType, edge.toNodeType]) {
-      if (endpoint !== ANY_NODE && !nodeTypes.has(endpoint)) {
+      if (
+        !ENDPOINT_SETS.includes(endpoint as (typeof ENDPOINT_SETS)[number]) &&
+        !nodeTypes.has(endpoint)
+      ) {
         throw new Error(
           `Unknown endpoint ${endpoint} in ${edge.edgeType} (${edge.fromNodeType} -> ${edge.toNodeType})`,
         );
@@ -142,6 +146,7 @@ export const assertCanonicalRegistry = (): void => {
   }
 
   assertUniversalFieldPolicies();
+  assertAnonymityRegistry();
 
   const ownershipClaims = OWNERSHIP_REGISTRY.flatMap(({ nodeTypes }) => nodeTypes);
   requireUnique(ownershipClaims, "cross-suite ownership claim");
@@ -185,8 +190,8 @@ export const assertCanonicalRegistry = (): void => {
 // be imported and then treated as authoritative by a consumer.
 assertCanonicalRegistry();
 
-// Keep these imports type-checked as the canonical wildcard endpoint contract.
-const _endpointContract: RegistryEndpoint = ANY_NODE;
+// Keep these imports type-checked as the canonical endpoint-set contract.
+const _endpointContract: RegistryEndpoint = ENDPOINT_SETS[0];
 const _edgeContract: EdgeRegistration | undefined = EDGE_REGISTRY[0];
 void _endpointContract;
 void _edgeContract;

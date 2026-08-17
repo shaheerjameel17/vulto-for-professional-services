@@ -50,8 +50,12 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F86 | `FDN-45` claimed all lifecycle statuses and all A002 schema where most lifecycle enums are feature-owned | Linear | **Closed by FDN-45** — scope corrected to 28 fixed and 81 feature-owned policies |
 | F87 | The universal-node claim contradicted three deliberate field-omission shapes | `VPS-A002`, `VPS-A007`, `VRS-F048` | **Closed by FDN-45** — omissions are exact and closed |
 | F88 | The conversion protocol forced `Converted` onto GhostResource, whose feature owns `Promoted` | `VPS-A002` | **Closed by FDN-45** — each conversion registers its domain-correct terminal status |
+| F89 | Anonymous contribution nodes still carried identifying actor and exact-time provenance | `VPS-A002`, `VPS-A007`, `VRS-F048`, `VRS-F078` | **Closed by FDN-45** — six identifying provenance fields omitted exactly |
+| F90 | Broad relationship endpoints could reconnect an anonymous contribution to an Employee | `VPS-A002`, `VPS-A005`, `VPS-A007` | **Closed by FDN-45** — protected-node connectivity is explicit and closed |
+| F91 | “Registered both directions” required feature schema that does not exist yet | `VPS-A007`, Linear | **Open, recorded boundary** — FDN-49 checks each direction only when its artifact exists |
+| F92 | `FDN-77`, `FDN-48` and `FDN-49` all claimed the same architecture enforcement | Linear | **Closed by scope amendment** — the first two define; FDN-49 enforces |
 
-**Thirty-five findings, thirty-one closed.** Four stay open. F70, F73 and F85 are raised rather than decided. F71 is a recorded boundary rather than a defect — it closes when the issues it names are built. F76 is a fact about the tool, not something to close.
+**Thirty-nine findings, thirty-four closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -756,10 +760,42 @@ All three are workspace-scoped operational or analytics objects rather than reco
 
 ---
 
+### F89 — Anonymous contribution nodes retained identifying provenance
+
+The first F87 correction removed only `created_by`. Building the structural anonymity test showed that `updated_by`, both soft-delete actor/time fields and the exact creation and update timestamps could still identify a contributor by correlation with the private source record.
+
+**Correction.** Both anonymous contribution types now omit exactly `created_at`, `created_by`, `updated_at`, `updated_by`, `soft_deleted_at` and `soft_deleted_by`, while retaining the non-identifying `is_soft_deleted` flag. The private companion records own the identifying audit provenance.
+
+---
+
+### F90 — Broad relationship endpoints defeated structural anonymity
+
+The registry's `Any Node` endpoints made both anonymous contribution types legal endpoints for `affects`, cross-app references, custom values and imports. A node with no identifying field could therefore acquire an edge back to a specific Employee, defeating the guarantee structurally.
+
+**Correction.** Broad endpoints became named, bounded endpoint sets that never match an anonymity-protected node. Every protected node — both current types and every future one — must have an explicit connectivity registration, even when the permitted set is empty. There is no wildcard or endpoint-set exception. `PulseAggregateContribution` permits only its outgoing `part_of` edge to `PulseCycle`; `WellnessAggregateContribution` permits none.
+
+---
+
+### F91 — The two-way registration gate required an artifact that does not exist yet
+
+`VPS-A007` required every registry row to have a feature implementation and every implementation to have a row. That contradicts A002-T09's registration-before-implementation order: the FDN-45 catalog deliberately contains future node types whose feature-owned field schemas do not exist yet.
+
+**Boundary.** FDN-49 will compare the specification catalog with the executable registry in both directions now. It will also reject any implemented feature schema without a registry row. A registry row without a feature schema remains valid until that feature exists; enforcing the converse begins only when there is an implementation artifact to compare.
+
+---
+
+### F92 — Three issues claimed one architecture enforcement
+
+FDN-77 claimed the Worker-boundary lint, FDN-48 claimed prevention of raw graph access, and FDN-49 claimed the automated architecture checks for both. Leaving all three as owners would recreate F82 with a different boundary.
+
+**Correction.** FDN-77 defines the permitted Worker execution boundary. FDN-48 defines the typed query boundary and the sole raw local-SQL implementation surface. FDN-49 owns the automated rules and violating fixtures that keep both boundaries true. The three Linear issues now state that split explicitly.
+
+---
+
 ### `VPS-A002`
 `Client` deduplicated to one registry row. A new section, **When a relationship is a node instead of an edge**, carrying the one-sentence rule, why lifecycle is the test, the naming convention for a relationship-node's endpoint edges, the statement that an endpoint pair is not itself an edge, and the edge registry's key. Four edges registered; `member_of` deleted; `assigned_to` re-endpointed.
 
-FDN-45 closed the implementation boundary: 28 lifecycle policies are fixed here and 81 remain explicitly feature-owned; nine split registrations guarantee partition identity while feature schemas own field membership. The universal-node claim now carries its exact three omission shapes instead of saying “without exception.” The conversion protocol now registers each domain's terminal status, preserving GhostResource's shipped `Promoted` vocabulary alongside Candidate and Pitch's `Converted`.
+FDN-45 closed the implementation boundary: 28 lifecycle policies are fixed here and 81 remain explicitly feature-owned; nine split registrations guarantee partition identity while feature schemas own field membership. The universal-node claim now carries its exact three omission shapes instead of saying “without exception.” The anonymous-contribution shape omits all six identifying actor and exact-time provenance fields, and protected-node connectivity is explicitly enumerated with no wildcard or endpoint-set exception. The conversion protocol now registers each domain's terminal status, preserving GhostResource's shipped `Promoted` vocabulary alongside Candidate and Pitch's `Converted`.
 
 A new section, **How the Privacy Class column is written**, defining the column as closed and stating where the three conflated facts now live. The `Class A (half) / Class B (half)` and `Class †` notations. The rule that a split row's identifying half carries its class default while the protected half is the declared split. The distinction between a tier split and a class split, stated where splits are introduced. Twenty-four registry cells rewritten. HeadcountSnapshot's tier departure marked and explained. One citation corrected from Rule 10 to Rule 11.
 
@@ -796,7 +832,10 @@ The two-language boundary table's `services/sync-engine` row, per F63: one job d
 The runtime validation pin recorded under the settled stack: `zod@4.4.3`, declared exactly in `packages/schema`, with TypeScript types inferred from the runtime validator rather than maintained as a second representation.
 
 ### `VPS-A007`, `VRS-F048` — FDN-45
-The schema-conformance gate now enumerates AuditEntry's five omitted universal fields and the two anonymous nodes' `created_by` omission exactly. Pulse Survey's prose now names WellnessAggregateContribution as its matching anonymity case rather than treating AuditEntry's separate immutability rule as the same shape.
+The schema-conformance gate now enumerates AuditEntry's five omitted universal fields and the two anonymous nodes' six identifying provenance omissions exactly. Its structural-anonymity gate requires every current and future protected node to enumerate its complete permitted connectivity without a wildcard or endpoint set. Pulse Survey and Wellness prose carry the same closed field and edge contracts rather than treating AuditEntry's separate immutability rule as the same shape.
+
+### Linear — FDN-48, FDN-49, FDN-77
+The ownership split is explicit: FDN-77 defines the Worker boundary, FDN-48 defines the typed query and raw local-SQL boundary, and FDN-49 alone implements the automated enforcement and violating fixtures. FDN-49's two-way registration check is staged so registration-before-implementation remains valid.
 
 ### `VPS-D004` — FDN-79
 A copy variant for person-level exclusion. The role-naming convention — *"Visible to Finance Admin"* — renders as *"Visible to Owner and HR Admin"* to an excluded Owner, which is a contradiction rather than a next step. The copy now names the reason: *"Restricted — this record concerns you."* One new row in the state table.
