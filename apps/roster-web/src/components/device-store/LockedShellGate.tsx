@@ -6,7 +6,7 @@ import { Lock } from "lucide-react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { apiOrigin } from "../../lib/auth-client";
 
-type GateState = "checking" | "locked" | "unlocked" | "denied";
+type GateState = "checking" | "locked" | "unlocked";
 
 /**
  * VPS-D004's locked shell: renders full-bleed and centered, before any
@@ -70,7 +70,9 @@ export function LockedShellGate({
       await client.unlockSealedStore(apiOrigin);
       setState("unlocked");
     } catch {
-      setState(navigator.onLine ? "denied" : "locked");
+      // Every failure — revoked, unreachable, or otherwise — renders identically.
+      // Distinguishing "denied" here would enumerate a revoked user's status.
+      setState("locked");
     }
   }
 
@@ -88,9 +90,8 @@ export function LockedShellGate({
             Vulto is locked
           </Text>
           <Text variant="body" className="text-text-secondary">
-            {state === "denied"
-              ? "The server did not authorize this device. Sign in again to continue."
-              : "Every restart requires the server to confirm your session before your local data can open."}
+            Every restart requires the server to confirm your session before your local
+            data can open.
           </Text>
           {offline ? (
             <Text

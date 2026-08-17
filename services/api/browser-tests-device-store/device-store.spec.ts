@@ -303,11 +303,18 @@ test.describe("FDN-84 sealed local device store", () => {
       await page.reload();
       await expect(page.getByTestId("locked-shell")).toBeVisible();
       await page.getByRole("button", { name: "Retry" }).click();
+      // Denial renders identically to any other failure — no message may say
+      // the device was specifically denied, which would enumerate revocation.
       await expect(
-        page.getByText("The server did not authorize this device."),
+        page.getByText(
+          "Every restart requires the server to confirm your session before your local data can open.",
+        ),
       ).toBeVisible({
         timeout: 20_000,
       });
+      await expect(
+        page.getByText("The server did not authorize this device"),
+      ).not.toBeVisible();
       await expect(page.getByTestId("device-store-unlocked")).not.toBeVisible();
     } finally {
       await context?.close();
