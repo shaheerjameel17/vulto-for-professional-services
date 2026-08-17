@@ -25,7 +25,7 @@ class FakeWorker {
           ? {
               kind: "delta-batch-applied" as const,
               mergedDeltaCount: request.deltas.length,
-              materializedProbeRows: request.deltas.length,
+              materializationGeneration: 0,
               workerDurationMs: 10,
             }
           : request.type === "get-availability"

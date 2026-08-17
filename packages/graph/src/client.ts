@@ -10,7 +10,7 @@ import {
 export interface DeltaBatchResult {
   availability: GraphAvailability;
   mergedDeltaCount: number;
-  materializedProbeRows: number;
+  materializationGeneration: number;
   workerDurationMs: number;
 }
 
@@ -115,7 +115,7 @@ class BrowserLocalGraphClient implements LocalGraphClient {
     return {
       availability: response.availability,
       mergedDeltaCount: response.result.mergedDeltaCount,
-      materializedProbeRows: response.result.materializedProbeRows,
+      materializationGeneration: response.result.materializationGeneration,
       workerDurationMs: response.result.workerDurationMs,
     };
   }

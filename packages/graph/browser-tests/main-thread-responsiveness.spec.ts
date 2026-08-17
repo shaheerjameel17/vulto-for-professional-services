@@ -32,7 +32,7 @@ test("a multi-day delta backlog leaves the browser main thread responsive", asyn
         batch: {
           workerDurationMs: number;
           mergedDeltaCount: number;
-          materializedProbeRows: number;
+          materializationGeneration: number;
           availability: { state: string };
         };
         animationFrames: number;
@@ -56,7 +56,7 @@ test("a multi-day delta backlog leaves the browser main thread responsive", asyn
   expect(result!.batch.workerDurationMs).toBeGreaterThanOrEqual(500);
   expect(result!.batch.availability).toEqual({ state: "ready" });
   expect(result!.batch.mergedDeltaCount).toBe(6);
-  expect(result!.batch.materializedProbeRows).toBeGreaterThanOrEqual(6);
+  expect(result!.batch.materializationGeneration).toBe(0);
   expect(result!.animationFrames).toBeGreaterThan(10);
   expect(result!.maxFrameGapMs).toBeLessThan(100);
 });

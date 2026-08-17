@@ -15,6 +15,19 @@ interface ResponsivenessResult {
 
 interface WorkerDiagnosticsApi {
   runBacklog(base64Deltas: readonly string[]): Promise<ResponsivenessResult>;
+  runMaterializationProof(): Promise<MaterializationProofResult>;
+}
+
+interface MaterializationProofResult {
+  generation: number;
+  nodeCount: number;
+  twoHopCount: number;
+  historicalHandoffTarget: string | null;
+  subscriptionObservedCommit: boolean;
+  indexedPlan: boolean;
+  deterministicRebuild: boolean;
+  failedBatchPreservedGeneration: boolean;
+  durationMs: number;
 }
 
 declare global {
@@ -57,6 +70,32 @@ async function runWithHeartbeat(
   }
 }
 
+function runMaterializationProof(): Promise<MaterializationProofResult> {
+  return new Promise((resolve, reject) => {
+    // This Worker is reachable only from the opt-in Playwright route. It is a
+    // test seam, not a production graph message or public package API.
+    const worker = new Worker(
+      new URL(
+        "../../../../../packages/graph/src/worker/testing/browser-proof.worker.ts",
+        import.meta.url,
+      ),
+      { type: "module", name: "vulto-fdn48-browser-proof" },
+    );
+    worker.onmessage = (event: MessageEvent<unknown>) => {
+      worker.terminate();
+      const response = event.data as
+        { ok: true; result: MaterializationProofResult } | { ok: false; error: string };
+      if (response.ok) resolve(response.result);
+      else reject(new Error(response.error));
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "Materialization proof Worker failed"));
+    };
+    worker.postMessage({ type: "run" });
+  });
+}
+
 export function WorkerDiagnosticsClient() {
   const [status, setStatus] = useState("initializing");
 
@@ -71,6 +110,7 @@ export function WorkerDiagnosticsClient() {
         window.__vultoWorkerDiagnostics = {
           runBacklog: (base64Deltas) =>
             runWithHeartbeat(client, base64Deltas.map(decodeBase64)),
+          runMaterializationProof,
         };
         setStatus("ready");
       })

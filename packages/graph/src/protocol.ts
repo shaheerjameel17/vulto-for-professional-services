@@ -46,7 +46,7 @@ const deltaBatchResultSchema = z
   .object({
     kind: z.literal("delta-batch-applied"),
     mergedDeltaCount: z.number().int().nonnegative(),
-    materializedProbeRows: z.number().int().nonnegative(),
+    materializationGeneration: z.number().int().nonnegative(),
     workerDurationMs: z.number().nonnegative(),
   })
   .strict();

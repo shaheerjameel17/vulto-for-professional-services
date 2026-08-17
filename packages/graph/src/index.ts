@@ -18,3 +18,5 @@ export {
   type GraphWorkerResponse,
   type GraphWorkerSuccess,
 } from "./protocol";
+
+export { graphQuerySchema, parseGraphQuery, type GraphQuery } from "./query";
