@@ -30,6 +30,22 @@ export const graphWorkerRequestSchema = z.discriminatedUnion("type", [
     deltas: z.array(z.instanceof(ArrayBuffer)).min(1),
   }),
   messageBaseSchema.extend({ type: z.literal("get-availability") }),
+  messageBaseSchema.extend({
+    type: z.literal("unlock-sealed-store"),
+    workspaceId: z.string().min(1),
+    apiOrigin: z.string().min(1),
+  }),
+  messageBaseSchema.extend({ type: z.literal("lock-sealed-store") }),
+  messageBaseSchema.extend({ type: z.literal("get-sealed-store-status") }),
+  messageBaseSchema.extend({
+    type: z.literal("seal-payload"),
+    storeKey: z.string().min(1),
+    plaintext: z.instanceof(ArrayBuffer),
+  }),
+  messageBaseSchema.extend({
+    type: z.literal("open-payload"),
+    storeKey: z.string().min(1),
+  }),
   messageBaseSchema.extend({ type: z.literal("dispose") }),
 ]);
 
@@ -53,6 +69,29 @@ const deltaBatchResultSchema = z
 
 const availabilityResultSchema = z.object({ kind: z.literal("availability") }).strict();
 
+const sealedStoreUnlockedResultSchema = z
+  .object({ kind: z.literal("sealed-store-unlocked") })
+  .strict();
+
+const sealedStoreLockedResultSchema = z
+  .object({ kind: z.literal("sealed-store-locked") })
+  .strict();
+
+const sealedStoreStatusResultSchema = z
+  .object({ kind: z.literal("sealed-store-status"), locked: z.boolean() })
+  .strict();
+
+const payloadSealedResultSchema = z
+  .object({ kind: z.literal("payload-sealed") })
+  .strict();
+
+const payloadOpenedResultSchema = z
+  .object({
+    kind: z.literal("payload-opened"),
+    plaintext: z.instanceof(ArrayBuffer).nullable(),
+  })
+  .strict();
+
 const disposedResultSchema = z.object({ kind: z.literal("disposed") }).strict();
 
 export const graphWorkerSuccessSchema = messageBaseSchema.extend({
@@ -62,6 +101,11 @@ export const graphWorkerSuccessSchema = messageBaseSchema.extend({
     initializedResultSchema,
     deltaBatchResultSchema,
     availabilityResultSchema,
+    sealedStoreUnlockedResultSchema,
+    sealedStoreLockedResultSchema,
+    sealedStoreStatusResultSchema,
+    payloadSealedResultSchema,
+    payloadOpenedResultSchema,
     disposedResultSchema,
   ]),
 });
@@ -80,6 +124,9 @@ export const graphWorkerErrorSchema = z
           "not-initialized",
           "already-initialized",
           "runtime-failure",
+          "sealed-store-denied",
+          "sealed-store-locked",
+          "sealed-store-cannot-open",
         ]),
         message: z.string().min(1),
         fatal: z.boolean(),

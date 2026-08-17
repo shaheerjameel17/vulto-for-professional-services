@@ -20,6 +20,13 @@ export interface LocalGraphClient {
   applyDeltaBatch(deltas: readonly Uint8Array[]): Promise<DeltaBatchResult>;
   getAvailability(): Promise<GraphAvailability>;
   switchWorkspace(workspaceId: string): Promise<GraphAvailability>;
+  /** Requests the server's unlock half and derives the sealed-store key, entirely inside the Worker. */
+  unlockSealedStore(apiOrigin: string): Promise<void>;
+  /** Drops the sealed-store key from Worker memory without disposing the Worker. */
+  lockSealedStore(): Promise<void>;
+  getSealedStoreStatus(): Promise<{ locked: boolean }>;
+  sealPayload(storeKey: string, plaintext: Uint8Array): Promise<void>;
+  openPayload(storeKey: string): Promise<Uint8Array | null>;
   dispose(): Promise<void>;
 }
 
@@ -143,6 +150,82 @@ class BrowserLocalGraphClient implements LocalGraphClient {
     this.#initialized = false;
     this.#worker = this.#createWorker();
     return this.initialize();
+  }
+
+  async unlockSealedStore(apiOrigin: string): Promise<void> {
+    if (this.#disposed) throw new Error("Graph client is disposed");
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "unlock-sealed-store",
+      workspaceId: this.#workspaceId,
+      apiOrigin,
+    });
+    if (response.result.kind !== "sealed-store-unlocked") {
+      throw this.#fatal("Worker returned the wrong result for unlock-sealed-store");
+    }
+  }
+
+  async lockSealedStore(): Promise<void> {
+    if (this.#disposed) throw new Error("Graph client is disposed");
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "lock-sealed-store",
+    });
+    if (response.result.kind !== "sealed-store-locked") {
+      throw this.#fatal("Worker returned the wrong result for lock-sealed-store");
+    }
+  }
+
+  async getSealedStoreStatus(): Promise<{ locked: boolean }> {
+    if (this.#disposed) throw new Error("Graph client is disposed");
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "get-sealed-store-status",
+    });
+    if (response.result.kind !== "sealed-store-status") {
+      throw this.#fatal("Worker returned the wrong result for get-sealed-store-status");
+    }
+    return { locked: response.result.locked };
+  }
+
+  async sealPayload(storeKey: string, plaintext: Uint8Array): Promise<void> {
+    if (this.#disposed) throw new Error("Graph client is disposed");
+    const buffer = plaintext.slice().buffer;
+    const response = await this.#send(
+      {
+        protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+        requestId: requestId(),
+        sentAt: now(),
+        type: "seal-payload",
+        storeKey,
+        plaintext: buffer,
+      },
+      [buffer],
+    );
+    if (response.result.kind !== "payload-sealed") {
+      throw this.#fatal("Worker returned the wrong result for seal-payload");
+    }
+  }
+
+  async openPayload(storeKey: string): Promise<Uint8Array | null> {
+    if (this.#disposed) throw new Error("Graph client is disposed");
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "open-payload",
+      storeKey,
+    });
+    if (response.result.kind !== "payload-opened") {
+      throw this.#fatal("Worker returned the wrong result for open-payload");
+    }
+    return response.result.plaintext ? new Uint8Array(response.result.plaintext) : null;
   }
 
   async dispose(): Promise<void> {

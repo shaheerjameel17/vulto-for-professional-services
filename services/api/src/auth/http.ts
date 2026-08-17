@@ -2,6 +2,11 @@ import { passkeyRegistrationInputSchema } from "@vulto/schema";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { auth } from "./config.js";
 import {
+  DeviceUnlockDeniedError,
+  parseDeviceStoreUnlockRequest,
+  requestDeviceUnlock,
+} from "./device-unlock.js";
+import {
   enforcePasskeyRegistrationRateLimit,
   issuePasskeyRegistrationContext,
   PasskeyRegistrationRateLimitError,
@@ -64,6 +69,35 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
         return reply.code(429).send({ error: "Registration could not be started" });
       }
       return reply.code(400).send({ error: "Registration could not be started" });
+    }
+  });
+
+  app.post("/device-store/unlock", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string; deviceId: string };
+    try {
+      parsed = parseDeviceStoreUnlockRequest(request.body);
+    } catch {
+      return reply
+        .code(401)
+        .send({ error: "This device is not authorized to unlock the local store" });
+    }
+
+    try {
+      const grant = await requestDeviceUnlock(
+        requestHeaders(request),
+        parsed.workspaceId,
+        parsed.deviceId,
+      );
+      return grant;
+    } catch (error) {
+      if (error instanceof DeviceUnlockDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(401)
+        .send({ error: "This device is not authorized to unlock the local store" });
     }
   });
 
