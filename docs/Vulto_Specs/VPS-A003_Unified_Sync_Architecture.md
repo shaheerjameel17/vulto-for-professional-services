@@ -23,7 +23,7 @@ This document is the single source of truth for how data moves between devices, 
 
 ## Decision
 
-Vulto Roster uses Loro as the sole mathematical foundation for all sync. **The server is a coordination layer, never a source of truth.** The canonical graph lives on user devices. Every feature operates fully offline without degraded functionality. A bespoke CRDT implementation is prohibited.
+Vulto Roster uses Loro as the sole mathematical foundation for all sync. **The server is a coordination layer, never a source of truth.** The canonical graph lives on user devices. After the current cold start has completed one online, session-authorized local-store unlock, every feature operates fully offline without degraded functionality until the next cold restart. A bespoke CRDT implementation is prohibited.
 
 This document answers two questions that a document-granular CRDT library makes non-trivial: how permission-filtered sync actually works, and how to distinguish access controlled by policy from access made impossible by mathematics.
 
@@ -131,7 +131,7 @@ The authoritative tier assignment for every node type lives in [[VPS-A002_Master
 
 ## Offline behavior
 
-Every feature works without connectivity. Sync runs in the background whenever it is available. The application exposes a SyncStatus observable at all times — `Synced`, `Syncing`, `PendingChanges`, `Offline` — surfaced per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], and it never blocks or interrupts a workflow.
+After one online, session-authorized local-store unlock in the current process, every feature works without connectivity until the next cold restart. A cold restart while offline leaves the encrypted local store locked; connectivity and a currently valid server session are required to unlock it. This qualification affects cold-start availability only: once unlocked, sync runs in the background whenever connectivity is available, and its absence never blocks or interrupts a workflow. The application exposes a SyncStatus observable at all times — `Synced`, `Syncing`, `PendingChanges`, `Offline` — surfaced per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]].
 
 ---
 
@@ -140,6 +140,8 @@ Every feature works without connectivity. Sync runs in the background whenever i
 This is the section that answers whether customer data can be made genuinely safe, and it does so by drawing a hard line between two guarantees that are easy to blur.
 
 **Standard encryption at rest** (Tiers 0 and 2) means data is encrypted on disk on both device and server, but the server can still produce readable data through legitimate operation, because the application layer holds or can derive the keys it needs. This protects against a stolen device, a careless backup, or an attacker who breaches storage without breaching the application. It does **not** protect against Vulto being compelled to produce readable data.
+
+**The local device store starts locked after every cold restart.** The server must validate a current authenticated session before releasing or deriving volatile unwrap material; the raw session token and plaintext storage key are never persisted with the data or exposed to application code. Once unlocked, the complete product continues to operate without connectivity until the next cold restart. A device whose user has been offboarded or centrally revoked cannot pass that restart checkpoint and therefore cannot reopen local HR data. Credential-bound offline unlock through WebAuthn PRF is not the default and is not part of the current scope.
 
 **True end-to-end encryption** (Tiers 1 and 3) means the server never possesses a usable decryption key in any form. It stores and relays ciphertext exclusively. A full breach of Vulto's servers, or a court order directed at Vulto itself, yields nothing readable, because there is nothing for Vulto to decrypt with.
 
@@ -213,7 +215,7 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 | A003-T01 | The CRDT implementation MUST be Loro. A bespoke implementation is prohibited |
 | A003-T02 | All sync operations MUST be idempotent. Applying the same delta twice MUST produce the same result, verified by automated test |
 | A003-T03 | All sync payloads MUST be encrypted in transit using TLS 1.3 minimum, regardless of tier |
-| A003-T04 | Local device storage MUST be encrypted at rest with AES-256, keyed from the authenticated session and never stored alongside the data. This is independent of, and does not substitute for, the Tier 1 and Tier 3 end-to-end scheme |
+| A003-T04 | Local device storage MUST be encrypted at rest with AES-256. After every cold restart it MUST remain locked until the server validates a current authenticated session and releases or derives volatile unwrap material. The raw session token, plaintext storage key and unwrap material MUST NOT be persisted alongside the data or exposed to application code. Once unlocked, the complete product MUST continue to operate without connectivity until the next cold restart. This is independent of, and does not substitute for, the Tier 1 and Tier 3 end-to-end scheme |
 | A003-T05 | Tier 1 and Tier 3 documents MUST be encrypted client-side before transmission. The server MUST NOT possess or be able to derive any key capable of decrypting them, verified by an automated test confirming no server-side code path can decrypt a Tier 1 or Tier 3 payload |
 | A003-T06 | A Tier 1 document's key MUST be wrapped for exactly the readers the node type's **effective grant** gives read access — its Privacy Class default **as overridden by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s per-node matrix, then less any subject exclusion that node type registers** — and for no others. The class default alone MUST NOT be used, and the reader set MUST NOT be resolved at role granularity where a person-level exclusion applies. Tier MUST NOT imply a reader set |
 | A003-T07 | Key wrapping MUST support adding and removing readers without re-encrypting the underlying document. On revocation the key epoch MUST increment for future writes, with historical re-wrapping performed lazily on next authorized modification. On grant, the new reader's wrapped-key entry for the current retention window MUST be created immediately |
@@ -245,6 +247,18 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 **GIVEN** a WellnessTriggerEvent exists for Employee X
 **WHEN** Device B, authenticated as X's manager, syncs
 **THEN** it does not appear in Device B's local store — no ciphertext, no metadata, no indication of its existence anywhere in the delta
+
+---
+
+**GIVEN** an authorized user cold-restarts Vulto while the device has no connectivity
+**WHEN** the application attempts to open the encrypted local store
+**THEN** the store remains locked without decrypting graph bytes; after connectivity returns and the server validates the current session, one online unlock opens it and the complete product continues offline until the next cold restart
+
+---
+
+**GIVEN** a user's access has been centrally revoked or the user has been offboarded
+**WHEN** they cold-restart Vulto and attempt to reopen local HR data
+**THEN** the server denies the unlock checkpoint and no persisted local graph bytes are decrypted
 
 ---
 
@@ -308,6 +322,8 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 ---
 
 ## Decisions recorded
+
+**Offline cold restart requires one online unlock.** The deciding factor is revocation, not convenience. Vulto Roster holds salaries, grievance cases, wellness records and performance reviews. A credential-bound local unlock could continue decrypting that data after central offboarding or revocation for as long as the device stayed offline. Requiring the server to validate a current session after every cold restart makes that restart a revocation checkpoint. The accepted cost is that a user who has both cold-restarted and lost connectivity cannot open Vulto until connectivity returns; once unlocked, full-day offline operation is unaffected. WebAuthn PRF is not universally available across browsers and authenticators, so the online path would remain necessary as a fallback even if credential-bound unlock were added. The restrained default also matches Vulto's product philosophy. This ruling is revisable if customer evidence shows the cold-start limit blocks real work: moving from online-only cold unlock to an optional credential-bound capability is additive, while removing an established offline unlock would take access away.
 
 **Tier no longer implies a reader set.** The previous draft listed fixed recipients against Tier 1, which was accurate while Tier 1 held only financial data. [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] and [[VRS-F020_Universal_Contract_Builder|VRS-F020]] both place non-financial content at Tier 1, and had the tier carried its own reader set, grievance narratives and contract content would have been distributed to the finance team. Reader sets now derive from Privacy Class, per A003-T06.
 

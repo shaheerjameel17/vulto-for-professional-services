@@ -129,7 +129,7 @@ Better Auth per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001
 - **Google SSO** — OAuth plugin, scoped to email and basic profile only. No broader Workspace data is requested because none is needed.
 - **Passkey / WebAuthn** — Better Auth's passkey plugin, never a bespoke implementation. Credentials bind to the device's secure hardware and unlock via platform biometrics or device passcode. **Required, not optional**: [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 3 key derivation depends on WebAuthn PRF.
 - **Workspace as Organization** — Better Auth's organizations plugin maps directly onto Workspace and WorkspaceMembership. The organization member role is the same value [[VPS-A004_Graph_Permission_Layer|VPS-A004]] reads. There is exactly one role system, not two that can drift.
-- **Sessions** — secure httpOnly cookies on web, platform keychain on native. Tokens never enter the graph.
+- **Sessions** — secure httpOnly cookies on web, platform keychain on native. Tokens never enter the graph. After every cold restart, the server validates the current session before releasing or deriving volatile local-store unwrap material; a revoked session receives none.
 
 ### Graph model
 
@@ -139,7 +139,7 @@ Device carries: `device_id`, `user_id`, `device_name`, `platform`, `application`
 
 ### Sync behavior
 
-User, WorkspaceMembership and Device are Tier 0. Workspace's display fields are Tier 0; its administrative fields are Tier 2. None require end-to-end encryption. The local store's AES-256 encryption, keyed from the session per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], is what protects a lost device, independent of any node's tier.
+User, WorkspaceMembership and Device are Tier 0. Workspace's display fields are Tier 0; its administrative fields are Tier 2. None require end-to-end encryption. The local store's AES-256 encryption, unlocked through a server-authorized session checkpoint per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], is what protects a lost device, independent of any node's tier. The encrypted store remains locked after every cold restart until that online checkpoint succeeds; afterward the complete product operates offline until the next cold restart.
 
 ### Permission model
 
@@ -182,7 +182,7 @@ device.listForWorkspace(workspaceId)            -> Device[]
 | G01 | A User node is created on account creation. Passwords are never stored in the graph, only a reference sufficient to confirm the corresponding Better Auth credential exists |
 | G02 | A WorkspaceMembership edge connects User to Workspace and carries the role property. This is the activation edge for [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s matrix |
 | G03 | A Device node is created when a new device authenticates, carrying the fields above. `application` distinguishes registrations for different suite applications on the same physical device |
-| G04 | The local store is encrypted with AES-256 keyed from the session token per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], never stored alongside the data. Revocation wipes it entirely within 60 seconds of signal receipt |
+| G04 | The local store is encrypted with AES-256 per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. After every cold restart it remains locked until the server validates a current authenticated session and releases or derives volatile unwrap material. The raw session token, plaintext storage key and unwrap material are never persisted alongside the data or exposed to application code. Revocation wipes the store entirely within 60 seconds of signal receipt; after a cold restart, a revoked session cannot reopen it even before a wipe signal arrives |
 | G05 | Workspace creation atomically generates the Workspace node and the founding Owner's WorkspaceMembership. This membership cannot be deleted |
 | G06 | Manager is derived, not stored. Any Employee targeted by at least one active `managed_by` edge holds Manager permissions over those reports, evaluated at query time by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]. A manual Manager membership assigned before [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] exists is superseded by derivation, never merged with it |
 
@@ -240,9 +240,21 @@ device.listForWorkspace(workspaceId)            -> Device[]
 
 ---
 
-**GIVEN** the device is offline with a valid session
-**WHEN** the user opens the app
+**GIVEN** the device completed its online, session-authorized local-store unlock after the current cold start and is now offline
+**WHEN** the user opens or continues using the app without another cold restart
 **THEN** it opens from the local store, the full product is accessible, no login prompt appears, and the Offline indicator shows
+
+---
+
+**GIVEN** the device cold-restarts while offline
+**WHEN** the user attempts to open Vulto
+**THEN** the encrypted local store remains locked until connectivity returns and the server validates the current session
+
+---
+
+**GIVEN** the user's membership has been revoked centrally
+**WHEN** they cold-restart Vulto and attempt an online unlock
+**THEN** the session check is denied and no local graph data is decrypted
 
 ---
 
@@ -258,7 +270,7 @@ device.listForWorkspace(workspaceId)            -> Device[]
 - Sign-in completes within 2 seconds; passkey sign-in within 1 second
 - All authentication traffic over HTTPS; sync over TLS 1.3 minimum
 - Passwords stored only via Better Auth, never in the graph, never in plaintext
-- Valid sessions allow full offline local graph access without re-authentication
+- After one online, session-authorized unlock per cold start, the complete local graph remains available offline until the next cold restart
 - Device wipe completes within 60 seconds of signal receipt, online or on next connection
 
 ---
@@ -286,6 +298,8 @@ device.listForWorkspace(workspaceId)            -> Device[]
 ---
 
 ## Decisions Recorded
+
+**Cold restart is a revocation checkpoint.** Every cold restart requires one online, server-authorized local-store unlock. This prevents an offboarded person from continuing to decrypt salaries, grievance cases, wellness records or performance reviews solely with a local credential after central access has been revoked. The accepted availability cost is limited to the intersection of a cold restart and no connectivity; once unlocked, the full day continues offline. Credential-bound WebAuthn PRF unlock is not the default and is not being built now. It may be added later as an explicit capability if customer evidence warrants it: adding that option expands access, while removing it after customers rely on it would take access away.
 
 **Manager auto-assignment is resolved**, closing this document's only open item. Manager is a derived permission evaluated from `managed_by` at query time, never a stored membership role. The previous framing left it ambiguous whether a manual assignment and a derived one could coexist; G06 states that derivation supersedes rather than merges, which prevents a stale manual grant outliving the reporting line that justified it.
 

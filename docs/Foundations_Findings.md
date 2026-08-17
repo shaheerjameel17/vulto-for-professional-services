@@ -64,8 +64,13 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F100 | A003 said a missing protected fragment always produced structural absence after FDN-80 introduced schema-derived `Restricted` | `VPS-A003` | **Closed by FDN-48** — zero received bytes is preserved while A004 decides the render outcome |
 | F101 | FDN-48 assigned itself persistence before the required local encryption system exists | `VPS-A001`, Linear | **Closed by FDN-48 scope correction** — SQLite is disposable; FDN-50 persists Loro and FDN-52 owns encryption |
 | F102 | Additive record properties were preserved without proving they were JSON-native | `VPS-A002`, Repository | **Closed by FDN-48** — complete records reject runtime-specific values before materialization |
+| F103 | FDN-50 was required to persist Loro before the issue owning mandatory local encryption | `VPS-A003`, Linear | **Closed by FDN-84 extraction** — sealed local storage now blocks FDN-50, which continues to block the remaining FDN-52 work |
+| F104 | `managed_by` has two canonical representations and no reconciliation rule | `VPS-A001`, `VPS-A002`, `VRS-F037` | **Open, raised not decided** — must close before FDN-50 defines the Loro layout |
+| F105 | FDN-50 claimed an application-facing read/write path before the permission interceptor | `VPS-A004`, Linear | **Closed by FDN-50 scope correction** — only Worker-private proof seams exist before FDN-53 |
+| F106 | A session-token-keyed store cannot state how it reopens after an offline cold restart | `VPS-A003`, `VPS-F001`, Linear | **Closed by founder ruling** — every cold restart requires one online, server-authorized unlock; offline operation continues after it |
+| F107 | FDN-84's selected unlock still depends on session infrastructure owned downstream, while FDN-63 also claimed local encrypted storage | `VPS-F001`, Linear | **Open, dependency remains** — FDN-63's duplicate is corrected; the minimum real session checkpoint still has no upstream owner |
 
-**Forty-nine findings, forty-four closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Fifty-four findings, forty-seven closed.** Seven stay open. F70, F73, F85, F104 and F107 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -881,6 +886,64 @@ FDN-48 claimed durable SQLite and VFS ownership while A003-T04 requires all loca
 The executable record schemas preserved unknown additive properties, but Zod's passthrough accepted runtime-specific values inside them. A JavaScript `Date` could therefore pass the TypeScript boundary even though Rust and JSON do not share that representation; canonicalization would silently change it rather than fail. That is the same failure class F80 exposed at the database boundary.
 
 **Correction.** The complete node and edge object is now recursively constrained to JSON-native values before materialization, not only its named fields and edge metadata. Unknown properties remain additive and preserved, while `Date`, `undefined`, class instances and non-finite numbers fail loudly.
+
+---
+
+### F103 — FDN-50 was required to persist Loro before the issue owning mandatory local encryption
+
+FDN-48 correctly stayed in memory because A003-T04 requires every local device store to be AES-256 encrypted with a key derived from the authenticated session and never stored alongside the data. Its F101 correction assigned canonical Loro persistence to FDN-50 and local-storage encryption to FDN-52. Linear then made FDN-50 block FDN-52.
+
+That order is impossible. A serialized Loro snapshot or update is readable graph state. Tier 0 and Tier 2 are not exceptions to A003-T04, and Tier 1 or Tier 3 end-to-end encryption does not substitute for the device-store layer. FDN-50 could satisfy its restart criterion only by writing prohibited plaintext or by presenting a test-only fake as durable production behavior.
+
+**Correction.** FDN-84 extracts the A003-T04 sealed local store and offline-unlock mechanism from FDN-52 and blocks FDN-50. FDN-50 continues to block FDN-52's remaining privacy-tier partitioning, reader-key, envelope-wrapping, grant, revocation, rotation and retention work. The dependency is now FDN-84 → FDN-50 → FDN-52, with one owner for each layer.
+
+---
+
+### F104 — `managed_by` has two canonical representations and no reconciliation rule
+
+`VPS-A001` chose Loro partly for its Movable Tree and explicitly prohibits replacing the reporting hierarchy with flat parent pointers. `VRS-F037` says the live `managed_by` hierarchy uses that tree so concurrent moves cannot create a cycle. `VPS-A002` separately requires every `managed_by` relationship to be a first-class UUID edge with half-open effective dates and preserved history. FDN-48 materializes and validates those edge records.
+
+The documents never state which representation owns the current parent or how a winning concurrent tree move deterministically creates, closes or rejects the corresponding temporal edges. Persisting both without that rule creates two answers to “who manages this employee”; deriving the tree from edges forfeits the guarantee Loro was selected to provide; deriving edges naively from the tree loses UUID provenance and temporal history.
+
+**Open.** F104 is not part of FDN-84 and does not block its sealed byte store. It must be decided before FDN-50 defines the canonical document layout. The correction must name one authority and a deterministic reconciliation protocol, then prove concurrent moves involving the same employee rather than only moves in different branches.
+
+---
+
+### F105 — FDN-50 claimed an application-facing path before the permission interceptor
+
+FDN-50's original scope promised an application-facing offline read/write path. FDN-48 deliberately exposes no production query method: FDN-53 is the first issue allowed to wrap its private executor with the permission interceptor. FDN-53 also owns interception of mutation paths under `VPS-A004`.
+
+Exposing either path from FDN-50 would make the issue intended to add persistence also create the first permission bypass. Calling it “offline” changes where the check runs, not whether the check is required.
+
+**Correction.** FDN-50 now owns only Worker-private mutation, reopening, extraction and materialization seams. Its offline query criterion is proven through a test-only/private executor. FDN-53 remains the first application-callable read and write path.
+
+---
+
+### F106 — offline cold restart has no stated key-recovery path
+
+`VPS-A003` says every feature works offline, and FDN-50 requires local changes to survive process and device restarts. A003-T04 and `VPS-F001` G04 say the local AES-256 store is keyed from the session token and the key is never stored alongside the data. On web, `VPS-F001` also makes the session a secure httpOnly cookie.
+
+After a browser or device restart without connectivity, the Worker cannot read that cookie and a memory-only derived key no longer exists. Storing the raw token or AES key would defeat the requirement. The documents therefore specify both offline cold reopening and a key source unavailable to the component that must reopen the store, without stating the bridge between them.
+
+**Closed by founder ruling.** Every cold restart requires one online, server-authorized unlock. The deciding factor is revocation, not convenience: Vulto Roster holds salaries, grievance cases, wellness records and performance reviews. If a local WebAuthn credential could unlock the store by itself, an offboarded person could continue decrypting that HR data indefinitely while the device remained disconnected, despite central revocation and the commitments in [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. Under the selected behavior, every cold restart is a revocation checkpoint. An offboarded person cannot reopen the product after a fresh boot because the server denies the unlock.
+
+The accepted cost is explicit: a user who has both cold-restarted and lost connectivity cannot open Vulto in that window. Offline operation itself is unchanged. Once an authorized online unlock succeeds, the complete product works without the network until the next cold restart.
+
+WebAuthn PRF is not universally available across browsers and authenticators, so the selected online path would have to exist as a fallback even if credential-bound unlock were supported. Credential-bound unlock would therefore add another security and recovery surface rather than replace this one, and the restrained default matches Vulto's product philosophy. The ruling remains revisable if customer evidence after launch shows that the cold-start limit genuinely blocks work. Moving from the selected behavior to an optional credential-bound unlock is additive; reversing that move later would take access away from customers who had come to rely on it, the same asymmetry recorded for FDN-80.
+
+`VPS-A003` and `VPS-F001` now qualify the offline promise, define the online session checkpoint and carry real revocation and cold-restart acceptance criteria.
+
+---
+
+### F107 — FDN-84's unlock provider is owned downstream, and FDN-63 also claims local encrypted storage
+
+FDN-84 is now the prerequisite for FDN-50 and is intended to be built next. The F106 ruling removes the need for FDN-84 to register a passkey or depend on WebAuthn PRF, but the selected design still needs an authenticated session and a server-authorized checkpoint that releases or derives volatile unwrap material. FDN-60 owns authentication and session lifecycle and is currently downstream of FDN-53. The existing blocking order is FDN-84 → FDN-50 → FDN-52 → FDN-53 → FDN-60; making all of FDN-60 block FDN-84 would close a dependency cycle.
+
+There is no Better Auth implementation in the repository today. The dependency tangle is therefore **smaller but still blocking**: FDN-84 no longer needs passkey registration, PRF-capable browser or authenticator support, or `@better-auth/passkey`, but it cannot prove its defining cold-restart and revocation behavior without a real current-session validation path. Supplying a test-only key provider would prove AES-GCM but would not close FDN-84.
+
+FDN-63's duplicate “local encrypted storage” claim can be resolved now and has been corrected in Linear. FDN-84 owns the sealed local byte store and its cold-restart unlock. FDN-63 consumes that store while owning device registration, trust, authorized bootstrap and revocation orchestration.
+
+**Open.** The minimum real session-validation and unlock-grant substrate must move ahead of or into FDN-84 without importing FDN-60's full workspace-creation and membership scope. Until that owner and dependency are corrected, FDN-84 remains blocked from implementation. No implementation should present an injected test key as closure.
 
 ---
 
