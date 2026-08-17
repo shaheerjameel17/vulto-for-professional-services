@@ -74,3 +74,25 @@ export {
   type WireEdgeType,
   type WireNodeType,
 } from "./records";
+
+export {
+  MEMBERSHIP_PROJECTION_STATES,
+  USER_STATUSES,
+  WORKSPACE_MEMBERSHIP_STATUSES,
+  WORKSPACE_ROLES,
+  WORKSPACE_STATUSES,
+  membershipProjectionStateSchema,
+  passkeyRegistrationInputSchema,
+  parseWorkspaceRoles,
+  serializeWorkspaceRoles,
+  userStatusSchema,
+  workspaceMembershipStatusSchema,
+  workspaceRoleSchema,
+  workspaceStatusSchema,
+  type MembershipProjectionState,
+  type PasskeyRegistrationInput,
+  type UserStatus,
+  type WorkspaceMembershipStatus,
+  type WorkspaceRole,
+  type WorkspaceStatus,
+} from "./auth";

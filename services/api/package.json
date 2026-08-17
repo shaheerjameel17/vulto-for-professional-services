@@ -5,9 +5,12 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./auth": "./src/auth/index.ts",
     "./router": "./src/router.ts"
   },
   "scripts": {
+    "db:generate": "drizzle-kit generate --config drizzle.config.ts",
+    "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json",
@@ -15,15 +18,19 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@better-auth/passkey": "1.6.29",
     "@fastify/cors": "11.3.0",
     "@trpc/server": "11.18.0",
     "@vulto/schema": "workspace:*",
+    "better-auth": "1.6.29",
     "drizzle-orm": "0.45.2",
     "fastify": "5.11.3",
     "postgres": "3.4.9"
   },
   "devDependencies": {
     "@types/node": "24.13.3",
+    "auth": "1.6.29",
+    "drizzle-kit": "0.31.10",
     "tsx": "4.23.12",
     "typescript": "5.9.3"
   }

@@ -130,7 +130,7 @@ Note that tRPC is the internal contract only. [[VPS-F009_Vulto_Sync_API|VPS-F009
 
 ## Authentication
 
-**Better Auth.** Self-hosted, TypeScript-native, database-first. Its organizations plugin maps directly onto the Workspace, WorkspaceMembership and role model in [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]]. Lucia, the prior standard, is in maintenance mode and no longer recommended by its author.
+**Better Auth.** Self-hosted, TypeScript-native, database-first. Its organization/member tables are the online admission and revocation control plane for the Workspace and WorkspaceMembership graph projection defined in [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]]. Both representations share stable identifiers and one role enum; grants wait for projection confirmation, removals deny centrally first, and disagreement fails closed. Lucia, the prior standard, is in maintenance mode and no longer recommended by its author.
 
 Passkeys and WebAuthn PRF are required rather than optional, because [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 3 key recovery depends on the device's native secure keychain.
 

@@ -11,11 +11,14 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@better-auth/passkey": "1.6.29",
     "@vulto/api": "workspace:*",
     "@vulto/graph": "workspace:*",
     "@vulto/tokens": "workspace:*",
     "@vulto/ui": "workspace:*",
+    "better-auth": "1.6.29",
     "lucide-react": "^0.474.0",
+    "nanostores": "1.5.1",
     "next": "15.1.6",
     "react": "19.0.0",
     "react-dom": "19.0.0"

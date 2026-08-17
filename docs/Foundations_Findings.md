@@ -64,8 +64,21 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F100 | A003 said a missing protected fragment always produced structural absence after FDN-80 introduced schema-derived `Restricted` | `VPS-A003` | **Closed by FDN-48** — zero received bytes is preserved while A004 decides the render outcome |
 | F101 | FDN-48 assigned itself persistence before the required local encryption system exists | `VPS-A001`, Linear | **Closed by FDN-48 scope correction** — SQLite is disposable; FDN-50 persists Loro and FDN-52 owns encryption |
 | F102 | Additive record properties were preserved without proving they were JSON-native | `VPS-A002`, Repository | **Closed by FDN-48** — complete records reject runtime-specific values before materialization |
+| F103 | FDN-50 was required to persist Loro before the issue owning mandatory local encryption | `VPS-A003`, Linear | **Closed by FDN-84 extraction** — sealed local storage now blocks FDN-50, which continues to block the remaining FDN-52 work |
+| F104 | `managed_by` has two canonical representations and no reconciliation rule | `VPS-A001`, `VPS-A002`, `VRS-F037` | **Open, raised not decided** — must close before FDN-50 defines the Loro layout |
+| F105 | FDN-50 claimed an application-facing read/write path before the permission interceptor | `VPS-A004`, Linear | **Closed by FDN-50 scope correction** — only Worker-private proof seams exist before FDN-53 |
+| F106 | A session-token-keyed store cannot state how it reopens after an offline cold restart | `VPS-A003`, `VPS-F001`, Linear | **Closed by founder ruling** — every cold restart requires one online, server-authorized unlock; offline operation continues after it |
+| F107 | FDN-84's selected unlock still depends on session infrastructure owned downstream, while FDN-63 also claimed local encrypted storage | `VPS-F001`, Linear | **Closed by FDN-60 split and implementation** — FDN-60 now provides the upstream exact-workspace session guard; FDN-63's duplicate was removed |
+| F108 | F001's API contracts expose identity and session tokens that its httpOnly-cookie boundary says application code must not receive | `VPS-F001` | **Closed by FDN-60** — browser JSON is recursively credential-free and authenticated identity derives from the host-only httpOnly cookie |
+| F109 | F001 specifies bcrypt, but the selected Better Auth release uses scrypt by default | `VPS-F001`, Registry | **Closed by FDN-60** — the live 1.6.29 release is pinned and its native scrypt default is verified against the stored credential |
+| F110 | F001 still models WorkspaceMembership as an edge after A002 made it a lifecycle-bearing node | `VPS-F001`, `VPS-A002`, Repository | **Closed by source correction** — F001 now requires one membership node plus `membership_of` and `membership_in`; FDN-85 owns atomic projection |
+| F111 | An account session can stay valid after one workspace membership is revoked | `VPS-F001`, `VPS-A002`, Linear | **Closed by FDN-60** — the server-only guard checks the exact active, confirmed workspace membership on every call |
+| F112 | Better Auth's organization/member tables and the local-first WorkspaceMembership graph have no authority or reconciliation rule | `VPS-A003`, `VPS-F001` | **Closed by founder ruling and FDN-60 substrate** — central admission is authoritative; grants wait, removals deny first, and FDN-85 projects history |
+| F113 | The session schedule is undefined, and Better Auth cookie caching can delay revocation | `VPS-F001`, Registry | **Closed by FDN-60** — seven-day rolling database sessions refresh after one day and authorization uses no cookie cache |
+| F114 | FDN-60 is blocked by work downstream of FDN-84 even though FDN-84 now needs FDN-60's session substrate first | Linear | **Closed by issue split** — FDN-85 and FDN-86 hold the graph/email remainder and FDN-60 now blocks FDN-84 without a cycle |
+| F115 | Better Auth could not infer the client IP through the Fastify-to-Fetch bridge, collapsing rate limits into one shared bucket | Repository, Browser verification | **Closed by FDN-60** — Fastify overwrites a private bridge header from its unproxied socket address before Better Auth rate-limit keying |
 
-**Forty-nine findings, forty-four closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Sixty-two findings, fifty-six closed.** Six stay open. F70, F73, F85 and F104 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -881,6 +894,146 @@ FDN-48 claimed durable SQLite and VFS ownership while A003-T04 requires all loca
 The executable record schemas preserved unknown additive properties, but Zod's passthrough accepted runtime-specific values inside them. A JavaScript `Date` could therefore pass the TypeScript boundary even though Rust and JSON do not share that representation; canonicalization would silently change it rather than fail. That is the same failure class F80 exposed at the database boundary.
 
 **Correction.** The complete node and edge object is now recursively constrained to JSON-native values before materialization, not only its named fields and edge metadata. Unknown properties remain additive and preserved, while `Date`, `undefined`, class instances and non-finite numbers fail loudly.
+
+---
+
+### F103 — FDN-50 was required to persist Loro before the issue owning mandatory local encryption
+
+FDN-48 correctly stayed in memory because A003-T04 requires every local device store to be AES-256 encrypted and forbids persisting its plaintext key alongside the data. Its then-current wording tied that key to the authenticated session. The F101 correction assigned canonical Loro persistence to FDN-50 and local-storage encryption to FDN-52. Linear then made FDN-50 block FDN-52.
+
+That order is impossible. A serialized Loro snapshot or update is readable graph state. Tier 0 and Tier 2 are not exceptions to A003-T04, and Tier 1 or Tier 3 end-to-end encryption does not substitute for the device-store layer. FDN-50 could satisfy its restart criterion only by writing prohibited plaintext or by presenting a test-only fake as durable production behavior.
+
+**Correction.** FDN-84 extracts the A003-T04 sealed local store and offline-unlock mechanism from FDN-52 and blocks FDN-50. FDN-50 continues to block FDN-52's remaining privacy-tier partitioning, reader-key, envelope-wrapping, grant, revocation, rotation and retention work. The dependency is now FDN-84 → FDN-50 → FDN-52, with one owner for each layer.
+
+---
+
+### F104 — `managed_by` has two canonical representations and no reconciliation rule
+
+`VPS-A001` chose Loro partly for its Movable Tree and explicitly prohibits replacing the reporting hierarchy with flat parent pointers. `VRS-F037` says the live `managed_by` hierarchy uses that tree so concurrent moves cannot create a cycle. `VPS-A002` separately requires every `managed_by` relationship to be a first-class UUID edge with half-open effective dates and preserved history. FDN-48 materializes and validates those edge records.
+
+The documents never state which representation owns the current parent or how a winning concurrent tree move deterministically creates, closes or rejects the corresponding temporal edges. Persisting both without that rule creates two answers to “who manages this employee”; deriving the tree from edges forfeits the guarantee Loro was selected to provide; deriving edges naively from the tree loses UUID provenance and temporal history.
+
+**Open.** F104 is not part of FDN-84 and does not block its sealed byte store. It must be decided before FDN-50 defines the canonical document layout. The correction must name one authority and a deterministic reconciliation protocol, then prove concurrent moves involving the same employee rather than only moves in different branches.
+
+---
+
+### F105 — FDN-50 claimed an application-facing path before the permission interceptor
+
+FDN-50's original scope promised an application-facing offline read/write path. FDN-48 deliberately exposes no production query method: FDN-53 is the first issue allowed to wrap its private executor with the permission interceptor. FDN-53 also owns interception of mutation paths under `VPS-A004`.
+
+Exposing either path from FDN-50 would make the issue intended to add persistence also create the first permission bypass. Calling it “offline” changes where the check runs, not whether the check is required.
+
+**Correction.** FDN-50 now owns only Worker-private mutation, reopening, extraction and materialization seams. Its offline query criterion is proven through a test-only/private executor. FDN-53 remains the first application-callable read and write path.
+
+---
+
+### F106 — offline cold restart has no stated key-recovery path
+
+Before this ruling, `VPS-A003` said every feature worked offline without qualifying cold restart, while FDN-50 required local changes to survive process and device restarts. A003-T04 and `VPS-F001` G04 said the local AES-256 store was keyed from the session token and the key was never stored alongside the data. On web, `VPS-F001` also made the session a secure httpOnly cookie.
+
+After a browser or device restart without connectivity, the Worker could not read that cookie and a memory-only derived key no longer existed. Storing the raw token or AES key would have defeated the requirement. The documents therefore specified both offline cold reopening and a key source unavailable to the component that had to reopen the store, without stating the bridge between them.
+
+**Closed by founder ruling.** Every cold restart requires one online, server-authorized unlock. The deciding factor is revocation, not convenience: Vulto Roster holds salaries, grievance cases, wellness records and performance reviews. If a local WebAuthn credential could unlock the store by itself, an offboarded person could continue decrypting that HR data indefinitely while the device remained disconnected, despite central revocation and the commitments in [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. Under the selected behavior, every cold restart is a revocation checkpoint. An offboarded person cannot reopen the product after a fresh boot because the server denies the unlock.
+
+The accepted cost is explicit: a user who has both cold-restarted and lost connectivity cannot open Vulto in that window. Offline operation itself is unchanged. Once an authorized online unlock succeeds, the complete product works without the network until the next cold restart.
+
+WebAuthn PRF is not universally available across browsers and authenticators, so the selected online path would have to exist as a fallback even if credential-bound unlock were supported. Credential-bound unlock would therefore add another security and recovery surface rather than replace this one, and the restrained default matches Vulto's product philosophy. The ruling remains revisable if customer evidence after launch shows that the cold-start limit genuinely blocks work. Moving from the selected behavior to an optional credential-bound unlock is additive; reversing that move later would take access away from customers who had come to rely on it, the same asymmetry recorded for FDN-80.
+
+`VPS-A003` and `VPS-F001` now qualify the offline promise, define the online session checkpoint and carry real revocation and cold-restart acceptance criteria.
+
+---
+
+### F107 — FDN-84's unlock provider is owned downstream, and FDN-63 also claims local encrypted storage
+
+FDN-84 is now the prerequisite for FDN-50 and is intended to be built next. The F106 ruling removes the need for FDN-84 to register a passkey or depend on WebAuthn PRF, but the selected design still needs an authenticated session and a server-authorized checkpoint that releases or derives volatile unwrap material. FDN-60 owns authentication and session lifecycle and is currently downstream of FDN-53. The existing blocking order is FDN-84 → FDN-50 → FDN-52 → FDN-53 → FDN-60; making all of FDN-60 block FDN-84 would close a dependency cycle.
+
+There is no Better Auth implementation in the repository today. The dependency tangle is therefore **smaller but still blocking**: FDN-84 no longer needs passkey registration, PRF-capable browser or authenticator support, or `@better-auth/passkey`, but it cannot prove its defining cold-restart and revocation behavior without a real current-session validation path. Supplying a test-only key provider would prove AES-GCM but would not close FDN-84.
+
+FDN-63's duplicate “local encrypted storage” claim can be resolved now and has been corrected in Linear. FDN-84 owns the sealed local byte store and its cold-restart unlock. FDN-63 consumes that store while owning device registration, trust, authorized bootstrap and revocation orchestration.
+
+**Closed by FDN-60 split and implementation.** FDN-60 was narrowed to account, login and revocable workspace sessions and moved ahead of FDN-84. FDN-85 now owns graph projection behind FDN-53; FDN-86 owns verification, invitations and recovery behind FDN-56. The implemented server-only guard revalidates the database session, active user, exact workspace and active confirmed membership and can be called inside FDN-84's unlock operation without importing either downstream scope.
+
+---
+
+### F108 — the API contracts defeat the httpOnly session boundary
+
+`VPS-F001` says web sessions use secure httpOnly cookies. It then declares sign-up, email sign-in, passkey sign-in and invitation acceptance as returning `{ sessionToken }`; `device.register` accepts that token as an ordinary argument; and `auth.registerPasskey` accepts a caller-supplied `userId`.
+
+Those are not equivalent representations. Returning a session token in a browser response makes the credential available to application JavaScript, which is exactly what httpOnly prevents. Accepting identity as an input also asks each call site to preserve an authority fact the server can derive from the authenticated request. A caller-supplied `userId` on passkey registration is an avoidable identity-confusion and object-reference surface.
+
+Better Auth's actual web model is cookie-based: the browser carries the session token in an httpOnly cookie, and the server derives the user and session from request headers. The product API should return public user/session metadata, never the raw token. Passkey registration, device registration and every authenticated operation should derive the user from the validated request. Native keychain handling belongs to the later native client and does not justify exposing the web token.
+
+**Closed by FDN-60.** `VPS-F001` now declares public user/session metadata rather than credentials. Fastify carries Better Auth's host-only httpOnly cookie without returning the token in application JSON; the response boundary recursively removes credential fields, and real Chromium proves no token appears in network JSON, application-readable cookies, localStorage or sessionStorage. Passkey pre-authentication uses a signed single-use server context rather than a caller-supplied user ID.
+
+---
+
+### F109 — F001 pins the wrong password hashing behavior
+
+`VPS-F001` says Better Auth's built-in credential provider uses bcrypt. The live Better Auth documentation for the selected stable release says its default is scrypt, using Node's native memory-hard implementation. The repository contains neither Better Auth nor a bcrypt package today.
+
+Keeping the bcrypt sentence would require overriding the selected authentication library and introducing another hashing implementation solely to preserve prose that does not state a product requirement. Using the library default preserves the intended property — passwords are slow-hashed in Better Auth's credential store and never enter the graph — without additional native or security-sensitive surface.
+
+**Closed by FDN-60.** `better-auth@1.6.29` is pinned exactly after a fresh registry check, F001 names its scrypt default, and the real-PostgreSQL test verifies both the published salt/hash form and successful/failed verification through Better Auth's own scrypt verifier.
+
+---
+
+### F110 — WorkspaceMembership is still an edge in F001 and a node everywhere executable
+
+F60 corrected `VPS-A002` before FDN-60 was scoped: WorkspaceMembership is a node because it has its own Active/Revoked lifecycle. Its endpoints are the registered `membership_of` edge to User and `membership_in` edge to Workspace. The executable registry carries exactly that node and those two edges.
+
+`VPS-F001` still calls WorkspaceMembership an edge throughout, and G02 says it connects User directly to Workspace. Its atomic workspace-creation criterion therefore names a graph shape that the canonical registry rejects.
+
+**Closed by source correction and scope extraction.** F001 now names the same one-node/two-edge shape as A002 and the executable registry. FDN-85 owns that atomic graph projection and blocks claiming workspace bootstrap complete; FDN-60 implements only the deliberately central, non-admitting pending row and its confirmation boundary.
+
+---
+
+### F111 — “valid session” is not enough to reopen one workspace
+
+`VPS-A002` explicitly allows one User to hold WorkspaceMembership in more than one workspace. Better Auth sessions identify the account, not permanent authorization to every workspace the account has ever joined. A person can therefore remain correctly signed in to Vulto while their membership in one company has been revoked.
+
+FDN-84 protects a particular workspace's local HR store. If its cold-restart checkpoint asks only whether the account session is valid, an offboarded person can sign in for another workspace and use that valid account session to reopen the former employer's local data. That defeats the revocation reason F106 selected Option 2.
+
+**Closed by FDN-60.** `requireCurrentWorkspaceSession(headers, workspaceId)` is server-only and fails with one non-enumerating error unless the database session is unexpired, the user and workspace are active, and the same user has an active, projection-confirmed membership in that exact workspace. Real-PostgreSQL proof revokes Workspace A while preserving B, then suspends the account and denies both. FDN-84 calls this guard inside its future unlock operation; no public check-then-unlock route was added.
+
+---
+
+### F112 — the central membership row and local membership graph have no named authority
+
+Better Auth's organization plugin persists `organization` and `member` tables in PostgreSQL. Vulto's architecture persists Workspace and WorkspaceMembership in the local-first Loro graph and says there is one role system, not two. The documents say the plugin “maps directly” onto the graph but never define whether the central row or graph node owns active/revoked state and role, how their identifiers correspond, or what happens when they disagree.
+
+FDN-84 makes that omission blocking. A cold-restart revocation checkpoint needs an online authority it can query before the local graph is decrypted. Making the unopened graph the authority recreates the dependency cycle; making a second unrelated membership table authoritative creates the drift the “one role system” rule prohibits.
+
+**Closed by founder ruling and FDN-60 substrate.** Better Auth's organization/member tables are the server admission and revocation control plane; WorkspaceMembership is the deterministic local graph projection used for offline permission evaluation. Both consume the shared fixed role enum and stable identifiers. A pending central grant cannot authorize until projection confirmation; revocation changes the central row to denied before its historical graph projection completes. FDN-85 owns the sole projection/reconciliation command path. The public Better Auth organization mutation routes remain closed so no second write path exists.
+
+---
+
+### F113 — “defined schedule” defines no schedule, and a cache can outlive revocation
+
+`VPS-F001` says sessions expire on a defined schedule but supplies no lifetime, renewal interval or authoritative store. Better Auth defaults to a seven-day rolling session renewed after one day of use. It also offers a signed cookie cache, and its current documentation states plainly that a revoked session may remain accepted on another device until that cache expires unless the cache is bypassed.
+
+That optional performance feature conflicts with F106's reason for requiring an online checkpoint: the server must get a current say after every cold restart, not an answer cached before offboarding.
+
+**Closed by FDN-60.** PostgreSQL-backed sessions use the approved seven-day rolling lifetime and one-day renewal interval. Better Auth's cookie cache is disabled, and the exact-workspace guard explicitly requests database revalidation. Controlled-time tests prove creation lifetime, renewal after the update age and rejection after expiry. A valid session is sufficient; cold restart does not force another credential ceremony.
+
+---
+
+### F114 — FDN-60's issue-wide blockers make its newly required first slice impossible
+
+FDN-60 currently bundles login and session lifecycle with graph workspace creation, role changes, invitations and password recovery. Linear blocks the whole issue on FDN-53 and FDN-56. FDN-53 is downstream of FDN-52, which is downstream of FDN-50, which is downstream of FDN-84. Making the unchanged FDN-60 block FDN-84 would close the cycle the F107 memo identified.
+
+The blockers are valid for the bundled remainder. Graph membership changes need the permission layer. Invitations and password recovery need the governed email service. Neither is required to establish a real database session and server-side workspace-session guard.
+
+**Closed by issue split.** Linear now narrows FDN-60 to the account, login, passkey, database-session and exact-workspace authorization substrate. FDN-85 owns atomic graph workspace/membership projection downstream of FDN-53; FDN-86 owns email-backed verification, invitations and recovery downstream of FDN-56 and FDN-85. FDN-60 now blocks FDN-84 without a dependency cycle.
+
+---
+
+### F115 — the Fastify bridge hid the client IP from Better Auth
+
+The first real-Chromium run emitted a Better Auth warning that rate limiting could not determine a client IP. Fastify knew the unproxied socket address, but converting its request into the Web `Request` Better Auth consumes did not carry that trusted transport fact. Better Auth therefore fell back to one shared per-path bucket. The endpoint was limited, but one person's attempts could exhaust the bucket for everyone and a production deployment could not make the intended per-client claim.
+
+Trusting an incoming `X-Forwarded-For` header would have replaced the shared bucket with a spoofable one. Fastify's `trustProxy` remains disabled. The bridge now overwrites a private `x-vulto-client-ip` header from `request.ip`, and Better Auth reads only that header for rate-limit and session IP behavior. A caller cannot choose its value. The subsequent real browser run is warning-free, while hostile API tests still prove password and passkey authentication limits.
+
+**Closed by FDN-60.** The correction is executable at the Fastify/Better Auth boundary and was found by real transport proof rather than a simulated request alone.
 
 ---
 
