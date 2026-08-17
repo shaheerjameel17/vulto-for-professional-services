@@ -8,6 +8,13 @@
       "when": 1786979925445,
       "tag": "0000_worthless_the_twelve",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1786994904722,
+      "tag": "0001_strong_bucky",
+      "breakpoints": true
     }
   ]
 }

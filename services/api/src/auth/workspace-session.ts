@@ -7,7 +7,7 @@ import {
 import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
-import { member, organization, session, user } from "./schema.js";
+import { deviceUnlockSecret, member, organization, session, user } from "./schema.js";
 
 export interface CurrentWorkspaceSession {
   sessionId: string;
@@ -132,7 +132,13 @@ export async function confirmWorkspaceAdmission(
   }
 }
 
-/** Deny centrally first. FDN-85 confirms the historical graph projection later. */
+/**
+ * Deny centrally first. FDN-85 confirms the historical graph projection
+ * later. This also revokes every device's sealed local-store unlock secret
+ * for this user in this workspace (FDN-84): the device's own key half and
+ * its ciphertext are untouched, but the server denies the next unlock
+ * attempt at the cold-restart checkpoint before either half is combined.
+ */
 export async function revokeWorkspaceAdmission(
   membershipIdInput: string,
 ): Promise<void> {
@@ -153,6 +159,16 @@ export async function revokeWorkspaceAdmission(
         and(
           eq(session.userId, revoked.userId),
           eq(session.activeOrganizationId, revoked.workspaceId),
+        ),
+      );
+
+    await transaction
+      .update(deviceUnlockSecret)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(deviceUnlockSecret.workspaceId, revoked.workspaceId),
+          eq(deviceUnlockSecret.userId, revoked.userId),
         ),
       );
   });
@@ -189,5 +205,9 @@ export async function suspendUserAndRevokeSessions(userIdInput: string): Promise
       .returning({ id: user.id });
     if (!suspended) throw new Error("Active user does not exist");
     await transaction.delete(session).where(eq(session.userId, userId));
+    await transaction
+      .update(deviceUnlockSecret)
+      .set({ revokedAt: new Date() })
+      .where(eq(deviceUnlockSecret.userId, userId));
   });
 }

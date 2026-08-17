@@ -91,6 +91,82 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
         scope.postMessage(success(request, { kind: "delta-batch-applied", ...result }));
         return;
       }
+      case "unlock-sealed-store": {
+        try {
+          await runtime.unlockSealedStore(request.workspaceId, request.apiOrigin);
+        } catch {
+          scope.postMessage(
+            errorResponse(
+              request.requestId,
+              "sealed-store-denied",
+              "The sealed local store could not be unlocked",
+              false,
+            ),
+          );
+          return;
+        }
+        scope.postMessage(success(request, { kind: "sealed-store-unlocked" }));
+        return;
+      }
+      case "lock-sealed-store": {
+        runtime.lockSealedStore();
+        scope.postMessage(success(request, { kind: "sealed-store-locked" }));
+        return;
+      }
+      case "get-sealed-store-status": {
+        scope.postMessage(
+          success(request, {
+            kind: "sealed-store-status",
+            locked: runtime.sealedStoreLocked,
+          }),
+        );
+        return;
+      }
+      case "seal-payload": {
+        try {
+          await runtime.sealPayload(
+            request.storeKey,
+            new Uint8Array(request.plaintext),
+          );
+        } catch (error) {
+          scope.postMessage(
+            errorResponse(
+              request.requestId,
+              "sealed-store-locked",
+              error instanceof Error ? error.message : "The sealed store is locked",
+              false,
+            ),
+          );
+          return;
+        }
+        scope.postMessage(success(request, { kind: "payload-sealed" }));
+        return;
+      }
+      case "open-payload": {
+        try {
+          const plaintext = await runtime.openPayload(request.storeKey);
+          scope.postMessage(
+            success(request, {
+              kind: "payload-opened",
+              plaintext: plaintext ? plaintext.slice().buffer : null,
+            }),
+          );
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : "Unknown sealed store error";
+          scope.postMessage(
+            errorResponse(
+              request.requestId,
+              message.includes("locked")
+                ? "sealed-store-locked"
+                : "sealed-store-cannot-open",
+              message,
+              false,
+            ),
+          );
+        }
+        return;
+      }
       case "get-availability": {
         if (runtime.workspaceId === null) {
           scope.postMessage(

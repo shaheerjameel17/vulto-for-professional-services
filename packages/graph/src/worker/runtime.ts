@@ -1,6 +1,7 @@
 import { LoroDoc } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import type { GraphAvailability } from "../protocol";
+import { SealedStore } from "./storage/sealed-store";
 import { SQLiteGraphIndex } from "./storage/sqlite-graph-index";
 
 export interface RuntimeDeltaBatchResult {
@@ -14,6 +15,13 @@ export class LocalGraphWorkerRuntime {
   #document: LoroDoc | null = null;
   #index: SQLiteGraphIndex | null = null;
   #workspaceId: string | null = null;
+  /**
+   * Every new Worker instance starts with a fresh, locked SealedStore.
+   * There is no mechanism anywhere in this class that carries an unlocked
+   * state from a prior instance — a cold restart, browser restart, or a
+   * plain tab reload always requires unlockSealedStore() again.
+   */
+  #sealedStore = new SealedStore();
 
   get availability(): GraphAvailability {
     return this.#availability;
@@ -21,6 +29,26 @@ export class LocalGraphWorkerRuntime {
 
   get workspaceId(): string | null {
     return this.#workspaceId;
+  }
+
+  get sealedStoreLocked(): boolean {
+    return !this.#sealedStore.isUnlocked;
+  }
+
+  async unlockSealedStore(workspaceId: string, apiOrigin: string): Promise<void> {
+    await this.#sealedStore.unlockOnline(workspaceId, apiOrigin);
+  }
+
+  lockSealedStore(): void {
+    this.#sealedStore.lock();
+  }
+
+  async sealPayload(storeKey: string, plaintext: Uint8Array): Promise<void> {
+    await this.#sealedStore.put(storeKey, plaintext);
+  }
+
+  async openPayload(storeKey: string): Promise<Uint8Array | null> {
+    return this.#sealedStore.get(storeKey);
   }
 
   async initialize(workspaceId: string): Promise<void> {
@@ -64,6 +92,7 @@ export class LocalGraphWorkerRuntime {
     this.#document = null;
     this.#workspaceId = null;
     this.#availability = { state: "mid-sync" };
+    this.#sealedStore.dispose();
   }
 
   #requireIndex(): SQLiteGraphIndex {

@@ -231,6 +231,52 @@ export const passkeyRegistrationContext = pgTable(
   ],
 );
 
+/**
+ * The server-held half of a device's sealed local-store unlock secret
+ * (FDN-84 / A003-T04). This is not the storage key itself and it decrypts
+ * nothing by itself — it is combined on-device with a device-held half that
+ * never leaves IndexedDB. Deleting/marking a row here is the revocation
+ * kill switch: it denies the next unlock attempt for that device without
+ * touching the device's own copy of the ciphertext.
+ */
+export const deviceUnlockSecret = pgTable(
+  "device_unlock_secret",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    keyEpoch: integer("key_epoch").default(1).notNull(),
+    serverHalf: text("server_half").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    revokedAt: timestamp("revoked_at"),
+  },
+  (table) => [
+    uniqueIndex("device_unlock_secret_workspace_device_uidx").on(
+      table.workspaceId,
+      table.deviceId,
+    ),
+    index("device_unlock_secret_userId_idx").on(table.userId),
+  ],
+);
+
+export const deviceUnlockSecretRelations = relations(deviceUnlockSecret, ({ one }) => ({
+  organization: one(organization, {
+    fields: [deviceUnlockSecret.workspaceId],
+    references: [organization.id],
+  }),
+  user: one(user, {
+    fields: [deviceUnlockSecret.userId],
+    references: [user.id],
+  }),
+}));
+
 export const rateLimit = pgTable("rate_limit", {
   id: uuid("id")
     .default(sql`pg_catalog.gen_random_uuid()`)
