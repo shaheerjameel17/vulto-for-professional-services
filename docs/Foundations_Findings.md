@@ -59,8 +59,13 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F95 | A per-row sync marker cannot describe an absent row and can leak a denied record's existence | `VPS-A001` | **Closed by FDN-77** — availability is separate from rows and restricted placeholders derive only from type schema |
 | F96 | The shared Worker boundary had no package home in the repository structure | `VPS-A001` | **Closed by FDN-77** — `packages/graph` owns the client and validated local protocol; its runtime stays private |
 | F97 | `packages/schema` typechecked but could not be consumed as source by Next.js | Repository | **Closed by FDN-77** — internal source specifiers now resolve in both TypeScript and the application bundler |
+| F98 | The single-active relationship rule allowed two active targets and omitted `scoped_to_entity` | `VPS-A002`, Repository | **Closed by FDN-48** — one non-overlapping outgoing history per source and registered relationship |
+| F99 | Temporal edge intervals had no boundary semantics | `VPS-A002` | **Closed by FDN-48** — intervals are half-open `[effective_from, effective_to)` |
+| F100 | A003 said a missing protected fragment always produced structural absence after FDN-80 introduced schema-derived `Restricted` | `VPS-A003` | **Closed by FDN-48** — zero received bytes is preserved while A004 decides the render outcome |
+| F101 | FDN-48 assigned itself persistence before the required local encryption system exists | `VPS-A001`, Linear | **Closed by FDN-48 scope correction** — SQLite is disposable; FDN-50 persists Loro and FDN-52 owns encryption |
+| F102 | Additive record properties were preserved without proving they were JSON-native | `VPS-A002`, Repository | **Closed by FDN-48** — complete records reject runtime-specific values before materialization |
 
-**Forty-four findings, thirty-nine closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Forty-nine findings, forty-four closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -834,6 +839,48 @@ Mid-sync, aged-out and permission absence are query or subscription availability
 The schema package's internal imports named emitted `.js` files while the package exports its TypeScript source directly. TypeScript's bundler resolution accepted those specifiers, but the first legitimate browser consumer — `packages/graph` — made Next.js resolve the package and fail because no `.js` files exist in the source tree.
 
 **Correction.** Internal schema source specifiers are extensionless, matching the already-working source-package convention in `packages/ui`. The registry still typechecks and tests independently, and Next.js can now consume the public schema surface rather than requiring a duplicate validator in `packages/graph`.
+
+---
+
+### F98 — the single-active relationship rule allowed two active targets and omitted `scoped_to_entity`
+
+`VPS-A002` said a relationship was single-active *between a pair of nodes*. That key does not enforce the domain rule. One Employee could have simultaneous `managed_by` edges to two different managers because each source-target pair remained unique. Both managers would then appear to have a direct report, widening manager-level permission scope as well as corrupting the reporting line.
+
+The executable registry compounded the gap: it marked `managed_by` as single-active but omitted `scoped_to_entity`, even though `VRS-F003` explicitly requires at most one active Entity per Employee.
+
+**Correction.** The policy is `single-active-outgoing`: for each registered relationship, one source may have only one active target at any moment. Both current relationships are registered. FDN-48 enforces one open edge in SQLite and rejects every overlapping historical interval, including overlap between already-closed edges.
+
+---
+
+### F99 — temporal edge intervals had no boundary semantics
+
+The graph promoted `effective_from` and `effective_to` to first-class indexed fields but never said what happens at the exact instant one edge closes and its replacement opens. Inclusive ends would make both active at the handoff; inconsistent callers could produce different reporting lines from the same rows.
+
+**Correction.** Every interval is half-open: `[effective_from, effective_to)`. Null is unbounded. At the handoff timestamp the old relationship is inactive and the new one is active.
+
+---
+
+### F100 — A003 still said every absent protected fragment was structurally absent
+
+FDN-80 established that a device may render a `Restricted` placeholder from type schema even though it received zero bytes about the protected instance. `VPS-A003` still said omitting an unauthorized Tier 1 half *produced structural absence*, conflating what the device stores with how A004 renders a denial.
+
+**Correction.** The device still receives and materializes no ciphertext or instance metadata. A004 independently decides `None` versus schema-derived `Restricted`; neither outcome changes the sync guarantee.
+
+---
+
+### F101 — FDN-48 assigned itself persistence before local encryption exists
+
+FDN-48 claimed durable SQLite and VFS ownership while A003-T04 requires all local device storage to be AES-256 encrypted with a session-derived key. The key lifecycle belongs to FDN-52 and does not exist yet. Persisting readable SQLite pages in IndexedDB or OPFS would therefore violate the architecture in the issue intended to implement it. The issue also claimed deterministic rebuilding from a canonical Loro layout that FDN-50 owns and has not defined.
+
+**Correction.** FDN-48 owns an in-memory, disposable SQLite read model and deterministic materialization from validated graph records. FDN-50 owns canonical Loro persistence and extraction; FDN-52 owns local encryption and any later encrypted SQLite cache. Rebuilding from encrypted canonical state is the safe default until measured startup evidence justifies another encrypted copy.
+
+---
+
+### F102 — additive properties were not proven JSON-native
+
+The executable record schemas preserved unknown additive properties, but Zod's passthrough accepted runtime-specific values inside them. A JavaScript `Date` could therefore pass the TypeScript boundary even though Rust and JSON do not share that representation; canonicalization would silently change it rather than fail. That is the same failure class F80 exposed at the database boundary.
+
+**Correction.** The complete node and edge object is now recursively constrained to JSON-native values before materialization, not only its named fields and edge metadata. Unknown properties remain additive and preserved, while `Date`, `undefined`, class instances and non-finite numbers fail loudly.
 
 ---
 

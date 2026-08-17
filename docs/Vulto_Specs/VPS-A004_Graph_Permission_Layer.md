@@ -216,7 +216,7 @@ A query traversing from Node A to Node B via an edge operates under these rules:
 
 **Three kinds of absence must never be conflated.** A node absent through permission is absent permanently for that user and presents as though it never existed. A Tier 1 record absent through [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s retention window is absent only from local materialization, for an authorized user, and is one fetch away. A record absent mid-sync is absent transiently and resolves without user action.
 
-Conflating them means telling a user that a forbidden record can be requested, that a retrievable one cannot, or that a loading one needs action. All three are distinguishable at the application layer using the sync-status marker required by [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], and each has a defined visual treatment in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]].
+Conflating them means telling a user that a forbidden record can be requested, that a retrievable one cannot, or that a loading one needs action. All three are distinguishable through the query or subscription availability outcome required by [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], carried separately from rows, and each has a defined visual treatment in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]].
 
 ---
 
@@ -308,7 +308,7 @@ This gate runs after role permission and write authority have both passed. It ne
 | A004-T07 | An automated test suite MUST cover every role and Privacy Class combination in the default mapping, and every role and node type combination in the matrix. No deployment may reduce this coverage |
 | A004-T08 | A node type absent from the matrix MUST fall back to its Privacy Class default automatically. A node type reaching implementation with no defined behavior is a specification error, not something for application code to guess |
 | A004-T09 | Role evaluation MUST be identical regardless of which application issued the query. No application-specific permission path may exist |
-| A004-T10 | Permission absence, retention-window absence and mid-sync absence MUST be distinguishable at the application layer using the sync-status marker from [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], and MUST render per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s three defined states |
+| A004-T10 | Permission absence, retention-window absence and mid-sync absence MUST be distinguishable through the query or subscription availability outcome from [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], carried separately from rows, and MUST render per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s three defined states |
 | A004-T11 | For any bootstrap node type, the interceptor MUST additionally check write authority per [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] after role permission has passed, never as a substitute for it |
 | A004-T12 | Every aggregate MUST pass through the disclosure control mechanism defined here. A feature MUST NOT define its own threshold |
 | A004-T13 | An aggregate below threshold MUST be suppressed entirely. Rounding, noising or approximating a sub-threshold aggregate is prohibited |

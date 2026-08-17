@@ -160,6 +160,21 @@ describe("wire records", () => {
     expect(parsed.future_property).toEqual({ nested: [true, 4, null] });
   });
 
+  it("rejects runtime-specific values in additive properties", () => {
+    expect(() =>
+      nodeRecordSchema.parse({
+        ...standardEmployee,
+        runtime_date: new Date(NOW),
+      }),
+    ).toThrow(/JSON-native values only/);
+    expect(() =>
+      nodeRecordSchema.parse({
+        ...standardEmployee,
+        undefined_value: undefined,
+      }),
+    ).toThrow(/JSON-native values only/);
+  });
+
   it("enforces fixed lifecycle policies but accepts feature-owned states", () => {
     expect(() =>
       nodeRecordSchema.parse({
@@ -269,22 +284,34 @@ describe("wire records", () => {
   });
 
   it("parses edge metadata as JSON-native values", () => {
-    expect(
+    const edge = {
+      edge_id: ID,
+      edge_type: "assigned_to",
+      from_node_id: ID,
+      to_node_id: OTHER_ID,
+      effective_from: NOW,
+      effective_to: null,
+      created_at: NOW,
+      created_by: ID,
+      metadata: { allocation: 0.5, labels: ["planned"] },
+      is_soft_deleted: false,
+      soft_deleted_at: null,
+      soft_deleted_by: null,
+    } as const;
+
+    expect(edgeRecordSchema.parse(edge).metadata).toEqual({
+      allocation: 0.5,
+      labels: ["planned"],
+    });
+    expect(() =>
+      edgeRecordSchema.parse({ ...edge, runtime_date: new Date(NOW) }),
+    ).toThrow(/JSON-native values only/);
+    expect(() =>
       edgeRecordSchema.parse({
-        edge_id: ID,
-        edge_type: "assigned_to",
-        from_node_id: ID,
-        to_node_id: OTHER_ID,
-        effective_from: NOW,
-        effective_to: null,
-        created_at: NOW,
-        created_by: ID,
-        metadata: { allocation: 0.5, labels: ["planned"] },
-        is_soft_deleted: false,
-        soft_deleted_at: null,
-        soft_deleted_by: null,
-      }).metadata,
-    ).toEqual({ allocation: 0.5, labels: ["planned"] });
+        ...edge,
+        effective_to: "2026-08-17T09:30:00.000Z",
+      }),
+    ).toThrow(/half-open interval/);
   });
 });
 

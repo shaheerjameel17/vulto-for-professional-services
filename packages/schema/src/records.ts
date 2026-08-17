@@ -22,6 +22,28 @@ export const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   ]),
 );
 
+const isJsonNative = (value: unknown): value is JsonValue => {
+  if (value === null || typeof value === "string" || typeof value === "boolean") {
+    return true;
+  }
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(isJsonNative);
+  if (typeof value !== "object") return false;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return false;
+  return Object.values(value).every(isJsonNative);
+};
+
+const addJsonNativeIssue = (value: unknown, context: z.RefinementCtx): void => {
+  if (!isJsonNative(value)) {
+    context.addIssue({
+      code: "custom",
+      message:
+        "Graph records must contain JSON-native values only; class instances, undefined, non-finite numbers and other runtime-specific values are prohibited",
+    });
+  }
+};
+
 export const uuidV4Schema = z.uuidv4();
 
 export const utcTimestampSchema = z.iso
@@ -142,6 +164,8 @@ export const nodeRecordSchema = z
     auditEntryNodeSchema,
   ])
   .superRefine((record, context) => {
+    addJsonNativeIssue(record, context);
+
     if (!isNodeType(record.node_type)) {
       context.addIssue({
         code: "custom",
@@ -183,7 +207,23 @@ export const edgeRecordSchema = z
     soft_deleted_by: uuidV4Schema.nullable(),
   })
   .passthrough()
-  .superRefine(addSoftDeleteIssues);
+  .superRefine((record, context) => {
+    addJsonNativeIssue(record, context);
+    addSoftDeleteIssues(record, context);
+
+    if (
+      record.effective_from !== null &&
+      record.effective_to !== null &&
+      Date.parse(record.effective_from) >= Date.parse(record.effective_to)
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["effective_to"],
+        message:
+          "effective_to must be later than effective_from for a half-open interval",
+      });
+    }
+  });
 
 export type EdgeRecord = z.infer<typeof edgeRecordSchema>;
 

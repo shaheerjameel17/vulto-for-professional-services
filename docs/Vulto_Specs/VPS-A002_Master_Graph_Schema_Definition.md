@@ -76,6 +76,8 @@ soft_deleted_by:   user_id UUID, null if not deleted
 
 All timestamps are stored UTC ISO-8601. Local time is a presentation concern resolved against the Workspace timezone and, where working hours matter, against [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]].
 
+**Every node and edge record is JSON-native in full, including feature-owned and future additive properties.** The wire and materialization boundary accepts null, booleans, finite numbers, strings, arrays and plain string-keyed objects only. Runtime-specific values such as a JavaScript `Date`, `undefined`, a class instance or a non-finite number are rejected rather than coerced. Preserving an unknown property under A002-T07 does not permit preserving a representation the other runtime cannot decode identically.
+
 ---
 
 ## Universal edge conventions
@@ -115,7 +117,9 @@ Assignment and WorkspaceMembership are nodes: the first is Active, Completed or 
 
 ---
 
-**The single-active-edge-with-history pattern** applies to any edge type representing a relationship that changes over time but whose history must remain traversable. `managed_by` is the canonical example. At most one edge of that type may be active between a given pair of nodes at any moment; changing it sets `effective_to` on the prior edge and creates a new one with `effective_from`. Full history remains traversable. Any future edge with this shape follows the same pattern rather than inventing a new one.
+**The single-active-outgoing-edge-with-history pattern** applies to any edge type representing a relationship that changes over time but whose history must remain traversable. `managed_by` and `scoped_to_entity` are the current registrations. For a registered relationship, one source node may have at most one outgoing edge active at any moment, regardless of target; changing it sets `effective_to` on the prior edge and creates a new one with `effective_from`. Full history remains traversable. Keying this rule by source-target pair would permit one Employee to have two active managers or two active employing entities, and in the first case would incorrectly widen direct-report permission scope.
+
+**Temporal intervals are half-open: `[effective_from, effective_to)`.** A null start is unbounded in the past and a null end remains active. At an exact handoff timestamp the prior edge is inactive and its replacement is active, so a valid history never produces two answers at the boundary. The materialized query layer rejects overlapping intervals for a single-active-outgoing registration, including overlaps between two already-closed historical edges.
 
 ---
 
@@ -400,8 +404,8 @@ Where an edge connects several node type pairs, each pair is listed explicitly. 
 | `membership_of` | WorkspaceMembership → User | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | |
 | `membership_in` | WorkspaceMembership → Workspace | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | A user's workspaces are the two-hop traversal, not an edge |
 | `registered_on` | Device → User | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Carries platform, registered_at, last_active_at |
-| `managed_by` | Employee → Employee | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Single-active-edge-with-history. Backed by Loro's Movable Tree per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] |
-| `scoped_to_entity` | Employee → Entity | [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] | Employment jurisdiction only |
+| `managed_by` | Employee → Employee | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Single-active-outgoing-edge-with-history. Backed by Loro's Movable Tree per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] |
+| `scoped_to_entity` | Employee → Entity | [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] | Single-active-outgoing-edge-with-history; employment jurisdiction only |
 | `governed_by_calendar` | Entity → WorkingCalendar | [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] | |
 | `pattern_for` | WorkingPattern → Employee | [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] | Overrides the Entity calendar |
 | `holiday_in` | Holiday → WorkingCalendar | [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] | |
@@ -649,6 +653,7 @@ Loro stores node properties as CRDT Maps, which are schema-flexible at the stora
 | A002-T11 | No node MUST be hard-deleted. Cryptographic erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] is the only permitted content removal, and it MUST preserve the node, its edges and its audit trail |
 | A002-T12 | Any change to this document requires a pull request with engineering leadership review once that function is staffed; until then, changes are recorded by the founder |
 | A002-T13 | Every anonymity-protected node MUST enumerate every permitted edge triple explicitly. No wildcard or endpoint-set registration may match it, even where the owning feature otherwise permits broad connectivity |
+| A002-T14 | Every complete node and edge record, including unknown additive properties, MUST be JSON-native and MUST be rejected before materialization if it contains a runtime-specific value |
 
 ---
 

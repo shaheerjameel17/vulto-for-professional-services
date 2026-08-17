@@ -26,7 +26,7 @@ interface EdgeGroupShape {
   readonly owner: string;
   readonly pairs: readonly EndpointPair[];
   readonly sourceRows?: number;
-  readonly historyPolicy?: "single-active";
+  readonly historyPolicy?: "single-active-outgoing";
 }
 
 const edgeGroup = <const T extends EdgeGroupShape>(group: T): T => group;
@@ -56,12 +56,13 @@ export const EDGE_GROUPS = [
   edgeGroup({
     edgeType: "managed_by",
     owner: "VPS-A002",
-    historyPolicy: "single-active",
+    historyPolicy: "single-active-outgoing",
     pairs: [["Employee", "Employee"]],
   }),
   edgeGroup({
     edgeType: "scoped_to_entity",
     owner: "VRS-F003",
+    historyPolicy: "single-active-outgoing",
     pairs: [["Employee", "Entity"]],
   }),
   edgeGroup({
@@ -516,7 +517,7 @@ export interface EdgeRegistration {
   readonly fromNodeType: RegistryEndpoint;
   readonly toNodeType: RegistryEndpoint;
   readonly owner: string;
-  readonly historyPolicy: "single-active" | "none-specified";
+  readonly historyPolicy: "single-active-outgoing" | "none-specified";
 }
 
 export const EDGE_TYPES = EDGE_GROUPS.map(
