@@ -1,37 +1,60 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import cors from "@fastify/cors";
-import Fastify from "fastify";
+import Fastify, { type FastifyInstance } from "fastify";
+import { registerAuthHttp } from "./auth/http.js";
 import { env } from "./env.js";
 import { appRouter } from "./router.js";
 
-/**
- * The Vulto API server, per VPS-A001: tRPC over Fastify.
- *
- * FDN-47 stands this up as the far end of the minimal end-to-end path and
- * nothing more. Authentication is FDN-60's and is deliberately absent — see the
- * note on the diagnostics route about why that is a bounded absence rather than
- * a precedent.
- */
-const { API_PORT: port, API_HOST: host } = env;
+function tlsOptions(): { key: Buffer; cert: Buffer } | undefined {
+  if (!env.API_TLS_CERT_PATH || !env.API_TLS_KEY_PATH) return undefined;
+  return {
+    key: readFileSync(env.API_TLS_KEY_PATH),
+    cert: readFileSync(env.API_TLS_CERT_PATH),
+  };
+}
 
-const app = Fastify({ logger: { level: env.LOG_LEVEL } });
+export async function buildServer(): Promise<FastifyInstance> {
+  const tls = tlsOptions();
+  const app = (tls
+    ? Fastify({ logger: { level: env.LOG_LEVEL }, https: tls })
+    : Fastify({ logger: { level: env.LOG_LEVEL } })) as unknown as FastifyInstance;
 
-await app.register(cors, {
-  origin: env.WEB_ORIGIN,
-});
+  app.decorate("vultoApiOrigin", env.API_ORIGIN);
+  app.decorate("vultoTrustedOrigins", new Set(env.AUTH_TRUSTED_ORIGINS));
 
-await app.register(fastifyTRPCPlugin, {
-  prefix: "/trpc",
-  trpcOptions: { router: appRouter },
-});
+  await app.register(cors, {
+    origin: [...env.AUTH_TRUSTED_ORIGINS],
+    credentials: true,
+  });
 
-/** Liveness only. Says nothing about Postgres — `system.status` is what does. */
-app.get("/health", async () => ({ api: "ok" }));
+  await registerAuthHttp(app);
 
-try {
-  await app.listen({ port, host });
-  app.log.info(`vulto api listening on http://${host}:${port}`);
-} catch (error) {
-  app.log.error(error);
-  process.exit(1);
+  await app.register(fastifyTRPCPlugin, {
+    prefix: "/trpc",
+    trpcOptions: { router: appRouter },
+  });
+
+  app.get("/health", async () => ({ api: "ok" }));
+  return app;
+}
+
+export async function startServer(): Promise<FastifyInstance> {
+  const app = await buildServer();
+  try {
+    await app.listen({ port: env.API_PORT, host: env.API_HOST });
+    app.log.info(`vulto api listening on ${env.API_ORIGIN}`);
+    return app;
+  } catch (error) {
+    app.log.error(error);
+    await app.close();
+    throw error;
+  }
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  startServer().catch(() => {
+    process.exitCode = 1;
+  });
 }

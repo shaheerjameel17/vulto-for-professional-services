@@ -68,6 +68,47 @@ function optional(name: string, fallback: string): string {
   return value && value.length > 0 ? value : fallback;
 }
 
+function optionalValue(name: string): string | undefined {
+  const value = process.env[name];
+  return value && value.length > 0 ? value : undefined;
+}
+
+function commaSeparated(name: string, fallback: string): readonly string[] {
+  return optional(name, fallback)
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+}
+
+const googleClientId = optionalValue("GOOGLE_CLIENT_ID");
+const googleClientSecret = optionalValue("GOOGLE_CLIENT_SECRET");
+
+if (
+  (googleClientId && !googleClientSecret) ||
+  (!googleClientId && googleClientSecret)
+) {
+  throw new Error(
+    "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must either both be set or both be absent",
+  );
+}
+
+if (process.env.NODE_ENV === "production" && (!googleClientId || !googleClientSecret)) {
+  throw new Error(
+    "GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required in production because Google sign-in is MVP scope",
+  );
+}
+
+const webOrigin = optional("WEB_ORIGIN", "http://localhost:3100");
+const apiOrigin = optional("API_ORIGIN", "http://localhost:3101");
+const tlsCertPath = optionalValue("API_TLS_CERT_PATH");
+const tlsKeyPath = optionalValue("API_TLS_KEY_PATH");
+
+if ((tlsCertPath && !tlsKeyPath) || (!tlsCertPath && tlsKeyPath)) {
+  throw new Error(
+    "API_TLS_CERT_PATH and API_TLS_KEY_PATH must either both be set or both be absent",
+  );
+}
+
 export const env = {
   /** No default. See `required`. */
   DATABASE_URL: required("DATABASE_URL"),
@@ -79,6 +120,14 @@ export const env = {
    */
   API_PORT: Number(optional("API_PORT", "3101")),
   API_HOST: optional("API_HOST", "127.0.0.1"),
-  WEB_ORIGIN: optional("WEB_ORIGIN", "http://localhost:3100"),
+  WEB_ORIGIN: webOrigin,
+  API_ORIGIN: apiOrigin,
+  AUTH_TRUSTED_ORIGINS: commaSeparated("AUTH_TRUSTED_ORIGINS", webOrigin),
+  BETTER_AUTH_SECRET: required("BETTER_AUTH_SECRET"),
+  GOOGLE_CLIENT_ID: googleClientId,
+  GOOGLE_CLIENT_SECRET: googleClientSecret,
+  PASSKEY_RP_ID: optional("PASSKEY_RP_ID", new URL(webOrigin).hostname),
+  API_TLS_CERT_PATH: tlsCertPath,
+  API_TLS_KEY_PATH: tlsKeyPath,
   LOG_LEVEL: optional("LOG_LEVEL", "info"),
 } as const;

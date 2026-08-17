@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import * as authSchema from "./auth/schema.js";
 import { env } from "./env.js";
 
 /**
@@ -12,4 +13,8 @@ import { env } from "./env.js";
  * until FDN-45 registers the schema and FDN-51 gives the sync engine content.
  */
 export const sql = postgres(env.DATABASE_URL, { max: 4, onnotice: () => {} });
-export const db = drizzle(sql);
+export const db = drizzle(sql, { schema: authSchema });
+
+export async function closeDatabase(): Promise<void> {
+  await sql.end();
+}

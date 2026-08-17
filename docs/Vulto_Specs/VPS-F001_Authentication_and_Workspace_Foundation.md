@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-08-17]]"
 Product Phase:
   - MVP
 Feature Type:
@@ -25,7 +25,7 @@ This document is the single source of truth for this feature. **One identity, on
 
 Authentication and Workspace Foundation establishes identity, session management, workspace structure, team membership, role assignment and device trust.
 
-In graph terms: authentication creates the User node that owns a session. Workspace creation creates the Workspace node containing every other node in that tenant. Role assignment creates the WorkspaceMembership edge that [[VPS-A004_Graph_Permission_Layer|VPS-A004]] enforces against. Device registration initializes the local graph store per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], keyed to that device's own session.
+In graph terms: authentication creates the User node associated with the account. Workspace creation creates the Workspace node containing every other node in that tenant. Role assignment creates a lifecycle-bearing WorkspaceMembership node plus `membership_of` and `membership_in` endpoint edges that [[VPS-A004_Graph_Permission_Layer|VPS-A004]] enforces against. Device registration initializes the local graph store per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], keyed to that device's own session.
 
 ---
 
@@ -43,7 +43,7 @@ A person creates an account by email and password, by Google, or by passkey. On 
 
 ### Workspace creation
 
-The founding user names their workspace. This single action atomically creates the Workspace node and a WorkspaceMembership edge assigning that user the Owner role. This is the only WorkspaceMembership that can never be deleted.
+The founding user names their workspace. This single action atomically creates the Workspace node, a WorkspaceMembership node assigning that user the Owner role, and its `membership_of` and `membership_in` endpoint edges. This is the only WorkspaceMembership that can never be deleted.
 
 Workspace creation hands off directly to [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s setup wizard, which collects the four configuration questions and offers data import. This feature ends at the point a workspace exists with one Owner in it.
 
@@ -53,9 +53,9 @@ Because the Owner will hold compensation data, [[VPS-A003_Unified_Sync_Architect
 
 ### Team invitation and role assignment
 
-An Owner, or a user with sufficient permission, invites a team member by email and assigns a role at the point of invitation. The invited person receives a link; accepting it creates their User node if none exists, their session, and their WorkspaceMembership edge, in one flow.
+An Owner, or a user with sufficient permission, invites a team member by email and assigns a role at the point of invitation. The invited person receives a link; accepting it creates their User node if none exists, their session, and their WorkspaceMembership node with both endpoint edges, in one flow.
 
-Manager is not assigned manually once [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] exists. It is derived automatically from the `managed_by` edge structure: any Employee who is the target of at least one active `managed_by` edge holds Manager permissions over those reports, evaluated at query time by [[VPS-A004_Graph_Permission_Layer|VPS-A004]] rather than stored as a membership role. Before [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] exists, Manager may be assigned manually, and that manual grant is superseded — not merged — the first time a `managed_by` edge names that person.
+Manager is never assigned as a membership role. It is derived automatically from the `managed_by` edge structure: any Employee who is the target of at least one active `managed_by` edge holds Manager permissions over those reports, evaluated at query time by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]. Before [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] exists there are no Manager-scoped reports to authorize, so no temporary stored grant is needed.
 
 ### Device registration and multi-device sync
 
@@ -65,7 +65,7 @@ Device registration is scoped by `application`, because the same physical laptop
 
 ### Session expiry and offline access
 
-Session tokens expire on a defined schedule. On expiry the user re-authenticates; the local store remains fully intact and readable throughout. Nothing is wiped on expiry — only on explicit revocation or offboarding.
+Database-backed sessions have a seven-day rolling lifetime and refresh after one day of use. Authorization never accepts a cookie-cached session shortcut. On expiry the user re-authenticates; the local store remains fully intact and readable throughout. Nothing is wiped on expiry — only on explicit revocation or offboarding.
 
 If the device is offline with a valid session, the full product remains usable from the local graph with the Offline indicator shown and no login prompt interrupting work.
 
@@ -125,11 +125,11 @@ Members drops `last active`, then `email`, below 1280px. Devices drops `register
 
 Better Auth per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]:
 
-- **Email and password** — built-in credential provider, bcrypt hashing. Passwords never enter the graph, only Better Auth's credential store.
+- **Email and password** — built-in credential provider using Better Auth's default scrypt hashing. Passwords never enter the graph, only Better Auth's credential store.
 - **Google SSO** — OAuth plugin, scoped to email and basic profile only. No broader Workspace data is requested because none is needed.
 - **Passkey / WebAuthn** — Better Auth's passkey plugin, never a bespoke implementation. Credentials bind to the device's secure hardware and unlock via platform biometrics or device passcode. **Required, not optional**: [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 3 key derivation depends on WebAuthn PRF.
-- **Workspace as Organization** — Better Auth's organizations plugin maps directly onto Workspace and WorkspaceMembership. The organization member role is the same value [[VPS-A004_Graph_Permission_Layer|VPS-A004]] reads. There is exactly one role system, not two that can drift.
-- **Sessions** — secure httpOnly cookies on web, platform keychain on native. Tokens never enter the graph. After every cold restart, the server validates the current session before releasing or deriving volatile local-store unwrap material; a revoked session receives none.
+- **Workspace admission control** — Better Auth's organization/member tables are the online admission and revocation control plane. Workspace and WorkspaceMembership are deterministic local graph projections with the same stable identifiers and role enum. A grant admits only after its graph projection is confirmed; removal denies centrally before projection completes. A disagreement fails closed. The local graph preserves history but never overrules a central removal.
+- **Sessions** — host-only secure httpOnly cookies on web, platform keychain on native. Database-backed sessions have a seven-day rolling lifetime, refresh after one day of use and do not use Better Auth's cookie cache for authorization. Tokens never enter the graph or application-visible JSON. After every cold restart, the server validates the current database session, active user, exact workspace and fully confirmed active membership before releasing or deriving volatile local-store unwrap material; a revoked session or membership receives none.
 
 ### Graph model
 
@@ -143,32 +143,38 @@ User, WorkspaceMembership and Device are Tier 0. Workspace's display fields are 
 
 ### Permission model
 
-Role assignment at invitation creates the WorkspaceMembership edge [[VPS-A004_Graph_Permission_Layer|VPS-A004]] reads for every subsequent query in the product. This feature implements no permission logic of its own; it produces the one input the permission layer consumes. Owner is capped at three per workspace, enforced here at invitation and promotion.
+Role assignment at invitation creates the WorkspaceMembership node and its `membership_of` and `membership_in` endpoint edges. [[VPS-A004_Graph_Permission_Layer|VPS-A004]] reads that local projection for subsequent offline queries, while online admission checks the corresponding central membership row. This feature implements no permission logic of its own; it produces the one synchronized role input the permission layer consumes. Owner is capped at three per workspace, enforced here at invitation and promotion.
 
 ### API contracts
 
 ```
-auth.signUp(email, password)                    -> { userId, sessionToken }
-auth.signUpWithGoogle(oauthCode)                -> { userId, sessionToken }
-auth.registerPasskey(userId)                    -> { credentialId }
-auth.signIn(email, password)                    -> { sessionToken }
-auth.signInWithPasskey(assertion)               -> { sessionToken }
+auth.signUp(email, password)                    -> { user }
+auth.signUpWithGoogle(oauthCode)                -> { user, session }
+auth.beginPasskeyRegistration(name, email)      -> { signedSingleUseContext }
+auth.registerPasskey(signedSingleUseContext)    -> { credential }
+auth.signIn(email, password)                    -> { user, session }
+auth.signInWithPasskey(assertion)               -> { user, session }
 auth.signOut()                                  -> { success }
+auth.revokeAllSessions()                        -> { success }
+auth.requireCurrentWorkspaceSession(requestHeaders, workspaceId)
+                                                -> { sessionId, userId, workspaceId, membershipId }
+  // Server-only. The browser cookie supplies the credential; session output is public metadata only.
 
 workspace.create(name)                          -> { workspaceId }
-  // Atomic: Workspace node + WorkspaceMembership(role=Owner), one transaction
+  // Atomic: Workspace node + WorkspaceMembership node + membership_of + membership_in
 
 workspace.inviteMember(workspaceId, email, role) -> { invitationId }
   // Rejects if role=Owner and the workspace already holds 3
 
-workspace.acceptInvitation(invitationId)        -> { userId, workspaceId, sessionToken }
+workspace.acceptInvitation(invitationId)        -> { user, workspaceId, session }
 workspace.changeMemberRole(membershipId, role)  -> { success }
 
-tier1Keys.initialize(userId)                    -> { recoveryArtifact }
-tier1Keys.verifyArtifact(userId, entered)       -> { verified }
-tier1Keys.addRecoveryHolder(userId, holderId)   -> { success }
+tier1Keys.initialize()                          -> { recoveryArtifact }
+tier1Keys.verifyArtifact(entered)               -> { verified }
+tier1Keys.addRecoveryHolder(holderId)            -> { success }
 
-device.register(sessionToken, deviceName, platform, application?, pushToken?) -> { deviceId }
+device.register(deviceName, platform, application?, pushToken?) -> { deviceId }
+  // User and session identity derive from the httpOnly cookie on the request.
 device.revoke(deviceId)                         -> { success }
 device.listForWorkspace(workspaceId)            -> Device[]
 ```
@@ -180,11 +186,11 @@ device.listForWorkspace(workspaceId)            -> Device[]
 | ID | Specification |
 |---|---|
 | G01 | A User node is created on account creation. Passwords are never stored in the graph, only a reference sufficient to confirm the corresponding Better Auth credential exists |
-| G02 | A WorkspaceMembership edge connects User to Workspace and carries the role property. This is the activation edge for [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s matrix |
+| G02 | A lifecycle-bearing WorkspaceMembership node carries the role property and connects to User through `membership_of` and Workspace through `membership_in`. This is the activation structure for [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s matrix |
 | G03 | A Device node is created when a new device authenticates, carrying the fields above. `application` distinguishes registrations for different suite applications on the same physical device |
 | G04 | The local store is encrypted with AES-256 per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. After every cold restart it remains locked until the server validates a current authenticated session and releases or derives volatile unwrap material. The raw session token, plaintext storage key and unwrap material are never persisted alongside the data or exposed to application code. Revocation wipes the store entirely within 60 seconds of signal receipt; after a cold restart, a revoked session cannot reopen it even before a wipe signal arrives |
-| G05 | Workspace creation atomically generates the Workspace node and the founding Owner's WorkspaceMembership. This membership cannot be deleted |
-| G06 | Manager is derived, not stored. Any Employee targeted by at least one active `managed_by` edge holds Manager permissions over those reports, evaluated at query time by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]. A manual Manager membership assigned before [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] exists is superseded by derivation, never merged with it |
+| G05 | Workspace creation atomically generates the Workspace node, the founding Owner's WorkspaceMembership node and its `membership_of` and `membership_in` edges. This membership cannot be deleted |
+| G06 | Manager is derived, not stored. Any Employee targeted by at least one active `managed_by` edge holds Manager permissions over those reports, evaluated at query time by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]. Manager is absent from the stored membership-role enum |
 
 ---
 
