@@ -14,13 +14,13 @@ import {
   getProtectionPartitions,
   nodeRecordSchema,
   resolveInheritedTier,
-} from "./index.js";
-import { validateRegistryDefinition } from "./registry/validate.js";
+} from "./index";
+import { validateRegistryDefinition } from "./registry/validate";
 import {
   featureOwnedLifecycle,
   fixedProtection,
   type NodeRegistrationShape,
-} from "./registry/types.js";
+} from "./registry/types";
 
 const ID = "123e4567-e89b-42d3-a456-426614174000";
 const OTHER_ID = "123e4567-e89b-42d3-a456-426614174001";

@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-08-08]]"
+Date: "[[2026-08-17]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -108,7 +108,7 @@ Loro guarantees conflict-free merge. It does not provide fast multi-hop traversa
 
 **Execution boundary.** Both Loro merge processing and SQLite materialization run inside a dedicated Web Worker, never the main thread. A device rejoining after days offline processes thousands of queued deltas; doing that on the main thread would freeze the UI exactly when a founder most needs the Bench Forecast responsive. The UI layer never imports `wa-sqlite` and never processes a delta directly.
 
-**Sync-status marker.** The worker maintains a status marker per materialized row, separate from its data columns. A `NULL` cannot distinguish not-yet-synced from permission-denied from genuinely-empty, and [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] renders those three as visually distinct states. The marker is what makes that distinction implementable rather than aspirational.
+**Availability is separate from row data.** The worker reports one availability outcome for a query or subscription: `mid-sync`, `retention-window-absence`, `permission-absence` or `ready`. `ready` is the normal condition and may contain zero rows; zero rows means genuinely empty and is not a fourth system state. A permission-absence result carries no node or edge instance metadata. When [[VPS-A004_Graph_Permission_Layer|VPS-A004]] requires a visibly restricted render, the client derives that placeholder from the node type's schema under A004-T19, never from instance data the device did not receive.
 
 ---
 
@@ -181,6 +181,7 @@ services/
   render/                   Headless Chromium PDF rendering, per VPS-A006
   cross-tenant-aggregation/ Isolated anonymized aggregation, per VRS-F071
 packages/
+  graph/                    Worker client, validated local-graph protocol and private Worker runtime
   schema/                   Shared types, graph schema, Zod validators
   ui/                       Design system components, per VPS-D002
   tokens/                   Design tokens, per VPS-D001, source of Tailwind config
@@ -198,7 +199,7 @@ packages/
 
 One repository also means a change to `Employee` breaks every application's build simultaneously, which is precisely what [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]]'s type-check gate exists to do.
 
-**`services/sync-engine`, `packages/schema`, `packages/tokens` and `packages/ui` are shared by every application** and are built with the discipline of published packages — versioned, with stable public interfaces — even though every consumer lives beside them.
+**`services/sync-engine`, `packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` are shared by every application** and are built with the discipline of published packages — versioned, with stable public interfaces — even though every consumer lives beside them. `packages/graph` is the TypeScript home of the dedicated Worker boundary: its public surface is the Worker client and validated local protocol; Loro, `wa-sqlite` and Worker internals remain private to the package.
 
 **A new application adds one directory under `apps/` and nothing else.** No new service, no new database, no new sync engine.
 
@@ -228,9 +229,9 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 | A001-T02 | The CRDT library MUST be Loro. The exact version MUST be pinned in the lockfile at implementation start and recorded in this document in the same commit |
 | A001-T03 | The local query layer MUST be a materialized index derived from Loro state, never a replacement source of truth |
 | A001-T04 | Every engineer not working on the sync engine MUST be able to run the full local stack without a Rust toolchain |
-| A001-T05 | New suite applications MUST live in this repository as a directory under `apps/`, consuming `services/sync-engine`, `packages/schema`, `packages/tokens` and `packages/ui` rather than reimplementing them. A separate repository per application is prohibited |
+| A001-T05 | New suite applications MUST live in this repository as a directory under `apps/`, consuming `services/sync-engine`, `packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` rather than reimplementing them. A separate repository per application is prohibited |
 | A001-T06 | Loro merge processing and SQLite materialization MUST run in a dedicated Web Worker. The main thread MUST NOT import `wa-sqlite` or process deltas directly |
-| A001-T07 | The materialization worker MUST maintain a per-row sync-status marker distinguishing not-yet-synced, permission-denied and genuinely-empty as three states |
+| A001-T07 | The materialization worker MUST maintain an availability outcome separate from row data, distinguishing `mid-sync`, `retention-window-absence`, `permission-absence` and `ready`. A `ready` result MAY contain zero rows; zero rows is genuinely empty, not a sync-status marker. Permission absence MUST disclose no node or edge instance metadata. A visibly restricted render MUST be derived from type schema per A004-T19, never from received instance data |
 | A001-T08 | `services/cross-tenant-aggregation` MUST NOT share a database, connection pool or process boundary with per-workspace data paths, and MUST receive only anonymized, pre-bucketed contributions |
 | A001-T09 | Tailwind configuration MUST be generated from `packages/tokens`; Tailwind's default visual scales MUST be deleted rather than extended, and arbitrary values in class names MUST fail lint |
 | A001-T10 | No feature MUST compute working days, weekends or holidays independently. All such arithmetic MUST call [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] |
@@ -285,6 +286,10 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 **The Loro version is a specification requirement, not an open item.** A001-T02 requires it pinned and recorded in the same commit as implementation start. An unpinned dependency in a system meant to run for years is a defect, and describing it as an open question deferred the fix rather than scheduling it. **Settled: `loro-crdt@1.14.1`**, recorded under CRDT library selection above. The repository had already demonstrated the cost of the alternative — `typescript@^5.7.3` had drifted to `5.9.3` and `turbo@^2.3.4` to `2.10.8` before anyone intended an upgrade.
 
 **The two-language boundary table's `services/sync-engine` row described one job for two builds that do different things.** "Receive CRDT deltas… persist to Postgres, relay to authorized devices" is the server deployment's job; a WASM build running in a browser tab cannot persist anything to Postgres. Corrected to state the shared core's job once — CRDT merge, encryption, wire protocol, identical across all three targets per A003-T10 — and the server deployment's additional relay-and-persistence responsibility separately. Found while scoping FDN-46's package boundaries, which needed to know which of the sync engine's responsibilities cross into the WASM build and which never do. Recorded as F63.
+
+**Worker availability is not row data.** The former A001-T07 required a marker on each materialized row, but two of the conditions it needed to express are conditions in which no row may exist, and one would leak instance existence if represented as a row. The Worker therefore reports availability outside the result rows. The three exceptional outcomes correspond to [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]; `ready` names ordinary availability and is not a new interface state. Recorded as F94 and F95.
+
+**The Worker boundary has a package home.** `packages/graph` owns the public Worker client and its runtime-validated local protocol. Its private Worker runtime is the only TypeScript browser surface that imports Loro or `wa-sqlite`; application code consumes the client without gaining raw graph access. FDN-49 owns the future automated import-boundary enforcement. Recorded as F96.
 
 ---
 

@@ -2,7 +2,7 @@ import {
   getNodeRegistration,
   isAnonymityProtectedNodeType,
   type NodeType,
-} from "./nodes.js";
+} from "./nodes";
 
 export const NON_ANONYMOUS_NODE = "Any non-anonymity-protected node" as const;
 export const MENTIONABLE_NODE = "Mentionable Node" as const;

@@ -1,4 +1,4 @@
-import { type NodeType } from "./nodes.js";
+import { type NodeType } from "./nodes";
 
 export type OwnershipMode = "permanent" | "activation-handoff" | "concurrent";
 

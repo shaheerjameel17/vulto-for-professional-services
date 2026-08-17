@@ -1,5 +1,5 @@
-import { assertRegisteredRelationship, type EdgeType } from "./edges.js";
-import { getNodeRegistration, type NodeType } from "./nodes.js";
+import { assertRegisteredRelationship, type EdgeType } from "./edges";
+import { getNodeRegistration, type NodeType } from "./nodes";
 
 export interface ConversionRegistration {
   readonly sourceNodeType: NodeType;

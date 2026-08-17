@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@vulto/api": "workspace:*",
+    "@vulto/graph": "workspace:*",
     "@vulto/tokens": "workspace:*",
     "@vulto/ui": "workspace:*",
     "lucide-react": "^0.474.0",

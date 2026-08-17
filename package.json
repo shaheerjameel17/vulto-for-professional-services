@@ -11,6 +11,7 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:worker-browser": "playwright test --config packages/graph/playwright.config.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "stack:up": "docker compose up -d --wait",
@@ -20,6 +21,7 @@
   },
   "devDependencies": {
     "@eslint/js": "9.39.5",
+    "@playwright/test": "1.62.1",
     "eslint": "9.39.5",
     "eslint-config-prettier": "10.1.8",
     "prettier": "3.9.6",

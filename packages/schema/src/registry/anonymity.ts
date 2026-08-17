@@ -1,6 +1,6 @@
-import { EDGE_REGISTRY, ENDPOINT_SETS, type EdgeType } from "./edges.js";
-import { NODE_REGISTRY, type NodeType } from "./nodes.js";
-import { type NodeRegistrationShape } from "./types.js";
+import { EDGE_REGISTRY, ENDPOINT_SETS, type EdgeType } from "./edges";
+import { NODE_REGISTRY, type NodeType } from "./nodes";
+import { type NodeRegistrationShape } from "./types";
 
 export interface AllowedAnonymousRelationship {
   readonly edgeType: EdgeType;

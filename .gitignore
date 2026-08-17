@@ -8,6 +8,7 @@ target/
 *.log
 .obsidian/
 *.tsbuildinfo
+test-results/
 
 # Local secrets. .env.example is committed deliberately — it is the documented
 # shape of the environment, and a bootstrap nobody can reproduce is not one.

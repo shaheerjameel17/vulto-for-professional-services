@@ -6,7 +6,7 @@ import {
   splitProtection,
   type NodeRegistrationShape,
   type UniversalFieldPolicy,
-} from "./types.js";
+} from "./types";
 
 type NodeInput = Omit<NodeRegistrationShape, "universalFields">;
 

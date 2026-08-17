@@ -1,12 +1,12 @@
 import { z } from "zod";
 
-import { EDGE_TYPES, type EdgeType } from "./registry/edges.js";
+import { EDGE_TYPES, type EdgeType } from "./registry/edges";
 import {
   getNodeRegistration,
   isNodeType,
   NODE_TYPES,
   type NodeType,
-} from "./registry/nodes.js";
+} from "./registry/nodes";
 
 export type JsonValue =
   null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };

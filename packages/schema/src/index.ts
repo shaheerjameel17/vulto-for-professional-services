@@ -1,5 +1,5 @@
 /** Canonical VPS-A002 graph contracts. No runtime mutation API is exposed. */
-import "./registry/validate.js";
+import "./registry/validate";
 
 export {
   NODE_REGISTRY,
@@ -9,7 +9,7 @@ export {
   isNodeType,
   type NodeRegistration,
   type NodeType,
-} from "./registry/nodes.js";
+} from "./registry/nodes";
 
 export {
   CUSTOM_FIELD_ENABLED_NODE,
@@ -26,13 +26,13 @@ export {
   type EdgeType,
   type EndpointSet,
   type RegistryEndpoint,
-} from "./registry/edges.js";
+} from "./registry/edges";
 
 export {
   ANONYMITY_REGISTRY,
   type AllowedAnonymousRelationship,
   type AnonymityRegistration,
-} from "./registry/anonymity.js";
+} from "./registry/anonymity";
 
 export {
   PRIVACY_CLASSES,
@@ -42,24 +42,21 @@ export {
   type ProtectionPartition,
   type ProtectionPolicy,
   type UniversalFieldPolicy,
-} from "./registry/types.js";
+} from "./registry/types";
 
 export {
   OWNERSHIP_REGISTRY,
   getOwnershipRegistration,
   type OwnershipMode,
   type OwnershipRegistration,
-} from "./registry/ownership.js";
+} from "./registry/ownership";
 
 export {
   CONVERSION_REGISTRY,
   type ConversionRegistration,
-} from "./registry/conversions.js";
+} from "./registry/conversions";
 
-export {
-  getProtectionPartitions,
-  resolveInheritedTier,
-} from "./registry/protection.js";
+export { getProtectionPartitions, resolveInheritedTier } from "./registry/protection";
 
 export {
   edgeRecordSchema,
@@ -76,4 +73,4 @@ export {
   type NodeRecord,
   type WireEdgeType,
   type WireNodeType,
-} from "./records.js";
+} from "./records";

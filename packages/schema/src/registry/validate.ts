@@ -5,12 +5,12 @@ import {
   EDGE_SOURCE_ROW_COUNT,
   type EdgeRegistration,
   type RegistryEndpoint,
-} from "./edges.js";
-import { assertAnonymityRegistry } from "./anonymity.js";
-import { CONVERSION_REGISTRY } from "./conversions.js";
-import { NODE_REGISTRY, type NodeType } from "./nodes.js";
-import { OWNERSHIP_REGISTRY } from "./ownership.js";
-import { PRIVACY_CLASSES, type NodeRegistrationShape } from "./types.js";
+} from "./edges";
+import { assertAnonymityRegistry } from "./anonymity";
+import { CONVERSION_REGISTRY } from "./conversions";
+import { NODE_REGISTRY, type NodeType } from "./nodes";
+import { OWNERSHIP_REGISTRY } from "./ownership";
+import { PRIVACY_CLASSES, type NodeRegistrationShape } from "./types";
 
 interface RegistryDefinition {
   readonly nodes: readonly NodeRegistrationShape[];

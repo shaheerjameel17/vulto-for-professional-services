@@ -1,5 +1,5 @@
-import { getNodeRegistration, type NodeType } from "./nodes.js";
-import { type DataTier, type ProtectionPartition } from "./types.js";
+import { getNodeRegistration, type NodeType } from "./nodes";
+import { type DataTier, type ProtectionPartition } from "./types";
 
 /** Standing Rule 8: provenance follows the most restrictive source tier. */
 export const resolveInheritedTier = (sourceTiers: readonly DataTier[]): DataTier => {

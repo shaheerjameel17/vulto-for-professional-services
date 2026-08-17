@@ -55,8 +55,12 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F91 | “Registered both directions” required feature schema that does not exist yet | `VPS-A007`, Linear | **Open, recorded boundary** — FDN-49 checks each direction only when its artifact exists |
 | F92 | `FDN-77`, `FDN-48` and `FDN-49` all claimed the same architecture enforcement | Linear | **Closed by scope amendment** — the first two define; FDN-49 enforces |
 | F93 | F90's validator was generic by design but tested only the two current protected types | Repository | **Closed by FDN-45** — a synthetic future type with wildcard adjacency fails at import |
+| F94 | A001-T07 named the wrong availability states and omitted retention-window absence | `VPS-A001` | **Closed by FDN-77** — Worker availability now matches the three exceptional system states plus ordinary `ready` |
+| F95 | A per-row sync marker cannot describe an absent row and can leak a denied record's existence | `VPS-A001` | **Closed by FDN-77** — availability is separate from rows and restricted placeholders derive only from type schema |
+| F96 | The shared Worker boundary had no package home in the repository structure | `VPS-A001` | **Closed by FDN-77** — `packages/graph` owns the client and validated local protocol; its runtime stays private |
+| F97 | `packages/schema` typechecked but could not be consumed as source by Next.js | Repository | **Closed by FDN-77** — internal source specifiers now resolve in both TypeScript and the application bundler |
 
-**Forty findings, thirty-five closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Forty-four findings, thirty-nine closed.** Five stay open. F70, F73 and F85 are raised rather than decided. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -801,6 +805,38 @@ F90's validator derives the protected set from the registry, so its design cover
 
 ---
 
+### F94 — A001-T07 named the wrong availability states
+
+The former requirement listed not-yet-synced, permission-denied and genuinely-empty as three states. It omitted retention-window absence, which A004-T10 and [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] require, and treated an ordinary empty result as an exceptional system state.
+
+**Correction.** The Worker contract reports `mid-sync`, `retention-window-absence`, `permission-absence` or ordinary `ready`. A ready result may contain zero rows without changing its availability.
+
+---
+
+### F95 — A per-row marker cannot describe absence safely
+
+Mid-sync, aged-out and permission absence are query or subscription availability outcomes, not properties of a materialized row. A row may not exist in all three cases. Manufacturing a permission-denied row would also disclose that a particular instance exists, contradicting [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s zero-instance-metadata rule.
+
+**Correction.** Availability is carried separately from result rows. Permission absence carries no node or edge instance metadata. A visible Restricted placeholder is derived from registered type schema under A004-T19, never from received instance data.
+
+---
+
+### F96 — The Worker boundary had no package home
+
+`VPS-A001` required Loro merge and SQLite materialization in a dedicated Web Worker but its repository structure named no TypeScript package that could own the shared client, protocol and private Worker runtime. Leaving it inside one application would make a suite-wide boundary application-owned.
+
+**Correction.** `packages/graph` owns the public Worker client and runtime-validated local protocol. Its Worker implementation remains private and is the only browser-side TypeScript surface that imports Loro or `wa-sqlite`; FDN-49 later enforces that definition.
+
+---
+
+### F97 — `packages/schema` passed TypeScript but failed the application bundler
+
+The schema package's internal imports named emitted `.js` files while the package exports its TypeScript source directly. TypeScript's bundler resolution accepted those specifiers, but the first legitimate browser consumer — `packages/graph` — made Next.js resolve the package and fail because no `.js` files exist in the source tree.
+
+**Correction.** Internal schema source specifiers are extensionless, matching the already-working source-package convention in `packages/ui`. The registry still typechecks and tests independently, and Next.js can now consume the public schema surface rather than requiring a duplicate validator in `packages/graph`.
+
+---
+
 ### `VPS-A002`
 `Client` deduplicated to one registry row. A new section, **When a relationship is a node instead of an edge**, carrying the one-sentence rule, why lifecycle is the test, the naming convention for a relationship-node's endpoint edges, the statement that an endpoint pair is not itself an edge, and the edge registry's key. Four edges registered; `member_of` deleted; `assigned_to` re-endpointed.
 
@@ -839,6 +875,9 @@ The two-language boundary table's `services/sync-engine` row, per F63: one job d
 
 ### `VPS-A001` — FDN-45
 The runtime validation pin recorded under the settled stack: `zod@4.4.3`, declared exactly in `packages/schema`, with TypeScript types inferred from the runtime validator rather than maintained as a second representation.
+
+### `VPS-A001` — FDN-77
+Availability moved out of materialized rows and into the Worker response contract, with `mid-sync`, `retention-window-absence`, `permission-absence` and ordinary `ready` aligned to A003, A004 and D004. `packages/graph` was added as the shared home of the Worker client and validated local protocol; its Loro and SQLite-WASM runtime remains private.
 
 ### `VPS-A007`, `VRS-F048` — FDN-45
 The schema-conformance gate now enumerates AuditEntry's five omitted universal fields and the two anonymous nodes' six identifying provenance omissions exactly. Its structural-anonymity gate requires every current and future protected node to enumerate its complete permitted connectivity without a wildcard or endpoint set. A synthetic third protected type with wildcard adjacency proves that the generic import-time failure path works before such a product type exists. Pulse Survey and Wellness prose carry the same closed field and edge contracts rather than treating AuditEntry's separate immutability rule as the same shape.
