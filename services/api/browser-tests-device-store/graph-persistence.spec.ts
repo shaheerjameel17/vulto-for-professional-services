@@ -6,6 +6,7 @@ import {
   type Page,
 } from "@playwright/test";
 import postgres from "postgres";
+import { resetRateLimits } from "./rate-limit-reset";
 
 /**
  * FDN-50 stage 1: SealedStore integration in packages/graph's Worker
@@ -89,6 +90,7 @@ test.beforeAll(async ({ browser }) => {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await context.newPage();
   try {
+    await resetRateLimits(sql);
     sharedAccount = await signUp(page, sql);
   } finally {
     await context.close();
@@ -148,6 +150,11 @@ test.describe("FDN-50 stage 1 graph persistence", () => {
       });
       expect(firstBatch.mergedDeltaCount).toBe(1);
 
+      // FDN-50 stage 2: the flush is now debounced (250ms in runtime.ts), so
+      // this waits comfortably past that window before checking persistence
+      // — applyDeltaBatch resolving no longer means the write has landed.
+      await page.waitForTimeout(400);
+
       const persistedAfterFirstBatch = await page.evaluate(async (key) => {
         const api = window.__vultoGraphPersistenceDiagnostics;
         if (!api) throw new Error("diagnostics API missing");
@@ -190,6 +197,9 @@ test.describe("FDN-50 stage 1 graph persistence", () => {
         return api.applyDeltaBatch([snapshot]);
       });
       expect(secondBatch.mergedDeltaCount).toBe(1);
+
+      // Same debounce-aware wait as above, before reading persisted state.
+      await page.waitForTimeout(400);
 
       const finalPersisted = await page.evaluate(async (key) => {
         const api = window.__vultoGraphPersistenceDiagnostics;
@@ -266,7 +276,7 @@ test.describe("FDN-50 stage 1 graph persistence", () => {
     }
   });
 
-  test("applying a delta batch (which triggers persist) while the sealed store is locked fails cleanly", async ({
+  test("applying a delta batch while the sealed store is locked fails cleanly once its deferred flush is observed", async ({
     browser,
   }) => {
     const sql = postgres(databaseUrl, { max: 1 });
@@ -296,28 +306,44 @@ test.describe("FDN-50 stage 1 graph persistence", () => {
       }, workspaceId);
 
       // Lock the store on this already-initialized Worker instance, then
-      // attempt a mutation. The document import happens in-memory, but the
-      // persist step must fail cleanly rather than silently dropping data
-      // or throwing something unrelated.
+      // attempt a mutation. FDN-50 stage 2: the document import (and the
+      // in-memory mutation it produces) is no longer coupled to the persist
+      // step — applyDeltaBatch itself succeeds here, per the debounced
+      // write-through design (the 16ms optimistic write-acknowledgment
+      // budget: in-memory apply is never delayed or blocked by durability).
+      // The persist attempt is scheduled but not awaited by this call.
       await page.evaluate(async () => {
         const api = window.__vultoGraphPersistenceDiagnostics;
         if (!api) throw new Error("diagnostics API missing");
         await api.lock();
       });
 
-      const applyAttempt = await page
+      const applyResult = await page.evaluate(async () => {
+        const api = window.__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        const snapshot = api.buildSnapshot("should-not-persist", "never");
+        return api.applyDeltaBatch([snapshot]);
+      });
+      expect(applyResult.mergedDeltaCount).toBe(1);
+
+      // Wait past the debounce window: the scheduled flush now fires,
+      // finds the store locked, and fails. That failure is captured
+      // (runtime.ts's #pendingFlushError) rather than thrown into a void,
+      // and surfaces on the next call into the runtime — here, dispose().
+      await page.waitForTimeout(400);
+
+      const disposeAttempt = await page
         .evaluate(async () => {
           const api = window.__vultoGraphPersistenceDiagnostics;
           if (!api) throw new Error("diagnostics API missing");
-          const snapshot = api.buildSnapshot("should-not-persist", "never");
-          await api.applyDeltaBatch([snapshot]);
+          await api.dispose();
         })
         .then(() => "succeeded")
         .catch((error: unknown) =>
           error instanceof Error ? error.message : String(error),
         );
-      expect(applyAttempt).not.toBe("succeeded");
-      expect(String(applyAttempt)).toMatch(/locked/i);
+      expect(disposeAttempt).not.toBe("succeeded");
+      expect(String(disposeAttempt)).toMatch(/locked/i);
 
       // Confirm nothing was ever persisted under this workspace's key: the
       // locked write never silently succeeded with data. The Worker that

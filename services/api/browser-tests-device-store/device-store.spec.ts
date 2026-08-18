@@ -10,6 +10,7 @@ import {
   type Page,
 } from "@playwright/test";
 import postgres from "postgres";
+import { resetRateLimits } from "./rate-limit-reset";
 
 const apiOrigin = "https://localhost:3111";
 const webOrigin = "https://localhost:3110";
@@ -97,6 +98,7 @@ test.beforeAll(async ({ browser }) => {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await context.newPage();
   try {
+    await resetRateLimits(sql);
     sharedAccount = await signUp(page, sql);
   } finally {
     await context.close();

@@ -35,6 +35,8 @@ interface GraphPersistenceDiagnosticsApi {
   /** Decodes a base64 Loro snapshot (as returned by openPayload) and reads one map key back out of it, entirely client-side. */
   readSnapshotValue(base64Snapshot: string, mapKey: string): string | null;
   storeKeyFor(workspaceId: string): string;
+  /** Disposes the current client/Worker directly and awaits the round trip, without navigating away — used to prove a debounced flush still lands when dispose() is called inside the debounce window. */
+  dispose(): Promise<void>;
 }
 
 declare global {
@@ -110,6 +112,7 @@ export function GraphPersistenceDiagnosticsClient() {
         },
         readSnapshotValue,
         storeKeyFor: graphSnapshotStoreKey,
+        dispose: () => created.dispose(),
       };
     });
 
