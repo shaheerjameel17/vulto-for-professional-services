@@ -87,7 +87,10 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 
 | F123 | The passkey browser test raced its own sign-out — `generate-register-options` runs with `requireSession: false`, which makes a session optional rather than ignored | Repository | **Closed by repository fix** — the test waits for the server to confirm the session is gone before asserting the reuse refusal |
 
-**Sixty-six findings, fifty-nine closed.** Six stay open. F70, F73, F85 and F120 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+| F124 | F104 keyed the materialized edge's intervals to causal ordering, but a Loro Tree operation carries no deterministic date and a Lamport counter is not one | `VPS-A002`, `VPS-A001` | **Closed by founder ruling** — causal ordering `(lamport, peer)` selects the winning move; an effective date carried on the move operation fills the interval |
+| F125 | A backdated move — one whose effective date precedes an existing edge's start — has no defined behavior under the corrected F104/F124 rule | `VPS-A002`, `VRS-F037` | **Open, raised not decided** — FDN-50 stage 4 is scoped to forward-effective moves only |
+
+**Sixty-eight findings, sixty closed.** Seven stay open. F70, F73, F85, F120 and F125 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -1154,6 +1157,48 @@ This matters more than a flake: a suite that cannot run green end-to-end cannot 
 
 **The lesson worth keeping is about the reasoning, not the race.** A configuration flag named `requireSession: false` reads as "this endpoint does not consider sessions." It means the opposite of what it appears to: sessions are consulted first and merely not mandatory. Deriving a conclusion from the flag's name rather than from the plugin's actual resolution order produced a confident, evidence-shaped, wrong answer — and it took reproducing the failure with the database in view to correct it.
 
+**Reasoning about what code should do is not the same confidence level as reproducing what it actually does under the failure condition**, and the two should not be reported in the same voice. This applies to every claim of independent verification in this project, including ones made while reviewing someone else's work.
+
+---
+
+### F124 — causal ordering cannot supply an effective date
+
+F104 ruled that the `managed_by` edge is a one-way materialization of the Movable Tree's resolved state, with the edge's temporal intervals "keyed to the Tree operation's own causal ordering rather than local arrival time." Implementing it showed that one sentence asks a single mechanism to answer two unrelated questions.
+
+**Which concurrent move wins is causal, and has a correct answer.** It is the pair `(lamport, peer)` — not Lamport alone. Reproduced against the real pinned `loro-crdt@1.14.1`: two separate documents, each offline, moving the same employee to a different manager produce moves carrying the *same* Lamport value, and the peer identifier is what decides the winner.
+
+```
+A move lamport: 4 peer: 21
+B move lamport: 4 peer: 22
+LAMPORT TIE: true
+```
+
+Convergence itself holds exactly as F104 assumed — both merge orders agree on the resolved parent and on the winning move's OpId:
+
+```
+A-then-B: parent=3@11 moveId={"peer":"22","counter":0} lamport=4
+B-then-A: parent=3@11 moveId={"peer":"22","counter":0} lamport=4
+converged parent: true | converged moveId: true
+```
+
+**When the winning move took effect is not causal, and no deterministic answer exists in the operation.** A Lamport counter is not a date. Loro records `timestamp: 0` on an operation unless timestamp recording is explicitly enabled, and once enabled it is the originating device's wall clock at one-second granularity — non-deterministic across devices, non-monotonic under clock skew, and too coarse to separate two moves in the same second. `VPS-A002` types `effective_from` and `effective_to` as ISO 8601 timestamps and promoted them to first-class indexed columns precisely so temporal queries could filter on them; writing a causal key into those columns would date every reporting line to 1970 and break the thing the columns exist for. `VRS-F037`'s Move payload — `{ type: 'Move', employee_id, new_manager_id }` — carries no date either.
+
+**Closed by founder ruling — the two concerns are separated.** Causal ordering `(lamport, peer)` selects which concurrent move wins and orders the resulting history. The effective date is carried **on the move operation itself**, as data on the Tree node, authored by whoever performed the move. It replicates with the operation, so every device reads an identical copy and no second channel exists that could disagree with it — preserving the same one-write guarantee F104 was built on. The winning move's carried date becomes the new edge's `effective_from` and closes the prior edge's `effective_to`.
+
+`VPS-A002` and `VPS-A001` are corrected. The user-facing question of whether a Move dialog prompts for an effective date or defaults to today belongs to `VRS-F037` and is not settled here.
+
+---
+
+### F125 — a backdated move has no defined behavior
+
+The F124 ruling makes an effective date an explicit input rather than something derived from the CRDT's clock. That makes backdating expressible for the first time: a move whose effective date precedes the start of the currently active `managed_by` edge, or falls inside a closed historical interval.
+
+Nothing defines what should happen. The single-active-outgoing-edge-with-history pattern assumes each new edge opens at or after the previous one closes, and `materialization.ts` rejects overlapping intervals for one source. A backdated move would either be refused, or would have to split or rewrite existing history — and if two devices concurrently backdate into the same interval, concurrent-loser elimination is no longer straightforwardly correct, because the losing move may cover a period the winner does not.
+
+This is a real HR case rather than a contrived one: reorganizations are frequently recorded after they take effect.
+
+**Open, raised not decided.** FDN-50 stage 4 is deliberately scoped to forward-effective moves only, per founder instruction, rather than folding an unresolved question into a ruling that has just been corrected once. Closing it needs a decision on whether backdating is refused outright, permitted with history rewriting, or permitted only where it does not overlap a closed interval — and that decision belongs with `VRS-F037`, which owns the surface a person would perform it from.
+
 ---
 
 ### `VPS-A001` — FDN-50 stage 2
@@ -1166,6 +1211,9 @@ The Local graph query layer section corrected per F116: FDN-84 named as the owne
 A clarifying paragraph in Offline behavior, and a Decisions-section entry, closing F119: "current process" means the Worker instance, so a tab reload requires the same online unlock as a device cold restart. A SharedWorker alternative is named as an available future softening rather than built now.
 
 ---
+
+### `VPS-A002`, `VPS-A001` — F124
+The F104 correction refined where it conflated two facts. Both documents now state that `(lamport, peer)` selects which concurrent move wins — Lamport alone ties — and that the edge's effective date is carried on the move operation as replicated Tree data rather than derived from the CRDT's logical clock. Decisions-section entries in both, recording that this was found by implementation rather than by reading.
 
 ### `VPS-A002`, `VPS-A001`, `VRS-F037` — F104
 Closing the blocker on FDN-50. `VPS-A002`'s single-active-outgoing-edge-with-history section now states that a Movable-Tree-backed edge is a downstream materialization of the Tree's resolved state, never independently written, with the reconciliation protocol's causal-ordering rule stated once and cited from both other documents. `VPS-A001`'s Movable Tree section gets the matching statement, framed as the same category of violation as replacing the Tree with flat pointers. `VRS-F037` gains one clarifying sentence that its Move and Commit actions write the Tree only — the edge rewrite already described there was always the materializer's response, not a second write the feature performs. Decisions-section entries added to `VPS-A001` and `VPS-A002`.

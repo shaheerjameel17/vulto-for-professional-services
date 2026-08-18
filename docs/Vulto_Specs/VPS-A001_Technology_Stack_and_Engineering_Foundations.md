@@ -94,6 +94,8 @@ Loro is MIT licensed and in active production use. Its ecosystem is younger than
 
 **A Movable-Tree-backed edge is derived, not independently maintained.** `managed_by` is registered in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] both as a Tree-backed relationship and as a temporal edge under the single-active-outgoing-edge-with-history pattern. The Tree is the sole write target and sole authority on the current answer; the edge is a one-way materialization of the Tree's resolved state, and no application code writes it directly. A future feature adding a second write path to `managed_by` — an edge write that bypasses the Tree — is the same category of violation as replacing the Tree with flat parent pointers: it forfeits the concurrent-merge guarantee this library was selected for, and requires a superseding decision rather than an implementation shortcut. Recorded as F104.
 
+**Loro's causal ordering answers which move wins, and nothing else.** Selecting the winner among concurrent moves uses `(lamport, peer)` — Lamport alone is insufficient, because two concurrent moves of the same node commonly share a Lamport value and the peer identifier is the tie-break. What that ordering cannot supply is a real-world effective date: a Loro operation carries no deterministic timestamp, so the materialized edge's `effective_from` and `effective_to` come from a date carried on the move operation itself rather than from the CRDT's logical clock. Recorded as F124.
+
 A bespoke CRDT implementation is explicitly prohibited.
 
 **The pinned version is `loro-crdt@1.14.1`**, declared exactly — not as a range — in `packages/schema`, and pinned transitively in `pnpm-lock.yaml`. Recorded here per A001-T02, in the commit that pinned it.
