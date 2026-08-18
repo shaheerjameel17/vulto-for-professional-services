@@ -85,7 +85,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F121 | `loro-crdt@1.14.1` shallow snapshots cannot anchor a document whose history is concurrent roots — `export` accepts the anchor and `import` rejects the bytes it produced | `VPS-A001`, Repository | **Closed by founder ruling** — full snapshots only; `VPS-A001`'s shallow-snapshot reasoning corrected to say it does not hold for this system's document shape |
 | F122 | The device-store browser suite cannot run green in one invocation — its own sign-ups exhaust Better Auth's rate limit partway through | Repository | **Closed by repository fix** — each spec file resets the test database's rate-limit state in `beforeAll`; the production limit is untouched |
 
-**Sixty-five findings, fifty-eight closed.** Six stay open. F70, F73, F85 and F120 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+| F123 | The passkey browser test raced its own sign-out — `generate-register-options` runs with `requireSession: false`, which makes a session optional rather than ignored | Repository | **Closed by repository fix** — the test waits for the server to confirm the session is gone before asserting the reuse refusal |
+
+**Sixty-six findings, fifty-nine closed.** Six stay open. F70, F73, F85 and F120 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -1135,6 +1137,22 @@ Confirmed as infrastructure rather than product behavior: the same spec file pas
 This matters more than a flake: a suite that cannot run green end-to-end cannot serve as a CI gate, and the failure looks like a product defect at first reading rather than a test-infrastructure one.
 
 **Closed by repository fix.** Each spec file in the directory now truncates the browser-test database's `rate_limit` table in its `beforeAll`, before signing up — the same reset the pretest step already performs once, applied per file so one file's sign-ups cannot exhaust the window for the next. The rate limit itself is unchanged: it remains 3 per 60 seconds, still proven hostile-tested under F115, and was never a candidate for relaxation. Verified by running the full twelve-test suite green twice in succession in a single invocation, with no isolation, no grep filtering and no special sequencing.
+
+---
+
+### F123 — the passkey test raced its own sign-out, and `requireSession: false` does not mean "session ignored"
+
+`auth.spec.ts`'s passkey test intermittently failed at `expect(reusedContext).toBe(400)`, receiving `200` — roughly one run in four or five. The assertion checks that a registration context already used cannot be reused after signing out.
+
+**The reasoning that looked right and was wrong.** `services/api/src/auth/config.ts` configures the passkey plugin's registration with `requireSession: false` and a `resolveUser` that calls `resolvePasskeyRegistrationUser(context)`, which requires `consumedAt IS NULL`. Read quickly, that says session state is irrelevant to this endpoint and a consumed context must always be refused — so the failure could not be a sign-out race, and had to be something in how the test captured its context. That reading was recorded during review as a correction to an earlier, correct diagnosis. It was wrong, and it was wrong in the direction that would have sent the next reader hunting a nonexistent bug in the test's data capture.
+
+**What the evidence actually showed.** Reproducing it under instrumentation (roughly one failure per four runs, with the database queried at the moment of failure) established three facts at once: exactly one registration context was ever issued, its `consumed_at` **was set** in the database, and `generate-register-options` still returned `200`. A consumed context returning 200 means `resolveUser` was never consulted. `requireSession: false` makes a session **optional, not ignored** — while one is still live, the plugin derives identity from it and the context path is not reached at all. The test clicked "Sign out" and issued its next request without waiting for the server to agree the session was gone.
+
+**No product defect.** Single-use enforcement is intact and behaved correctly throughout: the context was consumed exactly once, atomically, and every replay of `verify-registration` was refused. What the test proved on a passing run was the right thing; what it did on a failing run was ask the question before the precondition it depends on had actually taken effect.
+
+**Closed by repository fix.** The test now polls `get-session` until the server reports no session before asserting the reuse refusal. Asserting on the signed-out UI alone would not have closed it — the redirect can land before the session row is gone. Verified by ten consecutive green runs against a failure rate previously around one in four.
+
+**The lesson worth keeping is about the reasoning, not the race.** A configuration flag named `requireSession: false` reads as "this endpoint does not consider sessions." It means the opposite of what it appears to: sessions are consulted first and merely not mandatory. Deriving a conclusion from the flag's name rather than from the plugin's actual resolution order produced a confident, evidence-shaped, wrong answer — and it took reproducing the failure with the database in view to correct it.
 
 ---
 
