@@ -1,6 +1,10 @@
 import { LoroDoc } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import type { GraphAvailability } from "../protocol";
+import {
+  assertDocumentSchemaGenerationReadable,
+  stampDocumentSchemaGeneration,
+} from "./document-schema-gate";
 import { SealedStore, SealedStoreLockedError } from "./storage/sealed-store";
 import { SQLiteGraphIndex } from "./storage/sqlite-graph-index";
 import { graphSnapshotStoreKey } from "./storage/storage-keys";
@@ -100,6 +104,31 @@ export class LocalGraphWorkerRuntime {
     const persisted = await this.#sealedStore.get(graphSnapshotStoreKey(workspaceId));
     if (persisted !== null) {
       this.#document.import(persisted);
+      // FDN-50 stage 3: the document-level gate. Runs AFTER the import (the
+      // recorded generation is document state, so it cannot be read before
+      // the bytes are in) and BEFORE this runtime is usable — nothing has
+      // been materialized or bound yet at this point, and if the gate
+      // refuses, nothing ever is.
+      //
+      // A workspace with no persisted snapshot never reaches here at all:
+      // that is the bootstrap case, it has no recorded generation by
+      // definition, and it initializes cleanly. Its first #persist stamps
+      // the current generation.
+      try {
+        assertDocumentSchemaGenerationReadable(this.#document);
+      } catch (error: unknown) {
+        // Fail closed, and leave nothing half-open behind. Every resource
+        // built above this line is torn down before the refusal propagates,
+        // and #workspaceId is deliberately still null — so no delta can be
+        // applied, no flush can be scheduled, and #persist cannot run and
+        // overwrite the newer document with an older client's snapshot.
+        await this.#index.dispose();
+        this.#index = null;
+        this.#document.free();
+        this.#document = null;
+        this.#availability = { state: "mid-sync" };
+        throw error;
+      }
     }
 
     this.#workspaceId = workspaceId;
@@ -234,6 +263,16 @@ export class LocalGraphWorkerRuntime {
     if (workspaceId === null || document === null) {
       throw new Error("Worker is not initialized");
     }
+
+    // FDN-50 stage 3: every durable write records the generation it was
+    // written under, so the gate in initialize() has something to read on
+    // the next reopen. Stamped here rather than in initialize() so that the
+    // bootstrap case behaves exactly as stage 1 proved it does — a fresh
+    // workspace that never mutates writes nothing at all, and its FIRST
+    // persist is what records the generation. This is a no-op on every
+    // later flush (the value is already present and equal), so it neither
+    // grows history nor changes the debounce behavior above it.
+    stampDocumentSchemaGeneration(document);
 
     const snapshot = document.export({ mode: "snapshot" });
     await this.#sealedStore.put(graphSnapshotStoreKey(workspaceId), snapshot);

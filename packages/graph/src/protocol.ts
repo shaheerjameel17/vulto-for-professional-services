@@ -127,6 +127,13 @@ export const graphWorkerErrorSchema = z
           "sealed-store-denied",
           "sealed-store-locked",
           "sealed-store-cannot-open",
+          // FDN-50 stage 3. Its own code, never folded into any of the three
+          // sealed-store codes above or into "runtime-failure": the store
+          // unlocked, the bytes authenticated, the document imported, and
+          // the refusal is about the schema generation it was written under.
+          // A caller that cannot tell those apart cannot react correctly to
+          // any of them.
+          "document-schema-generation-unsupported",
         ]),
         message: z.string().min(1),
         fatal: z.boolean(),

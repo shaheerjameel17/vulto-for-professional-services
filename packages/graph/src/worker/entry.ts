@@ -6,6 +6,7 @@ import {
   type GraphWorkerRequest,
   type GraphWorkerSuccess,
 } from "../protocol";
+import { UnsupportedDocumentSchemaGenerationError } from "./document-schema-gate";
 import { LocalGraphWorkerRuntime } from "./runtime";
 
 interface WorkerScope {
@@ -66,7 +67,28 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
           );
           return;
         }
-        await runtime.initialize(request.workspaceId);
+        try {
+          await runtime.initialize(request.workspaceId);
+        } catch (error) {
+          // FDN-50 stage 3: the document-level gate's refusal carries its
+          // own code across the boundary rather than collapsing into the
+          // generic runtime-failure the catch below would produce. Fatal,
+          // because this Worker can never serve this workspace: there is no
+          // retry, re-unlock, or re-sync that makes an older build able to
+          // read a newer build's document.
+          if (error instanceof UnsupportedDocumentSchemaGenerationError) {
+            scope.postMessage(
+              errorResponse(
+                request.requestId,
+                "document-schema-generation-unsupported",
+                error.message,
+                true,
+              ),
+            );
+            return;
+          }
+          throw error;
+        }
         scope.postMessage(
           success(request, {
             kind: "initialized",

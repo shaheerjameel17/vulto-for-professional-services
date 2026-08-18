@@ -2,6 +2,7 @@ import {
   GRAPH_WORKER_PROTOCOL_VERSION,
   parseGraphWorkerResponse,
   type GraphAvailability,
+  type GraphWorkerError,
   type GraphWorkerRequest,
   type GraphWorkerResponse,
   type GraphWorkerSuccess,
@@ -45,9 +46,21 @@ interface PendingRequest {
 }
 
 export class GraphWorkerProtocolError extends Error {
-  constructor(message: string) {
+  /**
+   * The Worker's own error code, when this error came from a Worker error
+   * response rather than from the client's own protocol checks.
+   *
+   * Carried as a field, not left buried in the message string, so a caller
+   * distinguishes FDN-50 stage 3's
+   * `document-schema-generation-unsupported` from the sealed-store codes and
+   * from `not-initialized` by inspection rather than by matching prose.
+   */
+  readonly code: GraphWorkerError["error"]["code"] | null;
+
+  constructor(message: string, code: GraphWorkerError["error"]["code"] | null = null) {
     super(message);
     this.name = "GraphWorkerProtocolError";
+    this.code = code;
   }
 }
 
@@ -280,6 +293,7 @@ class BrowserLocalGraphClient implements LocalGraphClient {
     if (parsed.type === "error") {
       const error = new GraphWorkerProtocolError(
         `${parsed.error.code}: ${parsed.error.message}`,
+        parsed.error.code,
       );
       if (parsed.requestId !== null) {
         this.#pending.get(parsed.requestId)?.reject(error);
