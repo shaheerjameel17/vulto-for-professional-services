@@ -5,7 +5,9 @@ import {
   type DeltaBatchResult,
   type LocalGraphClient,
 } from "@vulto/graph";
-import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { LockedShellGate } from "../../components/device-store/LockedShellGate";
 
 interface ResponsivenessResult {
   batch: DeltaBatchResult;
@@ -96,17 +98,39 @@ function runMaterializationProof(): Promise<MaterializationProofResult> {
   });
 }
 
-export function WorkerDiagnosticsClient() {
+/**
+ * Rendered only once LockedShellGate has confirmed the sealed store is
+ * unlocked. Runs the same client.initialize() this harness always ran, now
+ * safe to call because a FDN-84 unlock has already completed on this Worker
+ * instance (FDN-50 stage 1 makes initialize() reject while locked).
+ */
+function WorkerDiagnosticsReady({ client }: { client: LocalGraphClient }) {
   const [status, setStatus] = useState("initializing");
+  // A local graph Worker serves exactly one workspace for its whole
+  // lifetime, so client.initialize() must fire exactly once for this
+  // client instance. Unlike the client itself (recreated fresh on every
+  // mount by the parent), this component is only ever mounted once, after
+  // a real unlock — so StrictMode's dev-only double-invoke of this effect
+  // would otherwise call initialize() twice on the same already-live
+  // client and hit "already-initialized". The ref guards against that
+  // without masking a genuine double-initialize elsewhere.
+  const startedRef = useRef(false);
 
   useEffect(() => {
-    const client = createLocalGraphClient("fdn-77-browser-proof");
-    let mounted = true;
+    // Deliberately no "mounted" gate on the resolution below: StrictMode's
+    // dev-only synthetic cleanup (which runs immediately after this very
+    // setup, before the real initialize() call above has resolved) would
+    // otherwise mark the still-in-flight call as stale and silently drop
+    // its result, leaving status stuck on "initializing" forever. The
+    // startedRef guard above is what prevents a genuine double call; once
+    // it has let the one real initialize() call through, that call's
+    // resolution is always the one this component should reflect.
+    if (startedRef.current) return;
+    startedRef.current = true;
 
     void client
       .initialize()
       .then(() => {
-        if (!mounted) return;
         window.__vultoWorkerDiagnostics = {
           runBacklog: (base64Deltas) =>
             runWithHeartbeat(client, base64Deltas.map(decodeBase64)),
@@ -115,17 +139,38 @@ export function WorkerDiagnosticsClient() {
         setStatus("ready");
       })
       .catch((error: unknown) => {
-        if (mounted) {
-          setStatus(error instanceof Error ? error.message : "initialization failed");
-        }
+        setStatus(error instanceof Error ? error.message : "initialization failed");
       });
 
     return () => {
-      mounted = false;
       delete window.__vultoWorkerDiagnostics;
-      void client.dispose();
     };
-  }, []);
+  }, [client]);
 
   return <p data-testid="worker-status">{status}</p>;
+}
+
+export function WorkerDiagnosticsClient() {
+  const params = useSearchParams();
+  const workspaceId = params.get("workspaceId") ?? "fdn-77-browser-proof";
+  const clientRef = useRef<LocalGraphClient | null>(null);
+  const [client, setClient] = useState<LocalGraphClient | null>(null);
+
+  useEffect(() => {
+    const created = createLocalGraphClient(workspaceId);
+    clientRef.current = created;
+    setClient(created);
+
+    return () => {
+      void created.dispose();
+    };
+  }, [workspaceId]);
+
+  if (!client) return null;
+
+  return (
+    <LockedShellGate workspaceId={workspaceId} client={client}>
+      <WorkerDiagnosticsReady client={client} />
+    </LockedShellGate>
+  );
 }

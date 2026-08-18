@@ -18,6 +18,8 @@
     "zod": "4.4.3"
   },
   "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "postgres": "3.4.9",
     "typescript": "5.9.3"
   }
 }

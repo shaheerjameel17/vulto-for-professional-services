@@ -13,6 +13,7 @@
     "test": "turbo run test",
     "pretest:auth-browser": "pnpm --dir services/api exec tsx src/test/browser-setup.ts",
     "test:auth-browser": "playwright test --config services/api/playwright.config.ts",
+    "pretest:worker-browser": "pnpm --dir services/api exec tsx src/test/browser-setup-worker.ts",
     "test:worker-browser": "playwright test --config packages/graph/playwright.config.ts",
     "pretest:device-store-browser": "pnpm --dir services/api exec tsx src/test/browser-setup-device-store.ts",
     "test:device-store-browser": "playwright test --config services/api/playwright.device-store.config.ts",
