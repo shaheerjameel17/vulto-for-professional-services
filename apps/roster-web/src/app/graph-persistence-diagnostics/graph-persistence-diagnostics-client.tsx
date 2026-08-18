@@ -5,6 +5,16 @@ import {
   graphSnapshotStoreKey,
   type LocalGraphClient,
 } from "@vulto/graph";
+import {
+  buildBackdatedMoveSnapshot,
+  buildConcurrentMoveSnapshots,
+  buildSequentialMoveSnapshot,
+  materializeFromSnapshots,
+  PROOF_EMPLOYEE,
+  PROOF_MANAGER_A,
+  PROOF_MANAGER_B,
+  resolvedManagerOf,
+} from "@vulto/graph/testing";
 import { LoroDoc } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import { useSearchParams } from "next/navigation";
@@ -66,6 +76,33 @@ interface GraphPersistenceDiagnosticsApi {
   ): Record<string, unknown> | null;
   /** Disposes the current client/Worker directly and awaits the round trip, without navigating away — used to prove a debounced flush still lands when dispose() is called inside the debounce window. */
   dispose(): Promise<void>;
+  /**
+   * FDN-50 stage 4. The `managed_by` materialization proof seam, re-exported
+   * from `@vulto/graph/testing` — a subpath that exists precisely so the
+   * materializer is NOT reachable from the package's main export. Per F105
+   * FDN-53 remains the first application-callable read or write path over
+   * graph state, and none of this is one: every function below operates on
+   * scratch documents the caller supplies, exactly as `buildSnapshot` above
+   * has since stage 1.
+   */
+  managedBy: {
+    /** Two genuinely separate offline LoroDocs moving one employee to different managers. */
+    buildConcurrentMoveSnapshots(): {
+      seed: string;
+      deviceA: string;
+      deviceB: string;
+    };
+    buildSequentialMoveSnapshot(): string;
+    buildBackdatedMoveSnapshot(): string;
+    /** Merges the snapshots in the ORDER GIVEN, then materializes. */
+    materializeFromSnapshots(
+      base64Snapshots: readonly string[],
+    ): Promise<{ summary: string[]; canonical: string }>;
+    resolvedManagerOf(base64Snapshots: readonly string[]): string | null;
+    employeeId: string;
+    managerAId: string;
+    managerBId: string;
+  };
 }
 
 declare global {
@@ -207,6 +244,16 @@ export function GraphPersistenceDiagnosticsClient() {
         buildRecordSnapshot,
         readSnapshotRecord,
         dispose: () => created.dispose(),
+        managedBy: {
+          buildConcurrentMoveSnapshots,
+          buildSequentialMoveSnapshot,
+          buildBackdatedMoveSnapshot,
+          materializeFromSnapshots,
+          resolvedManagerOf,
+          employeeId: PROOF_EMPLOYEE,
+          managerAId: PROOF_MANAGER_A,
+          managerBId: PROOF_MANAGER_B,
+        },
       };
     });
 
