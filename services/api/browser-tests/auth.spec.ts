@@ -159,6 +159,28 @@ test("real Chromium performs passkey-first registration, sign-in, and rejects re
   expect(replay).toBeGreaterThanOrEqual(400);
 
   await page.getByRole("button", { name: "Sign out" }).click();
+  // Wait for the server to actually agree the session is gone, not merely for
+  // the click to dispatch. generate-register-options runs with
+  // `requireSession: false`, which makes a session OPTIONAL rather than
+  // ignored: while one is still live the passkey plugin derives identity from
+  // it and never consults the registration context at all, so the reuse check
+  // below returns 200 on a context the database has already marked consumed.
+  // Asserting on the signed-out UI alone would not close this — the redirect
+  // can land before the session row is gone. Recorded as F123.
+  await expect
+    .poll(
+      async () =>
+        page.evaluate(async (origin) => {
+          const response = await fetch(`${origin}/api/auth/get-session`, {
+            credentials: "include",
+          });
+          const body = (await response.text()).trim();
+          return body === "" || body === "null";
+        }, apiOrigin),
+      { timeout: 15_000 },
+    )
+    .toBe(true);
+
   const reusedContext = await page.evaluate(
     async ({ origin, registrationContext }) => {
       const response = await fetch(
