@@ -189,6 +189,56 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
         }
         return;
       }
+      case "query": {
+        if (runtime.workspaceId === null) {
+          scope.postMessage(
+            errorResponse(
+              request.requestId,
+              "not-initialized",
+              "Initialize the Worker before querying it",
+              true,
+            ),
+          );
+          return;
+        }
+        const result = await runtime.executeQuery(request.query);
+        // The interceptor's return type uses `readonly` arrays throughout
+        // (SQLiteGraphIndex's own convention); the protocol's zod-inferred
+        // result type does not carry that modifier. Structurally identical
+        // data, so this is a readonly-to-mutable widening, not an unsafe cast.
+        scope.postMessage(success(request, result as GraphWorkerSuccess["result"]));
+        return;
+      }
+      case "refresh-role": {
+        if (runtime.workspaceId === null) {
+          scope.postMessage(
+            errorResponse(
+              request.requestId,
+              "not-initialized",
+              "Initialize the Worker before refreshing its role",
+              true,
+            ),
+          );
+          return;
+        }
+        try {
+          await runtime.refreshRoleOnline(runtime.workspaceId);
+        } catch {
+          scope.postMessage(
+            errorResponse(
+              request.requestId,
+              "role-refresh-denied",
+              "The server denied this device's role refresh request",
+              false,
+            ),
+          );
+          return;
+        }
+        scope.postMessage(
+          success(request, { kind: "role-refreshed", roles: [...runtime.roles] }),
+        );
+        return;
+      }
       case "get-availability": {
         if (runtime.workspaceId === null) {
           scope.postMessage(

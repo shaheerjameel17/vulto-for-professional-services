@@ -3,6 +3,8 @@
 import {
   createLocalGraphClient,
   graphSnapshotStoreKey,
+  type GraphQuery,
+  type GraphQueryResult,
   type LocalGraphClient,
 } from "@vulto/graph";
 import {
@@ -16,6 +18,11 @@ import {
   resolvedManagerOf,
 } from "@vulto/graph/testing";
 import { buildProofEmployeeFragmentsSnapshot } from "@vulto/graph/testing/chain";
+import {
+  buildPermissionProofEmployeeSnapshot,
+  buildPermissionProofOrgScenarioSnapshot,
+  PERMISSION_PROOF_EMPLOYEE,
+} from "@vulto/graph/testing/permission";
 import { LoroDoc } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import { useSearchParams } from "next/navigation";
@@ -132,6 +139,21 @@ interface GraphPersistenceDiagnosticsApi {
    * `open()` runs online, `prove()` runs after the test cuts the network.
    */
   createOfflineProof(): OfflineProofHandle;
+  /**
+   * FDN-53 stage 1: the first production, permission-filtered graph read
+   * path. Calls `LocalGraphClient#query` directly — no separate test seam,
+   * since `query` is itself the application-callable surface this stage
+   * builds (F105).
+   */
+  query(graphQuery: GraphQuery): Promise<GraphQueryResult>;
+  /** F127's live role-refresh entrypoint, called directly on the same client `query` uses. */
+  refreshRole(): Promise<string[]>;
+  /** FDN-53 stage 1's own browser-proof fixture: one Employee, both privacy partitions. */
+  permissionProof: {
+    employeeId: string;
+    buildEmployeeFragments(workspaceId: string): string;
+    buildOrgScenario(workspaceId: string, nodeId: string): string;
+  };
 }
 
 interface OfflineProofHandle {
@@ -397,6 +419,13 @@ export function GraphPersistenceDiagnosticsClient() {
         runChainProof: (danglingWorkspaceId) =>
           runChainProof(workspaceId, danglingWorkspaceId),
         createOfflineProof: () => createOfflineProofHandle(workspaceId),
+        query: (graphQuery) => created.query(graphQuery),
+        refreshRole: () => created.refreshRole(),
+        permissionProof: {
+          employeeId: PERMISSION_PROOF_EMPLOYEE,
+          buildEmployeeFragments: buildPermissionProofEmployeeSnapshot,
+          buildOrgScenario: buildPermissionProofOrgScenarioSnapshot,
+        },
       };
     });
 

@@ -22,3 +22,11 @@ export {
 export { graphQuerySchema, parseGraphQuery, type GraphQuery } from "./query";
 
 export { graphSnapshotStoreKey } from "./worker/storage/storage-keys";
+
+export type {
+  GraphQueryResult,
+  MaterializedNeighbor,
+  MaterializedNode,
+  MaterializedNodeFragment,
+  MaterializedRecursiveNeighbor,
+} from "./worker/storage/sqlite-graph-index";

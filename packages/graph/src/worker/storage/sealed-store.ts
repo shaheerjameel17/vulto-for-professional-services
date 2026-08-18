@@ -22,6 +22,8 @@
  *    starts locked. There is no cross-instance carry-over by design.
  */
 
+import type { WorkspaceRole } from "@vulto/schema";
+
 const DATABASE_NAME = "vulto-sealed-store";
 const DATABASE_VERSION = 1;
 const DEVICE_STORE = "device-identity";
@@ -39,9 +41,23 @@ export interface SealedStoreEnvelope {
   createdAt: string;
 }
 
+/**
+ * FDN-53 stage 1: `roles` and `membershipId` are siblings of `envelope`,
+ * deliberately NOT part of it. `envelope` is persisted into IndexedDB by
+ * `unlock()` below and read back on a future unlock attempt to check for a
+ * workspace/key-epoch mismatch — durable, on-disk contract. Role data must
+ * never behave that way: it is a live fact from `requireCurrentWorkspaceSession`
+ * at the moment of THIS unlock (or refresh), and persisting it would let a
+ * stale, once-true role survive in the clear on disk and get read back
+ * before any fresh online check on a later unlock. Held only in this class's
+ * private Worker memory, exactly like the derived AES key, and cleared by
+ * `lock()`/`dispose()` the same way.
+ */
 export interface DeviceUnlockGrant {
   serverHalf: string;
   envelope: SealedStoreEnvelope;
+  roles: WorkspaceRole[];
+  membershipId: string;
 }
 
 interface PayloadRecord {
@@ -137,9 +153,30 @@ export class SealedStore {
   #database: IDBDatabase | null = null;
   #key: CryptoKey | null = null;
   #envelope: SealedStoreEnvelope | null = null;
+  #roles: WorkspaceRole[] | null = null;
+  #membershipId: string | null = null;
 
   get isUnlocked(): boolean {
     return this.#key !== null;
+  }
+
+  /**
+   * FDN-53 stage 1. The role set from the most recent unlock or role
+   * refresh, held in Worker memory exactly like the derived AES key — never
+   * persisted, never exposed outside this Worker instance. Throws when
+   * locked, matching `put`/`get`'s own `#requireUnlocked` behavior, so a
+   * caller cannot silently read a stale empty array.
+   */
+  get roles(): readonly WorkspaceRole[] {
+    if (this.#key === null || this.#roles === null) throw new SealedStoreLockedError();
+    return this.#roles;
+  }
+
+  get membershipId(): string {
+    if (this.#key === null || this.#membershipId === null) {
+      throw new SealedStoreLockedError();
+    }
+    return this.#membershipId;
   }
 
   async #requireDatabase(): Promise<IDBDatabase> {
@@ -232,12 +269,28 @@ export class SealedStore {
 
     this.#key = key;
     this.#envelope = grant.envelope;
+    this.#roles = grant.roles;
+    this.#membershipId = grant.membershipId;
+  }
+
+  /**
+   * FDN-53 stage 1, F127's live role-refresh path. Updates the in-memory
+   * role set without touching the AES key, the envelope, or any persisted
+   * bytes — a role narrowing must reach an already-unlocked session live,
+   * not only through a full re-`unlock()`. Throws when locked: a refresh
+   * has nothing to refresh if no unlock has happened this instance.
+   */
+  refreshRoles(roles: readonly WorkspaceRole[]): void {
+    if (this.#key === null) throw new SealedStoreLockedError();
+    this.#roles = [...roles];
   }
 
   /** Drops the in-memory key. Does not touch persisted ciphertext or either unlock half. */
   lock(): void {
     this.#key = null;
     this.#envelope = null;
+    this.#roles = null;
+    this.#membershipId = null;
   }
 
   #requireUnlocked(): { key: CryptoKey; envelope: SealedStoreEnvelope } {
