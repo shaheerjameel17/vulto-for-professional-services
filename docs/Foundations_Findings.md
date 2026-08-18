@@ -92,7 +92,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 
 | F126 | FDN-50's "reopened … offline" done criterion predates F106 and became impossible when F106 made every cold restart an online checkpoint | Linear, Process | **Closed by criterion correction** — split into "queried offline after unlock"; the general sweep lesson is recorded below |
 
-**Sixty-nine findings, sixty-one closed.** Seven stay open. F70, F73, F85, F120 and F125 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Seventy-three findings, sixty-five closed.** Eight stay open: F70, F73, F85, F118, F120 and F125 remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+
+*This count was itself stale, and F118 had dropped out of the open list entirely — the row was correct, the summary above it was not. Recounted from the table rows rather than incremented by hand, which is how it drifted: four findings were appended without the total being recalculated. If it disagrees with the table again, the table is right.*
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
