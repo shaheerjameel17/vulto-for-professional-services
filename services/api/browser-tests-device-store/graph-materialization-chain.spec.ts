@@ -1,4 +1,8 @@
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import {
+  chromium,
   expect,
   test,
   type BrowserContext,
@@ -57,8 +61,22 @@ interface ChainProofResult {
  * augments `Window` with its own view of this object, and re-declaring the
  * same property with a wider type here would conflict rather than merge.
  */
+interface OfflineProofResult {
+  employeesAfterOfflineMutation: number;
+  managerAfterOfflineMutation: string | null;
+  managerBeforeFirstEffectiveDate: string | null;
+  generationBefore: number;
+  generationAfter: number;
+  canonical: string;
+}
+
 interface ChainDiagnostics {
   runChainProof(danglingWorkspaceId: string): Promise<ChainProofResult>;
+  createOfflineProof(): {
+    open(): Promise<{ opened: boolean }>;
+    prove(): Promise<OfflineProofResult>;
+    dispose(): void;
+  };
   managedBy: {
     employeeId: string;
     managerAId: string;
@@ -275,6 +293,202 @@ test.describe("FDN-50 stage 5 CRDT-to-query-layer chain", () => {
     } finally {
       await context?.close();
       await sql.end();
+    }
+  });
+  test("mutates, materializes and queries with the network cut, after one online unlock", async ({
+    browser,
+  }) => {
+    // Closes FDN-50's "queried offline". The chain proof above walks every
+    // other verb in that criterion but runs online throughout, so "offline"
+    // was the one claim in this issue resting on reasoning rather than a
+    // test — the path has no network call in it, which is an argument about
+    // what the code should do, not evidence of what it does.
+    //
+    // The unlock stays online deliberately: F106 makes it a server
+    // round-trip, so unlocking offline would fail for a reason unrelated to
+    // what is under test. Network is cut immediately after, and everything
+    // asserted below happened with it gone.
+    const sql = postgres(databaseUrl, { max: 1 });
+    let context: BrowserContext | undefined;
+
+    try {
+      if (!sharedAccount) throw new Error("shared account was not created");
+      context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      await context.addCookies(sharedAccount.cookies);
+      const workspaceId = await createWorkspaceMembership(sql, sharedAccount.userId);
+
+      await page.goto(
+        `${webOrigin}/graph-persistence-diagnostics?workspaceId=${workspaceId}`,
+      );
+      await unlockAndWait(page);
+
+      // Open the proof Worker's own sealed store while still online.
+      const opened = await page.evaluate(async () => {
+        const api = (
+          window as unknown as { __vultoGraphPersistenceDiagnostics?: ChainDiagnostics }
+        ).__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        const handle = api.createOfflineProof();
+        (window as unknown as { __offlineProof?: unknown }).__offlineProof = handle;
+        return handle.open();
+      });
+      expect(opened.opened).toBe(true);
+
+      // Cut the network. Nothing below may reach the server.
+      await context.setOffline(true);
+
+      // Prove the network really is gone, so a passing assertion below
+      // cannot be explained by setOffline having silently not applied.
+      const reachable = await page.evaluate(async (origin) => {
+        try {
+          await fetch(`${origin}/health`, { cache: "no-store" });
+          return true;
+        } catch {
+          return false;
+        }
+      }, apiOrigin);
+      expect(reachable).toBe(false);
+
+      const result = await page.evaluate(async () => {
+        const handle = (
+          window as unknown as {
+            __offlineProof?: { prove(): Promise<OfflineProofResult>; dispose(): void };
+          }
+        ).__offlineProof;
+        if (!handle) throw new Error("offline proof handle missing");
+        const proof = await handle.prove();
+        handle.dispose();
+        return proof;
+      });
+
+      const managerAId = await page.evaluate(() => {
+        const api = (
+          window as unknown as { __vultoGraphPersistenceDiagnostics?: ChainDiagnostics }
+        ).__vultoGraphPersistenceDiagnostics;
+        return api!.managedBy.managerAId;
+      });
+
+      // The mutation was merged and materialized offline.
+      expect(result.generationAfter).toBeGreaterThan(result.generationBefore);
+      expect(result.employeesAfterOfflineMutation).toBe(3);
+      // And the SQLite index answered a real traversal query offline.
+      expect(result.managerAfterOfflineMutation).toBe(managerAId);
+      // Including the temporal half: before the move's carried effective
+      // date there is no reporting line (F124's half-open interval).
+      expect(result.managerBeforeFirstEffectiveDate).toBeNull();
+      expect(result.canonical.length).toBeGreaterThan(0);
+    } finally {
+      await context?.setOffline(false).catch(() => undefined);
+      await context?.close();
+      await sql.end();
+    }
+  });
+
+  test("a graph mutation survives a genuine browser restart, not only a new Worker", async () => {
+    // Closes FDN-50's "device restarts". graph-persistence.spec.ts proves
+    // survival across a page reload — a new Worker in the same browser
+    // session — and device-store.spec.ts proves the sealed BYTES survive a
+    // real browser relaunch and stay locked. Neither one then unlocks after
+    // that relaunch and reads the graph mutation back, so the end-to-end
+    // claim was standing on two halves that never met.
+    //
+    // This launches a persistent profile, mutates, closes the browser
+    // entirely, relaunches on the SAME profile directory, unlocks again, and
+    // reads the value back out of the reopened document.
+    const profile = await mkdtemp(path.join(tmpdir(), "vulto-fdn50s5-restart-"));
+    const sql = postgres(databaseUrl, { max: 1 });
+    let context: BrowserContext | undefined;
+
+    try {
+      context = await chromium.launchPersistentContext(profile, {
+        headless: true,
+        ignoreHTTPSErrors: true,
+      });
+      let page = context.pages()[0] ?? (await context.newPage());
+      const account = await signUp(page, sql);
+      const workspaceId = await createWorkspaceMembership(sql, account.userId);
+
+      await page.goto(
+        `${webOrigin}/graph-persistence-diagnostics?workspaceId=${workspaceId}`,
+      );
+      await unlockAndWait(page);
+
+      await page.evaluate(async () => {
+        const api = (
+          window as unknown as {
+            __vultoGraphPersistenceDiagnostics?: {
+              initialize(): Promise<void>;
+              buildSnapshot(key: string, value: string): string;
+              applyDeltaBatch(snapshots: readonly string[]): Promise<unknown>;
+            };
+          }
+        ).__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        await api.initialize();
+        await api.applyDeltaBatch([api.buildSnapshot("survives-restart", "yes")]);
+      });
+
+      // Let the 250ms debounced flush land before killing the browser. A
+      // clean dispose would flush synchronously, but a browser kill is not
+      // a clean dispose — that gap is stage 2's stated tradeoff, not this
+      // test's subject.
+      await expect
+        .poll(
+          () =>
+            page.evaluate(async () => {
+              const api = (
+                window as unknown as {
+                  __vultoGraphPersistenceDiagnostics?: {
+                    openPayload(key: string): Promise<string | null>;
+                    storeKeyFor(id: string): string;
+                  };
+                }
+              ).__vultoGraphPersistenceDiagnostics;
+              const params = new URLSearchParams(window.location.search);
+              const id = params.get("workspaceId")!;
+              return (await api!.openPayload(api!.storeKeyFor(id))) !== null;
+            }),
+          { timeout: 15_000 },
+        )
+        .toBe(true);
+
+      // Kill the browser process entirely, not just the page.
+      await context.close();
+      context = await chromium.launchPersistentContext(profile, {
+        headless: true,
+        ignoreHTTPSErrors: true,
+      });
+      page = context.pages()[0] ?? (await context.newPage());
+      await page.goto(
+        `${webOrigin}/graph-persistence-diagnostics?workspaceId=${workspaceId}`,
+      );
+      // A relaunched browser starts locked, per F106 — unlock again.
+      await unlockAndWait(page);
+
+      const recovered = await page.evaluate(async () => {
+        const api = (
+          window as unknown as {
+            __vultoGraphPersistenceDiagnostics?: {
+              openPayload(key: string): Promise<string | null>;
+              readSnapshotValue(snapshot: string, key: string): string | null;
+              storeKeyFor(id: string): string;
+            };
+          }
+        ).__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        const params = new URLSearchParams(window.location.search);
+        const id = params.get("workspaceId")!;
+        const payload = await api.openPayload(api.storeKeyFor(id));
+        if (payload === null) return null;
+        return api.readSnapshotValue(payload, "survives-restart");
+      });
+
+      expect(recovered).toBe("yes");
+    } finally {
+      await context?.close();
+      await sql.end();
+      await rm(profile, { recursive: true, force: true });
     }
   });
 });

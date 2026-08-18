@@ -126,6 +126,27 @@ interface GraphPersistenceDiagnosticsApi {
    * worker-diagnostics route already spawns.
    */
   runChainProof(danglingWorkspaceId: string): Promise<ChainProofResult>;
+  /**
+   * FDN-50 stage 5. Proves mutate/materialize/query with the network gone.
+   * Two steps because the unlock is a deliberate server round-trip (F106):
+   * `open()` runs online, `prove()` runs after the test cuts the network.
+   */
+  createOfflineProof(): OfflineProofHandle;
+}
+
+interface OfflineProofHandle {
+  open(): Promise<{ opened: boolean }>;
+  prove(): Promise<OfflineProofResult>;
+  dispose(): void;
+}
+
+interface OfflineProofResult {
+  employeesAfterOfflineMutation: number;
+  managerAfterOfflineMutation: string | null;
+  managerBeforeFirstEffectiveDate: string | null;
+  generationBefore: number;
+  generationAfter: number;
+  canonical: string;
 }
 
 interface ChainProofResult {
@@ -281,6 +302,46 @@ function runChainProof(
   });
 }
 
+/**
+ * FDN-50 stage 5: the offline half of the same criterion, which needs a
+ * long-lived Worker rather than a one-shot one.
+ *
+ * The unlock cannot happen offline — F106 makes it a server round-trip by
+ * design — so this returns a handle whose `open()` runs while the browser
+ * is still online and whose `prove()` runs after the test has cut the
+ * network. Everything `prove()` does is local: Loro merge,
+ * materialization, SQLite query.
+ */
+function createOfflineProofHandle(workspaceId: string): OfflineProofHandle {
+  const worker = new Worker(
+    new URL(
+      "../../../../../packages/graph/src/worker/testing/runtime-offline-proof.worker.ts",
+      import.meta.url,
+    ),
+    { type: "module", name: "vulto-fdn50-offline-proof" },
+  );
+
+  function send<T>(message: unknown): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<unknown>) => {
+        const response = event.data as
+          { ok: true; result: T } | { ok: false; error: string };
+        if (response.ok) resolve(response.result);
+        else reject(new Error(response.error));
+      };
+      worker.onerror = (event) =>
+        reject(new Error(event.message || "Offline proof Worker failed"));
+      worker.postMessage(message);
+    });
+  }
+
+  return {
+    open: () => send<{ opened: boolean }>({ kind: "open", workspaceId, apiOrigin }),
+    prove: () => send<OfflineProofResult>({ kind: "prove" }),
+    dispose: () => worker.terminate(),
+  };
+}
+
 export function GraphPersistenceDiagnosticsClient() {
   const params = useSearchParams();
   const workspaceId = params.get("workspaceId") ?? "fdn-50-browser-proof";
@@ -335,6 +396,7 @@ export function GraphPersistenceDiagnosticsClient() {
         },
         runChainProof: (danglingWorkspaceId) =>
           runChainProof(workspaceId, danglingWorkspaceId),
+        createOfflineProof: () => createOfflineProofHandle(workspaceId),
       };
     });
 
