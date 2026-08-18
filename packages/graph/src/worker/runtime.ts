@@ -176,23 +176,57 @@ export class LocalGraphWorkerRuntime {
    * FDN-50 stage 2 Decision 2 (shallow-anchor a flush against the previous
    * durable frontier, full snapshot only as the bootstrap) is NOT
    * implemented here — every flush still writes a full `{ mode: "snapshot"
-   * }`, same as stage 1. Building it surfaced a defect in the plan, not a
-   * bug in this file: `document.export({ mode: "shallow-snapshot",
-   * frontiers })` throws "You cannot switch a document to a version before
-   * the shallow history's start version" on import, as soon as the
-   * document has merged in ops from a peer that did not yet exist when
-   * `frontiers` was captured. Reproduced against the real pinned
-   * loro-crdt@1.14.1 in isolated scripts with no runtime.ts involved at
-   * all, and across all three frontier sources this file could plausibly
-   * have used (`oplogFrontiers()`, `frontiers()`, `vvToFrontiers(version())`
-   * at anchor time) — same failure every time. Since this Worker's document
-   * only ever grows by importing foreign deltas (never local edits) and
-   * every distinct scratch/session/device that has ever produced a delta
-   * is its own Loro peer, a workspace whose sync history spans more than
-   * one peer — the ordinary case, not an edge case — cannot be
-   * shallow-anchored against a stale frontier without hitting this. Filed
-   * as a candidate finding rather than worked around; see this stage's
-   * report for the three variants tried and their results.
+   * }`, same as stage 1. Building it surfaced a constraint in
+   * loro-crdt@1.14.1 that the scoped design cannot be written around, not a
+   * frontier-tracking bug in this file. Verified twice over: once in
+   * isolated Node scripts, and once as a fully instrumented implementation
+   * running in real Chromium against the real Worker, the real SealedStore,
+   * and the real `loro-crdt/web` WASM build this file imports.
+   *
+   * Two things about the failure matter more than the message itself, and
+   * both are easy to get wrong on a first reading:
+   *
+   * 1. `export({ mode: "shallow-snapshot", frontiers })` SUCCEEDS. It is
+   *    `import()` of the bytes it produced that throws "You cannot switch a
+   *    document to a version before the shallow history's start version"
+   *    (thrown as a bare string, with no `.message` and no `.stack`). A
+   *    flush that does not round-trip its own bytes before committing them
+   *    therefore writes a snapshot that cannot be read back, and the
+   *    workspace only fails on the NEXT `initialize()` — silent durable
+   *    corruption, discovered long after the flush that caused it.
+   *
+   * 2. The trigger is NOT "the document merged ops from a peer that did not
+   *    exist when `frontiers` was captured." A brand-new peer whose ops are
+   *    causal descendants of the anchor round-trips perfectly, repeatedly,
+   *    across reopen cycles. The shape that reproducibly fails is narrower:
+   *    a document whose history is two or more CONCURRENT ROOT ops, with
+   *    the anchor naming only some of them. That distinction is why this
+   *    reproduces here but did not reproduce in earlier scripts, which
+   *    happened to build causally ordered histories.
+   *
+   *    The precise boundary is narrower still than "any anchor that fails
+   *    to dominate the document," and is not fully characterized here: a
+   *    concurrent op grafted onto a deeper shared history, anchored
+   *    mid-chain, did round-trip cleanly. Do not read this comment as a
+   *    general rule about Loro; read it as the one shape this Worker
+   *    actually produces, which is a forest of concurrent roots, because
+   *    every delta it merges arrives as an independently authored document
+   *    whose first op is its own root.
+   *
+   * The previous durable frontier is exactly such an anchor whenever a
+   * delta arriving after it is concurrent with it rather than descended
+   * from it — which for a CRDT merging independently authored history is
+   * ordinary, not exotic. All three frontier sources this file could have
+   * used (`oplogFrontiers()`, `frontiers()`, `vvToFrontiers(version())`)
+   * return identical values at the failure point, so the accessor choice is
+   * not the variable. The only anchor that always round-trips is the
+   * document's current frontier at export time, which dominates everything
+   * by construction — but that drops all history rather than anchoring at
+   * the previous durable version, so it is a different decision than the
+   * one scoped, and it degenerates to a full snapshot exactly when
+   * concurrent roots are present. Filed as a candidate finding rather than
+   * worked around; see this stage's report for the captured state at
+   * failure.
    */
   async #persist(): Promise<void> {
     const workspaceId = this.#workspaceId;
