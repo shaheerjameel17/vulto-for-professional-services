@@ -82,8 +82,10 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F118 | `VPS-A003` and `VPS-F001` both cite `VPS-D004` for a SyncStatus / Offline indicator render that `VPS-D004` never defines | `VPS-A003`, `VPS-F001`, `VPS-D004` | **Open, raised not decided** — logged separately, not owned by FDN-84 |
 | F119 | "Current process" left it undecided whether a tab reload requires the same online unlock as a device cold restart | `VPS-A003` | **Closed by founder ruling** — strict: any new Worker instance requires an online unlock; a SharedWorker alternative is logged as an available future softening |
 | F120 | A document a client is too old to open has no specified render — not `SealedStore`'s "cannot open," not silent partial data, not any of `VPS-D004`'s existing states | `VPS-D004` | **Open, raised not decided** — FDN-50 |
+| F121 | `loro-crdt@1.14.1` shallow snapshots cannot anchor a document whose history is concurrent roots — `export` accepts the anchor and `import` rejects the bytes it produced | `VPS-A001`, Repository | **Closed by founder ruling** — full snapshots only; `VPS-A001`'s shallow-snapshot reasoning corrected to say it does not hold for this system's document shape |
+| F122 | The device-store browser suite cannot run green in one invocation — its own sign-ups exhaust Better Auth's rate limit partway through | Repository | **Closed by repository fix** — each spec file resets the test database's rate-limit state in `beforeAll`; the production limit is untouched |
 
-**Sixty-three findings, fifty-six closed.** Six stay open. F70, F73, F85 and F120 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Sixty-five findings, fifty-eight closed.** Six stay open. F70, F73, F85 and F120 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -1093,6 +1095,51 @@ FDN-50's decision memo established a document-level schema-version gate, separat
 **Open, raised not decided.** Not blocking FDN-50 — the gate itself needs no UI to exist and be correct; only the render is missing. Logged as a future finding rather than built now, per founder instruction, the same way F118's SyncStatus gap was logged separately rather than folded into the issue that surfaced it.
 
 ---
+
+### F121 — shallow snapshots cannot anchor a document built from concurrent roots
+
+`VPS-A001` cites Loro's shallow snapshots — "trimming CRDT history while preserving mergeability" — as part of why Loro was selected over Automerge and Yjs, and names unbounded tombstone accumulation as the failure it avoids. FDN-50's Decision 2 scoped that capability into the durable flush: a full snapshot on first persist, then every later flush shallow-anchored to the previous durable frontier.
+
+That design is not implementable on the pinned `loro-crdt@1.14.1`, for a narrower reason than it first appeared.
+
+**The failure is on import, not export.** `export({ mode: "shallow-snapshot", frontiers })` accepts the anchor and returns bytes. Importing those bytes throws *"You cannot switch a document to a version before the shallow history's start version"* — as a bare string, with no `.message` and no `.stack`. A flush that does not round-trip its own output before committing therefore writes a snapshot that cannot be read back, and the workspace fails only at the *next* `initialize()`. That is silent durable corruption discovered long after the flush that caused it, which is a materially worse failure than a flush that simply errors.
+
+**The trigger is concurrent roots, not unfamiliar peers.** A brand-new peer whose operations are causal descendants of the anchor round-trips cleanly and stays genuinely shallow, repeatedly, across reopen cycles. The shape that reproducibly fails is a document whose history contains two or more *concurrent root* operations with the anchor naming only some of them. Verified directly against the pinned version:
+
+| later ops | anchor | result |
+|---|---|---|
+| causal descendant | previous durable frontier | round-trips, genuinely shallow |
+| concurrent root | previous durable frontier | **export succeeds, import throws** |
+| concurrent root | current frontier at export | round-trips, but not shallow — degenerates to a full snapshot |
+
+This is why an earlier investigation reported no failure at all: its reproductions happened to build causally ordered histories, where the constraint does not bite.
+
+**The boundary is narrower still and is deliberately not generalized here.** A concurrent operation grafted onto a deeper shared history, anchored mid-chain, did round-trip cleanly. This finding records the one shape the local graph Worker actually produces — a forest of concurrent roots, because every delta it merges arrives as an independently authored document whose first operation is its own root — and does not claim a general law about Loro's shallow-snapshot semantics.
+
+**Closed by founder ruling — full snapshots only.** Decision 2 is not implemented, and the two workarounds are both rejected for stated reasons. Anchoring at the current frontier was rejected because it is not actually shallow: it round-trips only by dropping all history, which defeats the purpose the capability was scoped for. Upgrading past `1.14.1` was rejected because no evidence exists that a later release changes this behavior, and this project has already been burned by unverified dependency assumptions — F47 records `typescript@^5.7.3` and `turbo@^2.3.4` drifting unintentionally, which is why A001-T02 requires exact pins in the first place.
+
+**Correctness is not at risk either way.** A full snapshot is a complete, correct, readable durable record. What the ruling forgoes is history trimming, and the cost is therefore storage growth over time rather than data loss or divergence. That is an acceptable trade to revisit later against real evidence — a workspace whose snapshot size actually becomes a problem, or a verified change in Loro's own shallow-snapshot semantics. Neither is a reason to act now.
+
+`VPS-A001`'s shallow-snapshot reasoning is corrected rather than left standing: it does not hold for this system's document shape, and the document now says so plainly and cites this finding.
+
+Any future shallow-snapshot work must round-trip its own bytes before committing them, whatever path is taken.
+
+---
+
+### F122 — the device-store browser suite cannot run green in one invocation
+
+Running `pnpm test:device-store-browser` executes three spec files in one Playwright invocation, each performing real sign-ups against the real API. Better Auth's sign-up rate limit (3 per 60 seconds, deliberately configured and proven under F115) is exhausted partway through, and the run fails inside `signUp` — the "Account ready" heading never appears — rather than in anything the tests are actually asserting.
+
+Confirmed as infrastructure rather than product behavior: the same spec file passes 3/3 when the `pretest` step truncates `rate_limit` immediately beforehand and it runs alone. The rate limit itself is correct and must not be weakened to make tests pass.
+
+This matters more than a flake: a suite that cannot run green end-to-end cannot serve as a CI gate, and the failure looks like a product defect at first reading rather than a test-infrastructure one.
+
+**Closed by repository fix.** Each spec file in the directory now truncates the browser-test database's `rate_limit` table in its `beforeAll`, before signing up — the same reset the pretest step already performs once, applied per file so one file's sign-ups cannot exhaust the window for the next. The rate limit itself is unchanged: it remains 3 per 60 seconds, still proven hostile-tested under F115, and was never a candidate for relaxation. Verified by running the full twelve-test suite green twice in succession in a single invocation, with no isolation, no grep filtering and no special sequencing.
+
+---
+
+### `VPS-A001` — FDN-50 stage 2
+The shallow-snapshot selection rationale withdrawn per F121, and a Decisions-section entry recording why. The CRDT-selection paragraph no longer claims shallow snapshots as a reason Loro was chosen; it states plainly that the capability does not hold for this system's document shape, that full snapshots are written instead at a cost in storage rather than correctness, and that the Movable Tree remains the load-bearing reason for the selection. Revisitable only against verified evidence of changed Loro semantics, not a release note.
 
 ### `VPS-A001` — FDN-84
 The Local graph query layer section corrected per F116: FDN-84 named as the owner of the sealed local device store and its cold-restart online unlock, FDN-50 as writing canonical Loro persistence into that sealed store, and FDN-52 as owning privacy-tier partitioning, envelope-wrapped reader keys and any later encrypted SQLite cache or VFS. A Decisions-section entry recording the correction.
