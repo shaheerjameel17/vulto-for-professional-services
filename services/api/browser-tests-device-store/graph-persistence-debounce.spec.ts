@@ -6,6 +6,7 @@ import {
   type Page,
 } from "@playwright/test";
 import postgres from "postgres";
+import { resetRateLimits } from "./rate-limit-reset";
 
 /**
  * FDN-50 stage 2: debounced write-through, layered on top of stage 1's
@@ -133,6 +134,7 @@ test.beforeAll(async ({ browser }) => {
   const context = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await context.newPage();
   try {
+    await resetRateLimits(sql);
     sharedAccount = await signUp(page, sql);
   } finally {
     await context.close();
