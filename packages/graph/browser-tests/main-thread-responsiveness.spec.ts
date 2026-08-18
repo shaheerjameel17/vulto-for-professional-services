@@ -1,5 +1,13 @@
 import { expect, test } from "@playwright/test";
 import { LoroDoc } from "loro-crdt";
+import postgres from "postgres";
+import {
+  createWorkspaceMembership,
+  databaseUrl,
+  signUp,
+  unlockAndWaitForReady,
+  webOrigin,
+} from "./browser-test-helpers";
 
 function buildBacklog(
   firstPeer: number,
@@ -21,11 +29,20 @@ function buildBacklog(
 
 test("a multi-day delta backlog leaves the browser main thread responsive", async ({
   page,
+  context,
 }) => {
-  await page.goto("/worker-diagnostics");
-  await expect(page.getByTestId("worker-status")).toHaveText("ready", {
-    timeout: 30_000,
-  });
+  const sql = postgres(databaseUrl, { max: 1 });
+  try {
+    const account = await signUp(page, sql);
+    await context.addCookies(account.cookies);
+    const workspaceId = await createWorkspaceMembership(sql, account.userId);
+
+    await page.goto(`${webOrigin}/worker-diagnostics?workspaceId=${workspaceId}`);
+    await expect(page.getByTestId("locked-shell")).toBeVisible();
+    await unlockAndWaitForReady(page);
+  } finally {
+    await sql.end();
+  }
 
   let result:
     | {
