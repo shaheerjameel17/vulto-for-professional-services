@@ -73,7 +73,14 @@ test("a multi-day delta backlog leaves the browser main thread responsive", asyn
   expect(result!.batch.workerDurationMs).toBeGreaterThanOrEqual(500);
   expect(result!.batch.availability).toEqual({ state: "ready" });
   expect(result!.batch.mergedDeltaCount).toBe(6);
-  expect(result!.batch.materializationGeneration).toBe(0);
+  // FDN-50 stage 5 wired materialization into the live path, so this field
+  // finally reports something. It was 0 for every batch until then — the
+  // Worker merged deltas and materialized nothing — and a merged batch now
+  // advances the generation, including the one materialization that
+  // initialize() itself performs. The assertion is that the batch WAS
+  // materialized, not which number it landed on: the count depends on how
+  // many backlog sizes the loop above needed to exceed its 500ms floor.
+  expect(result!.batch.materializationGeneration).toBeGreaterThan(0);
   expect(result!.animationFrames).toBeGreaterThan(10);
   expect(result!.maxFrameGapMs).toBeLessThan(100);
 });

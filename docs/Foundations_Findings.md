@@ -90,7 +90,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F124 | F104 keyed the materialized edge's intervals to causal ordering, but a Loro Tree operation carries no deterministic date and a Lamport counter is not one | `VPS-A002`, `VPS-A001` | **Closed by founder ruling** — causal ordering `(lamport, peer)` selects the winning move; an effective date carried on the move operation fills the interval |
 | F125 | A backdated move — one whose effective date precedes an existing edge's start — has no defined behavior under the corrected F104/F124 rule | `VPS-A002`, `VRS-F037` | **Open, raised not decided** — FDN-50 stage 4 is scoped to forward-effective moves only |
 
-**Sixty-eight findings, sixty closed.** Seven stay open. F70, F73, F85, F120 and F125 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+| F126 | FDN-50's "reopened … offline" done criterion predates F106 and became impossible when F106 made every cold restart an online checkpoint | Linear, Process | **Closed by criterion correction** — split into "queried offline after unlock"; the general sweep lesson is recorded below |
+
+**Sixty-nine findings, sixty-one closed.** Seven stay open. F70, F73, F85, F120 and F125 remain unresolved. F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 **The registry now parses.** 109 node rows, every Privacy Class a member of the closed set, every tier either the class default or a registered departure, all 13 classes in use and none unused, every relationship traversable using only registered edges. That is the state FDN-45 needs in order to compile the registry to typed contracts, and it is checkable rather than asserted.
 
@@ -1198,6 +1200,24 @@ Nothing defines what should happen. The single-active-outgoing-edge-with-history
 This is a real HR case rather than a contrived one: reorganizations are frequently recorded after they take effect.
 
 **Open, raised not decided.** FDN-50 stage 4 is deliberately scoped to forward-effective moves only, per founder instruction, rather than folding an unresolved question into a ruling that has just been corrected once. Closing it needs a decision on whether backdating is refused outright, permitted with history rewriting, or permitted only where it does not overlap a closed interval — and that decision belongs with `VRS-F037`, which owns the surface a person would perform it from.
+
+---
+
+### F126 — a done criterion outlived by a later ruling that made it impossible
+
+FDN-50's done criteria included: *"A workspace can be created, mutated, closed, reopened, materialized, and queried offline through the Worker-private proof seam."* Read as one unbroken path, that cannot be satisfied and never will be.
+
+F106 made every cold restart a revocation checkpoint: the sealed local store stays locked until the server validates a current session. **Reopening therefore requires connectivity, by deliberate design.** The chain proof's reopen calls a real `unlockSealedStore(..., apiOrigin)` for exactly that reason. "Reopened … offline" asks for the one thing F106 exists to prevent.
+
+The criterion was written before F106 was decided, and was never revisited when it was. Nothing was wrong with either statement when it was made; the contradiction was created by the later ruling and left in place.
+
+**Closed by criterion correction.** The criterion now reads as two separable claims, both of which are proven: a workspace can be created, mutated, closed, reopened, materialized and queried through the Worker-private proof seam (`graph-materialization-chain.spec.ts`, "maps a Tree move through materialization into SQLite and answers it back, across a close and reopen"); and mutation, materialization and query all work with the network cut once an unlock has succeeded in the current process (same file, "mutates, materializes and queries with the network cut, after one online unlock"). The unlock itself stays online, which is F106's whole point rather than a limitation.
+
+**The general lesson, which is the more valuable half.** This is a category of gap distinct from every other finding in this log: not a defect in a document, and not something implementation revealed about the world — a **spec-level promise silently outlived by a later decision that made it impossible.** Nobody wrote anything wrong. The contradiction appeared between two correct statements made at different times.
+
+Findings like F54 or F104 were discoverable by reading the documents against each other. This one was not: both texts read fine in isolation, and only a reader holding F106 and this criterion at the same moment sees the conflict — which, in practice, means only the person who happens to be implementing that criterion.
+
+**So when a ruling changes what is possible rather than merely what is preferred, the specifications and issues that predate it should be swept for this exact shape, not only the ones actively being worked on at the time.** F106 is the clearest instance so far, because it converted an availability property into a security checkpoint and therefore invalidated any earlier promise of unconditional offline behavior. F121 has the same shape at smaller scale: it removed a capability `VPS-A001` had cited as a selection reason, and that citation had to be withdrawn rather than left standing. A ruling of that kind should end with a sweep, and the sweep's results should be recorded — otherwise the next contradiction is found the same way this one was, by accident, at the moment someone tries to prove it.
 
 ---
 

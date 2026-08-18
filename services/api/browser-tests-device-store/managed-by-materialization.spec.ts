@@ -50,6 +50,7 @@ interface ManagedByDiagnostics {
     };
     buildSequentialMoveSnapshot(): string;
     buildBackdatedMoveSnapshot(): string;
+    buildEmployeeFragments(workspaceId: string): string;
     materializeFromSnapshots(
       base64Snapshots: readonly string[],
     ): Promise<{ summary: string[]; canonical: string }>;
@@ -242,7 +243,15 @@ test.describe("FDN-50 stage 4 managed_by materialization", () => {
 
       // Feed both offline devices' bytes through the REAL production
       // applyDeltaBatch entrypoint, so the Worker's own document merges them.
-      const expected = await page.evaluate(async () => {
+      //
+      // FDN-50 stage 5 wired materialization into that entrypoint, which
+      // made a requirement real that was invisible while the live path
+      // ignored the Tree: a materialized `managed_by` edge is refused
+      // unless both of its endpoints are themselves materialized. The three
+      // employees' node records are therefore merged first, so the runtime
+      // receives a COMPLETE workspace document rather than a Tree with no
+      // people in it. Nothing this test asserts changed.
+      const expected = await page.evaluate(async (id) => {
         const api = (
           window as unknown as {
             __vultoGraphPersistenceDiagnostics?: ManagedByDiagnostics;
@@ -250,14 +259,19 @@ test.describe("FDN-50 stage 4 managed_by materialization", () => {
         ).__vultoGraphPersistenceDiagnostics;
         if (!api) throw new Error("diagnostics API missing");
         const { seed, deviceA, deviceB } = api.managedBy.buildConcurrentMoveSnapshots();
-        await api.applyDeltaBatch([seed, deviceA, deviceB]);
+        await api.applyDeltaBatch([
+          api.managedBy.buildEmployeeFragments(id),
+          seed,
+          deviceA,
+          deviceB,
+        ]);
         const direct = await api.managedBy.materializeFromSnapshots([
           seed,
           deviceA,
           deviceB,
         ]);
         return direct;
-      });
+      }, workspaceId);
 
       // Past the 250ms debounce window, so the durable flush has landed.
       await page.waitForTimeout(400);

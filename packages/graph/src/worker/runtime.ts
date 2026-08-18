@@ -5,6 +5,8 @@ import {
   assertDocumentSchemaGenerationReadable,
   stampDocumentSchemaGeneration,
 } from "./document-schema-gate";
+import { readNodeFragments } from "./document-node-fragments";
+import { materializeManagedByEdges } from "./managed-by-materialization";
 import { SealedStore, SealedStoreLockedError } from "./storage/sealed-store";
 import { SQLiteGraphIndex } from "./storage/sqlite-graph-index";
 import { graphSnapshotStoreKey } from "./storage/storage-keys";
@@ -69,6 +71,27 @@ export class LocalGraphWorkerRuntime {
     return !this.#sealedStore.isUnlocked;
   }
 
+  /**
+   * FDN-50 stage 5: Worker-private access to the materialized index, for
+   * the proof seam that has to read back what the live path wrote.
+   *
+   * This is NOT an application-facing read path and does not become one.
+   * `packages/graph`'s public surface is the Worker client and its
+   * validated protocol; no protocol message reaches this getter, `entry.ts`
+   * never calls it, and nothing outside the Worker can obtain a
+   * `LocalGraphWorkerRuntime` to call it on. Per F105, FDN-53 remains the
+   * first application-callable read path over graph state, behind
+   * `VPS-A004`'s permission interceptor — this getter is the same category
+   * of test seam as stage 4's materializer, reached only from
+   * `src/worker/testing/`.
+   *
+   * Named for what it is so that adding a protocol message that exposes it
+   * reads as the deliberate scope violation it would be.
+   */
+  get materializedIndexForDiagnostics(): SQLiteGraphIndex | null {
+    return this.#index;
+  }
+
   async unlockSealedStore(workspaceId: string, apiOrigin: string): Promise<void> {
     await this.#sealedStore.unlockOnline(workspaceId, apiOrigin);
   }
@@ -131,8 +154,71 @@ export class LocalGraphWorkerRuntime {
       }
     }
 
+    // FDN-50 stage 5: a reopened document must produce its edges again.
+    // The SQLite index is a disposable read model that does not survive the
+    // Worker — every new instance starts with an empty one — so a workspace
+    // whose Tree moves and node fragments were all merged in a PREVIOUS
+    // session would otherwise reopen fully populated as a document and
+    // completely empty as a query surface. Materializing here is what makes
+    // "closed, reopened, materialized, and queried" one continuous path
+    // rather than three that happen to share a document.
+    //
+    // Its own try/catch rather than an extension of the gate's above: the
+    // gate is stage 3's and is deliberately left untouched. The teardown is
+    // the same, and for the same reason — a workspace whose document cannot
+    // be materialized must not be left half-open, with #workspaceId still
+    // null so no delta can be applied and no flush can overwrite it.
+    try {
+      await this.#materialize();
+    } catch (error: unknown) {
+      await this.#index.dispose();
+      this.#index = null;
+      this.#document.free();
+      this.#document = null;
+      this.#availability = { state: "mid-sync" };
+      throw error;
+    }
+
     this.#workspaceId = workspaceId;
     this.#availability = { state: "ready" };
+  }
+
+  /**
+   * FDN-50 stage 5: the whole of the CRDT-to-query-layer mapping, in one
+   * place, run on exactly two occasions — a reopen, and every merged delta
+   * batch.
+   *
+   * **This is a full re-materialization, deliberately.** Every call reads
+   * the document's complete current state and hands `rebuild` a whole
+   * snapshot, which replaces the index's contents outright. An incremental
+   * path — diffing which fragments and which Tree subtrees a batch touched,
+   * and applying only those — would be faster, and is not built here
+   * because it cannot yet be proven correct: a merged CRDT batch can change
+   * the resolved winner of a move that the batch itself does not contain
+   * (stage 4's concurrent-loser elimination is a property of the whole
+   * history, not of one delta), so "which edges changed" is not a function
+   * of the incoming bytes alone. A clever incremental path that is wrong in
+   * that case would produce a query layer that quietly disagrees with the
+   * document, which is precisely the failure this issue exists to rule out.
+   *
+   * Full re-materialization also makes idempotency free rather than
+   * argued: the index becomes a pure function of the document, so running
+   * this twice on unchanged state produces an identical index. Stage 4's
+   * deterministic edge ids (SHA-256 over replicated inputs, forced to v4
+   * shape) are what let that hold across devices as well as across reruns —
+   * a random edge id would make the same Tree state materialize as
+   * different rows on every pass.
+   *
+   * The cost is bounded by workspace size rather than batch size, and is
+   * paid inside the Worker, never on the main thread (A001-T06). When it
+   * stops being acceptable, the replacement needs its own proof, not a
+   * quiet substitution.
+   */
+  async #materialize(): Promise<number> {
+    const document = this.#requireDocument();
+    const index = this.#requireIndex();
+    const { edges } = await materializeManagedByEdges(document);
+    return index.rebuild({ nodeFragments: readNodeFragments(document), edges });
   }
 
   async applyDeltaBatch(
@@ -140,13 +226,27 @@ export class LocalGraphWorkerRuntime {
   ): Promise<RuntimeDeltaBatchResult> {
     this.#throwPendingFlushError();
     const document = this.#requireDocument();
-    const index = this.#requireIndex();
+    this.#requireIndex();
     this.#availability = { state: "mid-sync" };
     const startedAt = performance.now();
 
     for (const delta of deltas) {
       document.import(new Uint8Array(delta));
     }
+    // FDN-50 stage 5: the merged document is mapped into the SQLite index
+    // BEFORE the durable flush is scheduled, so a batch this Worker cannot
+    // materialize is never scheduled for a durable write. That ordering is
+    // not cosmetic — a batch that reaches disk but cannot be materialized
+    // makes the NEXT initialize() refuse the workspace, turning a rejected
+    // mutation into an unopenable document.
+    //
+    // It does not make the in-memory merge conditional: the deltas are
+    // already in the document above, and a materialization failure throws
+    // out of this call with them merged. That is the honest position for
+    // this stage — a CRDT merge is not undoable, and pretending otherwise
+    // by discarding the document would lose ops from peers that are
+    // perfectly valid. See this stage's report for the case it leaves open.
+    const materializationGeneration = await this.#materialize();
     // The mutation above is already visible/queryable in-memory and through
     // the index at this point. Only the durable flush to SealedStore is
     // deferred — see #scheduleFlush and #persist.
@@ -155,7 +255,7 @@ export class LocalGraphWorkerRuntime {
 
     return {
       mergedDeltaCount: deltas.length,
-      materializationGeneration: await index.generation,
+      materializationGeneration,
       workerDurationMs: performance.now() - startedAt,
     };
   }

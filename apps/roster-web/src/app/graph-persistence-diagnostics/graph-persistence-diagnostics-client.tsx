@@ -15,11 +15,13 @@ import {
   PROOF_MANAGER_B,
   resolvedManagerOf,
 } from "@vulto/graph/testing";
+import { buildProofEmployeeFragmentsSnapshot } from "@vulto/graph/testing/chain";
 import { LoroDoc } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LockedShellGate } from "../../components/device-store/LockedShellGate";
+import { apiOrigin } from "../../lib/auth-client";
 
 interface GraphPersistenceDiagnosticsApi {
   getStatus(): Promise<{ locked: boolean }>;
@@ -94,6 +96,14 @@ interface GraphPersistenceDiagnosticsApi {
     };
     buildSequentialMoveSnapshot(): string;
     buildBackdatedMoveSnapshot(): string;
+    /**
+     * FDN-50 stage 5: the three proof employees' node records, with no
+     * Tree. Since stage 5 wired materialization into the live
+     * `applyDeltaBatch`, a Tree-only document is refused there — a
+     * materialized edge's endpoints must themselves be materialized — so a
+     * proof that drives the real runtime hands it this first.
+     */
+    buildEmployeeFragments(workspaceId: string): string;
     /** Merges the snapshots in the ORDER GIVEN, then materializes. */
     materializeFromSnapshots(
       base64Snapshots: readonly string[],
@@ -103,6 +113,60 @@ interface GraphPersistenceDiagnosticsApi {
     managerAId: string;
     managerBId: string;
   };
+  /**
+   * FDN-50 stage 5. Runs the complete chain — Tree move, materialized
+   * `managed_by` edges, SQLite index, queried back, across a real close and
+   * reopen — inside a test-only Worker that constructs the real
+   * `LocalGraphWorkerRuntime` directly.
+   *
+   * It deliberately does NOT go through `LocalGraphClient`: reading query
+   * results back over the production protocol would be the
+   * application-facing read path F105 reserves for FDN-53. Same test-seam
+   * technique as the FDN-48 materialization proof Worker the
+   * worker-diagnostics route already spawns.
+   */
+  runChainProof(danglingWorkspaceId: string): Promise<ChainProofResult>;
+  /**
+   * FDN-50 stage 5. Proves mutate/materialize/query with the network gone.
+   * Two steps because the unlock is a deliberate server round-trip (F106):
+   * `open()` runs online, `prove()` runs after the test cuts the network.
+   */
+  createOfflineProof(): OfflineProofHandle;
+}
+
+interface OfflineProofHandle {
+  open(): Promise<{ opened: boolean }>;
+  prove(): Promise<OfflineProofResult>;
+  dispose(): void;
+}
+
+interface OfflineProofResult {
+  employeesAfterOfflineMutation: number;
+  managerAfterOfflineMutation: string | null;
+  managerBeforeFirstEffectiveDate: string | null;
+  generationBefore: number;
+  generationAfter: number;
+  canonical: string;
+}
+
+interface ChainProofResult {
+  employeesBeforeMutation: number;
+  employeesAfterMutation: number;
+  generationAfterFirstBatch: number;
+  generationAfterSecondBatch: number;
+  generationAfterReapply: number;
+  managerAfterFirstBatch: string | null;
+  managerBeforeFirstEffectiveDate: string | null;
+  managerAfterReassignment: string | null;
+  managerDuringFirstInterval: string | null;
+  canonicalBeforeReopen: string;
+  canonicalAfterReapply: string;
+  canonicalAfterReopen: string;
+  employeesAfterReopen: number;
+  managerAfterReopen: string | null;
+  managerDuringFirstIntervalAfterReopen: string | null;
+  danglingEndpointRefusal: string;
+  durationMs: number;
 }
 
 declare global {
@@ -203,6 +267,81 @@ function readSnapshotRecord(
     : null;
 }
 
+/**
+ * FDN-50 stage 5: spawns the chain-proof Worker and waits for its single
+ * result message.
+ *
+ * The Worker is reachable only from this opt-in Playwright diagnostics
+ * route, exactly like the FDN-48 materialization proof Worker. It is a test
+ * seam, not a production graph message and not a public package API.
+ */
+function runChainProof(
+  workspaceId: string,
+  danglingWorkspaceId: string,
+): Promise<ChainProofResult> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL(
+        "../../../../../packages/graph/src/worker/testing/runtime-chain-proof.worker.ts",
+        import.meta.url,
+      ),
+      { type: "module", name: "vulto-fdn50-chain-proof" },
+    );
+    worker.onmessage = (event: MessageEvent<unknown>) => {
+      worker.terminate();
+      const response = event.data as
+        { ok: true; result: ChainProofResult } | { ok: false; error: string };
+      if (response.ok) resolve(response.result);
+      else reject(new Error(response.error));
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "Chain proof Worker failed"));
+    };
+    worker.postMessage({ workspaceId, danglingWorkspaceId, apiOrigin });
+  });
+}
+
+/**
+ * FDN-50 stage 5: the offline half of the same criterion, which needs a
+ * long-lived Worker rather than a one-shot one.
+ *
+ * The unlock cannot happen offline — F106 makes it a server round-trip by
+ * design — so this returns a handle whose `open()` runs while the browser
+ * is still online and whose `prove()` runs after the test has cut the
+ * network. Everything `prove()` does is local: Loro merge,
+ * materialization, SQLite query.
+ */
+function createOfflineProofHandle(workspaceId: string): OfflineProofHandle {
+  const worker = new Worker(
+    new URL(
+      "../../../../../packages/graph/src/worker/testing/runtime-offline-proof.worker.ts",
+      import.meta.url,
+    ),
+    { type: "module", name: "vulto-fdn50-offline-proof" },
+  );
+
+  function send<T>(message: unknown): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<unknown>) => {
+        const response = event.data as
+          { ok: true; result: T } | { ok: false; error: string };
+        if (response.ok) resolve(response.result);
+        else reject(new Error(response.error));
+      };
+      worker.onerror = (event) =>
+        reject(new Error(event.message || "Offline proof Worker failed"));
+      worker.postMessage(message);
+    });
+  }
+
+  return {
+    open: () => send<{ opened: boolean }>({ kind: "open", workspaceId, apiOrigin }),
+    prove: () => send<OfflineProofResult>({ kind: "prove" }),
+    dispose: () => worker.terminate(),
+  };
+}
+
 export function GraphPersistenceDiagnosticsClient() {
   const params = useSearchParams();
   const workspaceId = params.get("workspaceId") ?? "fdn-50-browser-proof";
@@ -248,12 +387,16 @@ export function GraphPersistenceDiagnosticsClient() {
           buildConcurrentMoveSnapshots,
           buildSequentialMoveSnapshot,
           buildBackdatedMoveSnapshot,
+          buildEmployeeFragments: buildProofEmployeeFragmentsSnapshot,
           materializeFromSnapshots,
           resolvedManagerOf,
           employeeId: PROOF_EMPLOYEE,
           managerAId: PROOF_MANAGER_A,
           managerBId: PROOF_MANAGER_B,
         },
+        runChainProof: (danglingWorkspaceId) =>
+          runChainProof(workspaceId, danglingWorkspaceId),
+        createOfflineProof: () => createOfflineProofHandle(workspaceId),
       };
     });
 
