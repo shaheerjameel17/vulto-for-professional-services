@@ -655,7 +655,43 @@ const INHERITED_UNRESOLVABLE_NODE_TYPES: ReadonlySet<string> = new Set([
   "CustomFieldValue",
 ]);
 
+/**
+ * F128. A cell's `scope` states what the grant actually depends on beyond
+ * the caller's role: `"any"` means the role alone decides it; anything else
+ * — `"own"`, `"direct-reports"`, `"pipeline"`, `"aggregate-only"`, and
+ * every other value this table uses — means the grant depends on knowing
+ * something about the SPECIFIC record being asked about relative to the
+ * caller, which this stage has no way to determine. `getNodeRegistration`
+ * and this table are schema knowledge; whether a given `LeaveRequest` row
+ * belongs to the caller, or a given `Employee` reports to them, is instance
+ * knowledge this stage never receives.
+ *
+ * A cell's literal `outcome` is therefore only trustworthy when `scope` is
+ * `"any"`. Every other scope resolves to `none` here, unconditionally — not
+ * only the three cases (`aggregate-only`, `recipient-only-unresolvable`,
+ * `inherited-unresolvable`) that already stored `"none"` as their literal
+ * outcome, but every `own`- and `direct-reports`-qualified cell too, which
+ * had NOT been getting this treatment. Resolving those literally is what
+ * let a Team Member's `node-list` return every employee's
+ * WellnessTriggerEvent, PulseEntry, LeaveRequest, Expense and PaySlip rows,
+ * and a Manager's return every employee's TimesheetEntry, LeaveRequest and
+ * Assignment — 44 cells, verified directly against this function, not
+ * merely suspected. Recorded in full in `docs/Foundations_Findings.md` as
+ * F128, the most severe finding this project has recorded.
+ *
+ * This is the single choke point every `resolvePermission` return path
+ * funnels through — the matrix's exact-partition match, its bare match,
+ * and the Privacy Class default all call this function rather than
+ * returning a cell's outcome directly, specifically so this rule cannot be
+ * bypassed by a future matrix entry or fallback path forgetting to apply
+ * it. A future stage that adds real row-level identity narrows this
+ * function's condition — a scope becomes trustworthy once something
+ * resolves it — it does not remove the default.
+ */
 function toResolution(cellValue: PolicyCell): PolicyResolution {
+  if (cellValue.scope !== "any") {
+    return { outcome: "none" };
+  }
   return cellValue.restrictedLabel === undefined
     ? { outcome: cellValue.outcome }
     : { outcome: cellValue.outcome, restrictedLabel: cellValue.restrictedLabel };

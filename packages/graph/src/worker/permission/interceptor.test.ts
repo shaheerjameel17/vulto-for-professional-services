@@ -75,17 +75,21 @@ function employeeNode(nodeId: string): MaterializedNode {
 describe("filterNode", () => {
   it("drops a fragment the role set cannot read at all, keeps and redacts the one it can only see Restricted", () => {
     const node = employeeNode("aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa");
-    // Manager: operational is Full, compensation is Restricted ("Visible to Finance Admin").
+    // Manager: operational is "Full (direct reports)" — a row-identity
+    // qualifier this stage cannot resolve, so per F128 it resolves to
+    // `none` and the fragment is dropped entirely, not kept as "Full."
+    // compensation is Restricted ("Visible to Finance Admin"), unaffected —
+    // that matrix cell carries no qualifier at all ("any" scope), so its
+    // literal outcome stands.
     const filtered = filterNode(node, ["manager"]);
     expect(filtered).not.toBeNull();
-    expect(filtered!.fragments).toHaveLength(2);
-    const operational = filtered!.fragments.find(
-      (f) => f.partitionKey === "operational",
-    )!;
+    expect(filtered!.fragments).toHaveLength(1);
     const compensation = filtered!.fragments.find(
       (f) => f.partitionKey === "compensation",
     )!;
-    expect((operational.record as Record<string, unknown>).job_title).toBe("Engineer");
+    expect(filtered!.fragments.find((f) => f.partitionKey === "operational")).toBe(
+      undefined,
+    );
     expect(
       (compensation.record as Record<string, unknown>).base_salary,
     ).toBeUndefined();
@@ -105,19 +109,26 @@ describe("filterNode", () => {
   });
 
   it("structurally omits a node whose every fragment resolves to none — not present, not a placeholder", () => {
+    // OrgScenario: "Owner and HR Admin only", an unqualified ("any"-scope)
+    // matrix cell for every role — Owner and HR Admin get "full", everyone
+    // else "none". Chosen deliberately over a qualified cell (e.g.
+    // WellnessTriggerEvent's "Full (own only)") so this test proves
+    // structural omission on its own terms, not by relying on F128's
+    // conservative default for an unresolved row-identity qualifier.
     const node: MaterializedNode = {
       nodeId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
-      nodeType: "WellnessTriggerEvent",
+      nodeType: "OrgScenario",
       fragments: [
         fragment(
           "record",
-          baseRecord("cccccccc-cccc-4ccc-8ccc-cccccccccccc", "WellnessTriggerEvent"),
+          baseRecord("cccccccc-cccc-4ccc-8ccc-cccccccccccc", "OrgScenario"),
         ),
       ],
     };
-    expect(filterNode(node, ["owner"])).toBeNull();
-    expect(filterNode(node, ["hr-admin"])).toBeNull();
-    expect(filterNode(node, ["team-member"])).not.toBeNull();
+    expect(filterNode(node, ["owner"])).not.toBeNull();
+    expect(filterNode(node, ["hr-admin"])).not.toBeNull();
+    expect(filterNode(node, ["finance-admin"])).toBeNull();
+    expect(filterNode(node, ["team-member"])).toBeNull();
   });
 
   it("A004-T05 union: the higher grant wins across a held role set", () => {
@@ -145,7 +156,13 @@ describe("isNodeTypeReadable", () => {
   });
 
   it("is true when at least one partition is readable", () => {
-    expect(isNodeTypeReadable("Employee", ["team-member"])).toBe(true);
+    // Manager: operational is "Full (direct reports)", a row-identity
+    // qualifier F128 resolves to `none`. compensation is "Restricted"
+    // ("Visible to Finance Admin") — an unqualified, "any"-scope matrix
+    // cell, and `restricted` is not `none`. Employee is therefore still
+    // "readable" overall for Manager, on the strength of the one partition
+    // whose grant this stage can actually resolve.
+    expect(isNodeTypeReadable("Employee", ["manager"])).toBe(true);
   });
 });
 
@@ -176,6 +193,13 @@ describe("executeWithPermissions — node-get / node-list", () => {
   });
 
   it("node-list drops every node the role set cannot see and keeps the rest, unfiltered", async () => {
+    // Role is "manager", not "team-member": Employee(operational) for
+    // Manager is "Full (direct reports)", a row-identity qualifier F128
+    // resolves to `none` — but Employee(compensation) for Manager is
+    // "Restricted" (any-scope, unaffected), so the Employee node as a
+    // whole still survives filtering, with its operational fragment
+    // dropped and its compensation fragment redacted. OrgScenario is
+    // `none` for Manager on every fragment, so it is dropped entirely.
     const visible = employeeNode("11111111-1111-4111-8111-111111111111");
     const invisible: MaterializedNode = {
       nodeId: "44444444-4444-4444-8444-444444444444",
@@ -195,7 +219,7 @@ describe("executeWithPermissions — node-get / node-list", () => {
     const result = await executeWithPermissions(
       index,
       { kind: "node-list", nodeType: "Employee", limit: 50, includeSoftDeleted: false },
-      { roles: ["team-member"] },
+      { roles: ["manager"] },
     );
     expect(result.kind).toBe("node-list");
     if (result.kind !== "node-list") throw new Error("unreachable");
@@ -282,8 +306,13 @@ describe("executeWithPermissions — edge-neighbors traversal rules", () => {
       ],
       nextEdgeId: null,
     }));
+    // Role is "manager", not "team-member" — same reasoning as the
+    // node-list test above: Employee is readable overall for Manager only
+    // via its unaffected, any-scope compensation partition ("Restricted"),
+    // and Employee(operational)'s own row-identity qualifier resolves to
+    // `none` under F128 either way.
     const result = await executeWithPermissions(index, edgeQuery, {
-      roles: ["team-member"],
+      roles: ["manager"],
     });
     expect(result.kind).toBe("edge-neighbors");
     if (result.kind !== "edge-neighbors") throw new Error("unreachable");

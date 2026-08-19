@@ -5,16 +5,30 @@ import { POLICY_ROLES, resolvePermission, type PolicyRole } from "./policy-table
 const ALL_ROLES: readonly PolicyRole[] = POLICY_ROLES;
 
 describe("resolvePermission — default class mapping, transcribed from VPS-A004", () => {
-  it("Standard: Owner/HR Admin Full, Finance Admin Read, Manager Full, Team Member Read", () => {
-    // LeavePolicy is Standard and absent from the matrix — pure A004-T08 default.
+  it("Standard: Owner/HR Admin Full, Finance Admin Read — Manager and Team Member none, per F128", () => {
+    // LeavePolicy is Standard and absent from the matrix — pure A004-T08
+    // default. Standard's own Manager/Team Member cells carry a row-identity
+    // qualifier ("Full (direct reports)" / "Read (own + team)"), which this
+    // stage cannot resolve — per F128, any cell whose scope is not "any"
+    // resolves to `none`, not its literal grant, regardless of role.
+    //
+    // Separate observation, not fixed here: LeavePolicy is one of eight node
+    // types `VPS-A004`'s "workspace-configuration pattern" names as needing
+    // a plain, unqualified Read grant for every role — a workspace-wide
+    // policy document has no "direct reports" or "own" relationship to any
+    // one employee. That pattern has no override row in this table yet, so
+    // LeavePolicy falls through to Standard's person-scoped qualifiers
+    // instead. `none` is still the safe, correct answer for Manager and
+    // Team Member either way; the pattern's own row would resolve to `read`
+    // once added.
     expect(resolvePermission("owner", "LeavePolicy", "record").outcome).toBe("full");
     expect(resolvePermission("hr-admin", "LeavePolicy", "record").outcome).toBe("full");
     expect(resolvePermission("finance-admin", "LeavePolicy", "record").outcome).toBe(
       "read",
     );
-    expect(resolvePermission("manager", "LeavePolicy", "record").outcome).toBe("full");
+    expect(resolvePermission("manager", "LeavePolicy", "record").outcome).toBe("none");
     expect(resolvePermission("team-member", "LeavePolicy", "record").outcome).toBe(
-      "read",
+      "none",
     );
   });
 
@@ -42,26 +56,46 @@ describe("resolvePermission — default class mapping, transcribed from VPS-A004
     );
   });
 
-  it("Self-only, absolute: WellnessTriggerEvent — the absolute wellness rule, no role override, not even Owner", () => {
-    for (const role of ["owner", "hr-admin", "finance-admin", "manager"] as const) {
+  it("Self-only, absolute: WellnessTriggerEvent — none for every role, Team Member included, per F128", () => {
+    // F128. This test previously asserted `team-member` resolves to `full`
+    // here — treating the ROLE "Team Member" as though it were the SAME
+    // THING as "the specific employee this wellness event belongs to." It
+    // is not: Team Member is the role every ordinary employee holds, and
+    // resolving it to `full` meant any employee listing WellnessTriggerEvent
+    // received every OTHER employee's wellness signals too, not only their
+    // own. That directly contradicted `VPS-A004`'s own text, quoted here so
+    // the contradiction stays visible: "WellnessTriggerEvent carries the
+    // most sensitive data in the graph. Its rule is absolute: only the
+    // employee to whom it belongs may traverse to it." A passing test
+    // asserting the opposite is what let this ship; see F128 in
+    // `docs/Foundations_Findings.md` for the full account, including that
+    // it was found only by calling `resolvePermission` directly rather than
+    // trusting this suite.
+    //
+    // `none` for every role, Team Member included, is correct for this
+    // stage: "own" is a row-identity qualifier this stage cannot resolve
+    // (no User-to-Employee link exists yet), and per F128 every such cell
+    // resolves to `none` rather than its literal grant, with no exception
+    // for how sensitive or how mundane the underlying data is.
+    for (const role of ALL_ROLES) {
       expect(resolvePermission(role, "WellnessTriggerEvent", "record").outcome).toBe(
         "none",
       );
     }
-    expect(
-      resolvePermission("team-member", "WellnessTriggerEvent", "record").outcome,
-    ).toBe("full");
   });
 
-  it("Sensitive's 'Full (aggregate only)' resolves to none at the row-level surface this interceptor governs", () => {
+  it("Sensitive resolves to none for every role at the row-level surface this interceptor governs", () => {
     // PulseEntry: Owner/HR Admin get "Aggregate only" in the matrix — the
     // aggregate mechanism (VPS-F005/A004-T12-T15) is not built this stage,
     // and reading "Full" literally here would leak raw survey content.
-    expect(resolvePermission("owner", "PulseEntry", "record").outcome).toBe("none");
-    expect(resolvePermission("hr-admin", "PulseEntry", "record").outcome).toBe("none");
-    expect(resolvePermission("team-member", "PulseEntry", "record").outcome).toBe(
-      "full",
-    );
+    // Team Member's "Full (own only)" is the same F128 shape as
+    // WellnessTriggerEvent above: an unresolvable row-identity qualifier,
+    // not evidence this particular grant is safe to leave open. `none` for
+    // every role, uniformly, per F128 — no exception for the role that
+    // happens to be the one a genuine owner would hold.
+    for (const role of ALL_ROLES) {
+      expect(resolvePermission(role, "PulseEntry", "record").outcome).toBe("none");
+    }
   });
 
   it("Recipient-only (Notification) resolves to none for every role, including the class default's nominal 'Own only'", () => {
@@ -88,13 +122,18 @@ describe("resolvePermission — matrix overrides", () => {
       });
     }
     // Workspace's OTHER partition, "display", is absent from the matrix and
-    // falls back to its own registered class (Standard).
+    // falls back to its own registered class (Standard), whose Team Member
+    // cell is "Read (own + team)" — a row-identity qualifier this stage
+    // cannot resolve. `none`, per F128, same reasoning as LeavePolicy above:
+    // a workspace's display fields aren't "owned" by one employee either,
+    // so this is arguably the workspace-configuration-pattern gap rather
+    // than a genuine "own" case, but the safe answer is identical either way.
     expect(resolvePermission("team-member", "Workspace", "display").outcome).toBe(
-      "read",
+      "none",
     );
   });
 
-  it("Employee compensation: Restricted for Manager only, Full for Owner/HR Admin/Finance Admin, Read for Team Member", () => {
+  it("Employee compensation: Restricted for Manager, Full for Owner/HR Admin/Finance Admin, none for Team Member per F128", () => {
     expect(resolvePermission("manager", "Employee", "compensation")).toEqual({
       outcome: "restricted",
       restrictedLabel: "Visible to Finance Admin",
@@ -106,8 +145,15 @@ describe("resolvePermission — matrix overrides", () => {
     expect(resolvePermission("finance-admin", "Employee", "compensation").outcome).toBe(
       "full",
     );
+    // "Read (own only)" — the employee can read their OWN compensation, per
+    // `VPS-A004`. This stage has no row-identity link to know whose "own"
+    // that is, so per F128 this resolves to `none` rather than the literal
+    // grant, at the cost of a Team Member not seeing their own compensation
+    // through this interceptor yet. Correct for a foundations-phase stage
+    // with no application feature consuming this query path (F105); revisit
+    // once row-level identity exists.
     expect(resolvePermission("team-member", "Employee", "compensation").outcome).toBe(
-      "read",
+      "none",
     );
   });
 
