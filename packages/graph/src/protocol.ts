@@ -188,6 +188,21 @@ const mutationUnsupportedResultSchema = z
   })
   .strict();
 
+/**
+ * F138. Distinct from `mutation-denied` on purpose: denied is a statement
+ * about the CALLER (their roles do not permit this write), invalid is a
+ * statement about the BATCH (no caller at any role could apply it, because
+ * the result would not be a graph the schema permits). Collapsing them would
+ * tell an Owner their own permissions were insufficient, which is both wrong
+ * and unactionable.
+ */
+const mutationInvalidResultSchema = z
+  .object({
+    kind: z.literal("mutation-invalid"),
+    reason: z.string().min(1),
+  })
+  .strict();
+
 const availabilityResultSchema = z.object({ kind: z.literal("availability") }).strict();
 
 const sealedStoreUnlockedResultSchema = z
@@ -228,6 +243,7 @@ export const graphWorkerSuccessSchema = messageBaseSchema.extend({
     mutationAppliedResultSchema,
     mutationDeniedResultSchema,
     mutationUnsupportedResultSchema,
+    mutationInvalidResultSchema,
     availabilityResultSchema,
     sealedStoreUnlockedResultSchema,
     sealedStoreLockedResultSchema,

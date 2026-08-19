@@ -7,7 +7,8 @@ import {
 } from "@vulto/schema";
 import type { LoroDoc } from "loro-crdt";
 import { NODE_FRAGMENT_CONTAINER, readNodeFragments } from "../document-node-fragments";
-import type { NodeFragmentInput } from "../materialization";
+import { materializeManagedByEdges } from "../managed-by-materialization";
+import { validateGraphSnapshot, type NodeFragmentInput } from "../materialization";
 import { canonicalJson } from "../storage/canonical-json";
 import { bestResolution } from "./interceptor";
 import type { PolicyRole } from "./policy-table";
@@ -174,7 +175,27 @@ export function diffChangedNodeFragments(
 export type MutationBatchOutcome =
   | { readonly status: "authorized" }
   | { readonly status: "denied"; readonly reason: string }
-  | { readonly status: "unsupported"; readonly reason: string };
+  | { readonly status: "unsupported"; readonly reason: string }
+  | { readonly status: "invalid"; readonly reason: string };
+
+/**
+ * F138. The single refusal reason every coherence failure returns, verbatim.
+ *
+ * **Deliberately says nothing about WHY.** `validateGraphSnapshot`'s own
+ * messages name node ids — and the fork it validates is the whole document
+ * plus the candidate batch, so a failure can be caused by the interaction
+ * between the batch and a node the caller was never permitted to read. Echoing
+ * that message back would turn this refusal into an existence oracle: write a
+ * fragment for a guessed node id, and a "conflicting node types" reply tells
+ * you the id exists. That is exactly the leak `VPS-A004`'s denial rules
+ * prohibit on the read path, and the same answer applies here — per F128's
+ * standing rule, conservative is correct for anything ambiguous.
+ *
+ * The detail is not lost, it is just not returned across the boundary: the
+ * underlying error stays in the Worker, where a developer can read it.
+ */
+export const INVALID_BATCH_REASON =
+  "This batch would leave the workspace graph in a state the schema does not permit, and was refused before any change was applied.";
 
 /**
  * The full simulate-then-diff-then-gate decision (`LocalGraphWorkerRuntime#mutate`
@@ -205,6 +226,7 @@ export async function authorizeMutationBatch(
   document: LoroDoc,
   deltas: readonly Uint8Array[],
   roles: readonly PolicyRole[],
+  workspaceId: string,
 ): Promise<MutationBatchOutcome> {
   const beforeDoc = document.toJSON() as Record<string, unknown>;
   const fork = document.fork();
@@ -242,7 +264,45 @@ export async function authorizeMutationBatch(
         return { status: "denied", reason: authorization.reason };
       }
     }
+
+    // F138's fix, and the reason this function forks at all rather than
+    // inspecting the deltas directly. Permission is only half the question:
+    // `VPS-A004`'s Gate 1 asks whether this caller MAY write this node type
+    // and partition, and nothing in it asks whether the resulting graph is
+    // one the schema permits. Before this check existed, an authorized batch
+    // whose fragments were individually permitted but collectively incoherent
+    // — a foreign `workspace_id`, two partitions of one node disagreeing
+    // about their own node type — passed the gate, merged into the canonical
+    // document, and only THEN failed materialization, by which point the
+    // merge was irreversible because a CRDT merge cannot be undone.
+    //
+    // Validating here, on the fork, is what makes the refusal free: the
+    // canonical document is never touched, so a refused batch costs exactly
+    // the simulation and nothing else. This mirrors `#materialize()` exactly
+    // — same edge derivation, same snapshot validation, same workspace id —
+    // so anything the real materializer would refuse is refused here first.
+    // The second run inside `#commitDeltaBatch` then becomes an invariant
+    // that should never fire rather than the place defects are discovered.
+    const { edges } = await materializeManagedByEdges(fork);
+    validateGraphSnapshot(
+      { nodeFragments: readNodeFragments(fork), edges },
+      workspaceId,
+    );
+
     return { status: "authorized" };
+  } catch {
+    // Every operation above inspects UNTRUSTED candidate bytes: parsing a
+    // record, deriving edges, validating the snapshot. A throw from any of
+    // them is a statement about the batch, not about this Worker — so it is
+    // reported as a refusal of that batch and never allowed to escape.
+    //
+    // This is what stops a malformed record from being a denial-of-service:
+    // before the fix, `parseNodeRecord`'s raw `ZodError` propagated out of
+    // `mutate`, `entry.ts` reported it as a FATAL `runtime-failure`, and the
+    // client answered by terminating the Worker — after which every
+    // subsequent call hung forever (F142). Failing closed here refuses one
+    // batch instead of taking the graph layer down for the session.
+    return { status: "invalid", reason: INVALID_BATCH_REASON };
   } finally {
     fork.free();
   }

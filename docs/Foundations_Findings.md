@@ -111,9 +111,15 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F134 | `VPS-A004` Gate 3 (refusal when a write would leave an empty reader set) depends on subject exclusion, which F130 already found unbuilt | `VPS-A004`, `VRS-F002`, Repository | **Closed by founder ruling, same standard as F130** — not built in stage 2; deferred to the same identity-link dependency F130 names |
 | F135 | `VPS-A004`'s per-decision `AuditEntry` requirement (`VPS-F004`) was never surfaced scoping FDN-53 stage 2, and no audit-writing code exists anywhere in `packages/graph` | `VPS-A004`, `VPS-F004`, Repository | **Closed by founder ruling** — audit writing out of stage 2's scope, same as stage 1; deferred to whichever issue implements `VPS-F004` |
 | F136 | `VPS-A004` assigns no write-permission column to an edge TYPE, only to node types and partitions — which privacy partition governs an edge write on a split-protection endpoint (e.g. Employee) is undefined by the spec | `VPS-A004`, `VPS-A002`, Repository | **Closed by founder ruling** — resolves conservatively to `none` for a multi-partition endpoint, the same default direction F128 established; proven correct by exhaustive sweep, unreachable from any commit path per F132 |
-| F137 | `roster-web`'s typecheck fails on two `TS2307` errors — `loro-crdt/web` and `loro-crdt/web/loro_wasm.js` unresolvable in `graph-persistence-diagnostics-client.tsx` — pre-existing on `main`, unrelated to FDN-53 | Repository | **Open, diagnosed not fixed** — `loro-crdt` is declared in `apps/roster-web/package.json` and present in `pnpm-lock.yaml`, but `apps/roster-web/node_modules/loro-crdt` does not exist on disk; a stale/incomplete local install, not a config or spec defect. Fix is a `pnpm install`, not attempted here as out of this stage's scope |
+| F137 | `roster-web`'s typecheck fails on two `TS2307` errors — `loro-crdt/web` and `loro-crdt/web/loro_wasm.js` unresolvable in `graph-persistence-diagnostics-client.tsx` — pre-existing on `main`, unrelated to FDN-53 | Repository | **Closed by repository fix** — diagnosis confirmed: `loro-crdt` was declared in `apps/roster-web/package.json` and present in `pnpm-lock.yaml`, but the `node_modules` symlink was absent on disk. `pnpm install` restored it; `roster-web` now typechecks clean, and the Next dev server boots — which it could not do while the module was unresolvable at runtime. A stale local install, never a config or specification defect |
 
-**Eighty-four findings, seventy-two closed.** Twelve stay open: F70, F73, F85, F118, F120, F125, F129, F132, F137 and **F130 (live, unmitigated)** remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+| F138 | ⚠ **Most severe finding this project has recorded.** The mutation gate validates permission and never coherence, so an authorized-but-incoherent batch merges irreversibly into the canonical document and only then fails materialization — wedging the entire graph layer for the session | `VPS-A004`, Repository | **Closed by repository fix** — the gate now validates coherence on its own fork before anything merges, and fails closed on any inspection throw; proven by a named regression test at unit and real-stack level across three vectors, and mutation-tested. Containment half unproven, see F143 |
+| F139 | `switchWorkspace` raw-terminated the Worker instead of disposing it, silently discarding up to 250ms of already-acknowledged writes — a clean in-app action doing what `#scheduleFlush` promises only a hard kill can | Repository | **Closed by repository fix** — the switch now disposes (and therefore flushes) the workspace being left; proven by the sibling of the existing dispose-inside-the-window test |
+| F140 | A failed materialization pinned availability at `mid-sync` forever; separately, two of `VPS-A001`'s four contracted availability states (`retention-window-absence`, `permission-absence`) are never produced by anything | `VPS-A001`, Repository | **First half closed by repository fix** — availability restores to `ready`, which the transactional rebuild makes honest. **Second half open** — the unproduced states belong to whichever issue builds the conditions they describe |
+| F142 | A fatal Worker error left `#disposed === false` and `#initialized === true`, so every subsequent call posted into a dead thread and hung forever — no error, no rejection, no signal | Repository | **Closed by repository fix** — `#terminate` records the fatal cause and both client guards throw it immediately; discovered by reproduction, not by reading |
+| F143 | F138's containment half (`#materializationFailed`) is unreachable at test scale and therefore proven by nothing | Repository | **Closed by founder ruling** — the guard is kept, recorded as unproven at production scale rather than removed; explicitly distinguished from F130/F133, which were security controls that could read as enforced while inert. The at-scale proof is deferred and filed as a named follow-up on FDN-54 so it stays findable |
+
+**Eighty-nine findings, seventy-eight closed.** Twelve stay open: F70, F73, F85, F118, F120, F125, F129, F132, F140 (second half) and **F130 (live, unmitigated)** remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 *This count was itself stale, and F118 had dropped out of the open list entirely — the row was correct, the summary above it was not. Recounted from the table rows rather than incremented by hand, which is how it drifted: four findings were appended without the total being recalculated. If it disagrees with the table again, the table is right.*
 
@@ -1392,6 +1398,82 @@ The shallow-snapshot selection rationale withdrawn per F121, and a Decisions-sec
 
 ### `VPS-A001` — FDN-84
 The Local graph query layer section corrected per F116: FDN-84 named as the owner of the sealed local device store and its cold-restart online unlock, FDN-50 as writing canonical Loro persistence into that sealed store, and FDN-52 as owning privacy-tier partitioning, envelope-wrapped reader keys and any later encrypted SQLite cache or VFS. A Decisions-section entry recording the correction.
+
+### F138 — the mutation gate validates permission and never coherence, so an authorized batch merges irreversibly before anyone asks whether the result is a graph
+
+Surfaced in the Data Foundation integration review, hunting for defects at the seams between FDN-45 and FDN-53 rather than inside any one of them. `VPS-A004`'s Gate 1 answers exactly one question: may this caller write this node type and this partition. Nothing between the gate and the canonical Loro document asks whether the resulting graph is one the schema permits. So a batch can pass the gate, merge, and only then be refused by `materialization.ts` — at which point the merge cannot be undone, because a CRDT merge is not undoable.
+
+**Three vectors, each confirmed directly against `authorizeMutationBatch` before any fix was written**, not reasoned about: a fragment carrying a foreign `workspace_id` ("belongs to workspace X, not Y"); two partitions of one node id disagreeing about their own `node_type` ("has conflicting node types"); and a record with an unregistered enum value, which never even reaches the coherence question because `parseNodeRecord` throws a raw `ZodError` inside the gate itself.
+
+**The severity is not what the review's memo predicted, and the correction matters.** The memo argued the danger was poisoned bytes reaching disk and making the workspace permanently unopenable. Reproduced end to end on the real stack — real Postgres, real Chromium, real `SealedStore` behind a real online unlock, real Loro and SQLite WASM — that outcome did **not** occur. Materialization is far faster than assumed (11.6ms for 150 employees), so the failure throws long before the 250ms flush debounce fires, the client terminates the Worker, and the pending timer dies with it. The poison never reached disk. That containment is entirely accidental: it holds only while materialization is faster than the remaining debounce window, which stops being true at a few thousand employees — an ordinary size for the firms this product serves.
+
+What did reproduce, on all three vectors, is worse in the near term: **one authorized-but-incoherent batch permanently wedges the whole graph layer for the session.** The throw becomes a fatal `runtime-failure`, the Worker is terminated, and every subsequent query and mutation hangs forever with no error and no signal (see F142). It also silently discards writes still inside the open debounce window, including a 150-employee batch this proof had already been told was `applied`.
+
+**Closed by repository fix, in two halves.** *Prevention:* `authorizeMutationBatch` now validates coherence on the fork it was already building — the same edge derivation and `validateGraphSnapshot` the real `#materialize()` runs, against the same workspace id — so anything the materializer would refuse is refused first, on a throwaway fork, with the canonical document untouched. The whole function is wrapped so no inspection failure can escape as a throw: every operation in it parses untrusted candidate bytes, and a throw from any of them is a statement about the batch, not the Worker. *Containment:* a materialization failure now sets `#materializationFailed`, cancels any pending flush, and makes `#persist` refuse, because `#persist` exports the document's state at flush time rather than at schedule time — see F143 for the honest limits of that half.
+
+The refusal returns a fixed, non-specific reason. `validateGraphSnapshot`'s messages name node ids, and the fork it validates is the whole document plus the candidate batch, so a failure can be caused by interaction with a node the caller was never permitted to read; echoing it back would make the refusal an existence oracle. Same leak `VPS-A004` prohibits on the read path, same answer, per F128's rule that conservative wins anything ambiguous.
+
+Proven by a permanently named regression test at both levels: five unit tests in `mutation-interceptor.test.ts` and `services/api/browser-tests-device-store/graph-mutation-poisoning.spec.ts`, which drives all three vectors through the real production `mutate` protocol message and asserts four properties — refused cleanly, document untouched, runtime not wedged, workspace still opens. Mutation-tested: disabling the coherence check fails 3 tests, removing the fail-closed catch fails 4.
+
+---
+
+### F139 — a workspace switch silently discarded up to 250ms of acknowledged writes
+
+Surfaced in the same review, confirmed by reading before it was tested. `BrowserLocalGraphClient.switchWorkspace` called `#terminate()` directly — killing the Worker thread, and the pending debounce timer inside it, without ever running `dispose()`'s synchronous drain. FDN-50 stage 2's `#scheduleFlush` doc comment promises the opposite in as many words: *"A clean shutdown never loses this window: dispose() below flushes synchronously before tearing down."* A user picking a different workspace from a menu is a clean, deliberate, in-app action, not the hard kill that comment carves out.
+
+It went unnoticed because the debounce suite proved the `dispose()` path and only that path, and the client unit tests drive a `FakeWorker` with no runtime behind it — so `terminate()` had no flush to lose.
+
+**Closed by repository fix.** `switchWorkspace` now disposes the previous Worker (flushing) before standing up the new one. A Worker already torn down by a fatal error has nothing to flush and cannot answer a `dispose` message, so that case still terminates directly. A flush failure does not abandon the switch — the caller ends up on the new workspace either way — but is re-thrown once the new workspace is live, because unflushed data on the workspace just left is something the caller must be told about. Proven by the sibling of the existing dispose test in `graph-persistence-debounce.spec.ts`.
+
+---
+
+### F140 — a failed materialization pinned availability at `mid-sync` forever, and two of the four contracted states are never produced at all
+
+Two defects in one contract, both confirmed by reading.
+
+First: `#commitDeltaBatch` set `#availability` to `mid-sync`, awaited `#materialize()`, and set `ready` only on the success path. A materialization failure escaped between the two, so every later response reported `mid-sync` on a Worker that was otherwise serving queries correctly.
+
+Second, and larger: F94 corrected A001-T07 to require exactly four availability states — `mid-sync`, `retention-window-absence`, `permission-absence`, `ready`. Grep confirms `retention-window-absence` and `permission-absence` appear **only in `protocol.ts`'s schema**. Nothing in the runtime has ever produced either. The protocol test validates all four shapes; nothing asserts anything emits them.
+
+**First half closed by repository fix; second half open.** A failed materialization now restores `ready`, which is the honest answer rather than a consolation: `rebuild` validates before it writes and `#commitGeneration` runs inside `BEGIN IMMEDIATE`/`ROLLBACK`, so a refused materialization leaves the previous generation intact and the index a caller reads is coherent. The unproduced states are left as they are — inventing emitters for them without the retention-window and permission-absence machinery they describe would be exactly the dormant mechanism F130 and F133 were kept out of stage 2 to avoid. The gap belongs to whichever issue builds those conditions.
+
+---
+
+### F142 — a fatal Worker error left every later caller hanging forever, with no error and no signal
+
+Discovered while reproducing F138 on the real stack, and initially mistaken for a slow test: the first proof run consumed its entire 180-second budget without reaching a single assertion.
+
+`#terminate` killed the Worker and rejected in-flight requests, but left `#disposed === false` and `#initialized === true`. Any subsequent call therefore passed both guards, `postMessage`d into a terminated thread, and returned a promise that **never settled**. Not a rejection an application could catch — a permanent, silent hang of every query and mutation for the rest of the session. Reproduced on all three F138 vectors: the poison threw, the Worker died, and the next two calls hung until the harness's own 20-second races cut them off.
+
+**Closed by repository fix.** `#terminate` now records the fatal cause; both client guards check it and throw immediately with the original error, so a caller learns the graph layer is gone and why. `#createWorker` clears it, so `switchWorkspace` still works. Verified incidentally on a path the tests were not designed around: a later malformed-request rejection surfaced as a thrown `GraphWorkerProtocolError` rather than a hang.
+
+---
+
+### F143 — F138's containment half is unreachable at test scale and therefore unproven
+
+Recorded deliberately rather than left implied, because the alternative is a guard a future reader assumes is protecting them.
+
+F138's fix has two halves. Prevention at the gate is fully proven — mutation-tested, three vectors, real stack. Containment (`#materializationFailed`, which stops a known-bad document being persisted over a good one) is **not exercised by any test**. Post-fix, the only remaining route to a materialization failure is the unchecked test-only `applyDeltaBatch`, and there the Worker dies from the fatal error roughly 12ms in — far before the 250ms flush timer could carry anything to disk. Reproducing that race requires a workspace large enough that materialization outlasts the debounce window, measured at several thousand employees.
+
+So the guard protects a genuine production scenario at scale that the test suite cannot reach at test scale. That is uncomfortably close to the dormant-mechanism pattern F130 and F133 were kept out of FDN-53 stage 2 to avoid, and the resemblance is acknowledged rather than argued away — the difference being that this is five lines on a persistence path, not a permission mechanism that would read as enforced. It also becomes reachable the moment `VPS-A003`'s sync engine merges remote deltas (F141), or if a future change makes materialization failures non-fatal.
+
+**Closed by founder ruling; the proof itself is deferred and filed.** The guard is KEPT, recorded as unproven at production scale rather than removed. The ruling distinguishes this from F130 and F133 explicitly: those were permission mechanisms that could be mistaken for active enforcement while silently inert, where the danger is false confidence in a security control. This is a persistence guard with a narrow, honestly-labeled, well-understood gap — a different category, not a smaller instance of the same one.
+
+The large-workspace test that would prove it is **not commissioned now**, as expensive and not urgent. So that "prove this at scale" cannot quietly vanish, it is filed as a named follow-up on **FDN-54** ("Prove sync and permission security invariants under adversarial conditions"), which already owns adversarial proofs in this project and milestone — alongside the three concurrency-seam scenarios the same review scoped but did not run (S1, S3, S4). The guard also stops being unreachable the moment `VPS-A003`'s sync engine merges remote deltas, which is FDN-54's own territory (see F141).
+
+---
+
+### F141 — the mutation entrypoint cannot tell a local author from an arriving peer
+
+Surfaced in the Data Foundation integration review, reading FDN-53 stage 2 against `VPS-A003`'s eventual needs rather than against its own stage scope. `LocalGraphWorkerRuntime#mutate` applies **the local device's** role set — `deriveEffectiveRoles(this.#sealedStore.roles)` — to whatever delta bytes it is handed. There is no parameter, no message field, and no concept anywhere on the path expressing *whose* authority a batch carries.
+
+That is correct and complete for the only caller that exists today, which is this device's own user. It stops being correct the moment a second source of deltas exists. When `VPS-A003`'s sync engine lands, a peer's legitimately-authorized write arriving at this device would be evaluated against **this** device's roles: a Team Member's device would refuse an Owner's changes, `mutate` would return `denied`, and the two devices would silently diverge — each locally consistent, permanently disagreeing, with no error surfaced to either user. The failure is quiet, which is what makes it dangerous; a refused remote delta looks exactly like a delta that never arrived.
+
+The distinction the path is missing is not "skip the check for remote deltas." A remote batch still needs authorization — but against the authority of the peer that authored it, established at origin and carried with the operation, in the same way F124 established that a Tree move's effective date must replicate with the operation rather than be recomputed locally. That is the same class of fact and it wants the same treatment.
+
+**Open, raised not decided, deliberately not built.** `VPS-A003` does not exist yet, and inventing an origin-authority representation now — before the sync protocol that must carry it is designed — would be the same mistake F132 (edge storage), F133 (Gate 2) and F135 (audit writing) were each kept out of FDN-53 stage 2 to avoid. Recorded here so the sync engine's design starts from a known constraint rather than discovering it after `mutate`'s current shape has been built against. Whoever scopes `VPS-A003` owns this.
+
+---
 
 ### `VPS-A003` — FDN-84
 A clarifying paragraph in Offline behavior, and a Decisions-section entry, closing F119: "current process" means the Worker instance, so a tab reload requires the same online unlock as a device cold restart. A SharedWorker alternative is named as an available future softening rather than built now.

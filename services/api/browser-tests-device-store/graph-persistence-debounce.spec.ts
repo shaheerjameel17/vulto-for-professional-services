@@ -49,6 +49,7 @@ declare global {
       readSnapshotValue(base64Snapshot: string, mapKey: string): string | null;
       storeKeyFor(workspaceId: string): string;
       dispose(): Promise<void>;
+      switchWorkspace(workspaceId: string): Promise<void>;
     };
   }
 }
@@ -356,6 +357,92 @@ test.describe("FDN-50 stage 2 debounced write-through", () => {
           return api.readSnapshotValue(base64, mapKey);
         },
         { base64: persisted!, mapKey: "torn-down" },
+      );
+      expect(value).toBe("still-durable");
+    } finally {
+      await context?.close();
+      await sql.end();
+    }
+  });
+
+  /**
+   * F139. The sibling of the test above, and the one that was missing.
+   *
+   * `dispose()` inside the debounce window was always proven to flush.
+   * `switchWorkspace()` inside the same window was not, and did not — it
+   * called `#terminate()` directly, killing the Worker thread and the pending
+   * flush timer with it. That is a clean, deliberate, in-app action silently
+   * discarding already-acknowledged writes, which is exactly what
+   * `#scheduleFlush`'s own doc comment promises cannot happen outside a hard
+   * kill.
+   */
+  test("switchWorkspace() called inside the debounce window still flushes the workspace being left", async ({
+    browser,
+  }) => {
+    const sql = postgres(databaseUrl, { max: 1 });
+    let context: BrowserContext | undefined;
+
+    try {
+      const opened = await openWorkspace(browser, sql);
+      context = opened.context;
+      const { page, storeKey } = opened;
+
+      // Mutate, then switch away immediately — well inside the 250ms window,
+      // before the timer would have fired on its own.
+      const switchOutcome = await page.evaluate(async () => {
+        const api = window.__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        const snapshot = api.buildSnapshot("switched-away", "still-durable");
+        const result = await api.applyDeltaBatch([snapshot]);
+        if (result.mergedDeltaCount !== 1) throw new Error("mutation did not apply");
+        try {
+          // A different workspace id: the switch must tear the first
+          // workspace's Worker down cleanly, flushing on the way out.
+          await api.switchWorkspace(`${crypto.randomUUID()}`);
+          return "switched";
+        } catch (error: unknown) {
+          return error instanceof Error ? error.message : String(error);
+        }
+      });
+
+      // The switch itself is EXPECTED to reject here, and that is correct
+      // product behavior rather than a defect: per F106 every new Worker
+      // starts with a locked SealedStore and requires its own online unlock,
+      // which only the LockedShellGate performs. This harness switches
+      // programmatically, so the destination workspace never gets one.
+      //
+      // That rejection is irrelevant to F139. What F139 is about is the
+      // workspace being LEFT: its pending flush must have landed BEFORE the
+      // teardown, which happens strictly before the destination is opened.
+      expect(switchOutcome).toContain("locked");
+
+      // Reopen the ORIGINAL workspace on a genuinely new Worker and read its
+      // sealed snapshot back. If the switch dropped the window, this payload
+      // never reached disk at all.
+      await page.reload();
+      await unlockAndWait(page);
+      await page.evaluate(async () => {
+        const api = window.__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        await api.initialize();
+      });
+
+      const persisted = await page.evaluate(async (key) => {
+        const api = window.__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        return api.openPayload(key);
+      }, storeKey);
+      expect(
+        persisted,
+        "the workspace being left must have been flushed before the switch",
+      ).not.toBeNull();
+      const value = await page.evaluate(
+        ({ base64, mapKey }) => {
+          const api = window.__vultoGraphPersistenceDiagnostics;
+          if (!api) throw new Error("diagnostics API missing");
+          return api.readSnapshotValue(base64, mapKey);
+        },
+        { base64: persisted!, mapKey: "switched-away" },
       );
       expect(value).toBe("still-durable");
     } finally {

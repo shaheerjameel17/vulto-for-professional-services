@@ -30,7 +30,9 @@ export interface DeltaBatchResult {
 export type MutationOutcome =
   | ({ readonly status: "applied" } & DeltaBatchResult)
   | { readonly status: "denied"; readonly reason: string }
-  | { readonly status: "unsupported"; readonly reason: string };
+  | { readonly status: "unsupported"; readonly reason: string }
+  /** F138: the batch itself is not applicable — no role could apply it. */
+  | { readonly status: "invalid"; readonly reason: string };
 
 export interface LocalGraphClient {
   readonly workspaceId: string;
@@ -115,6 +117,19 @@ class BrowserLocalGraphClient implements LocalGraphClient {
   #workspaceId: string;
   #initialized = false;
   #disposed = false;
+  /**
+   * F142. Set whenever the Worker behind this client is torn down by a fatal
+   * protocol error, and cleared only when a genuinely new Worker replaces it.
+   *
+   * Without it, a fatal error left this client with `#disposed === false` and
+   * `#initialized === true`: the next call passed both guards, `postMessage`d
+   * into a terminated thread, and returned a promise that NEVER SETTLED. Not
+   * an error a caller could catch — a permanent, silent hang of every
+   * subsequent query and mutation, reproduced end to end on the real stack
+   * while proving F138. Failing fast with the original cause is the whole
+   * fix: the caller learns the graph layer is gone, and why.
+   */
+  #fatalError: Error | null = null;
   readonly #pending = new Map<string, PendingRequest>();
   readonly #workerFactory: WorkerFactory;
 
@@ -208,6 +223,8 @@ class BrowserLocalGraphClient implements LocalGraphClient {
         return { status: "denied", reason: response.result.reason };
       case "mutation-unsupported":
         return { status: "unsupported", reason: response.result.reason };
+      case "mutation-invalid":
+        return { status: "invalid", reason: response.result.reason };
       default:
         throw this.#fatal("Worker returned the wrong result for mutate");
     }
@@ -227,15 +244,48 @@ class BrowserLocalGraphClient implements LocalGraphClient {
     return response.availability;
   }
 
+  /**
+   * F139. Switching workspaces is a CLEAN, deliberate shutdown of the
+   * previous workspace's Worker, so it flushes the debounce window exactly
+   * the way `dispose()` does.
+   *
+   * It did not, before this fix: it called `#terminate()` directly, killing
+   * the Worker thread and every timer inside it. Up to `FLUSH_DEBOUNCE_MS` of
+   * already-acknowledged writes went with it — silently, and squarely outside
+   * the hard-kill caveat `#scheduleFlush` explicitly accepted ("A clean
+   * shutdown never loses this window: dispose() below flushes synchronously
+   * before tearing down"). A user picking a different workspace from a menu
+   * is not a crash.
+   *
+   * A Worker already torn down by a fatal error has nothing to flush and
+   * cannot answer a `dispose` message, so that case still terminates
+   * directly. A flush failure does not abandon the switch — the caller asked
+   * to change workspace and ends up on the new one either way — but it is
+   * re-thrown once the new workspace is live, because unflushed data on the
+   * workspace just left is something the caller must be told about.
+   */
   async switchWorkspace(workspaceId: string): Promise<GraphAvailability> {
     if (this.#disposed) throw new Error("Graph client is disposed");
     if (workspaceId.length === 0) throw new Error("workspaceId must not be empty");
-    this.#terminate(new Error("Workspace changed"));
+
+    let flushError: unknown = null;
+    if (this.#initialized && this.#fatalError === null) {
+      try {
+        await this.dispose();
+      } catch (error: unknown) {
+        flushError = error;
+      }
+    } else {
+      this.#terminate(new Error("Workspace changed"));
+    }
+
     this.#workspaceId = workspaceId;
     this.#disposed = false;
     this.#initialized = false;
     this.#worker = this.#createWorker();
-    return this.initialize();
+    const availability = await this.initialize();
+    if (flushError !== null) throw flushError;
+    return availability;
   }
 
   async unlockSealedStore(apiOrigin: string): Promise<void> {
@@ -371,6 +421,9 @@ class BrowserLocalGraphClient implements LocalGraphClient {
   }
 
   #createWorker(): WorkerPort {
+    // A new Worker is a clean slate: whatever killed the previous one has no
+    // bearing on this one (F142).
+    this.#fatalError = null;
     const worker = this.#workerFactory();
     worker.onmessage = (event) => this.#receive(event.data);
     worker.onerror = (event) => {
@@ -434,6 +487,7 @@ class BrowserLocalGraphClient implements LocalGraphClient {
   }
 
   #terminate(error: Error): void {
+    this.#fatalError = error;
     this.#worker.terminate();
     for (const pending of this.#pending.values()) pending.reject(error);
     this.#pending.clear();
@@ -441,12 +495,23 @@ class BrowserLocalGraphClient implements LocalGraphClient {
 
   #assertUsable(): void {
     if (this.#disposed) throw new Error("Graph client is disposed");
+    this.#assertWorkerAlive();
     if (this.#initialized) throw new Error("Graph client is already initialized");
   }
 
   #assertInitialized(): void {
     if (this.#disposed) throw new Error("Graph client is disposed");
+    this.#assertWorkerAlive();
     if (!this.#initialized) throw new Error("Graph client is not initialized");
+  }
+
+  /** F142: never post into a Worker that is already gone — that call would never return. */
+  #assertWorkerAlive(): void {
+    if (this.#fatalError !== null) {
+      throw new GraphWorkerProtocolError(
+        `The local graph Worker was terminated and cannot serve further requests: ${this.#fatalError.message}`,
+      );
+    }
   }
 }
 

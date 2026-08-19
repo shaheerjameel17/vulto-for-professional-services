@@ -8,6 +8,7 @@
     "./testing": "./src/worker/testing/managed-by-proof.ts",
     "./testing/chain": "./src/worker/testing/chain-proof.ts",
     "./testing/permission": "./src/worker/testing/permission-proof.ts",
+    "./testing/poisoning": "./src/worker/testing/mutation-poisoning-proof.ts",
     "./testing/unchecked-mutation": "./src/worker/testing/unchecked-mutation.ts"
   },
   "scripts": {

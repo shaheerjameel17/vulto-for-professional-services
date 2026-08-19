@@ -151,6 +151,11 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
               success(request, { kind: "mutation-unsupported", reason: outcome.reason }),
             );
             return;
+          case "invalid":
+            scope.postMessage(
+              success(request, { kind: "mutation-invalid", reason: outcome.reason }),
+            );
+            return;
           default: {
             const exhaustive: never = outcome;
             throw new Error(`Unhandled mutation outcome: ${JSON.stringify(exhaustive)}`);

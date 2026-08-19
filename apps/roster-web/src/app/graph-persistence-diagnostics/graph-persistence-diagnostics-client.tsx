@@ -26,6 +26,14 @@ import {
   buildPermissionProofOrgScenarioSnapshot,
   PERMISSION_PROOF_EMPLOYEE,
 } from "@vulto/graph/testing/permission";
+import {
+  buildBulkEmployeeSnapshot,
+  buildCleanEmployeeSnapshot,
+  buildConflictingNodeTypePoison,
+  buildForeignWorkspacePoison,
+  buildMalformedRecordPoison,
+  POISON_PROOF_EMPLOYEE,
+} from "@vulto/graph/testing/poisoning";
 import { LoroDoc } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import { useSearchParams } from "next/navigation";
@@ -94,6 +102,12 @@ interface GraphPersistenceDiagnosticsApi {
   /** Disposes the current client/Worker directly and awaits the round trip, without navigating away — used to prove a debounced flush still lands when dispose() is called inside the debounce window. */
   dispose(): Promise<void>;
   /**
+   * F139. Switches this same client to another workspace, which must flush
+   * the debounce window of the workspace being left — the property this
+   * harness exists to let a browser proof observe.
+   */
+  switchWorkspace(workspaceId: string): Promise<void>;
+  /**
    * FDN-50 stage 4. The `managed_by` materialization proof seam, re-exported
    * from `@vulto/graph/testing` — a subpath that exists precisely so the
    * materializer is NOT reachable from the package's main export. Per F105
@@ -156,6 +170,27 @@ interface GraphPersistenceDiagnosticsApi {
   query(graphQuery: GraphQuery): Promise<GraphQueryResult>;
   /** F127's live role-refresh entrypoint, called directly on the same client `query` uses. */
   refreshRole(): Promise<string[]>;
+  /**
+   * FDN-53 stage 2's real, permission-gated write path. Called directly on
+   * the same client `query` uses — `mutate` IS the application-callable
+   * surface, so there is no test seam between this harness and production.
+   *
+   * Returns the outcome as a plain object rather than throwing, so an F138
+   * proof can distinguish "the gate refused" from "the Worker died" — a
+   * distinction the whole finding turns on.
+   */
+  mutate(base64Snapshots: readonly string[]): Promise<
+    { status: string; reason?: string; mergedDeltaCount?: number } | { thrown: string }
+  >;
+  /** F138 poison fixtures, from `@vulto/graph/testing/poisoning`. */
+  poisoning: {
+    employeeId: string;
+    buildBulk(workspaceId: string, count: number): string;
+    buildClean(workspaceId: string): string;
+    buildForeignWorkspacePoison(): string;
+    buildConflictingNodeTypePoison(workspaceId: string): string;
+    buildMalformedRecordPoison(workspaceId: string): string;
+  };
   /** FDN-53 stage 1's own browser-proof fixture: one Employee, both privacy partitions. */
   permissionProof: {
     employeeId: string;
@@ -417,6 +452,9 @@ export function GraphPersistenceDiagnosticsClient() {
         buildRecordSnapshot,
         readSnapshotRecord,
         dispose: () => created.dispose(),
+        switchWorkspace: async (nextWorkspaceId) => {
+          await created.switchWorkspace(nextWorkspaceId);
+        },
         managedBy: {
           buildConcurrentMoveSnapshots,
           buildSequentialMoveSnapshot,
@@ -433,6 +471,23 @@ export function GraphPersistenceDiagnosticsClient() {
         createOfflineProof: () => createOfflineProofHandle(workspaceId),
         query: (graphQuery) => created.query(graphQuery),
         refreshRole: () => created.refreshRole(),
+        mutate: async (base64Snapshots) => {
+          try {
+            return await created.mutate(base64Snapshots.map(fromBase64));
+          } catch (error: unknown) {
+            // Deliberately reported rather than rethrown: F138 turns on
+            // telling a clean refusal apart from a Worker-killing throw.
+            return { thrown: error instanceof Error ? error.message : String(error) };
+          }
+        },
+        poisoning: {
+          employeeId: POISON_PROOF_EMPLOYEE,
+          buildBulk: buildBulkEmployeeSnapshot,
+          buildClean: buildCleanEmployeeSnapshot,
+          buildForeignWorkspacePoison,
+          buildConflictingNodeTypePoison,
+          buildMalformedRecordPoison,
+        },
         permissionProof: {
           employeeId: PERMISSION_PROOF_EMPLOYEE,
           buildEmployeeFragments: buildPermissionProofEmployeeSnapshot,

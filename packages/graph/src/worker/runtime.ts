@@ -64,7 +64,8 @@ export interface RuntimeDeltaBatchResult {
 export type RuntimeMutationOutcome =
   | ({ readonly status: "applied" } & RuntimeDeltaBatchResult)
   | { readonly status: "denied"; readonly reason: string }
-  | { readonly status: "unsupported"; readonly reason: string };
+  | { readonly status: "unsupported"; readonly reason: string }
+  | { readonly status: "invalid"; readonly reason: string };
 
 /**
  * FDN-50 stage 2: how long an in-memory mutation can sit before it is
@@ -107,6 +108,26 @@ export class LocalGraphWorkerRuntime {
    * the runtime quietly continuing to accept mutations it cannot persist.
    */
   #pendingFlushError: unknown = null;
+  /**
+   * F138's containment half. Set when a materialization refuses a batch that
+   * had already been merged into the in-memory document — at which point the
+   * document and the durable snapshot have diverged, and the document is the
+   * one that is wrong.
+   *
+   * `#persist` exports the document's CURRENT state at flush time, not the
+   * state captured when the flush was scheduled. So without this flag an
+   * already-pending flush would happily carry a known-bad document out to
+   * disk, and the next `initialize()` would refuse to open the workspace at
+   * all. Refusing to persist keeps the last good snapshot on disk and costs
+   * only the in-memory changes that were never valid to begin with.
+   *
+   * Never cleared. A document that failed to materialize cannot be repaired
+   * in place — full re-materialization is a pure function of the whole
+   * document, so every later attempt fails identically. The Worker keeps
+   * serving reads from its still-coherent index and stops writing; recovery
+   * is a reopen, which reads the last good snapshot.
+   */
+  #materializationFailed = false;
   /** Set on a successful unlock, cleared on lock/dispose. Reused by the role-refresh poll below, never persisted. */
   #apiOrigin: string | null = null;
   #rolePollTimer: ReturnType<typeof setInterval> | null = null;
@@ -416,6 +437,7 @@ export class LocalGraphWorkerRuntime {
       document,
       deltas.map((delta) => new Uint8Array(delta)),
       roles,
+      this.#requireWorkspaceId(),
     );
     if (authorization.status !== "authorized") return authorization;
 
@@ -446,7 +468,30 @@ export class LocalGraphWorkerRuntime {
     // this stage — a CRDT merge is not undoable, and pretending otherwise
     // by discarding the document would lose ops from peers that are
     // perfectly valid. See this stage's report for the case it leaves open.
-    const materializationGeneration = await this.#materialize();
+    let materializationGeneration: number;
+    try {
+      materializationGeneration = await this.#materialize();
+    } catch (error: unknown) {
+      // F140. Availability was set to `mid-sync` above and, before this
+      // catch existed, a materialization failure escaped without ever
+      // restoring it — so every later response reported `mid-sync` forever
+      // on a Worker that was otherwise serving queries correctly.
+      //
+      // `ready` is the honest answer here, not a consolation: `rebuild`
+      // validates before it writes and `#commitGeneration` runs inside
+      // BEGIN IMMEDIATE/ROLLBACK, so a refused materialization leaves the
+      // PREVIOUS generation intact and queryable. The index a caller reads
+      // is coherent; it is the in-memory document that now disagrees with
+      // it, which is why `#materializationFailed` below stops that document
+      // from ever being persisted over the good one.
+      this.#availability = { state: "ready" };
+      this.#materializationFailed = true;
+      if (this.#flushTimer !== null) {
+        clearTimeout(this.#flushTimer);
+        this.#flushTimer = null;
+      }
+      throw error;
+    }
     // The mutation above is already visible/queryable in-memory and through
     // the index at this point. Only the durable flush to SealedStore is
     // deferred — see #scheduleFlush and #persist.
@@ -563,6 +608,15 @@ export class LocalGraphWorkerRuntime {
     if (workspaceId === null || document === null) {
       throw new Error("Worker is not initialized");
     }
+    // F138. See `#materializationFailed`: this document is known not to
+    // materialize, so writing it would replace a good snapshot with one that
+    // makes the workspace refuse to open.
+    if (this.#materializationFailed) {
+      throw new Error(
+        "Refusing to persist a document that failed to materialize; the last " +
+          "durable snapshot is kept instead",
+      );
+    }
 
     // FDN-50 stage 3: every durable write records the generation it was
     // written under, so the gate in initialize() has something to read on
@@ -634,5 +688,10 @@ export class LocalGraphWorkerRuntime {
   #requireDocument(): LoroDoc {
     if (this.#document === null) throw new Error("Worker is not initialized");
     return this.#document;
+  }
+
+  #requireWorkspaceId(): string {
+    if (this.#workspaceId === null) throw new Error("Worker is not initialized");
+    return this.#workspaceId;
   }
 }

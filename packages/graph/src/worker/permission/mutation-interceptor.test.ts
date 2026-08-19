@@ -15,10 +15,14 @@ import {
   authorizeMutationBatch,
   authorizeNodeWrite,
   diffChangedNodeFragments,
+  INVALID_BATCH_REASON,
 } from "./mutation-interceptor";
 import { POLICY_ROLES, resolvePermission, type PolicyRole } from "./policy-table";
 
 const ALL_ROLES: readonly PolicyRole[] = POLICY_ROLES;
+
+/** The workspace every `baseRecord` fixture below declares as its own. */
+const FIXTURE_WORKSPACE = "22222222-2222-4222-8222-222222222222";
 
 function baseRecord(
   nodeId: string,
@@ -288,7 +292,7 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     const batch = nodeFragmentBatch("66666666-6666-4666-8666-666666666666", "Employee", "operational", {
       title: "Engineer",
     });
-    const outcome = await authorizeMutationBatch(document, [batch], OWNER);
+    const outcome = await authorizeMutationBatch(document, [batch], OWNER, FIXTURE_WORKSPACE);
     expect(outcome).toEqual({ status: "authorized" });
     document.free();
   });
@@ -298,7 +302,7 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     const batch = nodeFragmentBatch("66666666-6666-4666-8666-666666666666", "Employee", "compensation", {
       salary: 1,
     });
-    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER);
+    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER, FIXTURE_WORKSPACE);
     expect(outcome.status).toBe("denied");
     if (outcome.status === "denied") {
       expect(outcome.reason).toContain("Employee/compensation");
@@ -311,7 +315,7 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     const nodeId = "66666666-6666-4666-8666-666666666666";
     const batch = nodeFragmentBatch(nodeId, "Employee", "compensation");
 
-    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER);
+    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER, FIXTURE_WORKSPACE);
     expect(outcome.status).toBe("denied");
 
     // `readNodeFragments`, not raw `toJSON()`: calling `document.getMap(...)`
@@ -333,7 +337,7 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     scratch.free();
 
     const document = new LoroDoc();
-    const outcome = await authorizeMutationBatch(document, [batch], OWNER);
+    const outcome = await authorizeMutationBatch(document, [batch], OWNER, FIXTURE_WORKSPACE);
     expect(outcome.status).toBe("unsupported");
     if (outcome.status === "unsupported") {
       expect(outcome.reason).toContain("org_hierarchy");
@@ -349,7 +353,7 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     scratch.free();
 
     const document = new LoroDoc();
-    const outcome = await authorizeMutationBatch(document, [batch], OWNER);
+    const outcome = await authorizeMutationBatch(document, [batch], OWNER, FIXTURE_WORKSPACE);
     expect(outcome.status).toBe("unsupported");
     if (outcome.status === "unsupported") {
       expect(outcome.reason).toContain("some_future_container_nobody_has_written_yet");
@@ -366,7 +370,7 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     scratch.free();
 
     const document = new LoroDoc();
-    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER);
+    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER, FIXTURE_WORKSPACE);
     expect(outcome.status).toBe("denied");
     document.free();
   });
@@ -379,7 +383,142 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     document.import(batch);
     document.commit();
 
-    const outcome = await authorizeMutationBatch(document, [batch], []);
+    const outcome = await authorizeMutationBatch(document, [batch], [], FIXTURE_WORKSPACE);
+    expect(outcome).toEqual({ status: "authorized" });
+    document.free();
+  });
+});
+
+/**
+ * F138 — the named unit-level half of the regression proof. The end-to-end
+ * half lives in `services/api/browser-tests-device-store/graph-mutation-poisoning.spec.ts`
+ * and runs against the real Worker, real SealedStore and real WASM.
+ *
+ * Every vector below was CONFIRMED to pass Gate 1 and then be refused by
+ * `materialization.ts` before this fix existed — verified directly against
+ * `authorizeMutationBatch`, not reasoned about. The refusal must now happen
+ * on the fork, before anything merges, and must be a returned outcome rather
+ * than a throw: a throw becomes a fatal `runtime-failure` that terminates the
+ * Worker and leaves every later caller hanging forever (F142).
+ */
+describe("F138 — an authorized-but-incoherent batch is refused before it can merge", () => {
+  const OWNER: readonly PolicyRole[] = ["owner"];
+
+  function poisonDoc(write: (document: LoroDoc) => void): Uint8Array {
+    const scratch = new LoroDoc();
+    write(scratch);
+    scratch.commit();
+    const bytes = scratch.export({ mode: "snapshot" });
+    scratch.free();
+    return bytes;
+  }
+
+  function writeRaw(
+    document: LoroDoc,
+    nodeId: string,
+    partitionKey: string,
+    record: Record<string, unknown>,
+  ): void {
+    const fragment = document
+      .getMap(NODE_FRAGMENT_CONTAINER)
+      .setContainer(`${nodeId}:${partitionKey}`, new LoroMap());
+    for (const [key, value] of Object.entries(record)) fragment.set(key, value);
+  }
+
+  const NODE = "66666666-6666-4666-8666-666666666666";
+
+  it("a fragment carrying a FOREIGN workspace_id is refused as invalid, not authorized", async () => {
+    const batch = poisonDoc((scratch) =>
+      writeRaw(scratch, NODE, "operational", {
+        ...baseRecord(NODE, "Employee"),
+        workspace_id: "99999999-9999-4999-8999-999999999999",
+      }),
+    );
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
+    expect(outcome.status).toBe("invalid");
+    // The canonical document must be untouched — that is the whole point.
+    expect(readNodeFragments(document)).toEqual([]);
+    document.free();
+  });
+
+  it("two partitions of one node id disagreeing about node_type are refused as invalid", async () => {
+    const batch = poisonDoc((scratch) => {
+      writeRaw(scratch, NODE, "operational", baseRecord(NODE, "Employee"));
+      writeRaw(scratch, NODE, "record", baseRecord(NODE, "Project"));
+    });
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
+    expect(outcome.status).toBe("invalid");
+    expect(readNodeFragments(document)).toEqual([]);
+    document.free();
+  });
+
+  it("a malformed record is refused as invalid rather than throwing out of the gate (F142)", async () => {
+    const batch = poisonDoc((scratch) =>
+      writeRaw(scratch, NODE, "operational", {
+        ...baseRecord(NODE, "Employee"),
+        lifecycle_status: "Archived",
+      }),
+    );
+    const document = new LoroDoc();
+    // Before the fix this rejected with a raw ZodError, which `entry.ts`
+    // reported as a FATAL runtime-failure.
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
+    expect(outcome.status).toBe("invalid");
+    expect(readNodeFragments(document)).toEqual([]);
+    document.free();
+  });
+
+  it("the refusal reason never echoes the underlying validation message, which would be an existence oracle", async () => {
+    const batch = poisonDoc((scratch) =>
+      writeRaw(scratch, NODE, "operational", {
+        ...baseRecord(NODE, "Employee"),
+        workspace_id: "99999999-9999-4999-8999-999999999999",
+      }),
+    );
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
+    if (outcome.status !== "invalid") throw new Error("expected an invalid outcome");
+    expect(outcome.reason).toBe(INVALID_BATCH_REASON);
+    // Neither the offending node id nor either workspace id may appear.
+    expect(outcome.reason).not.toContain(NODE);
+    expect(outcome.reason).not.toContain("99999999");
+    expect(outcome.reason).not.toContain(FIXTURE_WORKSPACE);
+    document.free();
+  });
+
+  it("a coherent batch is still authorized — the coherence check does not refuse everything", async () => {
+    const batch = poisonDoc((scratch) =>
+      writeRaw(scratch, NODE, "operational", baseRecord(NODE, "Employee")),
+    );
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
     expect(outcome).toEqual({ status: "authorized" });
     document.free();
   });
