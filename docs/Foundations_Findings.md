@@ -11,6 +11,16 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 
 ---
 
+## ⚠ Live, present-tense gap — read before anything else in this document
+
+**F130. Right now, in the current codebase, Owner and HR Admin see every HR case in the workspace, including one filed about themselves.** This is not a deferred feature or a theoretical edge case — it is what the code does today, and will keep doing until `VRS-F002` exists.
+
+`VPS-A004`'s subject-exclusion rule (A004-T16) requires an Owner or HR Admin who is the subject of a disciplinary or grievance case to be excluded from reading it, so an investigating officer can take honest notes. Enforcing that requires knowing which login account belongs to which employee — a link `VRS-F002` (Atomic Employee Profiles) has not built yet. Until it does, this cannot be enforced, at all, by any means short of removing HR case access from Owner and HR Admin entirely, which would break the only two roles able to manage a case.
+
+**This is deliberately not built as a mechanism that looks like it works but doesn't.** See F130's full entry for why that option was considered and rejected. It is instead named here, prominently, so `VRS-F002`'s priority reflects that something real and live is waiting on it — not merely a nice-to-have identity link.
+
+---
+
 ## Status of each finding
 
 | | Finding | Owner document | State |
@@ -94,8 +104,9 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F127 | `VPS-F001`'s "role changes take effect immediately, no session restart" was ambiguous between an impossible offline claim and a too-weak server-only one; FDN-53's design assumed the weaker reading | `VPS-F001`, `VPS-A004`, Linear | **Closed by wording correction; ownership of the live delivery channel left open** — FDN-53 role-refresh redesigned; no issue yet claims the transport |
 | F128 | FDN-53 stage 1 resolved every "own" and "direct-reports" matrix cell at its unrestricted literal grant with no row-level filtering — 41 cells, including every employee's wellness events, pulse entries, leave, expenses and payslips readable by any Team Member, and every employee's timesheets, leave and assignments readable by any Manager — and a passing test asserted the WellnessTriggerEvent case as correct | Repository | **Closed by repository fix** — every non-`any` scope resolves to `none`; verified by exhaustively sweeping all 245 matrix cells and 30+ class-default fallback node types directly against `resolvePermission`, and by mutation-testing the fix itself |
 | F129 | `LeavePolicy`, `Workspace`'s display partition and the other named "workspace-configuration pattern" node types have no override row and fall through to `Standard`'s person-scoped defaults, which don't apply to a workspace-wide record | `VPS-A004`, Repository | **Open, raised not decided** — surfaced fixing F128; currently resolves conservatively to `none` rather than the plain Read every role should have |
+| F130 | ⚠ **Live gap, not deferred.** Subject exclusion (A004-T16) is entirely unbuilt — Owner and HR Admin currently see every HRCase/CaseEvent in the workspace, including one concerning themselves, because no User-to-Employee identity link exists to enforce it | `VPS-A004`, `VRS-F002`, `VRS-F046`, Repository | **Open, deliberately left unmitigated** — founder-decided against a dormant mechanism that would look enforced without being able to fire; blocks on `VRS-F002` |
 
-**Seventy-six findings, sixty-seven closed.** Nine stay open: F70, F73, F85, F118, F120, F125 and F129 remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Seventy-seven findings, sixty-seven closed.** Ten stay open: F70, F73, F85, F118, F120, F125, F129 and **F130 (live, unmitigated)** remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 *This count was itself stale, and F118 had dropped out of the open list entirely — the row was correct, the summary above it was not. Recounted from the table rows rather than incremented by hand, which is how it drifted: four findings were appended without the total being recalculated. If it disagrees with the table again, the table is right.*
 
@@ -1288,6 +1299,24 @@ None of the eight has a `MATRIX_OVERRIDES` row encoding that grant. Each falls t
 **This is the opposite direction from F128, and safe for now on the same terms.** F128 was cells resolving too open; this is cells resolving too closed, since F128's fix now sends every one of these through the same conservative `none` default. The cost is Manager and Team Member currently seeing `none` instead of the `Read` `VPS-A004` actually grants them — an over-restriction, not a leak, and consistent with the same asymmetry this project holds elsewhere: too closed is the safe direction to be wrong in.
 
 **Open, raised not decided.** Closing it means adding eight-plus explicit `MATRIX_OVERRIDES` rows transcribing the pattern `VPS-A004` already states in prose — small and mechanical, but a scope decision about this table's completeness rather than a correction to the fix just made, and not decided unilaterally while fixing F128.
+
+---
+
+### F130 — subject exclusion is unbuilt, and the gap is live, not deferred
+
+Also surfaced while scoping FDN-53 stage 2, and distinct from F128 in a way worth stating precisely: F128 was matrix cells that inherently *carry* a qualifier in their own text ("Full (own only)") going unenforced. This is a different mechanism entirely, registered separately in `VPS-A004`: *"Where a node type registers a subject exclusion, the reader set is its effective grant minus any person who is the subject of that record."* `HRCase` and `CaseEvent`, both halves, are the two node types that register one, excluding whoever `case_concerns` names. `VRS-F046` explains why: *"the subject of a case cannot read it, so that an investigating officer can take honest notes."*
+
+Checked directly against the table: `HRCase`'s Owner and HR Admin cells are plain `FULL_ANY()` — not flagged as carrying any qualifier at all, because the exclusion is a fact about the *node type*, not about the cell. F128's fix does not reach this, and was never going to.
+
+**Enforcing it requires comparing the caller's identity against a specific record's subject field — a User-to-Employee link that does not exist until `VRS-F002`.** This is the identical root cause F128's writeup already named for row-scoped qualifiers. It does not have F128's answer, though: `none` is not a safe default here, because it would remove HRCase access from the only two roles that can manage a case at all, which is a materially worse outcome than the gap it would close.
+
+**Three options were weighed, in the open, before deciding.** Register the mechanism now, dormant — it exists in the code, but cannot fire without an identity link, so Owner and HR Admin keep unconditional `Full` exactly as today. Leave it out entirely and log the gap. Or find some narrower partial signal, none of which surfaced.
+
+**Rejected: registering it dormant.** The founder's reasoning, recorded in full because it generalizes beyond this one finding: *"a future reader sees an enforcement mechanism sitting in the code and reasonably assumes it's live. That's a subtler version of exactly what F128 just taught this project: something that looks protected but isn't."* A subject-exclusion check that is structurally incapable of ever firing is not a smaller version of the F128 problem — it is the F128 problem, deliberately built in with better intentions. This project does not ship code shaped like a guarantee it cannot keep, even when the code is honest about why in a comment. A comment is read by someone already looking; the shape of the code is read by everyone else.
+
+**Decided: left out of stage 2 entirely, and named here at the top of this document rather than only in sequence.** Not because it is more numerically severe than F128 — it isn't; nothing has read from it yet either, and the population affected is two roles rather than every employee. It is flagged this prominently because it is a **standing condition of the current codebase**, not a stage that will complete and close it: every day between now and `VRS-F002` shipping, this gap is live in exactly the same shape. F128 was closed within the hour it was found. This one cannot be closed the same way, and pretending otherwise by hiding it below the fold would be its own small version of the same mistake.
+
+**What this changes going forward.** `VRS-F002`'s priority should reflect that something real and already-built (`HRCase`/`CaseEvent`, per `VRS-F046`) is waiting on the identity link it provides, not merely that a future feature would benefit from it. This is not a request to reorder the roadmap — it's the fact that needs to be visible wherever that ordering gets decided.
 
 ---
 
