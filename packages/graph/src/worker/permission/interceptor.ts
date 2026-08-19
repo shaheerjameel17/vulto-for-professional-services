@@ -286,26 +286,53 @@ export async function executeWithPermissions(
   query: GraphQuery,
   context: PermissionContext,
 ): Promise<GraphQueryResult> {
+  /**
+   * S3 (FDN-54). One role set, decided once, for the whole query.
+   *
+   * `recursive-neighbors` walks hop by hop with an `await` between every
+   * hop, and `bestResolution` re-reads the role array on every fragment it
+   * filters. So a role array MUTATED IN PLACE between hops changes how the
+   * remaining hops are filtered, and the query returns a result no single
+   * role set would ever have produced — hop 1 resolved as an Owner, hop 2
+   * onward as a Team Member. `readonly PolicyRole[]` does not prevent this:
+   * it stops THIS function mutating the caller's array, not the caller
+   * mutating its own.
+   *
+   * That is reachable in principle and unreachable in practice today, and
+   * the difference is an accident rather than a decision: both call sites
+   * in `runtime.ts` build a fresh array per call via `deriveEffectiveRoles`,
+   * and `SealedStore.refreshRoles` replaces `#roles` rather than mutating
+   * it, so the array reaching this function is private to this call. The
+   * one obvious optimization — caching the derived array instead of
+   * rebuilding it per query — would silently make it reachable.
+   *
+   * Copying here makes the guarantee this function's own, so it holds
+   * whatever a caller does. It is also the answer to S3's actual question:
+   * a query is evaluated against the roles held when it STARTED. A role
+   * change lands on the next query, never partway through one.
+   */
+  const roles: readonly PolicyRole[] = [...context.roles];
+
   switch (query.kind) {
     case "node-get": {
       const raw = await index.execute(query);
       if (raw.kind !== "node-get") throw new Error("Invalid node-get result");
       return {
         kind: "node-get",
-        node: raw.node ? filterNode(raw.node, context.roles) : null,
+        node: raw.node ? filterNode(raw.node, roles) : null,
       };
     }
     case "node-list": {
       const raw = await index.execute(query);
       if (raw.kind !== "node-list") throw new Error("Invalid node-list result");
       const nodes = raw.nodes
-        .map((node) => filterNode(node, context.roles))
+        .map((node) => filterNode(node, roles))
         .filter((node): node is MaterializedNode => node !== null);
       return { kind: "node-list", nodes, nextNodeId: raw.nextNodeId };
     }
     case "edge-neighbors":
-      return interceptedEdgeNeighbors(index, query, context.roles);
+      return interceptedEdgeNeighbors(index, query, roles);
     case "recursive-neighbors":
-      return interceptedRecursiveNeighbors(index, query, context.roles);
+      return interceptedRecursiveNeighbors(index, query, roles);
   }
 }
