@@ -55,8 +55,16 @@ const OUTCOME_RANK: Readonly<Record<PermissionOutcome, number>> = {
 
 const NONE_RESOLUTION: PolicyResolution = { outcome: "none" };
 
-/** A004-T05: role combinations resolve as the union — the higher grant wherever rules differ. */
-function bestResolution(
+/**
+ * A004-T05: role combinations resolve as the union — the higher grant
+ * wherever rules differ.
+ *
+ * Exported for FDN-53 stage 2's mutation interceptor, which reuses this
+ * unchanged: `resolvePermission`'s `full` outcome is the same ceiling for a
+ * write that `read`/`restricted` are for a read, and A004-T05's role-union
+ * rule is stated for "role combinations," not for reads specifically.
+ */
+export function bestResolution(
   roles: readonly PolicyRole[],
   nodeType: NodeType,
   partitionKey: string,

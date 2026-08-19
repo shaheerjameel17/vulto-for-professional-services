@@ -107,8 +107,13 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F130 | ⚠ **Live gap, not deferred.** Subject exclusion (A004-T16) is entirely unbuilt — Owner and HR Admin currently see every HRCase/CaseEvent in the workspace, including one concerning themselves, because no User-to-Employee identity link exists to enforce it | `VPS-A004`, `VRS-F002`, `VRS-F046`, Repository | **Open, deliberately left unmitigated** — founder-decided against a dormant mechanism that would look enforced without being able to fire; blocks on `VRS-F002` |
 | F131 | `applyDeltaBatch` is a public, application-callable `LocalGraphClient` method with zero permission check — the graph's only current mutation entrypoint bypasses the interceptor stage 1 built entirely | `Repository`, `VPS-A001` | **Closed by founder ruling** — demoted to Worker-internal/test-only, mirroring `SQLiteGraphIndex.execute()`'s treatment; a real gated mutation entrypoint replaces it as FDN-53 stage 2's actual scope |
 | F132 | No Loro storage convention exists for any edge type except `managed_by`, which is derived from the Movable Tree rather than stored as a generic edge — nothing commits a write for any of `VPS-A002`'s other ~90 registered edge types | `VPS-A001`, `VPS-A002`, Repository | **Open, raised not decided** — stage 2 scopes edge writes to authorization-check-only, no commit; the convention itself needs its own dedicated design pass |
+| F133 | `VPS-A004` Gate 2 (`VPS-F008` cross-suite write authority) is structurally a no-op with only Vulto Roster registered — no second application can ever hold an `Active` activation | `VPS-A004`, `VPS-F008`, Repository | **Closed by founder ruling, same standard as F130** — not built in stage 2; deferred until a second application is registered |
+| F134 | `VPS-A004` Gate 3 (refusal when a write would leave an empty reader set) depends on subject exclusion, which F130 already found unbuilt | `VPS-A004`, `VRS-F002`, Repository | **Closed by founder ruling, same standard as F130** — not built in stage 2; deferred to the same identity-link dependency F130 names |
+| F135 | `VPS-A004`'s per-decision `AuditEntry` requirement (`VPS-F004`) was never surfaced scoping FDN-53 stage 2, and no audit-writing code exists anywhere in `packages/graph` | `VPS-A004`, `VPS-F004`, Repository | **Closed by founder ruling** — audit writing out of stage 2's scope, same as stage 1; deferred to whichever issue implements `VPS-F004` |
+| F136 | `VPS-A004` assigns no write-permission column to an edge TYPE, only to node types and partitions — which privacy partition governs an edge write on a split-protection endpoint (e.g. Employee) is undefined by the spec | `VPS-A004`, `VPS-A002`, Repository | **Closed by founder ruling** — resolves conservatively to `none` for a multi-partition endpoint, the same default direction F128 established; proven correct by exhaustive sweep, unreachable from any commit path per F132 |
+| F137 | `roster-web`'s typecheck fails on two `TS2307` errors — `loro-crdt/web` and `loro-crdt/web/loro_wasm.js` unresolvable in `graph-persistence-diagnostics-client.tsx` — pre-existing on `main`, unrelated to FDN-53 | Repository | **Open, diagnosed not fixed** — `loro-crdt` is declared in `apps/roster-web/package.json` and present in `pnpm-lock.yaml`, but `apps/roster-web/node_modules/loro-crdt` does not exist on disk; a stale/incomplete local install, not a config or spec defect. Fix is a `pnpm install`, not attempted here as out of this stage's scope |
 
-**Seventy-nine findings, sixty-eight closed.** Eleven stay open: F70, F73, F85, F118, F120, F125, F129, F132 and **F130 (live, unmitigated)** remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Eighty-four findings, seventy-two closed.** Twelve stay open: F70, F73, F85, F118, F120, F125, F129, F132, F137 and **F130 (live, unmitigated)** remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 *This count was itself stale, and F118 had dropped out of the open list entirely — the row was correct, the summary above it was not. Recounted from the table rows rather than incremented by hand, which is how it drifted: four findings were appended without the total being recalculated. If it disagrees with the table again, the table is right.*
 
@@ -1339,6 +1344,46 @@ Surfaced alongside F131, same review. `packages/graph/src/worker/document-node-f
 This blocks more than FDN-53: every future feature that creates any edge other than `managed_by` hits the same wall. Designing the convention — container naming, key scheme, whether it needs per-edge-type conflict semantics analogous to `managed_by`'s causal ordering — is an architectural decision on the order of `VPS-A001`/`VPS-A002`, not something to improvise inside a stage scoped for mutation *interception*.
 
 **Open, raised not decided.** FDN-53 stage 2 scopes edge writes to authorization-check-only: permit/deny is computed and exhaustively tested against the existing policy table and graph traversal rules, but nothing commits. The storage convention itself is logged here for a dedicated design pass, not decided as a side effect of this stage.
+
+---
+
+### F133 — `VPS-A004` Gate 2 (cross-suite write authority) is a structural no-op with only one registered application
+
+Surfaced scoping FDN-53 stage 2's write gates against `VPS-A004`'s own text, before building any of them. `VPS-A004` names three sequential write gates: role-based permission (Gate 1), cross-suite write authority for bootstrap node types per `VPS-F008` (Gate 2), and refusal when a write would leave an empty reader set (Gate 3, see F134). `VPS-F008` defines Gate 2's mechanism concretely — an `ApplicationActivation` node type and a `writeAuthority.check(workspaceId, nodeType, fieldGroup?, callingApplication)` call, checking whether an `Active` activation exists for the node type's owning application per `VPS-A002`'s Cross-Suite Node Ownership table.
+
+The schema pieces already exist (`ApplicationActivation` in `packages/schema`, the policy table entry in `policy-table.ts`), so Gate 2 is buildable in the narrow sense that the code would compile and run. But Vulto Roster is the only application ever registered in this phase — no second application exists to activate, so every bootstrap node type's owning application is always Roster, no `Active` activation for any other application can ever exist, and the check is structurally unable to produce a `false` in practice. Building it now would be exactly the dormant-mechanism shape F130 already rejected for subject exclusion: a gate that reads as enforced to a future reader without ever being able to fire.
+
+**Closed by founder ruling, same standard as F130.** Gate 2 is not built in stage 2. It is deferred until a second application is registered against this workspace graph, at which point it has something real to evaluate. No dormant `writeAuthority.check` call is wired into the interceptor in the meantime.
+
+---
+
+### F134 — `VPS-A004` Gate 3 (empty-reader-set refusal) depends on subject exclusion, which F130 already found unbuilt
+
+Surfaced alongside F133, same review. Gate 3 refuses a write that would produce a Tier 1 or Tier 3 node with no independent reader — a workspace whose only Owner and only HR Admin are the same person, or where a record's subject is its sole remaining reader once subject exclusion is applied. `VPS-A004`'s own text states the failure mode "becomes possible once subject exclusion exists" (A004-T16): without it, the reader set for a subject-excludable node type is just its ordinary role-based grant, which for every node type currently registered includes at least the Owner role and therefore is never empty by construction.
+
+F130 already found subject exclusion entirely unbuilt — no User-to-Employee identity link exists (`VRS-F002`, out of this phase's scope), and F130 was explicit that building a dormant enforcement mechanism ahead of that link is the wrong move. Gate 3 depends on exactly the same missing link: without subject exclusion, there is no case this stage can construct where Gate 3 would ever refuse anything a role check did not already refuse, so building it now carries the identical risk F130 already ruled against.
+
+**Closed by founder ruling, same standard as F130 and F133.** Gate 3 is not built in stage 2. It is deferred to whichever issue implements the User-to-Employee identity link and subject exclusion — the same dependency F130 already names — at which point Gate 3 has a real empty-reader-set case to guard against.
+
+---
+
+### F135 — the interceptor's audit-writing requirement (`VPS-A004`, `VPS-F004`) was never surfaced when FDN-53 stage 2 was scoped
+
+Surfaced independently of F133/F134, while checking `VPS-A004` against the current codebase before writing the mutation interceptor. `VPS-A004`'s Context section states plainly that every decision the interceptor makes — every denial at any tier, and every successful grant of Tier 1 or Tier 3 data — writes an `AuditEntry` per `VPS-F004`. This is stated as intrinsic to the interceptor being the single choke point every query and mutation already passes through, not as an optional extension.
+
+Checked directly: no `AuditEntry`-writing code exists anywhere in `packages/graph`, in either the stage 1 read path or stage 2's mutation path. `VPS-F004` itself is fully specified as a document, but nothing implements it. Unlike F133/F134, this gap was not named when F131/F132 scoped stage 2's boundaries — it is not a deferred decision, it is an unaddressed requirement of the specification stage 2's own interceptor is supposed to satisfy.
+
+**Closed by founder ruling.** Audit writing is out of stage 2's scope: it is a separate, unbuilt system (`VPS-F004`'s silent audit log), and stage 2 delivers permission gating for mutations only, matching the read path's own scope in stage 1 (which also does not write audit entries). Recorded here rather than built as a one-off writer inside this stage, so the gap is visible to whichever issue implements `VPS-F004` for real, and so `VPS-A004`'s own stated requirement is not silently left unread.
+
+---
+
+### F136 — `VPS-A004` assigns no write-permission column to an edge TYPE, only to node types and partitions
+
+Surfaced building `authorizeEdgeWrite`, the standalone Gate 1 check for an edge write (F132: computed and exhaustively tested, never wired to a commit path). The read path's `interceptedEdgeNeighbors` already documents the identical gap for Read — `VPS-A004`'s matrix and `VPS-A002`'s edge registry assign Privacy Class and permission outcomes to node types and node-type partitions, never to an edge type itself — and resolves it by treating Read on the edge type as satisfied once both endpoint node types are readable, since that grants nothing the endpoint checks would not already allow.
+
+The write-side approximation used here is the natural analogue — Full write permission required on both endpoint node types — but it runs into a case the read path's binary satisfied/not-satisfied check never had to resolve: where an endpoint node type has more than one registered privacy partition (Employee's operational/compensation split is the only current case, but not the only possible one), the spec gives no basis for choosing which partition governs an edge write. Guessing would be exactly the kind of invention `CLAUDE.md` prohibits.
+
+**Closed by founder ruling.** `authorizeEdgeWrite` resolves a multi-partition endpoint to `none`, unconditionally — the same conservative direction F128 already established for every other unresolvable case in this table, and consistent with the project's own stated asymmetry that moving a cell toward `none` is always safe. In practice this means `managed_by` (Employee → Employee) denies for every role today, since Employee is split-protected; the function is proven correct in isolation by an exhaustive sweep, and nothing currently reaches it from a commit path regardless (F132).
 
 ---
 

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createLocalGraphClientWithFactory } from "./client";
+import {
+  createLocalGraphClientWithFactory,
+  createUncheckedLocalGraphClientWithFactory,
+} from "./client";
 import { GRAPH_WORKER_PROTOCOL_VERSION, type GraphWorkerRequest } from "./protocol";
 
 class FakeWorker {
@@ -28,9 +31,16 @@ class FakeWorker {
               materializationGeneration: 0,
               workerDurationMs: 10,
             }
-          : request.type === "get-availability"
-            ? { kind: "availability" as const }
-            : { kind: "disposed" as const };
+          : request.type === "mutate"
+            ? {
+                kind: "mutation-applied" as const,
+                mergedDeltaCount: request.deltas.length,
+                materializationGeneration: 0,
+                workerDurationMs: 10,
+              }
+            : request.type === "get-availability"
+              ? { kind: "availability" as const }
+              : { kind: "disposed" as const };
     queueMicrotask(() =>
       this.onmessage?.({ data: { ...base, result } } as MessageEvent),
     );
@@ -42,19 +52,74 @@ class FakeWorker {
 }
 
 describe("local graph client lifecycle", () => {
-  it("initializes, transfers opaque deltas, and terminates on dispose", async () => {
+  it("initializes, transfers opaque deltas through mutate, and terminates on dispose", async () => {
     const worker = new FakeWorker();
     const client = createLocalGraphClientWithFactory("workspace-1", () => worker);
 
     await expect(client.initialize()).resolves.toEqual({ state: "ready" });
     await expect(
-      client.applyDeltaBatch([new Uint8Array([1, 2, 3])]),
-    ).resolves.toMatchObject({ mergedDeltaCount: 1, availability: { state: "ready" } });
+      client.mutate([new Uint8Array([1, 2, 3])]),
+    ).resolves.toMatchObject({
+      status: "applied",
+      mergedDeltaCount: 1,
+      availability: { state: "ready" },
+    });
     expect(worker.transferred).toHaveLength(1);
     expect(worker.transferred[0]).toBeInstanceOf(ArrayBuffer);
 
     await client.dispose();
     expect(worker.terminated).toBe(true);
+  });
+
+  it("surfaces mutate's denied and unsupported outcomes as results, not thrown errors", async () => {
+    const worker = new FakeWorker();
+    worker.postMessage = (message: unknown) => {
+      const request = message as GraphWorkerRequest;
+      const base = {
+        protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+        requestId: request.requestId,
+        sentAt: "2026-08-19T12:00:00.000Z",
+        type: "success" as const,
+        availability: { state: "ready" as const },
+      };
+      const result =
+        request.type === "initialize"
+          ? { kind: "initialized" as const, workspaceId: request.workspaceId }
+          : request.type === "mutate" && request.deltas.length === 1
+            ? { kind: "mutation-denied" as const, reason: "no Full grant" }
+            : { kind: "mutation-unsupported" as const, reason: "touches the Tree" };
+      queueMicrotask(() => worker.onmessage?.({ data: { ...base, result } } as MessageEvent));
+    };
+    const client = createLocalGraphClientWithFactory("workspace-1", () => worker);
+    await client.initialize();
+
+    await expect(client.mutate([new Uint8Array([1])])).resolves.toEqual({
+      status: "denied",
+      reason: "no Full grant",
+    });
+    await expect(
+      client.mutate([new Uint8Array([1]), new Uint8Array([2])]),
+    ).resolves.toEqual({ status: "unsupported", reason: "touches the Tree" });
+  });
+
+  it("does not expose applyDeltaBatch on the public LocalGraphClient interface (F131)", () => {
+    const worker = new FakeWorker();
+    const client = createLocalGraphClientWithFactory("workspace-1", () => worker);
+    // @ts-expect-error F131: applyDeltaBatch is demoted off LocalGraphClient.
+    expect(client.applyDeltaBatch).toBeDefined();
+  });
+
+  it("still reaches applyDeltaBatch through the widened unchecked test client", async () => {
+    const worker = new FakeWorker();
+    const client = createUncheckedLocalGraphClientWithFactory(
+      "workspace-1",
+      () => worker,
+    );
+
+    await client.initialize();
+    await expect(
+      client.applyDeltaBatch([new Uint8Array([1, 2, 3])]),
+    ).resolves.toMatchObject({ mergedDeltaCount: 1, availability: { state: "ready" } });
   });
 
   it("terminates the old Worker before switching workspaces", async () => {

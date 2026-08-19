@@ -18,10 +18,30 @@ export interface DeltaBatchResult {
   workerDurationMs: number;
 }
 
+/**
+ * FDN-53 stage 2 (F131). `mutate`'s three outcomes: authorized and
+ * committed (`applied`, carrying the same fields `DeltaBatchResult` always
+ * has), refused by `VPS-A004` Gate 1 (`denied`), or refused because the
+ * batch touches state this stage cannot commit at all — an edge type, the
+ * Movable Tree, or anything outside the node-fragment container (F132/F134,
+ * `unsupported`). See `LocalGraphWorkerRuntime#mutate`'s doc comment for the
+ * full simulate-then-diff-then-gate procedure this result comes from.
+ */
+export type MutationOutcome =
+  | ({ readonly status: "applied" } & DeltaBatchResult)
+  | { readonly status: "denied"; readonly reason: string }
+  | { readonly status: "unsupported"; readonly reason: string };
+
 export interface LocalGraphClient {
   readonly workspaceId: string;
   initialize(): Promise<GraphAvailability>;
-  applyDeltaBatch(deltas: readonly Uint8Array[]): Promise<DeltaBatchResult>;
+  /**
+   * FDN-53 stage 2: the real, permission-gated local WRITE path (F131) —
+   * the write-side counterpart to `query` below. Replaces the pre-stage-2
+   * `applyDeltaBatch`, which is no longer part of this interface; see F131
+   * in `docs/Foundations_Findings.md`.
+   */
+  mutate(deltas: readonly Uint8Array[]): Promise<MutationOutcome>;
   getAvailability(): Promise<GraphAvailability>;
   switchWorkspace(workspaceId: string): Promise<GraphAvailability>;
   /** Requests the server's unlock half and derives the sealed-store key, entirely inside the Worker. */
@@ -125,6 +145,15 @@ class BrowserLocalGraphClient implements LocalGraphClient {
     return response.availability;
   }
 
+  /**
+   * FDN-53 stage 2 (F131). Demoted off the `LocalGraphClient` interface —
+   * this method still exists on the concrete class only because
+   * `@vulto/graph/testing/unchecked-mutation` widens the public type to
+   * include it, for the pre-FDN-53 browser proofs that need synthetic,
+   * non-schema-conformant CRDT bytes committed unchecked on this same
+   * Worker instance. No application code should reach this; `mutate` below
+   * is the gated entrypoint the public interface exposes instead.
+   */
   async applyDeltaBatch(deltas: readonly Uint8Array[]): Promise<DeltaBatchResult> {
     this.#assertInitialized();
     if (deltas.length === 0) throw new Error("A delta batch must not be empty");
@@ -149,6 +178,39 @@ class BrowserLocalGraphClient implements LocalGraphClient {
       materializationGeneration: response.result.materializationGeneration,
       workerDurationMs: response.result.workerDurationMs,
     };
+  }
+
+  async mutate(deltas: readonly Uint8Array[]): Promise<MutationOutcome> {
+    this.#assertInitialized();
+    if (deltas.length === 0) throw new Error("A delta batch must not be empty");
+
+    const buffers = deltas.map((delta) => delta.slice().buffer);
+    const response = await this.#send(
+      {
+        protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+        requestId: requestId(),
+        sentAt: now(),
+        type: "mutate",
+        deltas: buffers,
+      },
+      buffers,
+    );
+    switch (response.result.kind) {
+      case "mutation-applied":
+        return {
+          status: "applied",
+          availability: response.availability,
+          mergedDeltaCount: response.result.mergedDeltaCount,
+          materializationGeneration: response.result.materializationGeneration,
+          workerDurationMs: response.result.workerDurationMs,
+        };
+      case "mutation-denied":
+        return { status: "denied", reason: response.result.reason };
+      case "mutation-unsupported":
+        return { status: "unsupported", reason: response.result.reason };
+      default:
+        throw this.#fatal("Worker returned the wrong result for mutate");
+    }
   }
 
   async getAvailability(): Promise<GraphAvailability> {
@@ -397,5 +459,36 @@ export function createLocalGraphClientWithFactory(
   workspaceId: string,
   workerFactory: WorkerFactory,
 ): LocalGraphClient {
+  return new BrowserLocalGraphClient(workspaceId, workerFactory);
+}
+
+/**
+ * FDN-53 stage 2 (F131). A `LocalGraphClient` widened to include the
+ * demoted, unchecked `applyDeltaBatch` — the real production browser Worker
+ * underneath is unchanged, so a caller of this type shares the exact same
+ * document, materialization, and persistence behavior any application
+ * caller would see, minus `mutate`'s permission gate.
+ *
+ * Reachable only via `@vulto/graph/testing/unchecked-mutation`, never from
+ * `@vulto/graph`'s main entry point — the same subpath-boundary convention
+ * `./testing`, `./testing/chain` and `./testing/permission` already use for
+ * the other test-only surfaces this package exposes.
+ */
+export interface UncheckedLocalGraphClient extends LocalGraphClient {
+  applyDeltaBatch(deltas: readonly Uint8Array[]): Promise<DeltaBatchResult>;
+}
+
+/** Backs `@vulto/graph/testing/unchecked-mutation`; not exported from `@vulto/graph`'s main entry point. */
+export function createUncheckedLocalGraphClient(
+  workspaceId: string,
+): UncheckedLocalGraphClient {
+  return new BrowserLocalGraphClient(workspaceId, createBrowserWorker);
+}
+
+/** Package-private test seam for `createUncheckedLocalGraphClient`, injectable with a fake Worker; not exported from `@vulto/graph`. */
+export function createUncheckedLocalGraphClientWithFactory(
+  workspaceId: string,
+  workerFactory: WorkerFactory,
+): UncheckedLocalGraphClient {
   return new BrowserLocalGraphClient(workspaceId, workerFactory);
 }

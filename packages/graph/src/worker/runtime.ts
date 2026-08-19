@@ -11,6 +11,7 @@ import { readNodeFragments } from "./document-node-fragments";
 import { materializeManagedByEdges } from "./managed-by-materialization";
 import { deriveEffectiveRoles } from "./permission/effective-roles";
 import { executeWithPermissions } from "./permission/interceptor";
+import { authorizeMutationBatch } from "./permission/mutation-interceptor";
 import { fetchCurrentRoles, RoleRefreshDeniedError } from "./permission/role-refresh";
 import { SealedStore, SealedStoreLockedError } from "./storage/sealed-store";
 import { SQLiteGraphIndex, type GraphQueryResult } from "./storage/sqlite-graph-index";
@@ -48,6 +49,22 @@ export interface RuntimeDeltaBatchResult {
   materializationGeneration: number;
   workerDurationMs: number;
 }
+
+/**
+ * FDN-53 stage 2. `mutate`'s three possible outcomes: authorized and
+ * committed, refused by Gate 1 (`denied`), or refused because the batch
+ * touches state the gate cannot yet evaluate at all (`unsupported` — an
+ * edge type, the Movable Tree, or any container other than the node
+ * fragments themselves; see F132/F134/F136). `denied` and `unsupported` are
+ * kept as distinct statuses rather than collapsed into one generic refusal:
+ * a denial is an answer about who the caller is, an unsupported result is a
+ * statement about what this stage can commit at all, and a caller (or a
+ * future finding) should be able to tell them apart without parsing prose.
+ */
+export type RuntimeMutationOutcome =
+  | ({ readonly status: "applied" } & RuntimeDeltaBatchResult)
+  | { readonly status: "denied"; readonly reason: string }
+  | { readonly status: "unsupported"; readonly reason: string };
 
 /**
  * FDN-50 stage 2: how long an in-memory mutation can sit before it is
@@ -325,12 +342,91 @@ export class LocalGraphWorkerRuntime {
     return index.rebuild({ nodeFragments: readNodeFragments(document), edges });
   }
 
+  /**
+   * FDN-53 stage 2 (F131). Demoted off `LocalGraphClient`'s public
+   * interface, mirroring `SQLiteGraphIndex.execute()`'s treatment exactly —
+   * `packages/graph/src/index.ts` does not export a client surface that
+   * exposes this method; only `@vulto/graph/testing/unchecked-mutation`
+   * does, for the handful of pre-FDN-53 browser proofs (FDN-50's
+   * persistence/debounce/materialization harnesses) that need to write
+   * synthetic, non-schema-conformant CRDT bytes directly, unchecked, on the
+   * SAME Worker instance their other assertions run against. `mutate` below
+   * is the real, permission-gated entrypoint every application caller uses
+   * instead.
+   *
+   * This method's OWN behavior is unchanged from before stage 2: it never
+   * checked permission and still does not. The gate stage 2 builds lives
+   * entirely in `mutate`, ahead of this method, not inside it.
+   */
   async applyDeltaBatch(
     deltas: readonly ArrayBuffer[],
   ): Promise<RuntimeDeltaBatchResult> {
     this.#throwPendingFlushError();
+    this.#requireDocument();
+    this.#requireIndex();
+    return this.#commitDeltaBatch(deltas);
+  }
+
+  /**
+   * FDN-53 stage 2. The real, `VPS-A004` Gate-1-gated mutation entrypoint
+   * (F131) — the first application-callable local WRITE path over graph
+   * state, the write-side counterpart to stage 1's `executeQuery`.
+   *
+   * **Simulate, then diff, then gate.** A delta batch is opaque pre-encoded
+   * Loro CRDT bytes; there is no typed "create/update node" call this stage
+   * could inspect instead. So the batch is imported into a throwaway
+   * `document.fork()` — never the canonical document — and the fork's
+   * state is compared against the canonical document's CURRENT state
+   * container by container:
+   *
+   *   1. Any container other than the node-fragment container that differs
+   *      between before and after — the Movable Tree, the reserved
+   *      document-meta container, or anything else a delta batch could in
+   *      principle touch — refuses the WHOLE batch as `unsupported`. This
+   *      is deliberately exhaustive rather than allow-listed to "the Tree":
+   *      nothing this function does not explicitly recognize is permitted
+   *      to slip through uninspected, which is the exact failure shape
+   *      F131 exists to close. Edge-shaped state specifically has no
+   *      committable storage convention this stage (F132, F134) — see
+   *      `authorizeEdgeWrite` for the write-permission logic proven correct
+   *      in isolation but never reached from here.
+   *   2. Within the node-fragment container, only the fragments this batch
+   *      actually adds, changes, or removes are gated — never the whole
+   *      document's fragments — each against Gate 1 (`authorizeNodeWrite`).
+   *      A single denial refuses the whole batch; there is no partial
+   *      commit.
+   *
+   * Only once every changed fragment is authorized does this re-import the
+   * SAME deltas into the real document and run the ordinary commit path
+   * (`#commitDeltaBatch`) — identical materialize/flush behavior to the
+   * pre-FDN-53 `applyDeltaBatch`, just gated ahead of it. The fork/diff/gate
+   * decision itself is `permission/mutation-interceptor.ts`'s
+   * `authorizeMutationBatch`, kept there (not inlined here) so it is
+   * directly unit-testable against a real `LoroDoc` without needing this
+   * runtime's `SQLiteGraphIndex` (which needs a real browser; see
+   * `interceptor.test.ts`'s doc comment).
+   */
+  async mutate(deltas: readonly ArrayBuffer[]): Promise<RuntimeMutationOutcome> {
+    this.#throwPendingFlushError();
     const document = this.#requireDocument();
     this.#requireIndex();
+    const roles = deriveEffectiveRoles(this.#sealedStore.roles);
+
+    const authorization = await authorizeMutationBatch(
+      document,
+      deltas.map((delta) => new Uint8Array(delta)),
+      roles,
+    );
+    if (authorization.status !== "authorized") return authorization;
+
+    const committed = await this.#commitDeltaBatch(deltas);
+    return { status: "applied", ...committed };
+  }
+
+  async #commitDeltaBatch(
+    deltas: readonly ArrayBuffer[],
+  ): Promise<RuntimeDeltaBatchResult> {
+    const document = this.#requireDocument();
     this.#availability = { state: "mid-sync" };
     const startedAt = performance.now();
 

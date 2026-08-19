@@ -98,6 +98,10 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
         return;
       }
       case "apply-delta-batch": {
+        // FDN-53 stage 2 (F131): still no permission check, deliberately —
+        // this case exists only for `@vulto/graph/testing/unchecked-mutation`,
+        // never for `LocalGraphClient`. See `runtime.ts#applyDeltaBatch`'s
+        // doc comment.
         if (runtime.workspaceId === null) {
           scope.postMessage(
             errorResponse(
@@ -112,6 +116,46 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
         const result = await runtime.applyDeltaBatch(request.deltas);
         scope.postMessage(success(request, { kind: "delta-batch-applied", ...result }));
         return;
+      }
+      case "mutate": {
+        if (runtime.workspaceId === null) {
+          scope.postMessage(
+            errorResponse(
+              request.requestId,
+              "not-initialized",
+              "Initialize the Worker before mutating it",
+              true,
+            ),
+          );
+          return;
+        }
+        const outcome = await runtime.mutate(request.deltas);
+        switch (outcome.status) {
+          case "applied":
+            scope.postMessage(
+              success(request, {
+                kind: "mutation-applied",
+                mergedDeltaCount: outcome.mergedDeltaCount,
+                materializationGeneration: outcome.materializationGeneration,
+                workerDurationMs: outcome.workerDurationMs,
+              }),
+            );
+            return;
+          case "denied":
+            scope.postMessage(
+              success(request, { kind: "mutation-denied", reason: outcome.reason }),
+            );
+            return;
+          case "unsupported":
+            scope.postMessage(
+              success(request, { kind: "mutation-unsupported", reason: outcome.reason }),
+            );
+            return;
+          default: {
+            const exhaustive: never = outcome;
+            throw new Error(`Unhandled mutation outcome: ${JSON.stringify(exhaustive)}`);
+          }
+        }
       }
       case "unlock-sealed-store": {
         try {

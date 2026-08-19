@@ -1,10 +1,10 @@
 "use client";
 
+import type { DeltaBatchResult } from "@vulto/graph";
 import {
-  createLocalGraphClient,
-  type DeltaBatchResult,
-  type LocalGraphClient,
-} from "@vulto/graph";
+  createUncheckedLocalGraphClient,
+  type UncheckedLocalGraphClient,
+} from "@vulto/graph/testing/unchecked-mutation";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LockedShellGate } from "../../components/device-store/LockedShellGate";
@@ -48,7 +48,7 @@ function decodeBase64(value: string): Uint8Array {
 }
 
 async function runWithHeartbeat(
-  client: LocalGraphClient,
+  client: UncheckedLocalGraphClient,
   deltas: readonly Uint8Array[],
 ): Promise<ResponsivenessResult> {
   let animationFrames = 0;
@@ -104,7 +104,7 @@ function runMaterializationProof(): Promise<MaterializationProofResult> {
  * safe to call because a FDN-84 unlock has already completed on this Worker
  * instance (FDN-50 stage 1 makes initialize() reject while locked).
  */
-function WorkerDiagnosticsReady({ client }: { client: LocalGraphClient }) {
+function WorkerDiagnosticsReady({ client }: { client: UncheckedLocalGraphClient }) {
   const [status, setStatus] = useState("initializing");
   // A local graph Worker serves exactly one workspace for its whole
   // lifetime, so client.initialize() must fire exactly once for this
@@ -153,11 +153,15 @@ function WorkerDiagnosticsReady({ client }: { client: LocalGraphClient }) {
 export function WorkerDiagnosticsClient() {
   const params = useSearchParams();
   const workspaceId = params.get("workspaceId") ?? "fdn-77-browser-proof";
-  const clientRef = useRef<LocalGraphClient | null>(null);
-  const [client, setClient] = useState<LocalGraphClient | null>(null);
+  const clientRef = useRef<UncheckedLocalGraphClient | null>(null);
+  const [client, setClient] = useState<UncheckedLocalGraphClient | null>(null);
 
   useEffect(() => {
-    const created = createLocalGraphClient(workspaceId);
+    // FDN-53 stage 2 (F131): this harness measures main-thread
+    // responsiveness during a raw applyDeltaBatch import, on the SAME
+    // Worker instance client.initialize() below runs against — the
+    // demoted, unchecked seam, not the gated mutate() path.
+    const created = createUncheckedLocalGraphClient(workspaceId);
     clientRef.current = created;
     setClient(created);
 

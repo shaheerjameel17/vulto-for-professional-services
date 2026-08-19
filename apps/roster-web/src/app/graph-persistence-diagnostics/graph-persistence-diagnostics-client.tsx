@@ -1,12 +1,15 @@
 "use client";
 
 import {
-  createLocalGraphClient,
   graphSnapshotStoreKey,
   type GraphQuery,
   type GraphQueryResult,
   type LocalGraphClient,
 } from "@vulto/graph";
+import {
+  createUncheckedLocalGraphClient,
+  type UncheckedLocalGraphClient,
+} from "@vulto/graph/testing/unchecked-mutation";
 import {
   buildBackdatedMoveSnapshot,
   buildConcurrentMoveSnapshots,
@@ -39,12 +42,17 @@ interface GraphPersistenceDiagnosticsApi {
    * Builds a self-contained Loro snapshot (a fresh scratch document, never
    * the runtime's own document) that sets one key on a fixed map name, and
    * returns it base64-encoded. This is FDN-50 stage 1's test-only way to
-   * mutate the document: it drives the real, already-existing, already
-   * application-callable applyDeltaBatch entrypoint with synthetic CRDT
+   * mutate the document: it drives `applyDeltaBatch` with synthetic CRDT
    * bytes, exactly as FDN-77's own browser-tests already do (see
-   * packages/graph/browser-tests/main-thread-responsiveness.spec.ts). It
-   * does not add any new local-mutation surface — FDN-53 remains the first
-   * application-callable local-mutation path, per F105.
+   * packages/graph/browser-tests/main-thread-responsiveness.spec.ts).
+   *
+   * As of FDN-53 stage 2 (F131), `applyDeltaBatch` is no longer
+   * application-callable — it is demoted to Worker-internal/test-only,
+   * reached here only via `@vulto/graph/testing/unchecked-mutation`.
+   * `mutate` is the real, permission-gated application-callable local
+   * WRITE path; this harness deliberately writes bytes `mutate`'s Gate 1
+   * cannot resolve (a bare map key with no node type or partition), so it
+   * keeps using the unchecked seam rather than migrating to `mutate`.
    */
   buildSnapshot(mapKey: string, value: string): string;
   applyDeltaBatch(
@@ -367,11 +375,15 @@ function createOfflineProofHandle(workspaceId: string): OfflineProofHandle {
 export function GraphPersistenceDiagnosticsClient() {
   const params = useSearchParams();
   const workspaceId = params.get("workspaceId") ?? "fdn-50-browser-proof";
-  const clientRef = useRef<LocalGraphClient | null>(null);
+  const clientRef = useRef<UncheckedLocalGraphClient | null>(null);
   const [client, setClient] = useState<LocalGraphClient | null>(null);
 
   useEffect(() => {
-    const created = createLocalGraphClient(workspaceId);
+    // FDN-53 stage 2 (F131): this harness needs the demoted, unchecked
+    // applyDeltaBatch below, on the SAME Worker instance the rest of this
+    // API (initialize, getSealedStoreStatus, dispose) already runs
+    // against. See @vulto/graph/testing/unchecked-mutation's doc comment.
+    const created = createUncheckedLocalGraphClient(workspaceId);
     clientRef.current = created;
     setClient(created);
     let cancelled = false;

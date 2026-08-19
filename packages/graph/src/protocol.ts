@@ -95,8 +95,24 @@ export const graphWorkerRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("initialize"),
     workspaceId: z.string().min(1),
   }),
+  // FDN-53 stage 2 (F131): Worker-internal/test-only, mirroring
+  // `SQLiteGraphIndex.execute()`'s treatment. No permission check of any
+  // kind runs on this path. `LocalGraphClient` (the public, application-
+  // facing surface) does not expose the method that sends this message;
+  // only `@vulto/graph/testing/unchecked-mutation`'s widened test client
+  // does, for the pre-FDN-53 browser proofs that need synthetic,
+  // non-schema-conformant CRDT bytes committed unchecked. `mutate` below is
+  // the gated entrypoint every application caller uses instead.
   messageBaseSchema.extend({
     type: z.literal("apply-delta-batch"),
+    deltas: z.array(z.instanceof(ArrayBuffer)).min(1),
+  }),
+  // FDN-53 stage 2 (F131): the real, `VPS-A004` Gate-1-gated mutation
+  // entrypoint. Routed through `LocalGraphWorkerRuntime#mutate`, which
+  // simulates the batch against a scratch fork before ever touching the
+  // canonical document — see that method's doc comment for the full gate.
+  messageBaseSchema.extend({
+    type: z.literal("mutate"),
     deltas: z.array(z.instanceof(ArrayBuffer)).min(1),
   }),
   messageBaseSchema.extend({ type: z.literal("get-availability") }),
@@ -148,6 +164,30 @@ const deltaBatchResultSchema = z
   })
   .strict();
 
+/** FDN-53 stage 2: `mutate`'s three outcomes, mirroring `RuntimeMutationOutcome`. */
+const mutationAppliedResultSchema = z
+  .object({
+    kind: z.literal("mutation-applied"),
+    mergedDeltaCount: z.number().int().nonnegative(),
+    materializationGeneration: z.number().int().nonnegative(),
+    workerDurationMs: z.number().nonnegative(),
+  })
+  .strict();
+
+const mutationDeniedResultSchema = z
+  .object({
+    kind: z.literal("mutation-denied"),
+    reason: z.string().min(1),
+  })
+  .strict();
+
+const mutationUnsupportedResultSchema = z
+  .object({
+    kind: z.literal("mutation-unsupported"),
+    reason: z.string().min(1),
+  })
+  .strict();
+
 const availabilityResultSchema = z.object({ kind: z.literal("availability") }).strict();
 
 const sealedStoreUnlockedResultSchema = z
@@ -185,6 +225,9 @@ export const graphWorkerSuccessSchema = messageBaseSchema.extend({
   result: z.discriminatedUnion("kind", [
     initializedResultSchema,
     deltaBatchResultSchema,
+    mutationAppliedResultSchema,
+    mutationDeniedResultSchema,
+    mutationUnsupportedResultSchema,
     availabilityResultSchema,
     sealedStoreUnlockedResultSchema,
     sealedStoreLockedResultSchema,

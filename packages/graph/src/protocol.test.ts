@@ -42,6 +42,61 @@ describe("graph Worker protocol", () => {
     ).toThrow();
   });
 
+  it("accepts a mutate request and each of its three result kinds", () => {
+    const request = {
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: "request-1",
+      sentAt,
+      type: "mutate",
+      deltas: [new Uint8Array([1, 2, 3]).buffer],
+    };
+    expect(graphWorkerRequestSchema.parse(request)).toEqual(request);
+
+    const base = {
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: "request-1",
+      sentAt,
+      type: "success" as const,
+      availability: { state: "ready" as const },
+    };
+    expect(() =>
+      graphWorkerResponseSchema.parse({
+        ...base,
+        result: {
+          kind: "mutation-applied",
+          mergedDeltaCount: 1,
+          materializationGeneration: 1,
+          workerDurationMs: 5,
+        },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      graphWorkerResponseSchema.parse({
+        ...base,
+        result: { kind: "mutation-denied", reason: "no Full grant" },
+      }),
+    ).not.toThrow();
+    expect(() =>
+      graphWorkerResponseSchema.parse({
+        ...base,
+        result: { kind: "mutation-unsupported", reason: "touches the Tree" },
+      }),
+    ).not.toThrow();
+  });
+
+  it("does not permit a mutation denial to omit its reason", () => {
+    expect(() =>
+      graphWorkerResponseSchema.parse({
+        protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+        requestId: "request-1",
+        sentAt,
+        type: "success",
+        availability: { state: "ready" },
+        result: { kind: "mutation-denied" },
+      }),
+    ).toThrow();
+  });
+
   it("rejects a protocol version mismatch", () => {
     expect(() =>
       graphWorkerResponseSchema.parse({

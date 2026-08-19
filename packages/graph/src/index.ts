@@ -3,6 +3,7 @@ export {
   GraphWorkerProtocolError,
   type DeltaBatchResult,
   type LocalGraphClient,
+  type MutationOutcome,
 } from "./client";
 
 export {
