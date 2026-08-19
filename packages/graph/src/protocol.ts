@@ -288,6 +288,13 @@ export const graphWorkerErrorSchema = z
           // store as a side effect a caller should not have to infer from
           // a generic runtime-failure.
           "role-refresh-denied",
+          // F148 (S4). The checkpoint could not answer — offline, a 5xx, a
+          // rate limit, a malformed body. Explicitly NOT "role-refresh-denied":
+          // that code means the server ruled on this device and the store is
+          // now locked, and reporting a server outage with it told callers
+          // that a revocation had happened when none had. This code carries
+          // no lock and no ruling; the device's roles are simply stale.
+          "role-refresh-unavailable",
         ]),
         message: z.string().min(1),
         fatal: z.boolean(),

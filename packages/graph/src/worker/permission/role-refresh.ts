@@ -30,17 +30,78 @@ export class RoleRefreshDeniedError extends Error {
   }
 }
 
+/**
+ * F148. The checkpoint could not be reached or could not answer — offline,
+ * a 5xx, a rate limit, a gateway timeout, a malformed body.
+ *
+ * Deliberately NOT a subclass of `RoleRefreshDeniedError`, because the whole
+ * defect this closes was the two being the same thing. `refreshRoleOnline`
+ * locks the sealed store on a denial; this must never reach that branch.
+ */
+export class RoleRefreshUnavailableError extends Error {
+  constructor(readonly detail: string) {
+    super(`The role refresh checkpoint is unavailable: ${detail}`);
+  }
+}
+
+/**
+ * F148 (S4). Only an authoritative denial is a denial.
+ *
+ * The founder ruling this encodes: a server error must not lock the device.
+ * Timeouts, 500-series responses, rate limits and network failures are
+ * "temporarily unable to reach the server, try again," never a security
+ * event. Only `401` and `403` — the server explicitly answering about THIS
+ * device's authorization — may lock the local store.
+ *
+ * Before this, one line (`if (!response.ok) throw new RoleRefreshDeniedError()`)
+ * turned every non-2xx into a revocation: a 502 locked a fully authorized
+ * user out of their own local data for the session, silently discarded any
+ * write still inside the flush window (F144), and could not recover on its
+ * own, because locking stops the very poll that would notice the server had
+ * come back.
+ *
+ * The accepted consequence, stated rather than discovered later: while the
+ * server is erroring, this device's roles go stale and stay stale. That is
+ * the same position an offline device is already in, bounded the same way —
+ * resolved on the next answer the server is actually able to give.
+ */
 export async function fetchCurrentRoles(
   apiOrigin: string,
   workspaceId: string,
 ): Promise<RoleRefreshResult> {
-  const response = await fetch(`${apiOrigin}/device-store/roles`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ workspaceId }),
-  });
-  if (!response.ok) throw new RoleRefreshDeniedError();
-  const parsed = roleRefreshResponseSchema.parse(await response.json());
-  return { roles: parsed.roles, membershipId: parsed.membershipId };
+  let response: Response;
+  try {
+    response = await fetch(`${apiOrigin}/device-store/roles`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspaceId }),
+    });
+  } catch (error: unknown) {
+    // Transport failure: offline, DNS, TLS, connection reset. The server
+    // said nothing, so nothing about this device's authorization is known.
+    throw new RoleRefreshUnavailableError(
+      error instanceof Error ? error.message : "the request could not be sent",
+    );
+  }
+
+  // The only two answers that are ABOUT this device's authorization.
+  if (response.status === 401 || response.status === 403) {
+    throw new RoleRefreshDeniedError();
+  }
+  if (!response.ok) {
+    throw new RoleRefreshUnavailableError(`the server answered ${response.status}`);
+  }
+
+  try {
+    const parsed = roleRefreshResponseSchema.parse(await response.json());
+    return { roles: parsed.roles, membershipId: parsed.membershipId };
+  } catch (error: unknown) {
+    // A 2xx this build cannot read is a broken checkpoint, not a ruling on
+    // this device. Failing it closed would lock a user out over a response
+    // shape, which is exactly the confusion this function now avoids.
+    throw new RoleRefreshUnavailableError(
+      error instanceof Error ? error.message : "the response could not be read",
+    );
+  }
 }

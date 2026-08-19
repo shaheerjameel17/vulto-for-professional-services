@@ -7,6 +7,7 @@ import {
   type GraphWorkerSuccess,
 } from "../protocol";
 import { UnsupportedDocumentSchemaGenerationError } from "./document-schema-gate";
+import { RoleRefreshDeniedError } from "./permission/role-refresh";
 import { LocalGraphWorkerRuntime } from "./runtime";
 
 interface WorkerScope {
@@ -272,12 +273,23 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
         }
         try {
           await runtime.refreshRoleOnline(runtime.workspaceId);
-        } catch {
+        } catch (error) {
+          // F148. A denial and a failure are different answers and must not
+          // be reported with the same code. Only the first one means the
+          // server ruled on this device and the sealed store is now locked.
+          //
+          // The bare `catch` this replaces also reported "the server denied
+          // this device" for a refresh attempted on an ALREADY-locked store,
+          // where `#apiOrigin` is null and no request is ever sent — telling
+          // the caller about a server decision that never happened.
+          const denied = error instanceof RoleRefreshDeniedError;
           scope.postMessage(
             errorResponse(
               request.requestId,
-              "role-refresh-denied",
-              "The server denied this device's role refresh request",
+              denied ? "role-refresh-denied" : "role-refresh-unavailable",
+              denied
+                ? "The server denied this device's role refresh request"
+                : "The role refresh checkpoint could not be reached",
               false,
             ),
           );
