@@ -160,7 +160,20 @@ A whole-application condition, distinct from the three region-level states below
 
 **What it shows.** Full-bleed, centered, no illustration, `body` text stating plainly what is happening and why — *"Reconnect to continue. Vulto needs to verify your session before opening your workspace."* Not a spinner: a spinner implies imminent completion, and the wait is indefinite while offline. A `primary` **Retry** action, and, only when the device is offline, that fact named directly rather than implied by the retry failing silently.
 
-**Locked and Offline are different conditions.** A device can be Offline while already unlocked — full product, the `Offline` SyncStatus state, no interruption. Locked is stricter: no unlock has completed in this process yet. An already-unlocked device that later loses connectivity never shows Locked.
+**Locked and Offline are different conditions.** A device can be Offline while already unlocked — full product, the `Offline` SyncStatus state, no interruption. An already-unlocked device that later loses connectivity never shows Locked.
+
+**Locked has two entries, not one.** *Cold-start locked* is the case above: no unlock has completed in this process yet, and nothing has mounted. *Mid-session locked* is a store that was unlocked in this process and has since been sealed again — which happens when the role-refresh checkpoint returns an authoritative denial, per F127. This document originally defined Locked as "no unlock has completed in this process yet," which excluded the second case by wording rather than by decision: when this section was written nothing could seal a live store, and F127's live role refresh introduced that afterwards. Recorded as F146.
+
+**What mid-session locked shows.** The same full-bleed treatment, and deliberately not a variant of it — the store is sealed, so every region behind it is unreadable and there is nothing legitimate left to render around. Two differences from cold start, both because content was already on screen:
+
+- **Unsaved work in progress is not silently discarded by the transition.** Anything the shell holds that has not reached the local store is the shell's to preserve or to tell the user about; the locked shell must not be the first thing a user learns about losing it.
+- **The copy names the transition rather than implying a fresh start.** *"Vulto has locked. Your session needs to be verified again before your workspace reopens."* The cold-start wording — *"before opening your workspace"* — reads as a startup step and is wrong for a workspace the user already had open.
+
+**Only an authoritative denial produces this.** A server that cannot answer — a timeout, a 500-series response, a rate limit, an unreachable network — is not a lock and must not render as one, per F148. Those keep the shell exactly as it is and resolve on the next answer the server can give. Rendering an outage as Locked would tell a user their access had been withdrawn every time a server had a bad minute.
+
+**A denied revocation and an unreachable server render identically.** The workspace-session guard's failure is non-enumerating by design — telling a specifically revoked user that they were revoked, rather than showing the same retry state as any other failure, would leak exactly the fact non-enumeration exists to protect.
+
+**Non-enumeration governs what is rendered, never what the client concludes.** These are different questions, and conflating them produced a real defect (F148): the client treated every unreachable-server answer as a revocation because both render the same. A device may distinguish a denial from a failure precisely enough to decide whether to seal its own store, while still rendering both identically when it does show Locked.
 
 **A denied revocation and an unreachable server render identically.** The workspace-session guard's failure is non-enumerating by design — telling a specifically revoked user that they were revoked, rather than showing the same retry state as any other failure, would leak exactly the fact non-enumeration exists to protect.
 
