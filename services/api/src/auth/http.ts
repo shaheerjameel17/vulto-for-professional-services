@@ -3,7 +3,9 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { auth } from "./config.js";
 import {
   DeviceUnlockDeniedError,
+  parseDeviceRoleRefreshRequest,
   parseDeviceStoreUnlockRequest,
+  requestDeviceRoleRefresh,
   requestDeviceUnlock,
 } from "./device-unlock.js";
 import {
@@ -90,6 +92,33 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
         parsed.deviceId,
       );
       return grant;
+    } catch (error) {
+      if (error instanceof DeviceUnlockDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(401)
+        .send({ error: "This device is not authorized to unlock the local store" });
+    }
+  });
+
+  app.post("/device-store/roles", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string };
+    try {
+      parsed = parseDeviceRoleRefreshRequest(request.body);
+    } catch {
+      return reply
+        .code(401)
+        .send({ error: "This device is not authorized to unlock the local store" });
+    }
+
+    try {
+      return await requestDeviceRoleRefresh(
+        requestHeaders(request),
+        parsed.workspaceId,
+      );
     } catch (error) {
       if (error instanceof DeviceUnlockDeniedError) {
         return reply.code(401).send({ error: error.message });

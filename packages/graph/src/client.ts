@@ -1,3 +1,4 @@
+import type { WorkspaceRole } from "@vulto/schema";
 import {
   GRAPH_WORKER_PROTOCOL_VERSION,
   parseGraphWorkerResponse,
@@ -7,6 +8,8 @@ import {
   type GraphWorkerResponse,
   type GraphWorkerSuccess,
 } from "./protocol";
+import type { GraphQuery } from "./query";
+import type { GraphQueryResult } from "./worker/storage/sqlite-graph-index";
 
 export interface DeltaBatchResult {
   availability: GraphAvailability;
@@ -28,6 +31,14 @@ export interface LocalGraphClient {
   getSealedStoreStatus(): Promise<{ locked: boolean }>;
   sealPayload(storeKey: string, plaintext: Uint8Array): Promise<void>;
   openPayload(storeKey: string): Promise<Uint8Array | null>;
+  /**
+   * FDN-53 stage 1: the first application-callable read path over graph
+   * state (F105), permission-filtered per `VPS-A004` before it ever leaves
+   * the Worker.
+   */
+  query(query: GraphQuery): Promise<GraphQueryResult>;
+  /** F127's live role-refresh entrypoint: re-validates against the server and returns the caller's current roles. */
+  refreshRole(): Promise<WorkspaceRole[]>;
   dispose(): Promise<void>;
 }
 
@@ -239,6 +250,44 @@ class BrowserLocalGraphClient implements LocalGraphClient {
       throw this.#fatal("Worker returned the wrong result for open-payload");
     }
     return response.result.plaintext ? new Uint8Array(response.result.plaintext) : null;
+  }
+
+  async query(query: GraphQuery): Promise<GraphQueryResult> {
+    this.#assertInitialized();
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "query",
+      query,
+    });
+    // The result's own `kind` matches one of GraphQueryResult's four
+    // variants directly (node-get/node-list/edge-neighbors/recursive-neighbors);
+    // every other Worker result kind is a different message type entirely,
+    // so anything else here is a Worker protocol violation.
+    if (
+      response.result.kind !== "node-get" &&
+      response.result.kind !== "node-list" &&
+      response.result.kind !== "edge-neighbors" &&
+      response.result.kind !== "recursive-neighbors"
+    ) {
+      throw this.#fatal("Worker returned the wrong result for query");
+    }
+    return response.result;
+  }
+
+  async refreshRole(): Promise<WorkspaceRole[]> {
+    this.#assertInitialized();
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "refresh-role",
+    });
+    if (response.result.kind !== "role-refreshed") {
+      throw this.#fatal("Worker returned the wrong result for refresh-role");
+    }
+    return response.result.roles;
   }
 
   async dispose(): Promise<void> {

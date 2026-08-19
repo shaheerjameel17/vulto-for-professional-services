@@ -1,15 +1,47 @@
+import type { WorkspaceRole } from "@vulto/schema";
 import { LoroDoc } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import type { GraphAvailability } from "../protocol";
+import type { GraphQuery } from "../query";
 import {
   assertDocumentSchemaGenerationReadable,
   stampDocumentSchemaGeneration,
 } from "./document-schema-gate";
 import { readNodeFragments } from "./document-node-fragments";
 import { materializeManagedByEdges } from "./managed-by-materialization";
+import { deriveEffectiveRoles } from "./permission/effective-roles";
+import { executeWithPermissions } from "./permission/interceptor";
+import { fetchCurrentRoles, RoleRefreshDeniedError } from "./permission/role-refresh";
 import { SealedStore, SealedStoreLockedError } from "./storage/sealed-store";
-import { SQLiteGraphIndex } from "./storage/sqlite-graph-index";
+import { SQLiteGraphIndex, type GraphQueryResult } from "./storage/sqlite-graph-index";
 import { graphSnapshotStoreKey } from "./storage/storage-keys";
+
+/**
+ * F127's explicitly-labeled PLACEHOLDER delivery mechanism for the live
+ * role-refresh channel. FDN-53 must prove the whole refresh path end to
+ * end now, real signal to real effect, rather than assert it against a
+ * mock (per F127's closing paragraph) — so this stage builds a working
+ * minimal transport rather than only the receiving surface. `FDN-63` is
+ * named as the natural place to replace this poll with a real push
+ * mechanism once device-level revocation transport exists anyway, behind
+ * the `refreshRoleOnline()` method below, which does not change shape when
+ * that happens.
+ *
+ * `VPS-F001`'s Security Considerations (F127) bound a role narrowing to
+ * reach an online session "within the same window already specified for
+ * device wipe: within 60 seconds while online." An interval must land
+ * comfortably inside that bound, not graze it — request latency, a slow
+ * tick, or a device briefly busy with a flush (FDN-50 stage 2) all eat into
+ * it. 15 seconds gives four polls per 60-second window: the worst case is a
+ * narrowing that lands the instant after one poll fires, caught by the
+ * next at most ~15s later, leaving roughly 45s of margin against the 60s
+ * bound. That is also far from hammering `/device-store/roles` — one
+ * request per unlocked Worker per 15s, not per second. Not read from any
+ * specification; none names a poll interval, only the 60-second bound this
+ * value must land inside, the same way stage 2's `FLUSH_DEBOUNCE_MS` was
+ * reasoned about rather than looked up.
+ */
+const ROLE_REFRESH_POLL_INTERVAL_MS = 15_000;
 
 export interface RuntimeDeltaBatchResult {
   mergedDeltaCount: number;
@@ -58,6 +90,9 @@ export class LocalGraphWorkerRuntime {
    * the runtime quietly continuing to accept mutations it cannot persist.
    */
   #pendingFlushError: unknown = null;
+  /** Set on a successful unlock, cleared on lock/dispose. Reused by the role-refresh poll below, never persisted. */
+  #apiOrigin: string | null = null;
+  #rolePollTimer: ReturnType<typeof setInterval> | null = null;
 
   get availability(): GraphAvailability {
     return this.#availability;
@@ -69,6 +104,11 @@ export class LocalGraphWorkerRuntime {
 
   get sealedStoreLocked(): boolean {
     return !this.#sealedStore.isUnlocked;
+  }
+
+  /** The role set the permission interceptor currently reads. Throws when locked, same as `SealedStore.roles`. */
+  get roles(): readonly WorkspaceRole[] {
+    return this.#sealedStore.roles;
   }
 
   /**
@@ -94,10 +134,74 @@ export class LocalGraphWorkerRuntime {
 
   async unlockSealedStore(workspaceId: string, apiOrigin: string): Promise<void> {
     await this.#sealedStore.unlockOnline(workspaceId, apiOrigin);
+    this.#apiOrigin = apiOrigin;
+    this.#startRolePolling(workspaceId);
   }
 
   lockSealedStore(): void {
+    this.#stopRolePolling();
     this.#sealedStore.lock();
+    this.#apiOrigin = null;
+  }
+
+  /**
+   * F127's live role-refresh entrypoint. Re-validates against the server
+   * (`POST /device-store/roles`, reusing `requireCurrentWorkspaceSession`'s
+   * exact revalidation) and updates the in-memory role set the interceptor
+   * reads — no full re-`unlock()`, no re-derivation of the AES key. Called
+   * directly by the `refresh-role` protocol message and, on a timer, by the
+   * placeholder poll started in `unlockSealedStore` above.
+   *
+   * A denial (membership revoked, session invalid) locks the store: this
+   * stage does not build a distinct "role became unresolvable while
+   * otherwise online" state, and a device that can no longer prove its
+   * session current should not keep serving reads from the role it cached
+   * before that became true.
+   */
+  async refreshRoleOnline(workspaceId: string): Promise<void> {
+    const apiOrigin = this.#apiOrigin;
+    if (apiOrigin === null) throw new SealedStoreLockedError();
+    try {
+      const result = await fetchCurrentRoles(apiOrigin, workspaceId);
+      this.#sealedStore.refreshRoles(result.roles);
+    } catch (error) {
+      if (error instanceof RoleRefreshDeniedError) {
+        this.lockSealedStore();
+      }
+      throw error;
+    }
+  }
+
+  #startRolePolling(workspaceId: string): void {
+    this.#stopRolePolling();
+    this.#rolePollTimer = setInterval(() => {
+      // A poll tick's own failure (network blip while offline, or a
+      // transient server error) must not crash the Worker or stop future
+      // ticks — F106/F127 already treat offline staleness as expected,
+      // resolved on next connection. A genuine denial is handled inside
+      // refreshRoleOnline itself (locks the store), so nothing further is
+      // needed here beyond not letting a rejected promise go unobserved.
+      void this.refreshRoleOnline(workspaceId).catch(() => {});
+    }, ROLE_REFRESH_POLL_INTERVAL_MS);
+  }
+
+  #stopRolePolling(): void {
+    if (this.#rolePollTimer !== null) {
+      clearInterval(this.#rolePollTimer);
+      this.#rolePollTimer = null;
+    }
+  }
+
+  /**
+   * FDN-53 stage 1: the first application-callable read path over graph
+   * state, per F105. Routes through `executeWithPermissions` rather than
+   * `SQLiteGraphIndex.execute()` directly — every production query is
+   * permission-filtered, never raw.
+   */
+  async executeQuery(query: GraphQuery): Promise<GraphQueryResult> {
+    const index = this.#requireIndex();
+    const roles = deriveEffectiveRoles(this.#sealedStore.roles);
+    return executeWithPermissions(index, query, { roles });
   }
 
   async sealPayload(storeKey: string, plaintext: Uint8Array): Promise<void> {
@@ -409,6 +513,8 @@ export class LocalGraphWorkerRuntime {
   }
 
   async dispose(): Promise<void> {
+    this.#stopRolePolling();
+    this.#apiOrigin = null;
     await this.#flushBeforeTeardown();
     await this.#index?.dispose();
     this.#index = null;

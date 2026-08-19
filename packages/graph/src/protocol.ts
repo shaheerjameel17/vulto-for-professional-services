@@ -1,7 +1,77 @@
-import { utcTimestampSchema } from "@vulto/schema";
+import {
+  edgeRecordSchema,
+  nodeRecordSchema,
+  nodeTypeSchema,
+  utcTimestampSchema,
+  workspaceRoleSchema,
+} from "@vulto/schema";
 import { z } from "zod";
+import { graphQuerySchema } from "./query";
 
 export const GRAPH_WORKER_PROTOCOL_VERSION = 1 as const;
+
+/**
+ * FDN-53 stage 1. Mirrors `packages/graph/src/worker/storage/sqlite-graph-index.ts`'s
+ * `MaterializedNode`/`MaterializedNeighbor`/`GraphQueryResult` shapes as a
+ * runtime-validated schema for the Worker boundary, the same way every
+ * other result on this page is. A permission-filtered result is
+ * structurally a normal query result — the interceptor drops fields and
+ * rows, it never adds a shape this schema would not already describe — so
+ * no separate "filtered" variant is needed. A `Restricted` placeholder
+ * fragment's record is a real `NodeRecord` (universal fields plus the
+ * `__restricted`/`__restrictedLabel` passthrough markers), so it validates
+ * against `nodeRecordSchema` exactly like any other fragment.
+ */
+const materializedNodeFragmentSchema = z
+  .object({
+    partitionKey: z.string().min(1),
+    sourceDocumentId: z.string().min(1),
+    record: nodeRecordSchema,
+  })
+  .strict();
+
+const materializedNodeSchema = z
+  .object({
+    nodeId: z.string().min(1),
+    nodeType: nodeTypeSchema,
+    fragments: z.array(materializedNodeFragmentSchema),
+  })
+  .strict();
+
+const materializedNeighborSchema = z
+  .object({ edge: edgeRecordSchema, node: materializedNodeSchema })
+  .strict();
+
+const materializedRecursiveNeighborSchema = materializedNeighborSchema.extend({
+  depth: z.number().int().positive(),
+});
+
+const graphQueryResultSchema = z.discriminatedUnion("kind", [
+  z
+    .object({ kind: z.literal("node-get"), node: materializedNodeSchema.nullable() })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("node-list"),
+      nodes: z.array(materializedNodeSchema),
+      nextNodeId: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("edge-neighbors"),
+      neighbors: z.array(materializedNeighborSchema),
+      nextEdgeId: z.string().nullable(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("recursive-neighbors"),
+      neighbors: z.array(materializedRecursiveNeighborSchema),
+      truncated: z.boolean(),
+    })
+    .strict(),
+]);
 
 const messageBaseSchema = z
   .object({
@@ -46,6 +116,17 @@ export const graphWorkerRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("open-payload"),
     storeKey: z.string().min(1),
   }),
+  // FDN-53 stage 1: the first production, permission-filtered graph read
+  // path (F105). Routed through `LocalGraphWorkerRuntime#executeQuery`,
+  // never directly against `SQLiteGraphIndex.execute()`.
+  messageBaseSchema.extend({
+    type: z.literal("query"),
+    query: graphQuerySchema,
+  }),
+  // F127: the live role-refresh receiving surface. Re-validates against the
+  // server and updates the in-memory role the interceptor reads, without a
+  // full re-`unlock-sealed-store`.
+  messageBaseSchema.extend({ type: z.literal("refresh-role") }),
   messageBaseSchema.extend({ type: z.literal("dispose") }),
 ]);
 
@@ -94,6 +175,10 @@ const payloadOpenedResultSchema = z
 
 const disposedResultSchema = z.object({ kind: z.literal("disposed") }).strict();
 
+const roleRefreshedResultSchema = z
+  .object({ kind: z.literal("role-refreshed"), roles: z.array(workspaceRoleSchema) })
+  .strict();
+
 export const graphWorkerSuccessSchema = messageBaseSchema.extend({
   type: z.literal("success"),
   availability: graphAvailabilitySchema,
@@ -107,6 +192,8 @@ export const graphWorkerSuccessSchema = messageBaseSchema.extend({
     payloadSealedResultSchema,
     payloadOpenedResultSchema,
     disposedResultSchema,
+    roleRefreshedResultSchema,
+    ...graphQueryResultSchema.options,
   ]),
 });
 
@@ -134,6 +221,14 @@ export const graphWorkerErrorSchema = z
           // A caller that cannot tell those apart cannot react correctly to
           // any of them.
           "document-schema-generation-unsupported",
+          // FDN-53 stage 1 (F127). The server denied the role-refresh
+          // checkpoint — membership revoked or session no longer current.
+          // Distinct from "sealed-store-denied" (the unlock endpoint):
+          // this fires on an ALREADY-unlocked Worker and, per
+          // `LocalGraphWorkerRuntime#refreshRoleOnline`, also locks the
+          // store as a side effect a caller should not have to infer from
+          // a generic runtime-failure.
+          "role-refresh-denied",
         ]),
         message: z.string().min(1),
         fatal: z.boolean(),
