@@ -92,8 +92,10 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 
 | F126 | FDN-50's "reopened … offline" done criterion predates F106 and became impossible when F106 made every cold restart an online checkpoint | Linear, Process | **Closed by criterion correction** — split into "queried offline after unlock"; the general sweep lesson is recorded below |
 | F127 | `VPS-F001`'s "role changes take effect immediately, no session restart" was ambiguous between an impossible offline claim and a too-weak server-only one; FDN-53's design assumed the weaker reading | `VPS-F001`, `VPS-A004`, Linear | **Closed by wording correction; ownership of the live delivery channel left open** — FDN-53 role-refresh redesigned; no issue yet claims the transport |
+| F128 | FDN-53 stage 1 resolved every "own" and "direct-reports" matrix cell at its unrestricted literal grant with no row-level filtering — 41 cells, including every employee's wellness events, pulse entries, leave, expenses and payslips readable by any Team Member, and every employee's timesheets, leave and assignments readable by any Manager — and a passing test asserted the WellnessTriggerEvent case as correct | Repository | **Closed by repository fix** — every non-`any` scope resolves to `none`; verified by exhaustively sweeping all 245 matrix cells and 30+ class-default fallback node types directly against `resolvePermission`, and by mutation-testing the fix itself |
+| F129 | `LeavePolicy`, `Workspace`'s display partition and the other named "workspace-configuration pattern" node types have no override row and fall through to `Standard`'s person-scoped defaults, which don't apply to a workspace-wide record | `VPS-A004`, Repository | **Open, raised not decided** — surfaced fixing F128; currently resolves conservatively to `none` rather than the plain Read every role should have |
 
-**Seventy-three findings, sixty-five closed.** Eight stay open: F70, F73, F85, F118, F120 and F125 remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
+**Seventy-six findings, sixty-seven closed.** Nine stay open: F70, F73, F85, F118, F120, F125 and F129 remain unresolved, and F71 and F91 are recorded boundaries rather than defects — they close when the issues they name can prove them. F76 is a fact about the tool, not something to close.
 
 *This count was itself stale, and F118 had dropped out of the open list entirely — the row was correct, the summary above it was not. Recounted from the table rows rather than incremented by hand, which is how it drifted: four findings were appended without the total being recalculated. If it disagrees with the table again, the table is right.*
 
@@ -1237,6 +1239,55 @@ Findings like F54 or F104 were discoverable by reading the documents against eac
 **Ownership of the live delivery channel — decided.** No issue currently claims it: `FDN-63` owns *"device registration, trust, authorized bootstrap... and revocation orchestration"* — full device wipe and untrusting a device — which is a different case from a still-trusted device whose holder's role narrows without the device itself being revoked. Rather than guess at a proper push design that belongs to whoever eventually owns `FDN-63`'s broader transport work, or leave the receiving surface untested against anything but a mock, FDN-53 builds both halves now: the receiving surface, and a minimal delivery mechanism — short-interval polling, explicitly labeled a placeholder rather than a final design. FDN-53 unavoidably owns the receiving half regardless of who ends up owning transport, and building a working minimal delivery alongside it is what lets the whole live-refresh path be proven end to end now, real signal to real effect, rather than asserted against a stub — the same standard held everywhere else in this project.
 
 **`FDN-63` is the natural place to revisit this** with a real delivery mechanism once device-level revocation transport exists anyway — replacing the poll is then one localized change behind an interface FDN-53 already defines, not a redesign of how role-refresh reaches the interceptor.
+
+---
+
+### F128 — the interceptor's own policy table certified a data leak as correct
+
+**This is the most severe finding recorded in this project.** It is stated here at full severity, without softening, because the record exists for exactly this case.
+
+FDN-53 stage 1's first submission resolved every matrix cell carrying an `own` or `direct-reports` qualifier — a grant that depends on knowing whether a specific record belongs to, or is a direct report of, the person asking — at its literal, unrestricted outcome. No row-level filtering existed anywhere in the interceptor. Verified directly by calling `resolvePermission` for eight representative cells, not inferred from reading the table:
+
+```
+team-member / WellnessTriggerEvent → full
+team-member / PulseEntry           → full
+team-member / LeaveRequest         → full
+team-member / Expense              → full
+team-member / PaySlip              → read
+manager / TimesheetEntry           → read
+manager / LeaveRequest             → full
+manager / Assignment               → full
+```
+
+**The scope, counted precisely by exhaustive sweep, not sampling: 41 cells in the matrix, plus 16 more in the class-default fallback table reachable by 30-odd node types with no matrix row of their own** — 12 `Full (own only)`, 9 `Read (own only)`, 8 `Full (direct reports)`, 4 `Read (pipeline)`, 3 `Read (direct reports)`, and several smaller categories in the matrix alone — every one of them resolved wide open. Concretely, as submitted: any Team Member listing `WellnessTriggerEvent` received every employee's wellness trigger events in the workspace, not their own. The same for `PulseEntry`, `CoffeePulseEntry`, `LeaveRequest`, `Expense`, `PaySlip` and `WorkAuthorization`. Any Manager listing `TimesheetEntry`, `LeaveRequest` or `Assignment` received every employee's rows company-wide, not their direct reports'. This is the majority of the personal and manager-scoped data in the entire permission matrix, and it includes `VPS-A004`'s own named example of the product's most sensitive category — wellness data, which the same document states is protected by three independent layers specifically so no single layer's failure is sufficient to leak it. This was that layer's failure.
+
+**This is not the same shape as an honestly-scoped limitation, and was not presented as one.** The same policy table already applies the correct, conservative treatment to three other cases where a qualifier cannot be resolved from schema alone: `Sensitive`'s `Full (aggregate only)` is forced to `none`, with a comment stating plainly that reading it literally would leak raw survey content; `Recipient-only` and `Inherited` protection both resolve to `none` for every role, including the nominal recipient. That is the correct judgment, applied correctly, three times over. It was not applied to `own` or `direct-reports` — structurally the identical problem, at more than ten times the scope, covering the data the product exists to protect.
+
+**A passing test certified the leak as the expected, correct answer.** `policy-table.test.ts` asserted `resolvePermission("team-member", "WellnessTriggerEvent", ...)` equals `"full"` — directly contradicting `VPS-A004`'s own text, quoted in the same repository: *"WellnessTriggerEvent carries the most sensitive data in the graph. Its rule is absolute: only the employee to whom it belongs may traverse to it."* A green test suite is not evidence of correctness when the test itself encodes the wrong answer. This is why the suite passing, and the report describing four categories of independently confirmed mutation testing, did not settle the question — calling the function directly, with concrete inputs and inspected output, is what found it.
+
+**Closed by repository fix, verified the same way the defect was found.** `resolvePermission` now resolves any cell whose scope is not `any` to `none`, with no exception — the identical rule already correct for the other three cases, extended to cover all of them rather than three of seven. The fix sits at the single function every resolution path — exact matrix override, bare matrix override, class-default fallback — already funneled through, so it cannot be bypassed by a future entry that forgets to apply it.
+
+Verification, in the order it was actually done:
+
+1. **The original leak, reproduced empirically**, not inferred from re-reading the table — the eight cases above, called directly.
+2. **An exhaustive sweep of every cell**, not a sample: all 245 entries across `MATRIX_OVERRIDES`, and every one of the 16 non-`any` class-default cells exercised through real node types that reach them via the fallback path (`RateCard`, `BriefingNode`, `SkillGap` and 30-odd others) — every single one resolves to `none`, with the sweep itself asserting this in a loop rather than a fixed list of expectations.
+3. **The nine existing tests the fix legitimately changed the answer for were corrected, not merely made to pass.** Two are worth naming specifically: the `WellnessTriggerEvent` test that certified the leak now asserts `none` for every role including Team Member, with the contradicted `VPS-A004` quote left in the test file's own comment so a future reader sees exactly what was wrong and why. A second, adjacent gap surfaced while fixing these — `LeavePolicy` and `Workspace`'s display partition inherit `Standard`'s person-scoped qualifiers ("direct reports," "own + team") despite being workspace-wide records with no such relationship to any one employee, because `VPS-A004`'s own named "workspace-configuration pattern" (a plain Read grant for every role) has no override row in this table yet. `none` is still correct and safe for these under the same rule; the pattern's row is not added here, noted instead for a later pass rather than guessed at now.
+4. **The fix was mutation-tested**, the same obligation held for every stage in this project: `toResolution`'s new branch was removed, and the exact 9 tests corrected in step 3 — plus both exhaustive-sweep checks from step 2 — failed immediately and specifically, not vaguely. Restored afterward and confirmed byte-identical to the fixed version.
+5. **The full suite green in one pass**: 109 unit tests including the corrected policy-table and interceptor suites; all 26 device-store browser tests in one invocation, including the F127 live role-refresh proof that exercises this exact interceptor mid-session; `worker-browser` and `auth-browser` unaffected. `pnpm verify` clean throughout.
+
+**The process point, worth keeping.** This did not ship. It was caught specifically because independent verification refused to accept a written summary — however detailed, however honestly the author believed it — and instead ran the actual function against concrete inputs. A report that a suite passes describes what the author believes the code does. Calling the code and reading the output is the only thing that describes what the code actually does, and the difference between those two, at this scope and on this category of data, is the entire reason this discipline exists.
+
+---
+
+### F129 — the workspace-configuration pattern has no override row of its own
+
+Surfaced while fixing F128, not independently. `VPS-A004` names an explicit pattern: *"LeavePolicy, Entity, OnboardingTemplate, CareerPath, Certification, CustomFieldDefinition, WorkingCalendar and Policy all grant every role Read and restrict write to Owner and HR Admin."* These are workspace-wide documents — a leave policy, a working calendar — with no "owner" or "direct reports" relationship to any one employee.
+
+None of the eight has a `MATRIX_OVERRIDES` row encoding that grant. Each falls through A004-T08's fallback to `Standard`'s raw class default instead, which carries exactly the person-scoped qualifiers ("direct reports," "own + team") the pattern exists to say don't apply here. `Workspace`'s `display` partition (name, logo — also not person-scoped) has the same shape via the same fallback.
+
+**This is the opposite direction from F128, and safe for now on the same terms.** F128 was cells resolving too open; this is cells resolving too closed, since F128's fix now sends every one of these through the same conservative `none` default. The cost is Manager and Team Member currently seeing `none` instead of the `Read` `VPS-A004` actually grants them — an over-restriction, not a leak, and consistent with the same asymmetry this project holds elsewhere: too closed is the safe direction to be wrong in.
+
+**Open, raised not decided.** Closing it means adding eight-plus explicit `MATRIX_OVERRIDES` rows transcribing the pattern `VPS-A004` already states in prose — small and mechanical, but a scope decision about this table's completeness rather than a correction to the fix just made, and not decided unilaterally while fixing F128.
 
 ---
 
