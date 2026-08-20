@@ -12,7 +12,11 @@ import { materializeManagedByEdges } from "./managed-by-materialization";
 import { deriveEffectiveRoles } from "./permission/effective-roles";
 import { executeWithPermissions } from "./permission/interceptor";
 import { authorizeMutationBatch } from "./permission/mutation-interceptor";
-import { fetchCurrentRoles, RoleRefreshDeniedError } from "./permission/role-refresh";
+import {
+  fetchCurrentRoles,
+  RoleRefreshDeniedError,
+  type RoleRefreshDenialReason,
+} from "./permission/role-refresh";
 import { SealedStore, SealedStoreLockedError } from "./storage/sealed-store";
 import { SQLiteGraphIndex, type GraphQueryResult } from "./storage/sqlite-graph-index";
 import { graphSnapshotStoreKey } from "./storage/storage-keys";
@@ -102,6 +106,15 @@ export interface LocalSessionEndOutcome {
   readonly discardReason?: string;
   /** The in-memory plaintext document and materialized index were released. */
   readonly purged: boolean;
+  /**
+   * F151. The persisted local store was erased, not merely locked — only
+   * true when the server classified this session's end as one of the two
+   * named revocation events. False for every ordinary lock, including a
+   * denial the server did not or could not classify.
+   */
+  readonly erased: boolean;
+  /** Which of the two events triggered the erase, when `erased` is true. */
+  readonly eraseReason?: RoleRefreshDenialReason;
 }
 
 /**
@@ -266,14 +279,15 @@ export class LocalGraphWorkerRuntime {
     const apiOrigin = this.#apiOrigin;
     if (apiOrigin === null) throw new SealedStoreLockedError();
     try {
-      const result = await fetchCurrentRoles(apiOrigin, workspaceId);
+      const deviceId = await this.#sealedStore.deviceId();
+      const result = await fetchCurrentRoles(apiOrigin, workspaceId, deviceId);
       this.#sealedStore.refreshRoles(result.roles);
     } catch (error) {
       // F148: only an authoritative denial ends the session. A checkpoint
       // that could not answer (`RoleRefreshUnavailableError`) changes
       // nothing — the roles simply stay stale until it can.
       if (error instanceof RoleRefreshDeniedError) {
-        this.#lastSessionEnd = await this.#endLocalSession();
+        this.#lastSessionEnd = await this.#endLocalSession(error.reason);
       }
       throw error;
     }
@@ -309,13 +323,24 @@ export class LocalGraphWorkerRuntime {
    * security event; firing a purge on every lock would be the same mistake
    * pointing the other way. The paired tests hold that line.
    *
-   * **It does not erase the persisted store**, and that is a boundary rather
-   * than an omission. `SealedStore.erase` now exists (FDN-87) but the signal
-   * that should fire it is FDN-63's: this path's trigger is a non-enumerating
-   * `401` that means revoked OR suspended OR merely expired, and `VPS-F001`
-   * is explicit that nothing is wiped on expiry.
+   * **Step 4, F151: erase the persisted store, but only on a classified
+   * reason.** `eraseReason` is `undefined` for the overwhelming majority of
+   * denials — an unreachable server, a merely-expired session, anything the
+   * server did not or could not positively confirm as one of the two named
+   * revocation events (`VPS-F001`'s single-device Revoke action, or a
+   * membership revocation/offboarding under A003-T16). Only those two values
+   * reach this far; every other denial purges memory (steps 1–3) and stops
+   * there, identically to how this method behaved before F151 existed.
+   *
+   * Ordered after the purge, not before: erasing disk while a stale
+   * in-memory index still pointed at it would risk a caller reading through
+   * the purge before the erase completed. Purge-then-erase makes the
+   * in-memory state already gone by the time the disk write starts.
    */
-  async #endLocalSession(): Promise<LocalSessionEndOutcome> {
+  async #endLocalSession(
+    eraseReason?: RoleRefreshDenialReason,
+  ): Promise<LocalSessionEndOutcome> {
+    const workspaceId = this.#workspaceId;
     const hadPendingWindow = this.#flushTimer !== null || this.#flushInFlight !== null;
 
     // 1. Flush, while the key still exists. `#flushBeforeTeardown` captures
@@ -337,12 +362,20 @@ export class LocalGraphWorkerRuntime {
     // 3. Purge the plaintext this device is no longer entitled to hold.
     await this.#purgeInMemoryState();
 
+    // 4. Erase, only when the server positively classified why.
+    const erased = eraseReason !== undefined && workspaceId !== null;
+    if (erased) {
+      await this.#sealedStore.erase(workspaceId!);
+    }
+
     return {
       hadPendingWindow,
       flushed: hadPendingWindow && !discardedWrites,
       discardedWrites,
       discardReason,
       purged: true,
+      erased,
+      eraseReason: erased ? eraseReason : undefined,
     };
   }
 

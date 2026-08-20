@@ -288,28 +288,38 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
           // where `#apiOrigin` is null and no request is ever sent — telling
           // the caller about a server decision that never happened.
           const denied = error instanceof RoleRefreshDeniedError;
+          const sessionEnd = runtime.lastSessionEnd;
           // F144. A denial that also cost the caller acknowledged writes is
           // not the same event as a denial that cost nothing, and must not
           // report as one. The denial itself is still non-enumerating: this
           // code says what happened to THIS device's data, never why the
           // server refused.
-          const discarded = denied && runtime.lastSessionEnd?.discardedWrites === true;
-          scope.postMessage(
-            errorResponse(
-              request.requestId,
-              discarded
-                ? "local-writes-discarded"
-                : denied
-                  ? "role-refresh-denied"
-                  : "role-refresh-unavailable",
-              discarded
-                ? "This device's access ended and writes that had been acknowledged were discarded"
-                : denied
-                  ? "The server denied this device's role refresh request"
-                  : "The role refresh checkpoint could not be reached",
-              false,
-            ),
-          );
+          const discarded = denied && sessionEnd?.discardedWrites === true;
+          // F151. Takes priority over `discarded`: once the local store is
+          // ERASED, any writes it lost on the way are subsumed by the erase
+          // rather than a separate fact worth its own code — the whole
+          // workspace is gone locally either way, and reporting
+          // `local-writes-discarded` here would understate what happened.
+          const erased = denied && sessionEnd?.erased === true;
+          const code = erased
+            ? sessionEnd!.eraseReason === "device-revoked"
+              ? "device-revoked"
+              : "membership-revoked"
+            : discarded
+              ? "local-writes-discarded"
+              : denied
+                ? "role-refresh-denied"
+                : "role-refresh-unavailable";
+          const message = erased
+            ? sessionEnd!.eraseReason === "device-revoked"
+              ? "This device was revoked and its local store has been erased"
+              : "This workspace's membership was revoked and this device's local store has been erased"
+            : discarded
+              ? "This device's access ended and writes that had been acknowledged were discarded"
+              : denied
+                ? "The server denied this device's role refresh request"
+                : "The role refresh checkpoint could not be reached";
+          scope.postMessage(errorResponse(request.requestId, code, message, false));
           return;
         }
         scope.postMessage(

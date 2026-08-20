@@ -23,9 +23,19 @@ export interface RoleRefreshResult {
   readonly membershipId: string;
 }
 
+/**
+ * F151. The two, and only two, positive revocation events this project's
+ * specs name — see `services/api/src/auth/device-unlock.ts`'s
+ * `DeviceRoleRefreshDenialReason`, which this mirrors exactly. Anything the
+ * server did not explicitly classify arrives as `undefined`, which
+ * `LocalGraphWorkerRuntime#endLocalSession` treats as lock-only, never
+ * erase-eligible — the same conservative default F148 proved correct.
+ */
+export type RoleRefreshDenialReason = "device-revoked" | "membership-revoked";
+
 /** Non-enumerating, matching the unlock endpoint's own denial shape. */
 export class RoleRefreshDeniedError extends Error {
-  constructor() {
+  constructor(readonly reason?: RoleRefreshDenialReason) {
     super("The server denied this device's role refresh request");
   }
 }
@@ -65,9 +75,32 @@ export class RoleRefreshUnavailableError extends Error {
  * the same position an offline device is already in, bounded the same way —
  * resolved on the next answer the server is actually able to give.
  */
+/**
+ * F151. Reads the classified `revocation.kind` field a 401/403 body may
+ * carry — see `services/api/src/auth/device-unlock.ts`'s
+ * `DeviceRoleRefreshDenialReason`, which this mirrors exactly. A malformed,
+ * empty, or unreadable body must never throw here: it just means no reason
+ * was recovered, which is `undefined`, the same conservative default an
+ * unclassified denial already used before this existed.
+ */
+function parseRevocationReason(body: unknown): RoleRefreshDenialReason | undefined {
+  if (typeof body !== "object" || body === null) return undefined;
+  const revocation = (body as { revocation?: unknown }).revocation;
+  if (typeof revocation !== "object" || revocation === null) return undefined;
+  const kind = (revocation as { kind?: unknown }).kind;
+  return kind === "device-revoked" || kind === "membership-revoked" ? kind : undefined;
+}
+
+/**
+ * F151. `deviceId` is optional only for backward compatibility;
+ * `LocalGraphWorkerRuntime` always supplies it. Without it the server can
+ * still classify a `membership-revoked` denial, but never `device-revoked`
+ * — it has no device to check against.
+ */
 export async function fetchCurrentRoles(
   apiOrigin: string,
   workspaceId: string,
+  deviceId?: string,
 ): Promise<RoleRefreshResult> {
   let response: Response;
   try {
@@ -75,7 +108,10 @@ export async function fetchCurrentRoles(
       method: "POST",
       credentials: "include",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ workspaceId }),
+      body: JSON.stringify({
+        workspaceId,
+        ...(deviceId !== undefined ? { deviceId } : {}),
+      }),
     });
   } catch (error: unknown) {
     // Transport failure: offline, DNS, TLS, connection reset. The server
@@ -87,7 +123,8 @@ export async function fetchCurrentRoles(
 
   // The only two answers that are ABOUT this device's authorization.
   if (response.status === 401 || response.status === 403) {
-    throw new RoleRefreshDeniedError();
+    const reason = parseRevocationReason(await response.json().catch(() => undefined));
+    throw new RoleRefreshDeniedError(reason);
   }
   if (!response.ok) {
     throw new RoleRefreshUnavailableError(`the server answered ${response.status}`);

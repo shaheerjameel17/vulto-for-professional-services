@@ -318,6 +318,17 @@ export const graphWorkerErrorSchema = z
           // been lost. Never fatal — the data loss has already happened, and
           // killing the Worker over the report is what swallowed it.
           "local-writes-discarded",
+          // F151. The local store was ERASED, not merely locked — the
+          // server positively classified this session's end as one of the
+          // two named revocation events. Each carries its own code rather
+          // than a shared "erased" flag, so a caller (and an audit trail)
+          // can tell a targeted single-device revocation from a
+          // workspace-wide membership revocation without inspecting prose.
+          // Never fatal, for the same reason `local-writes-discarded` is
+          // not: the loss already happened, and killing the Worker over the
+          // report would only hide it.
+          "device-revoked",
+          "membership-revoked",
         ]),
         message: z.string().min(1),
         fatal: z.boolean(),
