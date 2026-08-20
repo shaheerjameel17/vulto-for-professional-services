@@ -1733,6 +1733,18 @@ A confirming cross-reference beside A005-T07: FDN-80's `None`/`Restricted` rule 
 ### `VPS-002` — FDN-80
 The prototype scope list's *"structurally-absent compensation section"* corrected to reflect the revised rendering, with a note that the prototype-era description is superseded rather than silently rewritten.
 
+### F149 — a purged Worker reports itself uninitialized to a caller already in flight, with no render defined for that moment
+
+Small, named rather than left as a remark. Surfaced writing the mutation tests for F144/F145's fix.
+
+`#endLocalSession`'s purge returns the runtime to its pre-`initialize()` state. Correct for the next call — `query`, `mutate`, `initialize` all see a clean, honest "not initialized" and a caller re-opening the workspace proceeds normally. Not obviously correct for a call already **in flight** at the moment the purge runs: a `query` that was mid-round-trip when revocation landed resolves to `not-initialized` on a Worker its caller had every reason to believe was live and unlocked seconds earlier.
+
+This is not a data-safety defect — nothing is exposed, nothing is corrupted, the report is honest — and it does not block FDN-87 or F144/F145, which are closed. It is a rough edge in what the **application** does with that moment: today nothing distinguishes "you were never initialized" from "you were initialized and then your access ended out from under an in-flight call," and a shell built later could easily render the second as a confusing generic error rather than the locked-shell transition F146 now defines for exactly this kind of event.
+
+**Belongs with FDN-63**, not with this pass. "What a revoked-then-reinstated device experiences" is orchestration-adjacent UX, the same territory as the signal that will eventually call `eraseLocalStore`, and building a render for it now would be getting ahead of a shell that does not yet consume the locked state at all (per F146, no product screen does). Recorded here so it is findable when FDN-63 is scoped, not rediscovered.
+
+---
+
 ## What did not change
 
 **No permission grant, anywhere.** Every access decision after this pass is one that `VPS-A004`'s matrix already stated. The corrections moved facts to the layer that enforces them and gave duplicate concepts one name each. A reader who knew the intended behavior before would find nothing new in the behavior — only in whether a machine can now confirm it.
