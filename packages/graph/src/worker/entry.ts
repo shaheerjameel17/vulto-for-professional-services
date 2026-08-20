@@ -8,7 +8,7 @@ import {
 } from "../protocol";
 import { UnsupportedDocumentSchemaGenerationError } from "./document-schema-gate";
 import { RoleRefreshDeniedError } from "./permission/role-refresh";
-import { LocalGraphWorkerRuntime } from "./runtime";
+import { LocalGraphWorkerRuntime, PendingFlushDiscardedError } from "./runtime";
 
 interface WorkerScope {
   onmessage: ((event: MessageEvent<unknown>) => void) | null;
@@ -283,13 +283,25 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
           // where `#apiOrigin` is null and no request is ever sent — telling
           // the caller about a server decision that never happened.
           const denied = error instanceof RoleRefreshDeniedError;
+          // F144. A denial that also cost the caller acknowledged writes is
+          // not the same event as a denial that cost nothing, and must not
+          // report as one. The denial itself is still non-enumerating: this
+          // code says what happened to THIS device's data, never why the
+          // server refused.
+          const discarded = denied && runtime.lastSessionEnd?.discardedWrites === true;
           scope.postMessage(
             errorResponse(
               request.requestId,
-              denied ? "role-refresh-denied" : "role-refresh-unavailable",
-              denied
-                ? "The server denied this device's role refresh request"
-                : "The role refresh checkpoint could not be reached",
+              discarded
+                ? "local-writes-discarded"
+                : denied
+                  ? "role-refresh-denied"
+                  : "role-refresh-unavailable",
+              discarded
+                ? "This device's access ended and writes that had been acknowledged were discarded"
+                : denied
+                  ? "The server denied this device's role refresh request"
+                  : "The role refresh checkpoint could not be reached",
               false,
             ),
           );
@@ -298,6 +310,16 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
         scope.postMessage(
           success(request, { kind: "role-refreshed", roles: [...runtime.roles] }),
         );
+        return;
+      }
+      case "erase-local-store": {
+        // FDN-87. The mechanism, reachable. Deliberately does NOT require an
+        // initialized runtime or an unlocked store: a device that has lost
+        // authority can never unlock again, which is exactly when erasing
+        // matters. Erasing destroys ciphertext rather than reading it, so it
+        // needs no key.
+        await runtime.eraseLocalStore(request.workspaceId);
+        scope.postMessage(success(request, { kind: "local-store-erased" }));
         return;
       }
       case "get-availability": {
@@ -322,6 +344,17 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
       }
     }
   } catch (error) {
+    // F144. A discarded durability window is a statement about DATA, not a
+    // Worker fault, and it carries its own code rather than collapsing into
+    // the generic runtime-failure that made it indistinguishable from an
+    // ordinary locked store. Non-fatal on purpose: terminating the Worker
+    // here is precisely what destroyed the report before anyone read it.
+    if (error instanceof PendingFlushDiscardedError) {
+      scope.postMessage(
+        errorResponse(request.requestId, "local-writes-discarded", error.message, false),
+      );
+      return;
+    }
     scope.postMessage(
       errorResponse(
         request.requestId,

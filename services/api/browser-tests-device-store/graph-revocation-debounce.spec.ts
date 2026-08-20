@@ -26,18 +26,33 @@ import { resetRateLimits } from "./rate-limit-reset";
  * sealed store. The flush timer then fires into a locked store and throws
  * into `#pendingFlushError`, where nothing observes it.
  *
- * **This file reproduces; it does not assert a fix.** It answers the two
- * questions FDN-54 names, against the real stack — real Postgres, real
- * Chromium, real `SealedStore` behind a real online unlock, real Loro and
- * SQLite WASM, real revocation through the real `member` row, and the real
- * production `mutate`/`refresh-role`/`query` protocol messages. Every
- * assertion below either establishes that the scenario genuinely set itself
- * up, or records what the system actually did.
+ * **F144 and F145, closed by founder ruling and repository fix.** This file
+ * began as a reproduction and is now the permanent proof of the answers.
  *
- *   Q1. A write this device was authorized to make, was told was `applied`,
- *       and never got to disk. Is losing it correct?
- *   Q2. Should a revoked device retain a materialized plaintext index — and
- *       the plaintext Loro document behind it — in memory after revocation?
+ *   Q1. A write this device was authorized to make and was told was
+ *       `applied` never reached disk. Ruling: **losing it is not correct.**
+ *       The window is flushed while the device is still authorized, because
+ *       at the instant before the lock those writes were legitimate — the
+ *       same reasoning F139 already applied to a workspace switch.
+ *   Q2. A revoked device kept a materialized plaintext index, and the Loro
+ *       document behind it, resident in the Worker. Ruling: **it must not.**
+ *       The plaintext is released once authority ends.
+ *
+ * The order is the whole ruling and each step is load-bearing: **flush while
+ * still authorized, then lock, then purge.** Flushing after the lock is
+ * impossible — the store refuses — and purging before the flush would
+ * destroy the very writes step one exists to save.
+ *
+ * **Written in pairs, deliberately, the same way F148's suite is.** Every
+ * test that the purge fires when authority ends is matched by one proving it
+ * does NOT fire on an ordinary lock. F148 was caused by treating an ambiguous
+ * event as a security event; a purge on every lock would be that same mistake
+ * pointing the other way, and would cost a full re-materialization each time.
+ *
+ * Real stack throughout — real Postgres, real Chromium, real `SealedStore`
+ * behind a real online unlock, real Loro and SQLite WASM, real revocation
+ * through the real `member` row, and the real production
+ * `mutate`/`refresh-role`/`query` protocol messages.
  *
  * F142's fix changed this terrain and the change is deliberately accounted
  * for: the zombie-Worker hang S1 was originally going to probe now fails
@@ -71,20 +86,26 @@ const VICTIM_EMPLOYEE_COUNT = 3;
 /** The first id `buildBulk` writes; the victim write's witness. */
 const FIRST_VICTIM_EMPLOYEE = "88888888-8888-4888-8888-000000000000";
 
+/** The id `buildClean` writes; the durable seed's witness. */
+const SEED_EMPLOYEE = "77777777-7777-4777-8777-777777777777";
+
 const STEP_TIMEOUT_MS = 20_000;
 
 /**
- * What `mutate` reports to a caller once the sealed store is locked.
+ * What `mutate` reports once the sealed store is locked and NOTHING was lost.
  *
- * Pinned as a literal on purpose, and asserted from BOTH sides: the
- * `ordering` test asserts a run that DID lose a write reports exactly this,
- * and the `discriminator` test asserts a run that lost NOTHING reports
- * exactly this too. Neither assertion means anything without the other —
- * one side alone would still pass if the lossy path were later made
- * distinguishable, which is precisely the fix this file must be able to
- * detect.
+ * Pinned as a literal, and paired with `DISCARDED_WRITES_CODE` below. F144
+ * was that these two situations produced the byte-identical report, so a
+ * caller could not tell that anything had been discarded. The pair is
+ * asserted from both sides: a lock that lost nothing must still report this,
+ * and a lock that lost writes must report the other. Collapsing them again
+ * fails both tests.
  */
-const LOCK_REPORT_MESSAGE = "runtime-failure: The sealed local store is locked";
+const LOSSLESS_LOCK_REPORT_MESSAGE =
+  "runtime-failure: The sealed local store is locked";
+
+/** F144. The code a caller switches on to learn that acknowledged writes are gone. */
+const DISCARDED_WRITES_CODE = "local-writes-discarded";
 
 interface StepOutcome {
   timedOut?: true;
@@ -178,6 +199,17 @@ async function revokeMembership(
 ): Promise<void> {
   await sql`update "member" set "status" = 'revoked'
     where "organization_id" = ${workspaceId} and "user_id" = ${userId}`;
+}
+
+/** Confirms nothing revoked this membership, so a behavior cannot be blamed on revocation. */
+async function membershipIsStillActive(
+  sql: ReturnType<typeof postgres>,
+  workspaceId: string,
+  userId: string,
+): Promise<boolean> {
+  const rows = await sql<{ status: string }[]>`select "status" from "member"
+    where "organization_id" = ${workspaceId} and "user_id" = ${userId}`;
+  return rows[0]?.status === "active";
 }
 
 /** Re-grants the membership, so a proof can read back what the device kept. */
@@ -381,10 +413,6 @@ async function employeeVisible(page: Page, nodeId: string): Promise<StepOutcome>
 const status = (step: StepOutcome): string | undefined =>
   (step.value as MutationOutcomeShape | undefined)?.status;
 
-/** A throw out of `mutate` is reported by the harness as the step's value, not as a rejection. */
-const reportedThrow = (step: StepOutcome): string | undefined =>
-  (step.value as MutationOutcomeShape | undefined)?.thrown;
-
 let sharedAccount: { email: string; userId: string; cookies: Cookie[] } | undefined;
 
 test.beforeAll(async ({ browser }) => {
@@ -407,7 +435,7 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
    * reached disk. This reads the durable snapshot back through a genuinely
    * new Worker to establish what survived.
    */
-  test("Q1: an authorized write acknowledged inside the debounce window is lost when revocation lands", async ({
+  test("Q1: an authorized write acknowledged inside the debounce window survives revocation", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -472,7 +500,7 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
         `the workspace must still open after a revoked interval: ${reopened.error}`,
       ).toBe(true);
 
-      const seedSurvived = await employeeVisible(page, "77777777-7777-4777-8777-777777777777");
+      const seedSurvived = await employeeVisible(page, SEED_EMPLOYEE);
       const victimSurvived = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);
       console.log(
         `S1/Q1 durable state: seed=${JSON.stringify(seedSurvived)} victim=${JSON.stringify(victimSurvived)}`,
@@ -485,11 +513,13 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
         `the pre-revocation seed must be durable, or this run cannot isolate the window: ${JSON.stringify(seedSurvived)}`,
       ).toBe(true);
 
-      // The finding itself, stated as the reproduction it is.
+      // The ruling. The window is flushed while the device still holds the
+      // key, so a write the user was told was `applied` is on disk when the
+      // revocation lands rather than dying with the timer.
       expect(
         (victimSurvived.value as { present?: boolean } | undefined)?.present,
-        `S1/Q1 REPRODUCED — the acknowledged write is absent from disk: ${JSON.stringify(victimSurvived)}`,
-      ).toBe(false);
+        `F144 — an acknowledged, authorized write must survive revocation landing in its flush window: ${JSON.stringify(victimSurvived)}`,
+      ).toBe(true);
     } finally {
       await context?.close();
       await sql.end();
@@ -497,22 +527,23 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
   });
 
   /**
-   * Q2. `lockSealedStore()` drops the AES key and the role set. It does not
-   * touch `#document` or `#index` — the plaintext Loro document and the
-   * materialized SQLite index stay allocated in the Worker.
+   * Q2. `lockSealedStore()` drops the AES key and the role set — the small
+   * half — and used to leave a fully materialized plaintext index of the
+   * whole workspace, and the Loro document behind it, resident in the Worker.
+   * Now the purge releases both once authority ends.
    *
-   * Structure alone would only prove the code does not free them. This
-   * observes whether the plaintext is INTACT across the revoked interval, by
-   * the one instrument that can ask without destroying the answer: re-unlock
-   * the SAME Worker and read. If the victim write — which never reached disk
-   * — comes back, the plaintext survived the revocation in memory. If only
-   * the durable seed comes back, the runtime discarded it.
+   * The instrument is the same one that originally exposed the retention,
+   * reading the opposite result: re-unlock the SAME Worker and try to read.
+   * Before the fix that returned the workspace's data. Now there is nothing
+   * to read from — the runtime is back to its pre-`initialize()` state — and
+   * the data is reachable only by opening the workspace again from disk,
+   * which is what a device that legitimately regains access does.
    *
-   * Deliberately does NOT query while locked. That throw is fatal and
-   * terminates the Worker, which would destroy the state under inspection
-   * and turn a real answer into an artifact of the probe.
+   * Deliberately does NOT query while locked and before the re-unlock: that
+   * throw is fatal and terminates the Worker, which would free the heap as a
+   * side effect and make the purge unfalsifiable.
    */
-  test("Q2: a revoked device keeps its materialized plaintext index in memory", async ({
+  test("Q2: a device whose authority ended keeps no queryable plaintext in memory", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -579,20 +610,42 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
         `the same Worker must re-unlock for this to observe anything: ${JSON.stringify(reunlocked)}`,
       ).toBe(true);
 
-      const victimStillInMemory = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);
+      const afterReunlock = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);
       console.log(
-        `S1/Q2 in-memory state after re-unlock: victim=${JSON.stringify(victimStillInMemory)}`,
+        `S1/Q2 in-memory state after re-unlock: ${JSON.stringify(afterReunlock)}`,
       );
 
-      // The finding, and the reason it holds WITHIN this run rather than by
-      // borrowing Q1's separate workspace: the index is opened `:memory:`,
-      // and the only code that ever reads the durable snapshot back is
-      // `initialize()`. Re-unlocking does not call it — `unlockSealedStore`
-      // only re-derives the key. So whatever answers this query was never
-      // read from disk during this run, whatever disk happens to hold.
+      // The ruling. The index is opened `:memory:` and the only code that
+      // reads the durable snapshot back is `initialize()`, which re-unlocking
+      // does not call — so anything this query could have returned would have
+      // come from plaintext the Worker was still holding. It returns nothing:
+      // the document and index were released when authority ended.
       expect(
-        (victimStillInMemory.value as { present?: boolean } | undefined)?.present,
-        `S1/Q2 REPRODUCED — plaintext never persisted is still readable from the Worker's memory after revocation: ${JSON.stringify(victimStillInMemory)}`,
+        (afterReunlock.value as { present?: boolean } | undefined)?.present,
+        `F145 — no plaintext may remain queryable in the Worker after authority ends: ${JSON.stringify(afterReunlock)}`,
+      ).toBeUndefined();
+      // Asserted on the protocol CODE rather than the prose, per F144's own
+      // lesson: a caller switches on the code, and a message can be reworded
+      // without anything noticing.
+      expect(
+        afterReunlock.thrown,
+        `and the runtime must report itself uninitialized rather than answering: ${JSON.stringify(afterReunlock)}`,
+      ).toContain("not-initialized");
+
+      // The counterweight: releasing memory must not have destroyed durable
+      // data. Opening the workspace again — what a device that legitimately
+      // regains access does — reads the same content back from disk.
+      await openWorkspace(page, workspaceId);
+      const reopened = await tryInitialize(page);
+      expect(
+        reopened.opened,
+        `the workspace must still open from disk after a purge: ${reopened.error}`,
+      ).toBe(true);
+      const fromDisk = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);
+      console.log(`S1/Q2 read back from disk: ${JSON.stringify(fromDisk)}`);
+      expect(
+        (fromDisk.value as { present?: boolean } | undefined)?.present,
+        `the purge must release memory, not durable data: ${JSON.stringify(fromDisk)}`,
       ).toBe(true);
     } finally {
       await context?.close();
@@ -676,20 +729,21 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
   });
 
   /**
-   * What a caller can learn about the loss.
+   * The pair the founder's ruling turns on, and the reason this file is
+   * written the way F148's is.
    *
-   * `#pendingFlushError` exists so a failed background flush is never
-   * swallowed: it is re-thrown at the start of the next `mutate`,
-   * `applyDeltaBatch` or `dispose`. Q1's run probed with a query first and
-   * the flush error never surfaced at all — the query's own lock failure is
-   * fatal, so the Worker died and took `#pendingFlushError` with it.
+   * Everything above proves the purge fires when authority ends. On its own
+   * that is satisfied just as well by a purge that fires on EVERY lock —
+   * which would be the F148 mistake pointing the other way: an ordinary,
+   * recoverable event treated as a security event, at the cost of a full
+   * re-materialization each time and, if it ever ran before the flush, the
+   * writes F144 exists to save.
    *
-   * This runs the other ordering, where the mechanism does get its chance,
-   * to establish whether it makes the data loss distinguishable from an
-   * ordinary lock. Recorded rather than asserted: the question is what the
-   * message SAYS, and there is no ruling yet to assert against.
+   * So this performs an ordinary `lockSealedStore()` — the plain lock a
+   * future idle-lock would use — and requires the in-memory state to still
+   * be there afterwards.
    */
-  test("ordering: what the first call after the lock reports about the lost write", async ({
+  test("paired: an ordinary lock does not purge, and the same Worker still serves after re-unlock", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -712,124 +766,135 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
         "applied",
       );
 
-      await revokeMembership(sql, workspaceId, sharedAccount.userId);
-      const run = await runRevocationRace(page, workspaceId, {
-        probeWhileLocked: "mutate-first",
-        delayBeforeRefreshMs: 0,
-      });
-
-      expect(
-        status(run.victim),
-        `the victim write must be authorized and applied: ${JSON.stringify(run.victim)}`,
-      ).toBe("applied");
-      expect(
-        run.lockLandedAfterMs,
-        `the revocation must land inside the ${FLUSH_DEBOUNCE_MS}ms window (took ${run.lockLandedAfterMs}ms)`,
-      ).toBeLessThan(FLUSH_DEBOUNCE_MS);
-
-      console.log(
-        `S1/ordering mutate-first: mutate=${JSON.stringify(run.mutateWhileLocked)} query=${JSON.stringify(run.queryWhileLocked)}`,
-      );
-
-      // The lossy side of the comparison F144 rests on. This run's pending
-      // flush failed and its write is gone; `mutate` is the call that gives
-      // `#pendingFlushError` its chance to say so, and this is everything it
-      // says. The `discriminator` test asserts the identical string from a
-      // run that lost nothing — together they establish that the report
-      // carries no information about the loss, and either assertion alone
-      // would keep passing after a fix.
-      expect(
-        reportedThrow(run.mutateWhileLocked ?? {}),
-        `the lossy path must report exactly the lock message: ${JSON.stringify(run.mutateWhileLocked)}`,
-      ).toBe(LOCK_REPORT_MESSAGE);
-    } finally {
-      await context?.close();
-      await sql.end();
-    }
-  });
-  /**
-   * The discriminator for the claim the ordering test above suggests.
-   *
-   * `SealedStoreLockedError` carries one fixed message and is thrown from
-   * BOTH places that matter here: `SealedStore.put` (the failed background
-   * flush, captured into `#pendingFlushError`) and the `roles` getter
-   * (`mutate`'s own first read of a locked store). Reading that from source
-   * is not proof that a caller cannot tell them apart.
-   *
-   * So this runs the same revocation with NOTHING pending — the seed's flush
-   * has long since landed, no write is in flight, no data is lost — and
-   * records what `mutate` reports. If it is identical to the run where a
-   * write WAS lost, then the message a caller receives carries no
-   * information about the loss, and `#pendingFlushError`'s guarantee that a
-   * background failure is "never swallowed" is satisfied in letter only.
-   */
-  test("discriminator: a lock with nothing pending reports exactly what a lock with a lost write reports", async ({
-    browser,
-  }) => {
-    test.setTimeout(180_000);
-    const sql = postgres(databaseUrl, { max: 1 });
-    let context: BrowserContext | undefined;
-    try {
-      if (!sharedAccount) throw new Error("shared account was not created");
-      context = await browser.newContext({ ignoreHTTPSErrors: true });
-      const page = await context.newPage();
-      await context.addCookies(sharedAccount.cookies);
-      const workspaceId = await createOwnerWorkspace(sql, sharedAccount.userId);
-
-      await openWorkspace(page, workspaceId);
-      const opened = await tryInitialize(page);
-      expect(opened.opened, `a fresh workspace must initialize: ${opened.error}`).toBe(
-        true,
-      );
-      // The ONLY write, and its flush is fully settled before the revocation.
-      const seed = await seedDurably(page, workspaceId);
-      expect(status(seed), `the durable seed must apply: ${JSON.stringify(seed)}`).toBe(
-        "applied",
-      );
-
-      await revokeMembership(sql, workspaceId, sharedAccount.userId);
-      const clean = await page.evaluate(async (id) => {
+      // An ordinary lock. No revocation anywhere — the membership stays
+      // valid, and is asserted valid below.
+      const locked = await page.evaluate(async () => {
         const api = window.__vultoGraphPersistenceDiagnostics;
         if (!api) throw new Error("diagnostics API missing");
-        let refreshDenied = false;
-        try {
-          await api.refreshRole();
-        } catch {
-          refreshDenied = true;
-        }
-        const locked = (await api.getStatus()).locked;
-        // Nothing is pending, so nothing can be lost here.
-        await new Promise((resolve) => setTimeout(resolve, 900));
-        try {
-          const value = await api.mutate([api.poisoning.buildClean(id)]);
-          // The harness reports a throw out of `mutate` as `{ thrown }`
-          // rather than rethrowing, so this is the caller-visible message.
-          return { refreshDenied, locked, mutate: value.thrown ?? JSON.stringify(value) };
-        } catch (error: unknown) {
-          return {
-            refreshDenied,
-            locked,
-            mutate: `REJECTED: ${error instanceof Error ? error.message : String(error)}`,
-          };
-        }
-      }, workspaceId);
+        await api.lock();
+        return (await api.getStatus()).locked;
+      });
+      expect(locked, "the ordinary lock must have taken effect").toBe(true);
 
-      expect(clean.refreshDenied, "the server must deny the refresh").toBe(true);
-      expect(clean.locked, "a denied refresh must lock the store").toBe(true);
-      console.log(`S1/discriminator no-pending-flush: mutate=${clean.mutate}`);
-
-      // The lossless side of the comparison. Nothing was pending here, so
-      // nothing was lost — and the message is identical to the one the
-      // `ordering` test asserts from a run that DID lose a write.
+      const reunlocked = await page.evaluate(async () => {
+        const api = window.__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        return api.unlock();
+      });
       expect(
-        clean.mutate,
-        `a lossless lock must report exactly what a lossy one does, or the two are distinguishable and this claim is wrong: ${clean.mutate}`,
-      ).toBe(LOCK_REPORT_MESSAGE);
+        reunlocked.unlocked,
+        `the same Worker must re-unlock: ${JSON.stringify(reunlocked)}`,
+      ).toBe(true);
+
+      // No re-initialize anywhere in this test. If the runtime had purged,
+      // this query would report itself uninitialized exactly as Q2's does.
+      const stillServed = await employeeVisible(page, SEED_EMPLOYEE);
+      console.log(`S1/paired after ordinary lock: ${JSON.stringify(stillServed)}`);
+      expect(
+        (stillServed.value as { present?: boolean } | undefined)?.present,
+        `an ordinary lock must NOT purge — a plain lock is recoverable and must not cost a re-materialization: ${JSON.stringify(stillServed)}`,
+      ).toBe(true);
+      expect(
+        await membershipIsStillActive(sql, workspaceId, sharedAccount.userId),
+        "nothing in this test revokes anything",
+      ).toBe(true);
     } finally {
       await context?.close();
       await sql.end();
     }
   });
+
+  /**
+   * F144's other half: whatever happens to the writes, a caller must be able
+   * to TELL. Before the fix, a lock that silently discarded a durability
+   * window and a lock that discarded nothing produced the byte-identical
+   * report, so no caller could distinguish them.
+   *
+   * A discarded window is now reachable only by locking the store out from
+   * under an already-scheduled flush — the ordinary `lock()` path, since the
+   * revocation path flushes first precisely so this cannot happen there. That
+   * makes it the right instrument for this test and nothing else: it produces
+   * a genuinely lost window on demand.
+   *
+   * Asserted from both sides, because either alone would pass if the two were
+   * collapsed back together.
+   */
+  test("reporting: a discarded durability window is distinguishable from an ordinary lock", async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000);
+    const sql = postgres(databaseUrl, { max: 1 });
+    let context: BrowserContext | undefined;
+    try {
+      if (!sharedAccount) throw new Error("shared account was not created");
+      context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      await context.addCookies(sharedAccount.cookies);
+      const workspaceId = await createOwnerWorkspace(sql, sharedAccount.userId);
+
+      await openWorkspace(page, workspaceId);
+      const opened = await tryInitialize(page);
+      expect(opened.opened, `a fresh workspace must initialize: ${opened.error}`).toBe(
+        true,
+      );
+
+      const reports = await page.evaluate(
+        async ({ id, count }) => {
+          const api = window.__vultoGraphPersistenceDiagnostics;
+          if (!api) throw new Error("diagnostics API missing");
+
+          async function reportOf(run: () => Promise<unknown>): Promise<string> {
+            try {
+              const value = (await run()) as { thrown?: string };
+              return value.thrown ?? JSON.stringify(value);
+            } catch (error: unknown) {
+              return error instanceof Error ? error.message : String(error);
+            }
+          }
+
+          // (a) A lock with a durability window still open. The flush fires
+          //     into a locked store and its writes are gone.
+          await api.mutate([api.poisoning.buildBulk(id, count)]);
+          await api.lock();
+          await new Promise((resolve) => setTimeout(resolve, 900));
+          const lossy = await reportOf(() =>
+            api.mutate([api.poisoning.buildClean(id)]),
+          );
+
+          // (b) A lock with nothing pending, on a Worker that has already
+          //     surfaced the loss above. Nothing more can be lost here.
+          const lossless = await reportOf(() =>
+            api.mutate([api.poisoning.buildClean(id)]),
+          );
+
+          return { lossy, lossless };
+        },
+        { id: workspaceId, count: VICTIM_EMPLOYEE_COUNT },
+      );
+
+      console.log(`S1/reporting: ${JSON.stringify(reports)}`);
+
+      // The lossy side names the loss, under its own code.
+      expect(
+        reports.lossy,
+        `F144 — a discarded durability window must report under its own code: ${JSON.stringify(reports)}`,
+      ).toContain(DISCARDED_WRITES_CODE);
+
+      // The lossless side must NOT, or the code means nothing.
+      expect(
+        reports.lossless,
+        `an ordinary locked store must not claim writes were discarded: ${JSON.stringify(reports)}`,
+      ).not.toContain(DISCARDED_WRITES_CODE);
+      expect(
+        reports.lossless,
+        `and must still report the plain locked-store failure: ${JSON.stringify(reports)}`,
+      ).toBe(LOSSLESS_LOCK_REPORT_MESSAGE);
+    } finally {
+      await context?.close();
+      await sql.end();
+    }
+  });
+
   /**
    * The trigger, unattended.
    *

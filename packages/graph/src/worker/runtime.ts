@@ -84,6 +84,44 @@ export type RuntimeMutationOutcome =
  */
 const FLUSH_DEBOUNCE_MS = 250;
 
+/**
+ * F144. What happened to this device's local state when its authority ended.
+ *
+ * Returned rather than inferred, because the whole finding was that a caller
+ * could not tell "your store locked" from "your store locked and writes were
+ * discarded" — both arrived as the same fixed string.
+ */
+export interface LocalSessionEndOutcome {
+  /** A durability window was open when authority ended. */
+  readonly hadPendingWindow: boolean;
+  /** That window reached disk before the store locked. */
+  readonly flushed: boolean;
+  /** That window did NOT reach disk and its writes are gone. */
+  readonly discardedWrites: boolean;
+  /** Why, when `discardedWrites` is true. */
+  readonly discardReason?: string;
+  /** The in-memory plaintext document and materialized index were released. */
+  readonly purged: boolean;
+}
+
+/**
+ * F144. A durability window that was lost, raised as its own type so the
+ * boundary can report it under its own code.
+ *
+ * Before this, `#pendingFlushError` re-threw the raw `SealedStoreLockedError`,
+ * which carries one fixed message and is also what an ordinary locked-store
+ * call throws — so the report a caller received after silently losing writes
+ * was byte-identical to one where nothing was lost.
+ */
+export class PendingFlushDiscardedError extends Error {
+  constructor(readonly cause: unknown) {
+    super(
+      "Writes that were acknowledged but not yet durable have been discarded: " +
+        (cause instanceof Error ? cause.message : String(cause)),
+    );
+  }
+}
+
 export class LocalGraphWorkerRuntime {
   #availability: GraphAvailability = { state: "mid-sync" };
   #document: LoroDoc | null = null;
@@ -131,6 +169,12 @@ export class LocalGraphWorkerRuntime {
   /** Set on a successful unlock, cleared on lock/dispose. Reused by the role-refresh poll below, never persisted. */
   #apiOrigin: string | null = null;
   #rolePollTimer: ReturnType<typeof setInterval> | null = null;
+  /**
+   * F144. The outcome of the most recent authority-ending sequence, so the
+   * protocol boundary can report a discarded durability window under its own
+   * code instead of folding it into the denial's fixed message.
+   */
+  #lastSessionEnd: LocalSessionEndOutcome | null = null;
 
   get availability(): GraphAvailability {
     return this.#availability;
@@ -142,6 +186,28 @@ export class LocalGraphWorkerRuntime {
 
   get sealedStoreLocked(): boolean {
     return !this.#sealedStore.isUnlocked;
+  }
+
+  /** F144. Null until this device's authority has ended at least once. */
+  get lastSessionEnd(): LocalSessionEndOutcome | null {
+    return this.#lastSessionEnd;
+  }
+
+  /**
+   * FDN-87. `VPS-F001` G04's erase, exposed on the runtime so the
+   * orchestration FDN-63 builds has something to call. Not wired to any
+   * signal here — see `#endLocalSession` for why the role-refresh denial is
+   * not that signal.
+   */
+  async eraseLocalStore(workspaceId: string): Promise<void> {
+    await this.#sealedStore.erase(workspaceId);
+    // Erasing the disk while leaving a fully materialized plaintext index of
+    // the same workspace resident would satisfy the letter of "wipe" and
+    // none of its purpose. FDN-84's criterion is that revocation makes local
+    // graph data unavailable, not merely that a file is gone.
+    if (this.#workspaceId === workspaceId) {
+      await this.#purgeInMemoryState();
+    }
   }
 
   /** The role set the permission interceptor currently reads. Throws when locked, same as `SealedStore.roles`. */
@@ -203,11 +269,82 @@ export class LocalGraphWorkerRuntime {
       const result = await fetchCurrentRoles(apiOrigin, workspaceId);
       this.#sealedStore.refreshRoles(result.roles);
     } catch (error) {
+      // F148: only an authoritative denial ends the session. A checkpoint
+      // that could not answer (`RoleRefreshUnavailableError`) changes
+      // nothing — the roles simply stay stale until it can.
       if (error instanceof RoleRefreshDeniedError) {
-        this.lockSealedStore();
+        this.#lastSessionEnd = await this.#endLocalSession();
       }
       throw error;
     }
+  }
+
+  /**
+   * F144 + F145. What happens on this device when its authority ends, in the
+   * one order that is defensible — and each step exists because reproducing
+   * S1 showed the alternative was wrong.
+   *
+   *   1. **Flush the open durability window, while still authorized.** At the
+   *      instant before the lock this device's writes were legitimate; the
+   *      user was told they were `applied`. F139 already ruled that a clean,
+   *      deliberate transition flushes its window rather than killing it, and
+   *      a revocation arriving is exactly that shape of event from this
+   *      device's side. Doing this after the lock is impossible — the store
+   *      refuses — which is why the order matters rather than reads as taste.
+   *   2. **Lock.** Key and roles dropped, as before.
+   *   3. **Purge the in-memory plaintext.** F145: `lock()` alone dropped the
+   *      key and the role set — the small half — and left a fully
+   *      materialized plaintext index of the whole workspace and the Loro
+   *      document behind it resident in the Worker.
+   *
+   * **Purging returns the runtime to its pre-`initialize()` state**, rather
+   * than inventing a fourth lifecycle condition. A device that legitimately
+   * regains access re-unlocks and re-initializes, which reads the last good
+   * snapshot from disk — including step 1's flush.
+   *
+   * **This is NOT what an ordinary `lockSealedStore()` does, deliberately.**
+   * A plain lock is a recoverable, possibly routine event (a future idle
+   * lock), and a purge would make every one of them cost a full
+   * re-materialization. F148 was caused by treating an ambiguous event as a
+   * security event; firing a purge on every lock would be the same mistake
+   * pointing the other way. The paired tests hold that line.
+   *
+   * **It does not erase the persisted store**, and that is a boundary rather
+   * than an omission. `SealedStore.erase` now exists (FDN-87) but the signal
+   * that should fire it is FDN-63's: this path's trigger is a non-enumerating
+   * `401` that means revoked OR suspended OR merely expired, and `VPS-F001`
+   * is explicit that nothing is wiped on expiry.
+   */
+  async #endLocalSession(): Promise<LocalSessionEndOutcome> {
+    const hadPendingWindow =
+      this.#flushTimer !== null || this.#flushInFlight !== null;
+
+    // 1. Flush, while the key still exists. `#flushBeforeTeardown` captures
+    //    its own failures into `#pendingFlushError` rather than throwing, so
+    //    a failed flush cannot abandon the lock that must follow it.
+    if (this.#document !== null) {
+      await this.#flushBeforeTeardown();
+    }
+    const discardedWrites = hadPendingWindow && this.#pendingFlushError !== null;
+    const discardReason = discardedWrites
+      ? this.#pendingFlushError instanceof Error
+        ? this.#pendingFlushError.message
+        : String(this.#pendingFlushError)
+      : undefined;
+
+    // 2. Lock.
+    this.lockSealedStore();
+
+    // 3. Purge the plaintext this device is no longer entitled to hold.
+    await this.#purgeInMemoryState();
+
+    return {
+      hadPendingWindow,
+      flushed: hadPendingWindow && !discardedWrites,
+      discardedWrites,
+      discardReason,
+      purged: true,
+    };
   }
 
   #startRolePolling(workspaceId: string): void {
@@ -538,11 +675,16 @@ export class LocalGraphWorkerRuntime {
     }, FLUSH_DEBOUNCE_MS);
   }
 
+  /**
+   * F144. Raised as `PendingFlushDiscardedError` rather than as the captured
+   * cause, so "the store is locked" and "the store is locked AND you lost
+   * writes" are different answers at the boundary instead of the same string.
+   */
   #throwPendingFlushError(): void {
     if (this.#pendingFlushError !== null) {
       const error = this.#pendingFlushError;
       this.#pendingFlushError = null;
-      throw error;
+      throw new PendingFlushDiscardedError(error);
     }
   }
 
@@ -678,6 +820,29 @@ export class LocalGraphWorkerRuntime {
     // caller never observed via a prior applyDeltaBatch) must still surface
     // to whoever called dispose(), but must never leave teardown half-done.
     this.#throwPendingFlushError();
+  }
+
+  /**
+   * Releases the plaintext this Worker holds and returns the runtime to its
+   * pre-`initialize()` state, rather than inventing a fourth lifecycle
+   * condition for "initialized but holding nothing."
+   *
+   * Shared by `#endLocalSession` and `eraseLocalStore` so the two can never
+   * drift into releasing different things — the failure mode where a wipe
+   * clears disk and leaves a queryable plaintext index behind.
+   */
+  async #purgeInMemoryState(): Promise<void> {
+    await this.#index?.dispose();
+    this.#index = null;
+    this.#document?.free();
+    this.#document = null;
+    this.#workspaceId = null;
+    this.#availability = { state: "mid-sync" };
+    this.#materializationFailed = false;
+    if (this.#flushTimer !== null) {
+      clearTimeout(this.#flushTimer);
+      this.#flushTimer = null;
+    }
   }
 
   #requireIndex(): SQLiteGraphIndex {
