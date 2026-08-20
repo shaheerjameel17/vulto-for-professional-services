@@ -1475,7 +1475,7 @@ The distinction the path is missing is not "skip the check for remote deltas." A
 
 ---
 
-### F144 — a revocation landing inside the flush window discards an acknowledged, authorized write, and reports it in words a caller cannot tell apart from an ordinary lock
+### F144 — a revocation landing inside the flush window discarded an acknowledged, authorized write, and reported it in words a caller could not tell apart from an ordinary lock
 
 Surfaced running **S1**, the first of the three concurrency-seam scenarios the Data Foundation integration review scoped but left filed on FDN-54. The seam is four components wide, which is why no stage-level suite sees it — each component is correct on its own: F127's role poll (FDN-53 stage 1) locks the store on a denial, `SealedStore` (FDN-84) refuses everything once locked, the flush is debounced 250ms (FDN-50 stage 2), and `mutate` (FDN-53 stage 2) authorizes, merges and materializes before that window opens.
 
@@ -1501,13 +1501,21 @@ Worth naming separately: reporting a merely **locked** store as `fatal: true` is
 
 *That the loss is silent* is a defect on either ruling. Whichever way the write goes, a caller must be able to tell "your store locked" from "your store locked and writes were discarded," and today cannot.
 
-**Open, not fixed, but no longer common.** The reproduction is permanent and named: `services/api/browser-tests-device-store/graph-revocation-debounce.spec.ts`. It reproduces and controls; it does not assert a fix, because there is nothing yet ruled to assert. It is coupled to F145 and must be ruled on with it — purging memory on lock necessarily destroys this write unless the flush runs first.
+**Founder ruling: losing the write is not correct.** At the instant before the lock this device's writes were legitimate and the user had been told they were `applied`. F139 already ruled that a clean, deliberate transition flushes its window rather than killing it, and a revocation arriving is that same shape of event from this device's side.
 
-**F148's fix substantially reduces the reach of this finding.** The loss requires a lock landing inside the flush window, and until F148 was closed *any* server hiccup produced that lock — a 502 or a rate limit was enough. Now only a genuine revocation is, which is a rare event rather than an ordinary one. The defect is unchanged; its frequency is not.
+**Closed by repository fix, as an ordering in which every step is load-bearing: flush while still authorized, then lock, then purge.** Flushing after the lock is impossible — the store refuses — and purging before the flush would destroy the writes the flush exists to save. That is why this is an order rather than a set of independent steps, and why it is implemented as one sequence (`#endLocalSession`) rather than three call sites that a later edit could reorder.
+
+**The second half — the silence — is closed too, and separately.** A discarded durability window now raises `PendingFlushDiscardedError` and reports under its own protocol code, `local-writes-discarded`, rather than re-throwing the raw `SealedStoreLockedError` whose fixed message an ordinary locked-store call also produces. It is non-fatal on purpose: terminating the Worker over the report is precisely what destroyed it before anyone read it. Asserted from both sides, so collapsing them back together fails two tests rather than none.
+
+**F148's fix independently reduced the reach of this finding.** The loss requires a lock landing inside the flush window, and until F148 was closed *any* server hiccup produced that lock. Only a genuine revocation does now.
+
+Proven by the permanently named spec, which is written in pairs the way F148's is: the write survives revocation landing in its window; no plaintext remains queryable afterwards; **an ordinary lock does not purge**; a genuinely discarded window reports distinguishably while a lossless one does not; and the unattended poll still triggers the whole sequence with no interaction.
+
+Mutation-tested against four mutants, each caught by the test built for it: removing the purge fails Q2; purging on *every* lock — the over-correction, and the F148 mistake pointing the other way — fails the paired test; removing the pre-lock flush fails Q1; and reverting the discarded-window report to its raw cause fails the reporting test.
 
 ---
 
-### F145 — a revoked device keeps its materialized plaintext index and its Loro document in memory, and the lock revocation fires does not touch them
+### F145 — a revoked device kept its materialized plaintext index and its Loro document in memory, and the lock revocation fires did not touch them
 
 The second question S1 was scoped to answer. `lockSealedStore()` drops the AES key and the role set. It does not touch `#document` or `#index` — the plaintext Loro document and the fully materialized SQLite index over the whole workspace stay allocated in the Worker, and the runtime that holds them is the one whose authority just ended.
 
@@ -1543,7 +1551,19 @@ That may still be defensible as an unbuilt requirement whose mechanism — a Dev
 
 The one genuine ambiguity, recorded rather than resolved in the finding's favor: FDN-84's scope verb is "**Define** … revocation-wipe behavior," which can be read as defining a contract rather than implementing an erase. Its done criterion is an outcome rather than a definition, which reads the other way. What the delegation to FDN-63 covers is unambiguous, though — orchestration, meaning who fires the wipe and on what signal. The **mechanism**, a store capable of erasing itself, sits in the layer FDN-84 explicitly owns ("FDN-84 owns encryption of local persisted bytes, store lock/unlock behavior") and is absent.
 
-**Open, unresolved, and coupled to F144.** The two cannot be answered separately: purging memory on lock destroys F144's unflushed write unless the flush runs first. The coherent combination — flush the pending window, then lock, then purge, and report the outcome distinguishably — is a proposal and is deliberately not built. Reproduced by the same permanently named spec as F144.
+**Founder ruling on the phasing: a done-criteria gap, not a phase boundary.** The wipe was not deliberately deferred — FDN-84 promised it in its own criteria and was closed without it existing. Filed as **FDN-87**, with the record placed on FDN-84 itself as well, so the gap is visible from where it originated rather than absorbed silently into FDN-54's scope. FDN-84 is left Done rather than reopened: the parts it did deliver are delivered, and the fact that it was *marked* Done without the wipe is itself worth preserving.
+
+**Closed in two halves, along the boundary FDN-84 itself drew.**
+
+*The purge (in scope, built).* Authority ending now releases the plaintext: `#endLocalSession` flushes the open window while still authorized, locks, and then disposes the index and frees the document, returning the runtime to its pre-`initialize()` state rather than inventing a fourth lifecycle condition. A device that legitimately regains access re-unlocks and re-initializes, reading the last good snapshot — including that final flush — from disk.
+
+*The erase (the mechanism, built; the signal, not).* `SealedStore.erase` now exists — the `VPS-F001` G04 capability FDN-84 was closed without — reachable through a real `erase-local-store` protocol message and `LocalGraphClient#eraseLocalStore`. It is callable **while locked**, deliberately: a device that has lost authority can never unlock again, so an erase requiring an unlocked store would be unreachable in the only situation it exists for. Erasing destroys ciphertext rather than reading it, so it needs no key. It erases the named workspace only, leaving other workspaces on the same device untouched, and it does not touch the device identity, which is per-device and shared across workspaces this revocation says nothing about.
+
+**Nothing in production calls the erase, and that is a boundary rather than an omission — with a concrete reason, not a scoping preference.** The role-refresh checkpoint is non-enumerating by design, so its `401` means revoked OR user-suspended OR workspace-suspended OR **merely session-expired**. `VPS-F001` is explicit: "Nothing is wiped on expiry — only on explicit revocation or offboarding." Wiring the erase to the denial path would destroy the local store of every user whose session simply timed out — the F148 mistake exactly, an ambiguous answer treated as a security event. Distinguishing revocation from expiry needs a signal that says which, and that signal is FDN-63's revocation orchestration, as FDN-84's own ownership boundary already assigned.
+
+**That leaves an unwired mechanism, which is the F130/F133/F143 pattern, and it is labeled rather than argued away.** The difference is the same one the F143 ruling drew: this is a persistence capability with a narrow, honestly-stated gap, not a permission mechanism that could be mistaken for active enforcement. Its spec file, its protocol message and its runtime method all say in as many words that nothing fires it and that FDN-63 owns wiring it.
+
+Proven on the real stack: the erase removes the payloads with no readable remnant, erases **only** the workspace it was given, and works while the store is locked after a real revocation. Mutation-tested: a no-op erase fails two tests, and an erase that takes out every workspace on the device fails the bystander test.
 
 ---
 
