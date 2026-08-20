@@ -379,6 +379,68 @@ export class SealedStore {
     }
   }
 
+  /**
+   * FDN-87 (F145). The erase mechanism `VPS-F001` G04 requires and FDN-84
+   * was closed without: this workspace's persisted payloads and its envelope
+   * removed, leaving no readable remnant on disk.
+   *
+   * **Deliberately callable while LOCKED, and it takes the workspace id as an
+   * argument rather than reading it from the envelope.** A device that has
+   * lost authority can never unlock again — that is the entire point of
+   * F106's cold-restart checkpoint — so an erase that required an unlocked
+   * store would be unreachable in exactly the situation it exists for.
+   * Erasing needs no key: it destroys ciphertext rather than reading it.
+   *
+   * **The device identity is deliberately NOT erased.** `DEVICE_STORE` holds
+   * this device's half of the unlock secret, which is per-device and shared
+   * across every workspace on it; it is useless alone, and destroying it
+   * would take out the local stores of unrelated workspaces this revocation
+   * says nothing about. `VPS-F001`'s wipe is scoped to "the local store" of
+   * the workspace whose access ended.
+   *
+   * **This is a mechanism, not a policy, and nothing in production calls it
+   * yet.** Per FDN-84's own ownership boundary, FDN-63 owns revocation
+   * orchestration — which signal fires this, and when. That boundary is not
+   * bureaucratic here: the role-refresh checkpoint is non-enumerating, so its
+   * `401` means revoked OR suspended OR merely expired, and `VPS-F001` is
+   * explicit that "Nothing is wiped on expiry — only on explicit revocation
+   * or offboarding." Calling this from the denial path would erase the local
+   * store of every user whose session simply timed out. See FDN-87.
+   */
+  async erase(workspaceId: string): Promise<void> {
+    const database = await this.#requireDatabase();
+
+    const transaction = database.transaction(
+      [PAYLOAD_STORE, ENVELOPE_STORE],
+      "readwrite",
+    );
+    const payloads = transaction.objectStore(PAYLOAD_STORE);
+
+    // Cursored and matched on the record's own `workspaceId` field rather
+    // than on a key prefix. The key is `${workspaceId}:${storeKey}` and a
+    // prefix range would depend on no store key ever containing a colon —
+    // a constraint nothing enforces and a future caller would not know to
+    // preserve. Under-erasing here would leave readable ciphertext behind.
+    const cursorRequest = payloads.openCursor();
+    await new Promise<void>((resolve, reject) => {
+      cursorRequest.onsuccess = () => {
+        const cursor = cursorRequest.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        const record = cursor.value as PayloadRecord | undefined;
+        if (record?.workspaceId === workspaceId) cursor.delete();
+        cursor.continue();
+      };
+      cursorRequest.onerror = () =>
+        reject(cursorRequest.error ?? new Error("Could not scan sealed payloads"));
+    });
+
+    transaction.objectStore(ENVELOPE_STORE).delete(workspaceId);
+    await transactionDone(transaction);
+  }
+
   dispose(): void {
     this.lock();
     this.#database?.close();
