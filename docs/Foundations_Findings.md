@@ -1745,6 +1745,38 @@ This is not a data-safety defect — nothing is exposed, nothing is corrupted, t
 
 ---
 
+### F150 — FDN-63 bundles device registration, trust and revocation orchestration with protected-partition bootstrap, and only the second half needs the blockers gating the whole issue
+
+Surfaced pre-emptively while scoping FDN-63's decision memo, following the exact pattern already corrected five times in this project — F82, F92, F107/F114, and the FDN-49/FDN-50 and FDN-85/FDN-84 splits: a downstream concern's blocker attached to a whole issue rather than to the slice that actually needs it.
+
+**What FDN-63 lists, checked against what its scope bullets actually require, one at a time, rather than assumed from the relation graph.**
+
+FDN-63's scope is five bullets: device registration/naming/trust/revocation; consuming FDN-84's sealed store; consuming FDN-52's key lifecycle "when initializing protected partitions"; bootstrapping only authorized partitions; handling lost/stale/newly-approved devices. Its current `blockedBy` is FDN-85, FDN-60, FDN-52, FDN-51.
+
+* **FDN-60 (Done).** Genuinely a hard dependency — device registration needs a real session and a real user. Satisfied.
+* **FDN-84 (Done, `relatedTo` not `blockedBy`).** Genuinely load-bearing — device registration extends the `deviceId`/sealed-store convention FDN-84 already built (`services/api/src/auth/schema.ts`'s `device_unlock_secret` table already has a per-workspace `deviceId`, `keyEpoch` and `revokedAt`). Satisfied.
+* **FDN-52 (Backlog).** Its own scope bullet says "when initializing **protected** partitions" — Tier 1/3 only, per its own done criteria ("Unauthorized devices cannot decrypt or receive restricted partitions"). Device registration, trust establishment, revocation orchestration and bootstrapping Tier 0/2 partitions need none of it. Only the sub-scope of bootstrapping Tier 1/3 content does.
+* **FDN-85 (Backlog).** Owns projecting Workspace and WorkspaceMembership as graph NODES — confirmed registered in `packages/schema`'s registry already (A002-T09), but not yet projected into any local document. But the mechanism that actually decides "which partitions a member may access" is `deriveEffectiveRoles`, reading `SealedStore.roles` — populated directly from the server's unlock/refresh grant (`requestDeviceUnlock`, `requestDeviceRoleRefresh`), never by querying a local WorkspaceMembership node. FDN-53's whole permission-interceptor pass (F127 through F148) built and proved this without FDN-85 existing. Device registration, trust and role-driven partition filtering do not need Workspace/Membership to exist as graph objects — only a feature that wants to *render* the workspace or its members *from the graph* would.
+* **FDN-51 (Backlog).** Genuinely load-bearing, but for a narrower case than "bootstrap" as a whole: a device joining a workspace that already has history from OTHER devices has no way to obtain that history without cross-device delta sync. A workspace's first device — or any device building its own history from its own mutations — starts from an empty local document and needs nothing from FDN-51, which is exactly what every existing FDN-50/FDN-53 browser proof already does (`initialize()` on a fresh workspace, then `mutate` builds the document up).
+
+**The narrow, buildable slice: device identity, trust, and revocation orchestration.** Register a Device entity (`VPS-F001` names its fields: `device_id`, `user_id`, `device_name`, `platform`, `application`, `push_token`, `registered_at`, `last_active_at`, `is_revoked` — none of this exists as a table yet, distinct from `device_unlock_secret`, which is FDN-84's narrower per-workspace secret). Build the enumerable revocation signal this project's own F148 fix proved is missing at the orchestration layer — see F150's sibling reasoning below. Wire it to FDN-87's `eraseLocalStore`. None of this needs FDN-52, FDN-85, or FDN-51.
+
+**What genuinely stays blocked:** bootstrapping a device's Tier 1/3 partitions (needs FDN-52) and bootstrapping ANY partition on a device joining a workspace with prior history from other devices (needs FDN-51). These remain a real, correctly-blocked remainder.
+
+**Raised, not decided.** A concrete split is proposed in the FDN-63 decision memo (Linear comment, same issue) for founder review before any issue is split or any code is written. Recorded here so the reasoning is checkable independent of whichever way the memo is ruled.
+
+---
+
+### F151 — the revocation signal FDN-87 deliberately left unbuilt cannot be the non-enumerating `401` F148 just finished distrusting
+
+Companion to F150, raised in the same memo. `VPS-F001` already describes the correct enumerable signal in its own UI spec — a `danger` **Revoke** action on the Devices table, explicit and human-triggered — and A003-T16 separately names "a demotion or role change removing Tier 1 authorization" as its own revocation event. Both are already positive, nameable events in the source specs. Nothing has built either as a real signal a device can receive.
+
+F148's fix drew a hard line at the session layer: only an authoritative `401`/`403` may lock the device; a transient failure must not. The same reasoning applies one layer up, at the orchestration layer FDN-63 owns, and applies with higher stakes — a wipe is irreversible from the device's side (`VPS-F001`'s own words, of the Devices table's Revoke action), where a lock is merely inconvenient. Whatever FDN-63 builds must distinguish, as separate and equally real states, at minimum: explicit device revocation (this device only), membership revocation or offboarding (all of this user's devices in this workspace, per A003-T16, on next connection per `VPS-A003`'s lazy-revocation model), and — the state that must never trigger a wipe — mere session expiry or a transient failure, exactly as `VPS-F001` states plainly: "Nothing is wiped on expiry — only on explicit revocation or offboarding."
+
+**Raised, not decided.** No signal shape is proposed as final here; the memo proposes it for review. Recorded so a future implementation is checked against this requirement rather than reinventing F148's mistake at a layer with a worse failure mode.
+
+---
+
 ## What did not change
 
 **No permission grant, anywhere.** Every access decision after this pass is one that `VPS-A004`'s matrix already stated. The corrections moved facts to the layer that enforces them and gave duplicate concepts one name each. A reader who knew the intended behavior before would find nothing new in the behavior — only in whether a machine can now confirm it.
