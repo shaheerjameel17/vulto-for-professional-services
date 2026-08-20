@@ -5,7 +5,7 @@ import type { LightMyRequestResponse } from "fastify";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { db, closeDatabase } from "../db.js";
 import { buildServer } from "../server.js";
-import { account, member, session, user } from "./schema.js";
+import { account, deviceUnlockSecret, member, session, user } from "./schema.js";
 import {
   confirmWorkspaceAdmission,
   createPendingWorkspaceAdmission,
@@ -507,5 +507,71 @@ describe("F148 — the role-refresh checkpoint separates its failures from its d
     // The counterweight to the test above: separating failures from denials
     // must not weaken the denial itself.
     expect(response.statusCode).toBe(401);
+  });
+});
+
+/**
+ * F151. `device-revocation-signal.spec.ts`'s cascading-priority browser test
+ * hand-constructs the "membership revoked, and every device secret went
+ * with it" state with two raw SQL updates — deliberately, since the
+ * Playwright suite has no HTTP endpoint that calls `revokeWorkspaceAdmission`
+ * in production yet (membership removal is unbuilt feature work). That
+ * proves the CLASSIFIER's priority logic against a state matching what the
+ * cascade produces; it does not exercise the cascade itself.
+ *
+ * This closes that gap directly: `revokeWorkspaceAdmission` is called for
+ * real, in the same process, on a real registered device — proving the
+ * ACTUAL transaction (not a hand-built imitation of it) produces the
+ * classification F151 relies on.
+ */
+describe("F151 — the real revocation cascade classifies as membership-revoked", () => {
+  it("a real revokeWorkspaceAdmission cascades to the device secret, and the checkpoint reports membership-revoked", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId, membershipId } = await addWorkspace(
+      userId,
+      `f151-cascade-${randomUUID()}`,
+    );
+    const deviceId = `f151-cascade-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+    const unlockResponse = await app.inject({
+      method: "POST",
+      url: "/device-store/unlock",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId },
+    });
+    expect(unlockResponse.statusCode, "the device must register successfully").toBe(
+      200,
+    );
+
+    // The real function, not a hand-simulated cascade.
+    await revokeWorkspaceAdmission(membershipId);
+
+    // The cascade's own effect, checked directly: this device's secret was
+    // revoked as a SIDE EFFECT of the membership revocation, not because
+    // anything targeted this device specifically.
+    const [secret] = await db
+      .select({ revokedAt: deviceUnlockSecret.revokedAt })
+      .from(deviceUnlockSecret)
+      .where(
+        sql`${deviceUnlockSecret.workspaceId} = ${workspaceId} and ${deviceUnlockSecret.deviceId} = ${deviceId}`,
+      );
+    expect(
+      secret?.revokedAt,
+      "revokeWorkspaceAdmission's own transaction must have revoked this device's secret",
+    ).not.toBeNull();
+
+    // The checkpoint's classification, against that REAL state.
+    const rolesResponse = await app.inject({
+      method: "POST",
+      url: "/device-store/roles",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId },
+    });
+    expect(rolesResponse.statusCode).toBe(401);
+    const body = JSON.parse(rolesResponse.body) as { revocation?: { kind?: string } };
+    expect(
+      body.revocation?.kind,
+      `must be classified membership-revoked against the real cascade: ${rolesResponse.body}`,
+    ).toBe("membership-revoked");
   });
 });
