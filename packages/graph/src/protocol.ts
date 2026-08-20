@@ -143,6 +143,16 @@ export const graphWorkerRequestSchema = z.discriminatedUnion("type", [
   // server and updates the in-memory role the interceptor reads, without a
   // full re-`unlock-sealed-store`.
   messageBaseSchema.extend({ type: z.literal("refresh-role") }),
+  // FDN-87. `VPS-F001` G04's erase, as a message rather than a decision:
+  // this is the MECHANISM. Nothing in this package decides when it fires —
+  // FDN-63 owns revocation orchestration, and the reason that boundary is
+  // real rather than bureaucratic is that the role-refresh checkpoint is
+  // non-enumerating, so its denial cannot distinguish revocation (wipe) from
+  // an expired session (`VPS-F001`: "Nothing is wiped on expiry").
+  messageBaseSchema.extend({
+    type: z.literal("erase-local-store"),
+    workspaceId: z.string().min(1),
+  }),
   messageBaseSchema.extend({ type: z.literal("dispose") }),
 ]);
 
@@ -228,6 +238,10 @@ const payloadOpenedResultSchema = z
   })
   .strict();
 
+const localStoreErasedResultSchema = z
+  .object({ kind: z.literal("local-store-erased") })
+  .strict();
+
 const disposedResultSchema = z.object({ kind: z.literal("disposed") }).strict();
 
 const roleRefreshedResultSchema = z
@@ -252,6 +266,7 @@ export const graphWorkerSuccessSchema = messageBaseSchema.extend({
     payloadOpenedResultSchema,
     disposedResultSchema,
     roleRefreshedResultSchema,
+    localStoreErasedResultSchema,
     ...graphQueryResultSchema.options,
   ]),
 });
@@ -288,6 +303,21 @@ export const graphWorkerErrorSchema = z
           // store as a side effect a caller should not have to infer from
           // a generic runtime-failure.
           "role-refresh-denied",
+          // F148 (S4). The checkpoint could not answer — offline, a 5xx, a
+          // rate limit, a malformed body. Explicitly NOT "role-refresh-denied":
+          // that code means the server ruled on this device and the store is
+          // now locked, and reporting a server outage with it told callers
+          // that a revocation had happened when none had. This code carries
+          // no lock and no ruling; the device's roles are simply stale.
+          "role-refresh-unavailable",
+          // F144. Writes that were acknowledged as `applied` but had not yet
+          // reached disk were discarded. Its own code because a caller
+          // switches on codes, not on prose: before this, losing a
+          // durability window and an ordinary locked store produced the
+          // byte-identical report, so no caller could tell that anything had
+          // been lost. Never fatal — the data loss has already happened, and
+          // killing the Worker over the report is what swallowed it.
+          "local-writes-discarded",
         ]),
         message: z.string().min(1),
         fatal: z.boolean(),

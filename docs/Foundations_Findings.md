@@ -1475,6 +1475,188 @@ The distinction the path is missing is not "skip the check for remote deltas." A
 
 ---
 
+### F144 — a revocation landing inside the flush window discarded an acknowledged, authorized write, and reported it in words a caller could not tell apart from an ordinary lock
+
+Surfaced running **S1**, the first of the three concurrency-seam scenarios the Data Foundation integration review scoped but left filed on FDN-54. The seam is four components wide, which is why no stage-level suite sees it — each component is correct on its own: F127's role poll (FDN-53 stage 1) locks the store on a denial, `SealedStore` (FDN-84) refuses everything once locked, the flush is debounced 250ms (FDN-50 stage 2), and `mutate` (FDN-53 stage 2) authorizes, merges and materializes before that window opens.
+
+`mutate` authorizes a batch against the roles this device holds, merges it, materializes it, answers `applied`, and schedules the durable write for 250ms later. Inside that window the membership is revoked; the next role refresh is denied; `refreshRoleOnline` locks the sealed store. The flush timer then fires into a locked store and throws into `#pendingFlushError`. The write never reaches disk, and nothing ever says so.
+
+**"Never reaches disk" is the accurate claim, and an earlier draft of this finding overstated it as "the write is gone."** Independent verification caught it. The deltas are still merged in the in-memory document, and `#persist` exports the document's whole current state rather than a captured diff — so a later successful flush, after a successful re-unlock, would carry them out along with everything else. F145's own instrument demonstrates exactly that. What is true is narrower and still serious: the write is **not durable**, it does not survive the Worker instance, and nothing retries it — `#flushBeforeTeardown` finds the timer already fired and the flush already settled, so `dispose()` does not re-attempt it, and no `beforeunload` or `pagehide` handler exists anywhere. For a genuinely revoked device the loss is permanent in practice, because the re-unlock that would let a later flush succeed is itself denied.
+
+**Reproduced on the real stack, with controls, before anything was proposed** — real Postgres, real Chromium, real `SealedStore` behind a real online unlock, real Loro and SQLite WASM, a real revocation through the real `member` row (`status = 'revoked'`, exactly what `requireCurrentWorkspaceSession` refuses), and the real production `mutate`/`refresh-role`/`query` protocol messages. The write is authorized and acknowledged `applied`, and is absent from disk on a genuinely new Worker afterwards, while the pre-revocation seed is still there.
+
+Three controls, because a missing row near a revocation has many possible causes and only one of them is this finding:
+
+* **The window is the cause.** The identical write, with the revocation allowed to land *after* the 250ms window closes, is durable. Same write, same revocation, same reopen, one difference.
+* **The loss is silent.** A lock that discarded a write and a lock that discarded nothing produce the byte-identical report: `runtime-failure: The sealed local store is locked`. `SealedStoreLockedError` carries one fixed message and is thrown both by `SealedStore.put` (the failed flush, captured into `#pendingFlushError`) and by the `roles` getter (`mutate`'s own first read of a locked store); both reach `entry.ts`'s generic catch and become the same `runtime-failure` code with the same message, and an error response carries no other discriminant. Asserted from **both** sides — the lossy run and the lossless run each assert the identical pinned string — so the reproduction fails the moment either side is made distinguishable. Mutation-tested: making `#pendingFlushError` throw a distinct "writes were discarded" error fails the lossy assertion and leaves the lossless one passing.
+* **Nobody has to do anything.** With no `refreshRole()` call and no interaction at all, the runtime's own 15-second poll locks the store on its own, ~14.9s after the revocation.
+
+**FDN-54's own framing of this needs correcting in one direction and strengthening in the other.** It said the flush "throws into `#pendingFlushError` unobserved until the next call." Observed, that is optimistic: if the next call is a **query**, the error is never observed at all — `executeQuery` never calls `#throwPendingFlushError`, its own lock failure is reported as a *fatal* `runtime-failure`, the client terminates the Worker, and `#pendingFlushError` dies with it, never having been read. And where the mechanism does get its chance — `mutate` or `dispose()`, both of which call it first — it fires and still tells the caller nothing, because of the shared message above. `#pendingFlushError`'s promise that a background failure is "never swallowed" is met in letter and not in substance.
+
+Worth naming separately: reporting a merely **locked** store as `fatal: true` is itself questionable. Locking is recoverable — a re-unlock fixes it — yet it terminates the Worker for the rest of the session and destroys the in-memory document. That choice is what swallows `#pendingFlushError` here, and it is also what bounds F145's exposure.
+
+**Two questions, and only one of them is open.**
+
+*Whether losing the write is correct* is a genuine ruling, not a defect with an obvious fix, and it is left for the founder. The case for losing it: the device is revoked, and even a successful flush would strand the write in a local store the device can never reopen — `VPS-A003`'s cold-restart checkpoint denies the unlock — so it would be recoverable only if the membership were restored. The case against: F139 already ruled that a clean, deliberate in-app transition must flush its window rather than kill it, and the instant before the lock is applied this device is still authorized, which is exactly F139's situation. The two rule differently on the same shape of event, and that inconsistency is the thing to settle.
+
+*That the loss is silent* is a defect on either ruling. Whichever way the write goes, a caller must be able to tell "your store locked" from "your store locked and writes were discarded," and today cannot.
+
+**Founder ruling: losing the write is not correct.** At the instant before the lock this device's writes were legitimate and the user had been told they were `applied`. F139 already ruled that a clean, deliberate transition flushes its window rather than killing it, and a revocation arriving is that same shape of event from this device's side.
+
+**Closed by repository fix, as an ordering in which every step is load-bearing: flush while still authorized, then lock, then purge.** Flushing after the lock is impossible — the store refuses — and purging before the flush would destroy the writes the flush exists to save. That is why this is an order rather than a set of independent steps, and why it is implemented as one sequence (`#endLocalSession`) rather than three call sites that a later edit could reorder.
+
+**The second half — the silence — is closed too, and separately.** A discarded durability window now raises `PendingFlushDiscardedError` and reports under its own protocol code, `local-writes-discarded`, rather than re-throwing the raw `SealedStoreLockedError` whose fixed message an ordinary locked-store call also produces. It is non-fatal on purpose: terminating the Worker over the report is precisely what destroyed it before anyone read it. Asserted from both sides, so collapsing them back together fails two tests rather than none.
+
+**F148's fix independently reduced the reach of this finding.** The loss requires a lock landing inside the flush window, and until F148 was closed *any* server hiccup produced that lock. Only a genuine revocation does now.
+
+Proven by the permanently named spec, which is written in pairs the way F148's is: the write survives revocation landing in its window; no plaintext remains queryable afterwards; **an ordinary lock does not purge**; a genuinely discarded window reports distinguishably while a lossless one does not; and the unattended poll still triggers the whole sequence with no interaction.
+
+Mutation-tested against four mutants, each caught by the test built for it: removing the purge fails Q2; purging on *every* lock — the over-correction, and the F148 mistake pointing the other way — fails the paired test; removing the pre-lock flush fails Q1; and reverting the discarded-window report to its raw cause fails the reporting test.
+
+---
+
+### F145 — a revoked device kept its materialized plaintext index and its Loro document in memory, and the lock revocation fires did not touch them
+
+The second question S1 was scoped to answer. `lockSealedStore()` drops the AES key and the role set. It does not touch `#document` or `#index` — the plaintext Loro document and the fully materialized SQLite index over the whole workspace stay allocated in the Worker, and the runtime that holds them is the one whose authority just ended.
+
+**Proven, not read off the source.** Structure alone would only show the code does not free them; it would not show the plaintext is intact. The instrument is the write F144 discards: that node is provably *not* on disk, so if it can still be read, the only place it can have come from is memory the Worker held across the revoked interval. After a revocation locked the store, re-unlocking the **same** Worker — no reload, no re-initialize, the same `LocalGraphClient#unlockSealedStore` the locked shell's Retry button calls — returns it. Re-granting is how the plaintext is *read*; it is not how it is retained.
+
+**This is residency, not a live read path, and the distinction is worth keeping straight.** All twelve protocol messages were enumerated: `query` throws at the roles getter, `open-payload` and `seal-payload` throw at the sealed store's own guard, `initialize`, `mutate` and `refresh-role` all throw, and `get-availability`, `get-sealed-store-status`, `lock-sealed-store` and `dispose` return no graph data. `materializedIndexForDiagnostics` is reachable only from `worker/testing/`, never from `entry.ts`. No production message returns graph data while locked.
+
+**Two corrections to an earlier draft of this finding, both from independent verification, and both matter.**
+
+*The exposure is bounded more tightly than first written.* An earlier draft said the plaintext is resident "for as long as the tab lives." It is resident until the tab closes **or the first `query`/`mutate` after the lock**, whichever comes first — because that call's failure is reported as fatal and the client terminates the Worker, freeing the heap. The draft noted the fatal termination in the next breath without noticing it bounds the very window it had just described.
+
+*`apply-delta-batch` is not lock-gated.* It checks neither the lock nor permission — only the pending flush error and that the document and index exist. On a locked store it will merge deltas into the retained plaintext document and re-materialize the index. It returns no graph data, so the read claim above survives, but "the lock's purpose is to make this device unable to serve workspace data" is too generous: a revoked Worker can still be made to **write** the plaintext it retains. It is demoted off `LocalGraphClient` (F131) and reachable only through an env-gated diagnostics route, so this is defense-in-depth rather than a live hole — but it belongs here, not least because freeing `#document` and `#index` would turn this path into a crash rather than a refusal.
+
+**The claim that this violates no specification was WRONG, and the correction raises the finding's severity.** An earlier draft asserted it, having checked `VPS-A003` and `VPS-A004` and never opened `VPS-F001` — which is the document that owns the fact. `VPS-F001` is unambiguous, in four places:
+
+* G04: "**Revocation wipes the store entirely within 60 seconds of signal receipt**"
+* Device revocation: "the local store is wiped within 60 seconds of the signal being received — whether the device is online at the moment of revocation or reconnects later"
+* Its acceptance criterion and its non-functional requirements both restate the same 60-second bound
+* And "Nothing is wiped on expiry — **only on explicit revocation or offboarding**" — so a membership revocation, which is what this reproduction performs, is a named wipe trigger, not merely device revocation
+
+A003-T16 also carries no "persisted data only" restriction; that qualifier was this finding's own gloss, added in the direction that made the current behavior conform. And `VPS-A003`'s "cannot retroactively make someone un-see data they already decrypted" was being stretched: in context it is about lazy key rotation and data a person could already have copied — an inherent limit of cryptography, not a licence for the running process to keep a queryable plaintext index of the whole workspace after revocation.
+
+**So the honest statement is the opposite of the draft's.** The role-refresh denial is the first and only moment in the built system where a device learns it has been revoked — the natural signal-receipt point — and its entire response is `lockSealedStore()`, which wipes nothing: not the persisted ciphertext, not the in-memory plaintext. `VPS-F001` G04 requires an entire wipe within 60 seconds and **nothing anywhere implements one**. This phase has built the trigger without the response.
+
+That may still be defensible as an unbuilt requirement whose mechanism — a Device node, a revocation signal queue, a wipe path — belongs to `VPS-A003` and the device-management feature, neither of which is in this phase. But that is a scoping argument, and it has to be made rather than assumed. This is the F130 pattern exactly: a specified control that is unbuilt, where the gap is live rather than deferred, and where the danger is a reader assuming the lock is doing the wipe's job.
+
+**The phasing question, answered by checking rather than by assuming.** Whether `VPS-F001`'s wipe was ever scoped into or out of this phase was researched before any ruling, and the answer is none of the three expected ones. It was **scoped in — explicitly — to an issue that is now closed as Done.**
+
+* **FDN-84** ("Encrypt local device storage and define offline unlock", **Done**) names **`VPS-F001` — G04** in its own source specs: the exact clause carrying the 60-second wipe. Its scope reads "Define creation, online unlock, lock, key replacement, corruption, wrong-key, sign-out and **revocation-wipe** behavior," and one of its done criteria is "Sign-out, **revocation** and explicit **wipe** make local graph ciphertext unavailable under the source specifications."
+* **FDN-63** ("Register trusted devices…", **Backlog**, never started) is named in FDN-84's own ownership boundary as owning "**revocation orchestration** across those existing layers," with a done criterion that device removal updates unlock and key behavior.
+* **No phasing document mentions a wipe at all** — not `VPS-002`, not `VPS-A001`, not `docs/Bootstrap.md`, not `CLAUDE.md`. The scoping happened entirely in the issue tracker.
+* **Nothing implements one.** `SealedStore` has no delete, clear or `deleteDatabase` path; `dispose()` locks and closes the handle, leaving the ciphertext in IndexedDB.
+
+The one genuine ambiguity, recorded rather than resolved in the finding's favor: FDN-84's scope verb is "**Define** … revocation-wipe behavior," which can be read as defining a contract rather than implementing an erase. Its done criterion is an outcome rather than a definition, which reads the other way. What the delegation to FDN-63 covers is unambiguous, though — orchestration, meaning who fires the wipe and on what signal. The **mechanism**, a store capable of erasing itself, sits in the layer FDN-84 explicitly owns ("FDN-84 owns encryption of local persisted bytes, store lock/unlock behavior") and is absent.
+
+**Founder ruling on the phasing: a done-criteria gap, not a phase boundary.** The wipe was not deliberately deferred — FDN-84 promised it in its own criteria and was closed without it existing. Filed as **FDN-87**, with the record placed on FDN-84 itself as well, so the gap is visible from where it originated rather than absorbed silently into FDN-54's scope. FDN-84 is left Done rather than reopened: the parts it did deliver are delivered, and the fact that it was *marked* Done without the wipe is itself worth preserving.
+
+**Closed in two halves, along the boundary FDN-84 itself drew.**
+
+*The purge (in scope, built).* Authority ending now releases the plaintext: `#endLocalSession` flushes the open window while still authorized, locks, and then disposes the index and frees the document, returning the runtime to its pre-`initialize()` state rather than inventing a fourth lifecycle condition. A device that legitimately regains access re-unlocks and re-initializes, reading the last good snapshot — including that final flush — from disk.
+
+*The erase (the mechanism, built; the signal, not).* `SealedStore.erase` now exists — the `VPS-F001` G04 capability FDN-84 was closed without — reachable through a real `erase-local-store` protocol message and `LocalGraphClient#eraseLocalStore`. It is callable **while locked**, deliberately: a device that has lost authority can never unlock again, so an erase requiring an unlocked store would be unreachable in the only situation it exists for. Erasing destroys ciphertext rather than reading it, so it needs no key. It erases the named workspace only, leaving other workspaces on the same device untouched, and it does not touch the device identity, which is per-device and shared across workspaces this revocation says nothing about.
+
+**Nothing in production calls the erase, and that is a boundary rather than an omission — with a concrete reason, not a scoping preference.** The role-refresh checkpoint is non-enumerating by design, so its `401` means revoked OR user-suspended OR workspace-suspended OR **merely session-expired**. `VPS-F001` is explicit: "Nothing is wiped on expiry — only on explicit revocation or offboarding." Wiring the erase to the denial path would destroy the local store of every user whose session simply timed out — the F148 mistake exactly, an ambiguous answer treated as a security event. Distinguishing revocation from expiry needs a signal that says which, and that signal is FDN-63's revocation orchestration, as FDN-84's own ownership boundary already assigned.
+
+**That leaves an unwired mechanism, which is the F130/F133/F143 pattern, and it is labeled rather than argued away.** The difference is the same one the F143 ruling drew: this is a persistence capability with a narrow, honestly-stated gap, not a permission mechanism that could be mistaken for active enforcement. Its spec file, its protocol message and its runtime method all say in as many words that nothing fires it and that FDN-63 owns wiring it.
+
+Proven on the real stack: the erase removes the payloads with no readable remnant, erases **only** the workspace it was given, and works while the store is locked after a real revocation. Mutation-tested: a no-op erase fails two tests, and an erase that takes out every workspace on the device fails the bystander test.
+
+---
+
+### F146 — `VPS-D004`'s locked shell is specified as a cold-start condition, and F127 created a mid-session locked state the document does not cover
+
+Found while reproducing F145, and recorded against the document that owns the fact rather than the component.
+
+`VPS-D004`'s locked-shell section defines *when it renders* as "immediately on cold start — including a Worker restart from a tab reload… before the sidebar, page header, panel or any content mounts, whenever that unlock has not yet succeeded in this process." `LockedShellGate` implements precisely that: it reads the sealed-store status once, on mount, and never again.
+
+Observed on the real stack: after a revocation locked the store mid-session, the shell went on rendering its unlocked content. The store was locked and the interface said otherwise. Nothing re-checks, so the condition surfaces only when the user next touches something that needs the store — at which point it arrives as a fatal Worker failure rather than as the locked shell.
+
+**Two qualifications, from independent verification, that keep this the right size.** The shell observed was the *diagnostics harness's*, and `LockedShellGate` is currently consumed only by the three diagnostics routes — no product shell mounts it yet. So this has no live user-facing consequence today; it is a gap to close before one does. And by `VPS-D004`'s own literal wording a mid-session-revoked device is not in the Locked state at all, since an unlock *did* complete in this process — which makes `LockedShellGate` conformant rather than merely uninstructed, and sharpens the point: the document does not under-specify this state, it defines it in a way that excludes it.
+
+**This is a gap in the specification, not a component that disobeyed it.** When `VPS-D004` was written nothing could lock a live store; every locked state was a cold start, and the section's language reflects that honestly. FDN-53 stage 1's F127 role-refresh denial introduced the mid-session lock afterwards, and no document was revisited.
+
+**Proposed correction, for `VPS-D004` to make.** The locked-shell section gains the mid-session condition explicitly, and states which treatment it takes. It cannot simply inherit the cold-start one by extension: that treatment is defined as rendering before any content mounts, and a mid-session lock has content already on screen and possibly half-entered work in it — the case the existing section assumes away. `VPS-D004`'s own non-enumeration rule already constrains the answer, and still holds: a denied revocation and an unreachable server must render identically.
+
+**Closed by founder ruling and specification correction.** `VPS-D004`'s locked-shell section now defines Locked as having **two entries** rather than one — cold-start locked, and mid-session locked — and says plainly that the original single definition excluded the second by wording rather than by decision, because nothing could seal a live store when it was written.
+
+The mid-session case takes the same full-bleed treatment (the store is sealed, so there is nothing legitimate left to render around it) with two differences, both because content was already on screen: unsaved work in progress is not silently discarded by the transition, and the copy names the transition instead of reading as a startup step. The section also now states that only an authoritative denial produces this condition, per F148 — an unreachable or erroring server is not a lock and must not render as one.
+
+One further correction went in alongside it, because F148 proved the confusion was live rather than theoretical: non-enumeration governs **what is rendered, never what the client concludes**. A device may distinguish a denial from a failure precisely enough to decide whether to seal its own store, while still rendering both identically when it does show Locked. Reading that rule as forbidding the distinction is what produced F148.
+
+---
+
+### F147 — the permission interceptor read the caller's role array live, so a narrowing arriving mid-traversal changed the hops it had not reached yet
+
+**S3**, the second of FDN-54's three concurrency-seam scenarios, and the finding is not the one S3 predicted.
+
+S3 was filed as: "`executeQuery` snapshots roles once; `interceptedRecursiveNeighbors` then loops hop-by-hop with awaits between, so a narrowing landing at hop 2 does not affect hops 3+. A consistent snapshot is defensible, but it is currently emergent rather than decided."
+
+**The premise was wrong. `executeWithPermissions` did not snapshot anything.** It held a live reference to the caller's array and passed that same reference down through every hop, and `bestResolution` re-reads it for every fragment it filters. `readonly PolicyRole[]` does not prevent this — it stops the interceptor mutating the caller's array, not the caller mutating its own.
+
+Demonstrated rather than argued, against the real interceptor: a `recursive-neighbors` walk that began with `["owner"]`, whose array is narrowed in place to `["team-member"]` between hop 1 and hop 2, returns **nothing at all**. Hop 1 was resolved at Owner authority; every hop after it was filtered as a Team Member, so the intermediate node became invisible and the walk never expanded through it. The result is one no single role set would ever have produced.
+
+**The consistency S3 credited to `executeQuery` was real, but at a different layer and by accident.** Both call sites in `runtime.ts` build a fresh array per call via `deriveEffectiveRoles`, and `SealedStore.refreshRoles` replaces `#roles` rather than mutating it — so the array reaching the interceptor is private to that call and nothing upstream retains a handle to narrow. Not reachable in production today. The single most obvious optimization on that path — caching the derived array instead of rebuilding it on every query — would have made it reachable, silently, with no test anywhere objecting.
+
+**Two containments FDN-54 did not account for, both of which shrink this and are worth recording so nobody re-derives them.**
+
+*Protocol messages cannot interleave with a query at all.* `entry.ts` serializes every request through one promise chain, so `refresh-role` and `lock-sealed-store` queue behind an in-flight query rather than racing it. The **only** thing that can change roles mid-query is `#startRolePolling`'s `setInterval`, which runs outside that chain.
+
+*It is not observable end to end today, for an independent reason.* The only materialized edge type is `managed_by`, Employee→Employee (F132), and no role resolves Employee to `none` — so no narrowing changes the outcome of the only traversal this stage can actually run. That is why this was proven at unit level against a `SQLiteGraphIndex` test double rather than on the real stack, and that limit is stated plainly rather than dressed up: the real-stack proof is not available until an edge type is registered whose endpoints some role cannot read, or until instance-scoped enforcement lands (F128, F130) and `own`/`own-plus-team` scopes start making role changes materially change traversal results.
+
+**Closed by repository fix, and the fix is the ruling.** `executeWithPermissions` copies the role set once, at the top, and every branch reads the copy: **a query is evaluated against the roles held when it started, and a role change lands on the next query rather than partway through one.** That is the answer S3 asked for, and it is now the interceptor's own guarantee rather than an accident of two callers upstream. It changes no behavior today, which is the point — it makes a property that was true by luck true by construction.
+
+Proven by two permanently named tests in `interceptor.test.ts`, covering the multi-hop walk and a single-shot query. Mutation-tested: restoring the live reference fails both.
+
+**One consequence, now decided rather than emergent.** A traversal in flight when a revocation-driven lock fires still completes at the authority it started with, because the snapshot outlives `lock()` nulling `#roles`. Bounded by one traversal — `maxDepth` at most 8 and `maxResults` at most 500, so a few hundred index queries. That is the correct behavior under the ruling above, and it is now a stated property rather than something a future reader has to rediscover.
+
+---
+
+### F148 — the device cannot tell "the server says you are revoked" from "the server had a problem," and treats both as revocation
+
+**S4**, the last of FDN-54's three concurrency-seam scenarios. Like S3, the finding is not the one S4 predicted, and S4's premise is corrected first because it is wrong.
+
+**S4's premise does not hold.** It was filed as a race: "on reconnect the ordering between 'pending flush lands' and 'first poll returns a denial' is racy, and if the flush wins, a revoked device persists writes authorized against arbitrarily stale roles." There is no such race, because `#persist` writes to IndexedDB and needs no network. Reproduced with the network genuinely cut: an offline write applies, its 250ms debounce elapses offline, and the bytes are durable before connectivity ever returns — confirmed by reopening on a new Worker and reading the node back. Nothing is pending at reconnect for the first poll to race. Offline writes authorized against stale roles are durable on the device immediately, which is the accepted offline-staleness tradeoff F106 and F127 already record, not a new race.
+
+**What driving the reconnect path actually found is worse and much more ordinary.** `fetchCurrentRoles` classifies the checkpoint's answer in one line — `if (!response.ok) throw new RoleRefreshDeniedError()` — so **every** non-2xx becomes a revocation: 500, 502, 503, a gateway timeout, a rate-limit 429. `refreshRoleOnline` locks the sealed store on that error.
+
+And the server makes it worse rather than better. `services/api/src/auth/http.ts`'s `/device-store/roles` handler catches any unexpected error — a database outage, a driver failure, a bug — logs it, and replies **`401`**. Not a 5xx. So an infrastructure failure does not merely arrive at the device as an ambiguous non-2xx; it arrives as an explicit "you are not authorized."
+
+**This contradicts the system's own stated intent, in writing.** `runtime.ts`'s polling loop says: "A poll tick's own failure (network blip while offline, or a **transient server error**) must not crash the Worker or stop future ticks... A genuine denial is handled inside `refreshRoleOnline` itself (locks the store)." The comment names a transient server error as precisely the thing that must not be treated as a denial. `fetchCurrentRoles` makes it one.
+
+**Reproduced on the real stack, with the membership asserted VALID at the end of every test** — the server never revoked anything in this entire file. A 503 injected on the role-refresh checkpoint locks the store, on a fully authorized Owner.
+
+Three consequences, each reproduced:
+
+* **The device never recovers on its own.** `lockSealedStore()` stops the poll timer *and* nulls `#apiOrigin`, and `refreshRoleOnline` throws immediately when `#apiOrigin` is null. So the spurious denial switches off the very mechanism that would notice the server is healthy again. Measured: more than a full poll interval after the outage ended, with a valid membership and a healthy server, the device is still locked and stays locked for the session.
+* **It silently destroys an authorized user's acknowledged write.** F144's data loss, triggered by a server hiccup instead of a revocation. Reproduced: an Owner's `applied` write, a 503 landing inside the 250ms window, and the write absent from disk afterwards while the pre-hiccup seed survives. This raises F144's severity considerably — being offboarded is rare, a 502 is not.
+* **The device then reports a server decision that never happened.** After the lock, every `refresh-role` returns "The server denied this device's role refresh request" without contacting the server at all, because the `#apiOrigin === null` throw is caught by the same handler that reports denials. Observed with the route un-intercepted and the server healthy.
+
+Compounded by F146: no shell ever re-checks, so none of this surfaces to the user until they touch something, at which point it arrives as a fatal Worker failure.
+
+**The argument on the other side was considered and rejected.** Treating an ambiguous answer as a denial is fail-closed, and F128's rule is that conservative wins anything ambiguous. It does not apply here, because this is not fail-closed in any useful sense: the plaintext this device already decrypted stays resident and readable (F145), so nothing is protected — while availability is destroyed for the session and an acknowledged write is silently lost. It fails closed for availability and open for confidentiality, which is the wrong way round.
+
+**Founder ruling: a server error must not lock the device. Only an explicit, unambiguous denial may.** Timeouts, 500-series responses, rate limits and network failures are "temporarily unable to reach the server, try again," never a security event.
+
+**Closed by repository fix, in both halves, which had to move together** — fixing either alone changes nothing, because the server was manufacturing the very 401 the client over-trusted.
+
+*Server.* `/device-store/roles` answers an internal failure with `503` and a message about the checkpoint, not `401` and a message about the caller's authorization. A denial is still `401`.
+
+*Client.* `fetchCurrentRoles` locks only on `401`/`403`. Everything else — transport failure, 5xx, 429, an unreadable 2xx body — raises a new `RoleRefreshUnavailableError`, which `refreshRoleOnline` does not lock on. The protocol gained `role-refresh-unavailable` alongside `role-refresh-denied`, so a caller is no longer told a revocation happened when none did; that also fixes the post-lock refresh reporting a server decision that was never requested.
+
+**The accepted consequence, stated rather than discovered later:** while the server is erroring, this device's roles go stale and stay stale. That is the same position an offline device is already in, bounded the same way — resolved on the next answer the server can actually give, per `VPS-F001`'s "within 60 seconds while online, or on next connection."
+
+**Proven, and written in pairs on purpose.** `graph-role-refresh-classification.spec.ts` is now the permanent proof rather than a reproduction: a 503 does not lock, the device works through an outage and picks its roles back up unattended, an authorized write survives a 503 landing inside the flush window — and, as the counterweight, a **real** revocation still locks and is still reported as a denial. Three integration tests in `auth.integration.test.ts` cover the server half, which the browser suite cannot reach because it intercepts the response before the server is involved; the failure there is induced by genuinely breaking the admission query rather than simulating it.
+
+Mutation-tested from both directions, which is the point of the pairing: restoring the pre-fix classification fails three tests and leaves the revocation test passing; over-correcting so that nothing ever denies fails **only** the revocation test. Reverting the server's 503 to a 401 fails the server-half test.
+
+**This directly reduces F144's severity.** F144's silent data loss is still open, but what made it common rather than rare was that any server hiccup produced the same lock. That door is now shut.
+
+---
+
 ### `VPS-A003` — FDN-84
 A clarifying paragraph in Offline behavior, and a Decisions-section entry, closing F119: "current process" means the Worker instance, so a tab reload requires the same online unlock as a device cold restart. A SharedWorker alternative is named as an available future softening rather than built now.
 
@@ -1550,6 +1732,18 @@ A confirming cross-reference beside A005-T07: FDN-80's `None`/`Restricted` rule 
 
 ### `VPS-002` — FDN-80
 The prototype scope list's *"structurally-absent compensation section"* corrected to reflect the revised rendering, with a note that the prototype-era description is superseded rather than silently rewritten.
+
+### F149 — a purged Worker reports itself uninitialized to a caller already in flight, with no render defined for that moment
+
+Small, named rather than left as a remark. Surfaced writing the mutation tests for F144/F145's fix.
+
+`#endLocalSession`'s purge returns the runtime to its pre-`initialize()` state. Correct for the next call — `query`, `mutate`, `initialize` all see a clean, honest "not initialized" and a caller re-opening the workspace proceeds normally. Not obviously correct for a call already **in flight** at the moment the purge runs: a `query` that was mid-round-trip when revocation landed resolves to `not-initialized` on a Worker its caller had every reason to believe was live and unlocked seconds earlier.
+
+This is not a data-safety defect — nothing is exposed, nothing is corrupted, the report is honest — and it does not block FDN-87 or F144/F145, which are closed. It is a rough edge in what the **application** does with that moment: today nothing distinguishes "you were never initialized" from "you were initialized and then your access ended out from under an in-flight call," and a shell built later could easily render the second as a confusing generic error rather than the locked-shell transition F146 now defines for exactly this kind of event.
+
+**Belongs with FDN-63**, not with this pass. "What a revoked-then-reinstated device experiences" is orchestration-adjacent UX, the same territory as the signal that will eventually call `eraseLocalStore`, and building a render for it now would be getting ahead of a shell that does not yet consume the locked state at all (per F146, no product screen does). Recorded here so it is findable when FDN-63 is scoped, not rediscovered.
+
+---
 
 ## What did not change
 

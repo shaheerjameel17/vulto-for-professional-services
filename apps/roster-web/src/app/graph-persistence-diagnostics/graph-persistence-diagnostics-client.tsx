@@ -47,6 +47,28 @@ interface GraphPersistenceDiagnosticsApi {
   /** Drops the sealed-store key from Worker memory, without disposing the Worker or the workspace binding — used to prove persist/reopen fail cleanly once locked. */
   lock(): Promise<void>;
   /**
+   * S1 (FDN-54). Re-unlocks the SAME Worker instance mid-session, without a
+   * reload — the identical `LocalGraphClient#unlockSealedStore` call the
+   * locked shell's Retry button makes, and no new production surface.
+   *
+   * `LockedShellGate` only reads the lock state once, on mount, so a store
+   * locked mid-session by a revocation never re-renders the gate and its
+   * Retry button is unreachable to a test. This exists so an S1 proof can
+   * ask the one question that distinguishes "the plaintext was retained"
+   * from "the plaintext was discarded": after a revocation locks the store,
+   * is the Worker's in-memory document and materialized index still there?
+   *
+   * Reported rather than thrown, so a denied re-unlock is an observation
+   * instead of a stack trace.
+   */
+  unlock(): Promise<{ unlocked: boolean; error?: string }>;
+  /**
+   * FDN-87. `VPS-F001` G04's erase, called directly on the same client every
+   * other method here uses — `eraseLocalStore` IS the mechanism's real
+   * surface, so there is no test seam between this harness and production.
+   */
+  eraseLocalStore(workspaceId: string): Promise<void>;
+  /**
    * Builds a self-contained Loro snapshot (a fresh scratch document, never
    * the runtime's own document) that sets one key on a fixed map name, and
    * returns it base64-encoded. This is FDN-50 stage 1's test-only way to
@@ -434,6 +456,19 @@ export function GraphPersistenceDiagnosticsClient() {
           await created.initialize();
         },
         lock: () => created.lockSealedStore(),
+        eraseLocalStore: (targetWorkspaceId) =>
+          created.eraseLocalStore(targetWorkspaceId),
+        unlock: async () => {
+          try {
+            await created.unlockSealedStore(apiOrigin);
+            return { unlocked: true };
+          } catch (error: unknown) {
+            return {
+              unlocked: false,
+              error: error instanceof Error ? error.message : String(error),
+            };
+          }
+        },
         buildSnapshot,
         applyDeltaBatch: async (base64Snapshots) => {
           const result = await created.applyDeltaBatch(base64Snapshots.map(fromBase64));

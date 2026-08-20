@@ -123,10 +123,19 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       if (error instanceof DeviceUnlockDeniedError) {
         return reply.code(401).send({ error: error.message });
       }
+      // F148. This route's answer is a DEVICE-FACING SECURITY DECISION: a
+      // 401 here locks the caller's sealed local store. So an error that is
+      // ours — a database outage, a driver failure, a bug — must never be
+      // reported as one about the caller's authorization. It previously
+      // was, which turned any infrastructure blip into a fleet-wide local
+      // lockout with silent data loss (F144).
+      //
+      // 503 says the only true thing: we could not answer. The device
+      // treats it as "try again," keeps its roles stale, and stays open.
       request.log.error(error);
       return reply
-        .code(401)
-        .send({ error: "This device is not authorized to unlock the local store" });
+        .code(503)
+        .send({ error: "The role refresh checkpoint is temporarily unavailable" });
     }
   });
 

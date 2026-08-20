@@ -8,6 +8,7 @@ import type {
   SQLiteGraphIndex,
 } from "../storage/sqlite-graph-index";
 import { executeWithPermissions, filterNode, isNodeTypeReadable } from "./interceptor";
+import type { PolicyRole } from "./policy-table";
 
 /**
  * A `SQLiteGraphIndex`-shaped test double. The real class needs a browser
@@ -418,5 +419,154 @@ describe("executeWithPermissions — recursive-neighbors, hop-2 non-leakage", ()
     expect(execute).not.toHaveBeenCalledWith(
       expect.objectContaining({ startNodeId: hop2 }),
     );
+  });
+});
+
+/**
+ * S3 (FDN-54) — a role narrowing landing partway through a traversal.
+ *
+ * `recursive-neighbors` walks hop by hop with an `await` between hops, and
+ * `bestResolution` re-reads the role array for every fragment it filters. The
+ * question S3 was filed to answer is what a role change arriving mid-walk
+ * should do to the walk already in progress, and the answer this suite pins
+ * is: nothing. A query is evaluated against the roles held when it started.
+ *
+ * This is not a hypothetical shape. In the Worker, the only thing that can
+ * change roles while a query is in flight is `#startRolePolling`'s
+ * `setInterval` — every protocol message, `refresh-role` included, is
+ * serialized behind `entry.ts`'s `work` promise chain and cannot interleave
+ * with a running query at all.
+ */
+describe("executeWithPermissions — S3, one role set per query", () => {
+  const hop1 = "11111111-1111-4111-8111-111111111111";
+  /** OrgScenario: Full to an Owner, structurally `none` to a Team Member. */
+  const hop2 = "22222222-2222-4222-8222-222222222222";
+  const hop3 = "33333333-3333-4333-8333-333333333333";
+
+  function traversalEdge(fromId: string, toId: string, edgeId: string) {
+    return {
+      edge_id: edgeId,
+      edge_type: "managed_by" as const,
+      from_node_id: fromId,
+      to_node_id: toId,
+      effective_from: null,
+      effective_to: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      created_by: "33333333-3333-4333-8333-333333333333",
+      metadata: null,
+      is_soft_deleted: false,
+      soft_deleted_at: null,
+      soft_deleted_by: null,
+    };
+  }
+
+  it("finishes a traversal under the roles it started with, even if the caller's array is narrowed mid-walk", async () => {
+    const hop2Node: MaterializedNode = {
+      nodeId: hop2,
+      nodeType: "OrgScenario",
+      fragments: [fragment("record", baseRecord(hop2, "OrgScenario"))],
+    };
+    const hop3Node = employeeNode(hop3);
+
+    // The caller's own array, mutated IN PLACE partway through the walk —
+    // the one thing `readonly PolicyRole[]` cannot prevent, since it
+    // constrains the interceptor rather than the array's owner.
+    const callerRoles: PolicyRole[] = ["owner"];
+
+    const { index } = fakeIndex(async (query) => {
+      if (query.kind !== "edge-neighbors") throw new Error("unexpected query kind");
+      if (query.startNodeId === hop1) {
+        // The narrowing lands here: hop 1 has been resolved as an Owner,
+        // hop 2 has not been filtered yet.
+        callerRoles.length = 0;
+        callerRoles.push("team-member");
+        return {
+          kind: "edge-neighbors",
+          neighbors: [
+            {
+              edge: traversalEdge(hop1, hop2, "d1111111-1111-4111-8111-111111111111"),
+              node: hop2Node,
+            },
+          ],
+          nextEdgeId: null,
+        };
+      }
+      if (query.startNodeId === hop2) {
+        return {
+          kind: "edge-neighbors",
+          neighbors: [
+            {
+              edge: traversalEdge(hop2, hop3, "d2222222-2222-4222-8222-222222222222"),
+              node: hop3Node,
+            },
+          ],
+          nextEdgeId: null,
+        };
+      }
+      return { kind: "edge-neighbors", neighbors: [], nextEdgeId: null };
+    });
+
+    const result = await executeWithPermissions(
+      index,
+      {
+        kind: "recursive-neighbors",
+        startNodeId: hop1,
+        direction: "outgoing",
+        edgeType: "managed_by",
+        fromNodeType: "Employee",
+        toNodeType: "Employee",
+        asOf: "2026-01-01T00:00:00.000Z",
+        maxDepth: 4,
+        maxResults: 200,
+        includeSoftDeleted: false,
+      },
+      { roles: callerRoles },
+    );
+
+    if (result.kind !== "recursive-neighbors") throw new Error("unreachable");
+    // Without the snapshot this is `[]`: hop 2 becomes invisible the moment
+    // the array is narrowed, so the walk never expands through it and the
+    // query returns a result NO single role set would have produced —
+    // hop 1 authorized as an Owner, everything after it as a Team Member.
+    expect(result.neighbors.map((neighbor) => neighbor.node.nodeId)).toEqual([
+      hop2,
+      hop3,
+    ]);
+    // And the caller's array really was narrowed — otherwise this test
+    // passes for the trivial reason that nothing happened.
+    expect(callerRoles).toEqual(["team-member"]);
+  });
+
+  it("does not narrow a single-shot query either", async () => {
+    const callerRoles: PolicyRole[] = ["owner"];
+    const { index } = fakeIndex(async () => {
+      callerRoles.length = 0;
+      callerRoles.push("team-member");
+      return {
+        kind: "node-list",
+        nodes: [
+          {
+            nodeId: hop2,
+            nodeType: "OrgScenario",
+            fragments: [fragment("record", baseRecord(hop2, "OrgScenario"))],
+          },
+        ],
+        nextNodeId: null,
+      };
+    });
+
+    const result = await executeWithPermissions(
+      index,
+      {
+        kind: "node-list",
+        nodeType: "OrgScenario",
+        limit: 50,
+        includeSoftDeleted: false,
+      },
+      { roles: callerRoles },
+    );
+
+    if (result.kind !== "node-list") throw new Error("unreachable");
+    expect(result.nodes.map((node) => node.nodeId)).toEqual([hop2]);
   });
 });

@@ -426,3 +426,84 @@ describe("hostile request boundaries", () => {
     expect(passkeyStatuses).toEqual([200, 200, 200, 429]);
   });
 });
+
+/**
+ * F148 (S4). This route's answer is a device-facing SECURITY DECISION: a 401
+ * here locks the caller's sealed local store, discarding anything still
+ * inside its durability window (F144). So the route must never report a
+ * failure OF ITS OWN as a statement about the caller's authorization.
+ *
+ * It used to. Any unexpected error — a database outage, a driver fault, a bug
+ * — was logged and answered `401`, which every polling device read as
+ * "revoked." One infrastructure blip locked every device in the workspace out
+ * of its own local data, with no automatic recovery.
+ *
+ * The browser suite for F148 cannot cover this half: it intercepts the
+ * response in the page, so the server is never reached. This is the only
+ * place the server's own classification is exercised.
+ */
+describe("F148 — the role-refresh checkpoint separates its failures from its denials", () => {
+  it("answers a healthy request with the caller's current roles", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(userId, `f148-ok-${randomUUID()}`);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/device-store/roles",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(json(response).roles).toEqual(["team-member"]);
+  });
+
+  it("answers an internal failure with 503, never with 401", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(userId, `f148-fail-${randomUUID()}`);
+
+    // A genuine infrastructure failure rather than a simulated one: the
+    // admission query cannot run, so the route's own error path is what
+    // answers. Renamed rather than dropped, and restored in `finally`, so a
+    // failure here cannot leave the test database broken for later tests.
+    await db.execute(sql.raw('ALTER TABLE "member" RENAME COLUMN "status" TO "status_f148"'));
+    let response;
+    try {
+      response = await app.inject({
+        method: "POST",
+        url: "/device-store/roles",
+        headers: { origin: ORIGIN, cookie },
+        payload: { workspaceId },
+      });
+    } finally {
+      await db.execute(
+        sql.raw('ALTER TABLE "member" RENAME COLUMN "status_f148" TO "status"'),
+      );
+    }
+
+    // 401 is the assertion that matters. It is what the device reads as a
+    // revocation, and it is what this route used to send here.
+    expect(response.statusCode).not.toBe(401);
+    expect(response.statusCode).toBe(503);
+  });
+
+  it("still answers a real revocation with 401", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId, membershipId } = await addWorkspace(
+      userId,
+      `f148-revoked-${randomUUID()}`,
+    );
+    await revokeWorkspaceAdmission(membershipId);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/device-store/roles",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId },
+    });
+
+    // The counterweight to the test above: separating failures from denials
+    // must not weaken the denial itself.
+    expect(response.statusCode).toBe(401);
+  });
+});

@@ -48,6 +48,8 @@ export interface LocalGraphClient {
   switchWorkspace(workspaceId: string): Promise<GraphAvailability>;
   /** Requests the server's unlock half and derives the sealed-store key, entirely inside the Worker. */
   unlockSealedStore(apiOrigin: string): Promise<void>;
+  /** FDN-87: `VPS-F001` G04's erase. The mechanism; the signal is FDN-63's. */
+  eraseLocalStore(workspaceId: string): Promise<void>;
   /** Drops the sealed-store key from Worker memory without disposing the Worker. */
   lockSealedStore(): Promise<void>;
   getSealedStoreStatus(): Promise<{ locked: boolean }>;
@@ -400,6 +402,30 @@ class BrowserLocalGraphClient implements LocalGraphClient {
       throw this.#fatal("Worker returned the wrong result for refresh-role");
     }
     return response.result.roles;
+  }
+
+  /**
+   * FDN-87. `VPS-F001` G04's erase, exposed so the revocation orchestration
+   * FDN-63 builds has something to call. This client decides nothing about
+   * WHEN — see the protocol message's comment for why that boundary is real.
+   */
+  async eraseLocalStore(workspaceId: string): Promise<void> {
+    if (this.#disposed) throw new Error("Graph client is disposed");
+    this.#assertWorkerAlive();
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: crypto.randomUUID(),
+      sentAt: new Date().toISOString(),
+      type: "erase-local-store",
+      workspaceId,
+    });
+    if (response.result.kind !== "local-store-erased") {
+      throw this.#fatal("Worker returned the wrong result for erase-local-store");
+    }
+    // The Worker is back to its pre-initialize state, so this client must be
+    // too — otherwise its own guard would refuse the re-initialize that a
+    // device legitimately regaining access performs.
+    this.#initialized = false;
   }
 
   async dispose(): Promise<void> {
