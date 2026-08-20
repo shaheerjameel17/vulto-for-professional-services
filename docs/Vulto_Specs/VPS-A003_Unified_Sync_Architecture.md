@@ -74,7 +74,7 @@ Easily conflated, and worth separating cleanly.
 
 **Tier determines the strength of protection. Privacy Class determines who receives it.** These are orthogonal, and the previous draft conflated them by listing a fixed reader set against Tier 1 — Owner, Finance Admin, HR Admin. That was accurate while Tier 1 held only financial data. It is no longer: [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]'s case narrative and [[VRS-F020_Universal_Contract_Builder|VRS-F020]]'s contract content are both Tier 1, and neither should reach a Finance Admin. Had the tier carried its own reader set, activating case management would have distributed grievance narratives to the finance team.
 
-The corrected rule: **a Tier 1 document's key is wrapped for exactly the roles the node type's effective grant gives read access, per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], and for no others.** Tier 1 means *end-to-end encrypted*. It does not mean *financial*.
+The corrected rule: **a Tier 1 document's key is wrapped for exactly the people the node type's effective grant gives read access, per [[VPS-A004_Graph_Permission_Layer|VPS-A004]], and for no others.** Tier 1 means *end-to-end encrypted*. It does not mean *financial*.
 
 **"Effective grant" is load-bearing and means the Privacy Class default as overridden by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s per-node matrix.** Resolving against the class default alone gets this wrong on every Tier 1 node the matrix narrows. `Finance-restricted` defaults Team Member to `Read (own only)`; the matrix overrides Team Member to `None` on HeadcountPlan, PayRun, Requisition's budget half and Offer's terms. Wrapping against the default would hand every employee in the workspace a decryption key for the headcount plan, the payroll run and every offer's compensation terms.
 
@@ -114,6 +114,27 @@ The authoritative tier assignment for every node type lives in [[VPS-A002_Master
 
 **AuditEntry sits outside this model deliberately.** It records that a Tier 1 or Tier 3 event occurred, who performed it and when, never the decrypted content. Because it holds only metadata about access, it follows Tier 2's standard-encryption-plus-narrow-distribution model without requiring end-to-end treatment.
 
+### Protected document identity
+
+**A tier is never a document identity.** It says how strongly a document is protected, not which records may share one key. A protected document is addressed by the following logical tuple:
+
+```
+workspace_id
+node_type + schema_partition
+tier
+reader_set_id             // SHA-256 of the canonically ordered authorized user IDs
+time_bucket               // required for Tier 1 where retention applies; otherwise `current`
+erasure_domain_id         // the subject whose erasure destroys this key; otherwise the node ID
+```
+
+The tuple is authenticated metadata on every protected envelope. `key_epoch` versions that logical document; it is not a replacement for the address, and increments on every forward-safe rotation.
+
+**No document key is shared across different concrete reader sets or different erasure domains.** The first rule prevents an envelope from widening a record to the union of two audiences. The second prevents a statutory erasure from destroying another person's content merely because it happened to share a key. A document may contain several fragments only when every member has the same complete tuple above. A split node's `schema_partition` is part of the tuple, so its Tier 0 and Tier 1 halves can never cohabit by accident.
+
+`reader_set_id` is derived once from the resolved set of people and is consumed by both the key layer and the query layer. It is not a role hash. Where the graph cannot yet resolve a concrete person — own-record, direct-report, participant, recipient, inherited or subject-exclusion behavior — it supplies no reader set and the protected write is refused or deferred rather than guessed at.
+
+This is deliberately a stricter boundary than the earlier “one document per pay cycle” shorthand. A pay cycle is a useful Tier 1 `time_bucket`; it is never permission to combine employees, subjects or audiences that require different keys.
+
 ---
 
 ## Conflict resolution
@@ -147,9 +168,19 @@ This is the section that answers whether customer data can be made genuinely saf
 
 **True end-to-end encryption** (Tiers 1 and 3) means the server never possesses a usable decryption key in any form. It stores and relays ciphertext exclusively. A full breach of Vulto's servers, or a court order directed at Vulto itself, yields nothing readable, because there is nothing for Vulto to decrypt with.
 
-### Tier 3 — single reader
+### Tier 3 — single reader, with two independent recovery paths
 
-Only the owning employee ever reads their own Tier 3 data. A symmetric key is derived on the employee's first authenticated device via WebAuthn PRF, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], and never leaves their device set in a form the server can read. Loro merge for these documents happens in plaintext, but only on the owner's own devices, since those are the only devices holding the key. What crosses the network is an opaque encrypted blob.
+Only the employee who is the Tier 3 data subject and sole reader ever reads their own Tier 3 data. A company **Owner** role is **not** a fallback reader, a recovery code is **not** issued to that role, and recovery never changes the Tier 3 reader set.
+
+On the first PRF-capable device, the Worker generates a random 256-bit Tier 3 root key. Each Tier 3 document has its own random 256-bit document key, encrypted under that root and used only for that document's content. The first device evaluates WebAuthn PRF and derives a device key-encryption key from the 32-byte PRF result; it uses that key to encrypt the root key into a **PRF envelope**. The server stores the envelope and ciphertext, never a usable root or document key.
+
+The same setup creates a mandatory, independent **Tier 3 recovery-code envelope**. The Worker generates a random 256-bit recovery secret, renders it as thirteen groups of four Crockford-Base32 characters, and requires the employee to re-enter it before Tier 3 setup completes. It is product-generated rather than a user-chosen phrase, is never sent to the server or logged, and is not persisted by Vulto after display. A key-encryption key derived from that secret encrypts the same Tier 3 root key into the recovery-code envelope. The employee may save the generated code in their chosen durable secure store; losing both it and every usable PRF credential remains a real loss, but it is no longer the default outcome of losing one device.
+
+Platform backup of a passkey may make an existing PRF envelope available on another device, but Vulto does not assume it will. A new device becomes a persistent Tier 3 device only after it successfully evaluates PRF and has a PRF envelope. It may obtain the root key by entering the recovery code, after which it creates its own PRF envelope. A device that cannot evaluate PRF is not eligible for persistent Tier 3 access; it must use a supported device for recovery rather than weakening the primary protection to accommodate an unsupported authenticator.
+
+Recovery requires a current authenticated session **for that same data subject**, a PRF-capable new device, and the recovery code. This is an exact authenticated-person identity match to the Tier 3 sole-reader ID, not a role-based permission check: a company Owner cannot initiate, approve or receive another employee's recovery. That boundary holds independently of F130's currently unbuilt subject exclusion. Recovery creates a new PRF envelope, immediately replaces the recovery code and its envelope, and begins a new key epoch for future writes. Existing documents are re-encrypted lazily when an authorized recovered device next modifies them, exactly as Tier 1 revocation rotates future writes. A lost device may still hold bytes it decrypted before recovery; that historical limit is the same one this document states for every revocation. It cannot decrypt a document's new epoch once that document has been modified under the recovered key set.
+
+Loro merge for these documents happens in plaintext, but only on the owner's devices while the Worker holds the relevant key. What crosses the network is an opaque encrypted blob.
 
 ### Tier 1 — multiple readers
 
@@ -179,12 +210,32 @@ Two honest limits, stated rather than glossed:
 
 ### Key recovery
 
-**Tier 3.** Loss is personal and organizationally inconsequential — only the individual's own entries are affected, and nobody else ever had access regardless. This does not justify a user-managed recovery phrase, which people reliably mishandle: screenshotted, pasted into an untitled note, deleted later without recognition. Tier 3 key backup defaults to the device platform's secure cloud keychain. Recovery becomes *sign back into your Apple or Google account*, which people already understand and protect.
+**Tier 3.** Platform-backed passkey recovery remains the first path, but it is not accepted as the only path. A lost device can otherwise become permanently orphaned data merely because its credential was single-device, did not synchronize its PRF capability, or was lost before backup completed. That is an irrecoverable data-loss hole, not a reasonable simplification.
+
+The mandatory recovery-code envelope above is the durable second path. It does not grant a company Owner, Vulto or any other employee access: only the Tier 3 data subject who presents the 256-bit generated code on a new PRF-capable device can open the root key and establish a new device envelope. The code is deliberately not a memorable phrase and is not a substitute for the online cold-start checkpoint; it is recovery material for Tier 3 keys only. Its capture-and-re-entry ceremony is mandatory because treating recovery as a best-effort reminder would recreate the very data-loss path this design closes.
 
 **Tier 1.** Loss here is organizationally consequential, and the design must assume the person setting it up is an agency owner trying the product for the first time, not a security professional.
 
 - **No free-form user-managed artifact.** The product generates the recovery material, displays it once with unmistakable labeling as a downloadable card, and requires correct re-entry before setup completes. That verification step is what separates genuine capture from a screenshot taken in passing.
 - **A threshold scheme across people, not devices.** Two of three trusted people by default, so a single lost device or departed person never permanently locks an organization out of its own financial history. Onboarding actively nudges toward a second Tier 1 holder, framed as business continuity — *so a lost laptop never locks your business out of its own payroll history* — rather than as a security feature requiring a security mindset to appreciate.
+
+### Cryptographic suite and recovery custody
+
+The primitives below are fixed before implementation so neither the TypeScript Worker nor the Rust sync core invents a cryptographic format independently.
+
+| Purpose | Construction |
+|---|---|
+| Protected document content | AES-256-GCM with a fresh random 96-bit nonce for every encryption under a document key |
+| Tier 1 recipient envelope | P-256 ECDH with a fresh ephemeral sender key, HKDF-SHA-256, then AES-256-GCM encryption of the 256-bit document key |
+| Tier 3 PRF envelope | WebAuthn PRF result, HKDF-SHA-256, then AES-256-GCM encryption of the 256-bit Tier 3 root key |
+| Tier 3 recovery-code envelope | 256-bit generated recovery secret, HKDF-SHA-256, then AES-256-GCM encryption of the same Tier 3 root key |
+| Tier 1 recovery envelope | A workspace recovery secret, split across trusted people under SLIP-0039's 2-of-3 default, HKDF-SHA-256, then AES-256-GCM encryption of the 256-bit document key |
+
+Every encryption authenticates the same canonical protected-document header: format version, logical document address, key epoch, ciphertext kind and, for a recipient envelope, recipient user ID and ephemeral public key. The header is serialized with RFC 8785 JSON Canonicalization Scheme before becoming AES-GCM additional authenticated data. A changed address, reader, epoch or ciphertext kind therefore fails authentication rather than being accepted as an adjacent document.
+
+**Tier 1 device transfer and recovery.** Each authorized person has a P-256 identity key pair. Its private half may leave an existing device only encrypted through a one-time P-256 ECDH transfer to a new device the same person is actively enrolling; it is never uploaded or stored as plaintext. If no existing device remains, two of the three trusted recovery holders reconstruct the workspace recovery secret in a recovery Worker's memory, unwrap the needed document keys, and re-wrap them to a newly generated identity key for the recovering person. The old reader entry is removed and future writes use the new epoch. The recovery secret and reconstructed document keys are never persisted or exposed to application code.
+
+**No bespoke cryptography.** Implementations must use the browser Web Crypto API and the Rust equivalents of the exact constructions above. SLIP-0039 must come from a pinned, audited, standards-conformant implementation; a hand-written Shamir implementation is prohibited. The TypeScript and Rust implementations must share versioned test vectors for the canonical header, all envelope types, key rotation and recovery before either becomes the authoritative path.
 
 ### Tier 1 historical data retention
 
@@ -218,23 +269,28 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 | A003-T02 | All sync operations MUST be idempotent. Applying the same delta twice MUST produce the same result, verified by automated test |
 | A003-T03 | All sync payloads MUST be encrypted in transit using TLS 1.3 minimum, regardless of tier |
 | A003-T04 | Local device storage MUST be encrypted at rest with AES-256. After every cold restart it MUST remain locked until the server validates a current authenticated session and releases or derives volatile unwrap material. The raw session token, plaintext storage key and unwrap material MUST NOT be persisted alongside the data or exposed to application code. Once unlocked, the complete product MUST continue to operate without connectivity until the next cold restart. This is independent of, and does not substitute for, the Tier 1 and Tier 3 end-to-end scheme |
-| A003-T05 | Tier 1 and Tier 3 documents MUST be encrypted client-side before transmission. The server MUST NOT possess or be able to derive any key capable of decrypting them, verified by an automated test confirming no server-side code path can decrypt a Tier 1 or Tier 3 payload |
+| A003-T05 | Tier 1 and Tier 3 documents MUST be encrypted client-side before transmission using this document's fixed cryptographic suite. The server MUST NOT possess or be able to derive any key capable of decrypting them, verified by an automated test confirming no server-side code path can decrypt a Tier 1 or Tier 3 payload |
 | A003-T06 | A Tier 1 document's key MUST be wrapped for exactly the readers the node type's **effective grant** gives read access — its Privacy Class default **as overridden by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s per-node matrix, then less any subject exclusion that node type registers** — and for no others. The class default alone MUST NOT be used, and the reader set MUST NOT be resolved at role granularity where a person-level exclusion applies. Tier MUST NOT imply a reader set |
 | A003-T07 | Key wrapping MUST support adding and removing readers without re-encrypting the underlying document. On revocation the key epoch MUST increment for future writes, with historical re-wrapping performed lazily on next authorized modification. On grant, the new reader's wrapped-key entry for the current retention window MUST be created immediately |
 | A003-T08 | The sync engine MUST expose a SyncStatus observable any UI component may subscribe to |
 | A003-T09 | Every sync delta MUST be logged to [[VPS-F004_Silent_Audit_Log|VPS-F004]], including its tier |
 | A003-T10 | The sync engine MUST be a single shared core library used identically across all platforms |
 | A003-T11 | Schema version mismatches MUST be handled gracefully. Older schema versions MUST NOT corrupt data written under newer ones |
-| A003-T12 | Tier 3 key derivation MUST use WebAuthn PRF with backup to the platform's native secure keychain. A user-managed recovery phrase MUST NOT be the default or only Tier 3 recovery path |
+| A003-T12 | Persistent Tier 3 access MUST use WebAuthn PRF to derive a device key-encryption key and create a PRF envelope for the Tier 3 root key. Platform-backed credentials are the first recovery path, but a product-generated 256-bit recovery-code envelope is mandatory as an independent second path. A user-chosen recovery phrase, Owner-held fallback or server-held recovery key is prohibited |
 | A003-T13 | Any Tier 1 recovery artifact MUST be product-generated, unmistakably labeled, and the setup flow MUST require correct re-entry before completion |
-| A003-T14 | Tier 1 recovery MUST support an M-of-N threshold scheme, two of three by default, so no single device loss or departure permanently locks the organization out |
+| A003-T14 | Tier 1 recovery MUST support an M-of-N threshold scheme, two of three by default, using SLIP-0039 shares of a workspace recovery secret, so no single device loss or departure permanently locks the organization out |
 | A003-T15 | Workspace setup MUST prompt for a second Tier 1 holder, framed as business continuity, and MUST require explicit acknowledgment if declined |
-| A003-T16 | Device revocation and local wipe MUST fire on any change removing Tier 1 access, not only full offboarding. A demotion or role change removing Tier 1 authorization is a revocation event in its own right |
+| A003-T16 | Any change removing Tier 1 access — including demotion, role change or subject exclusion — MUST remove the affected reader envelope, advance that protected document's key epoch and fire a document-scoped local wipe. Full device or membership revocation may additionally erase the whole local store; a Tier-1-only access change MUST NOT use whole-store erase as its substitute |
 | A003-T17 | Closed Tier 1 records older than `tier1_retention_window_months` MUST NOT be materialized on any device by default. Default twelve months, configurable six to twenty-four |
 | A003-T18 | Active, open Tier 1 records MUST always be available regardless of the window |
 | A003-T19 | A Tier 1 record outside the window MUST be retrievable on demand and held locally for thirty days from most recent access, with expiry computed on-device without requiring connectivity |
 | A003-T20 | Tier 1 documents MUST be partitioned by time period in addition to sensitivity |
 | A003-T21 | Cryptographic erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] MUST destroy every wrapped-key entry and the document key, retain no copy in any backup generation, preserve the node and its edges, and write an [[VPS-F004_Silent_Audit_Log|VPS-F004]] record. It MUST fire a device wipe instruction for the affected documents |
+| A003-T22 | A protected document's logical address MUST contain workspace, node type and schema partition, tier, concrete reader-set ID, time bucket and erasure-domain ID. A key MUST NOT span different reader sets or erasure domains |
+| A003-T23 | `key_epoch` MUST version a protected document's logical address and every protected envelope MUST authenticate the canonical header defined in this document. An envelope with altered address, reader, epoch or ciphertext kind MUST fail authentication |
+| A003-T24 | A Tier 3 recovery code MUST be generated from 256 random bits, canonically encoded as thirteen groups of four Crockford-Base32 characters (the first symbol is restricted to the low sixteen alphabet values) and correctly re-entered before setup completes. It MUST never be sent to the server, logged, persisted by Vulto after display or issued to an Owner |
+| A003-T25 | Tier 3 recovery on a new device MUST require a current authenticated session whose canonical user ID exactly equals the Tier 3 data subject and sole-reader ID, successful WebAuthn PRF on that device and the recovery code. A company Owner role MUST NOT initiate, approve or receive recovery for another employee. Recovery MUST create a new PRF envelope, replace the recovery code and begin new document key epochs for future writes. A device without PRF MUST NOT gain persistent Tier 3 access |
+| A003-T26 | P-256 ECDH, HKDF-SHA-256 and AES-256-GCM are the only Tier 1/Tier 3 envelope primitives. Protected document content uses AES-256-GCM with a fresh random 96-bit nonce per encryption. The TypeScript Worker and Rust core MUST share versioned cryptographic test vectors; a bespoke cryptographic primitive or hand-written Shamir implementation is prohibited |
 
 ---
 
@@ -306,6 +362,18 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 
 ---
 
+**GIVEN** an employee loses their only Tier 3 device and its passkey cannot recover the PRF envelope
+**WHEN** they authenticate on a new PRF-capable device and correctly enter the mandatory recovery code
+**THEN** the Worker opens the recovery-code envelope without sending the code or a usable key to the server, creates a new PRF envelope, requires replacement-code capture and re-entry, and starts new key epochs for future writes
+
+---
+
+**GIVEN** a user loses Tier 1 access through a role change but remains an active workspace member
+**WHEN** the change reaches an authorized device
+**THEN** only the affected protected documents lose that reader's envelopes and are purged locally; Tier 0 and Tier 2 data the member still legitimately reads remains available, and no whole-workspace erase is claimed as the operation
+
+---
+
 **GIVEN** a workspace's retention window is the twelve-month default
 **WHEN** a completed PayRun passes its thirteenth month
 **THEN** it is purged from local materialization on any device that has not accessed it within thirty days, renders as the aged-out state per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], and remains fully retrievable on demand
@@ -334,6 +402,12 @@ HRCase content ([[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]]
 **`tier1_retention_window_months` is registered** in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Workspace Configuration Registry and exposed in [[VPS-F005_Workspace_Configuration_Console|VPS-F005]]. The previous draft described the window in prose without registering the key that configures it.
 
 **Tier 3 key derivation is aligned with [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]** on WebAuthn PRF, with platform keychain backup. The two documents previously described the same mechanism in incompatible terms.
+
+**Tier 3 has a mandatory second recovery path.** F106 accepted an availability cost — one online unlock after cold restart — because the simpler local-only path would leave a centrally revoked device able to decrypt HR data. This is the inverse shape. Treating a platform-backed passkey as the sole Tier 3 recovery mechanism would make loss of one unsynchronized or single-device credential permanently orphan a real customer's data. That irrecoverable data-loss hole is worse than the added complexity of a genuine recovery construction. The approved answer is not an Owner-issued fallback, which would widen a single-reader tier, nor a server-held key, which would defeat end-to-end protection. It is the mandatory product-generated 256-bit recovery code and its independent envelope, captured and verified at setup, usable only by the Tier 3 data subject on a new PRF-capable device under a session for that same subject. A company Owner role cannot trigger recovery, even while F130's general subject-exclusion gap remains open. Recovery rotates the code and future document epochs; it does not pretend to erase history a lost device already decrypted.
+
+**The protected-document address and cryptographic suite are now explicit.** A tier alone could not decide which records may share a key: exact concrete readers, time retention and subject-level erasure would otherwise contradict each other. The address and no-shared-key rule above resolve that. The fixed AES-256-GCM, P-256 ECDH, HKDF-SHA-256, SLIP-0039 and canonical-header construction prevent the Worker and Rust core from separately inventing formats that merely appear compatible. FDN-52 owns this client-side document and key lifecycle; FDN-51 consumes its opaque envelope for relay, persistence and real-server ciphertext verification.
+
+**A Tier-1-only access change is document-scoped, not whole-store revocation.** The FDN-63 implementation correctly erases the whole local store for explicit device and full membership revocation. It cannot be reused for an active member who only loses a protected reader grant: that would destroy Tier 0/2 data they are still allowed to hold. The corrected A003-T16 names the distinct operation and leaves the FDN-63/FDN-52 delivery boundary explicit.
 
 **The resolved-question entry in Out of Scope is retired.** How wellness aggregates compute over Tier 3 records is answered by structural anonymization in [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] and [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]], and belongs in those documents rather than as archeology here.
 
