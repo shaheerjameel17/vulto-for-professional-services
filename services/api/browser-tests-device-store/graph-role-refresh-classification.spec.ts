@@ -568,8 +568,16 @@ test.describe("S4 — what a device concludes when it reconnects", () => {
    * rather than by reference: whoever next changes `fetchCurrentRoles`'s
    * classification should find both halves in the file they are editing
    * against.
+   *
+   * F151 update: a real membership revocation is no longer reported as the
+   * generic `role-refresh-denied` — it is now classified as
+   * `membership-revoked`, a MORE specific denial that also means the local
+   * store was erased, not merely locked. The assertion below was updated to
+   * expect the specific code rather than the generic one; the underlying
+   * property this test guards — that a real revocation still produces SOME
+   * denial and still locks — is unchanged and still the point.
    */
-  test("a real revocation still locks the store, and is still reported as a denial", async ({
+  test("a real revocation still locks the store, and is now classified as membership-revoked", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -609,10 +617,15 @@ test.describe("S4 — what a device concludes when it reconnects", () => {
         observed.locked,
         `a real revocation must still lock the store — a fix that stopped this would be far worse than the defect: ${JSON.stringify(observed)}`,
       ).toBe(true);
+      // F151: a real membership revocation is now classified, not generic.
       expect(
         observed.refreshError,
-        `and must still be reported as a denial, not as unavailable: ${JSON.stringify(observed)}`,
-      ).toContain("role-refresh-denied");
+        `a real revocation must be classified as membership-revoked, not left generic: ${JSON.stringify(observed)}`,
+      ).toContain("membership-revoked");
+      expect(
+        observed.refreshError,
+        `and must never fall back to unavailable — that would be F148's mistake in reverse: ${JSON.stringify(observed)}`,
+      ).not.toContain("role-refresh-unavailable");
     } finally {
       await context?.close();
       await sql.end();

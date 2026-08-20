@@ -2,11 +2,15 @@ import { passkeyRegistrationInputSchema } from "@vulto/schema";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { auth } from "./config.js";
 import {
+  DeviceRevokeDeniedError,
+  DeviceRoleRefreshDeniedError,
   DeviceUnlockDeniedError,
+  parseDeviceRevokeRequest,
   parseDeviceRoleRefreshRequest,
   parseDeviceStoreUnlockRequest,
   requestDeviceRoleRefresh,
   requestDeviceUnlock,
+  revokeDevice,
 } from "./device-unlock.js";
 import {
   enforcePasskeyRegistrationRateLimit,
@@ -105,7 +109,7 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
 
   app.post("/device-store/roles", async (request, reply) => {
     reply.header("cache-control", "no-store");
-    let parsed: { workspaceId: string };
+    let parsed: { workspaceId: string; deviceId?: string };
     try {
       parsed = parseDeviceRoleRefreshRequest(request.body);
     } catch {
@@ -118,8 +122,23 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return await requestDeviceRoleRefresh(
         requestHeaders(request),
         parsed.workspaceId,
+        parsed.deviceId,
       );
     } catch (error) {
+      // F151. `reason` is the classified, enumerable signal — present only
+      // when a positive fact (this device's own secret, or the membership/
+      // account row) confirmed one of the two named revocation events.
+      // Absent for every other denial, which is reported exactly as before:
+      // a plain 401 with no `revocation` field, still locking (F148's
+      // tested default), never erasing.
+      if (error instanceof DeviceRoleRefreshDeniedError) {
+        return reply.code(401).send({
+          error: error.message,
+          ...(error.reason !== undefined
+            ? { revocation: { kind: error.reason } }
+            : {}),
+        });
+      }
       if (error instanceof DeviceUnlockDeniedError) {
         return reply.code(401).send({ error: error.message });
       }
@@ -136,6 +155,31 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return reply
         .code(503)
         .send({ error: "The role refresh checkpoint is temporarily unavailable" });
+    }
+  });
+
+  app.post("/device-store/revoke", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string; deviceId: string };
+    try {
+      parsed = parseDeviceRevokeRequest(request.body);
+    } catch {
+      return reply.code(401).send({
+        error: "This session is not authorized to revoke devices in this workspace",
+      });
+    }
+
+    try {
+      await revokeDevice(requestHeaders(request), parsed.workspaceId, parsed.deviceId);
+      return reply.code(200).send({ revoked: true });
+    } catch (error) {
+      if (error instanceof DeviceRevokeDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The device revocation checkpoint is temporarily unavailable" });
     }
   });
 

@@ -429,11 +429,24 @@ test.beforeAll(async ({ browser }) => {
 
 test.describe("S1 — revocation landing inside the debounce window", () => {
   /**
-   * Q1. The device was authorized, was told `applied`, and the write never
-   * reached disk. This reads the durable snapshot back through a genuinely
-   * new Worker to establish what survived.
+   * Q1, updated by F151. Originally: does the flushed write survive a real
+   * revocation. F151 changed the true answer for a REAL membership
+   * revocation specifically — it is no longer merely a lock, it is an
+   * erase (F151's whole point), so a real revocation now destroys the
+   * flushed write anyway, along with everything else in the workspace.
+   * That is not a regression of F144's ruling; it is F151 correctly
+   * escalating beyond it for the one event the specs name as destructive.
+   *
+   * This test now proves the FULL, honest consequence end to end: the
+   * write was authorized and applied, the revocation was real, and the
+   * reopened workspace is EMPTY afterward — not "missing one write," gone
+   * entirely, because F151 erased it. The isolated F144 property — a flush
+   * survives an authority-ending event PROVIDED that event does not also
+   * erase — is proven separately below, using a denial the server does
+   * NOT classify, which is the one remaining case where flush-without-
+   * erase still applies.
    */
-  test("Q1: an authorized write acknowledged inside the debounce window survives revocation", async ({
+  test("Q1: a real membership revocation erases the whole workspace, including the write it just flushed", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -503,21 +516,116 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
         `S1/Q1 durable state: seed=${JSON.stringify(seedSurvived)} victim=${JSON.stringify(victimSurvived)}`,
       );
 
-      // The control. If the seed did not survive either, the run proves
-      // nothing about the debounce window — it proves the reopen is broken.
+      // F151. A real membership revocation erases the WHOLE workspace, not
+      // just the write that was still in flight. The pre-revocation seed —
+      // durable long before any of this started — is gone too.
       expect(
         (seedSurvived.value as { present?: boolean } | undefined)?.present,
-        `the pre-revocation seed must be durable, or this run cannot isolate the window: ${JSON.stringify(seedSurvived)}`,
-      ).toBe(true);
-
-      // The ruling. The window is flushed while the device still holds the
-      // key, so a write the user was told was `applied` is on disk when the
-      // revocation lands rather than dying with the timer.
+        `F151 — a real revocation erases even content that was already durable: ${JSON.stringify(seedSurvived)}`,
+      ).toBe(false);
       expect(
         (victimSurvived.value as { present?: boolean } | undefined)?.present,
-        `F144 — an acknowledged, authorized write must survive revocation landing in its flush window: ${JSON.stringify(victimSurvived)}`,
+        `F151 — and the write it had just flushed, for the same reason: ${JSON.stringify(victimSurvived)}`,
+      ).toBe(false);
+    } finally {
+      await context?.close();
+      await sql.end();
+    }
+  });
+
+  /**
+   * The isolated F144 property, recovered from Q1's old framing now that a
+   * real revocation erases rather than merely locking. F144's ruling still
+   * holds exactly as stated for the case it actually describes: an
+   * authority-ending denial the server does NOT classify as one of F151's
+   * two named events. There, the correct behavior is still flush-then-lock,
+   * no erase — proven here using a 401 with no `revocation` field, the same
+   * technique S4's suite uses to inject an unclassified denial.
+   */
+  test("Q1b: an unclassified denial still flushes the pending write before locking, and does not erase", async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000);
+    const sql = postgres(databaseUrl, { max: 1 });
+    let context: BrowserContext | undefined;
+    try {
+      if (!sharedAccount) throw new Error("shared account was not created");
+      context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      await context.addCookies(sharedAccount.cookies);
+      const workspaceId = await createOwnerWorkspace(sql, sharedAccount.userId);
+
+      await openWorkspace(page, workspaceId);
+      const opened = await tryInitialize(page);
+      expect(opened.opened, `a fresh workspace must initialize: ${opened.error}`).toBe(
+        true,
+      );
+
+      // An unclassified denial: a 401 with no `revocation` field. Nothing
+      // in this workspace's membership is touched — the classifier's own
+      // independent query would find nothing to classify even if it ran.
+      await context.route("**/device-store/roles", async (route) => {
+        await route.fulfill({
+          status: 401,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Unclassified denial for this test" }),
+        });
+      });
+
+      // One atomic browser-side block, exactly like `runRevocationRace`
+      // above: the clock starts before `mutate` is even called, because
+      // `#scheduleFlush` runs inside the Worker before the response is
+      // posted back — measuring from outside a single evaluate call would
+      // add Playwright's own IPC round trips to the measured window and
+      // could misreport whether the denial genuinely landed inside it.
+      const run = await page.evaluate(
+        async ({ id, count }) => {
+          const api = window.__vultoGraphPersistenceDiagnostics;
+          if (!api) throw new Error("diagnostics API missing");
+          const openedAt = performance.now();
+          const victim = await api.mutate([api.poisoning.buildBulk(id, count)]);
+          let refreshError: string | undefined;
+          try {
+            await api.refreshRole();
+          } catch (error: unknown) {
+            refreshError = error instanceof Error ? error.message : String(error);
+          }
+          const lockLandedAfterMs = performance.now() - openedAt;
+          const locked = (await api.getStatus()).locked;
+          return { victim, refreshError, lockLandedAfterMs, locked };
+        },
+        { id: workspaceId, count: VICTIM_EMPLOYEE_COUNT },
+      );
+
+      expect(
+        run.victim.status,
+        `the victim write must be authorized and applied: ${JSON.stringify(run.victim)}`,
+      ).toBe("applied");
+      expect(run.locked, "an unclassified denial must still lock").toBe(true);
+      expect(
+        run.lockLandedAfterMs,
+        `the denial must land inside the ${FLUSH_DEBOUNCE_MS}ms window (took ${run.lockLandedAfterMs}ms)`,
+      ).toBeLessThan(FLUSH_DEBOUNCE_MS);
+      expect(
+        run.refreshError,
+        `an unclassified denial must report the plain lock code, never an erase code: ${run.refreshError}`,
+      ).toContain("role-refresh-denied");
+
+      await context.unroute("**/device-store/roles");
+      await openWorkspace(page, workspaceId);
+      const reopened = await tryInitialize(page);
+      expect(
+        reopened.opened,
+        `the workspace must still open — nothing was erased: ${reopened.error}`,
+      ).toBe(true);
+      const victimSurvived = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);
+      console.log(`S1/Q1b durable state: ${JSON.stringify(victimSurvived)}`);
+      expect(
+        (victimSurvived.value as { present?: boolean } | undefined)?.present,
+        `F144's original property, still true for an unclassified denial — the flush survives: ${JSON.stringify(victimSurvived)}`,
       ).toBe(true);
     } finally {
+      await context?.unroute("**/device-store/roles").catch(() => undefined);
       await context?.close();
       await sql.end();
     }
@@ -630,21 +738,25 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
         `and the runtime must report itself uninitialized rather than answering: ${JSON.stringify(afterReunlock)}`,
       ).toContain("not-initialized");
 
-      // The counterweight: releasing memory must not have destroyed durable
-      // data. Opening the workspace again — what a device that legitimately
-      // regains access does — reads the same content back from disk.
+      // F151. Updated: for a REAL revocation specifically, the disk copy is
+      // gone too — not merely the in-memory one. Before F151 this section
+      // proved memory-purge and disk-survival as two separate facts; now a
+      // real revocation erases both, and re-granting membership does not
+      // bring the erased content back, because the ERASE (not a lock) is
+      // what happened. Opening the workspace again reads an empty
+      // workspace from disk, not the old content.
       await openWorkspace(page, workspaceId);
       const reopened = await tryInitialize(page);
       expect(
         reopened.opened,
-        `the workspace must still open from disk after a purge: ${reopened.error}`,
+        `an erased workspace must still open, empty, not refuse: ${reopened.error}`,
       ).toBe(true);
       const fromDisk = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);
       console.log(`S1/Q2 read back from disk: ${JSON.stringify(fromDisk)}`);
       expect(
         (fromDisk.value as { present?: boolean } | undefined)?.present,
-        `the purge must release memory, not durable data: ${JSON.stringify(fromDisk)}`,
-      ).toBe(true);
+        `F151 — a real revocation erases disk content too, not only memory: ${JSON.stringify(fromDisk)}`,
+      ).toBe(false);
     } finally {
       await context?.close();
       await sql.end();
@@ -654,13 +766,16 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
    * The control. Identical in every respect except that the revocation is
    * allowed to land AFTER the flush window has closed.
    *
-   * Without this, Q1 proves only "a write went missing near a revocation" —
-   * it could just as well be the reopen, the fixture, or the revocation
-   * itself discarding data. With it, the debounce window is isolated as the
-   * cause: same write, same revocation, same reopen, different timing, and
-   * the write survives.
+   * F151 changes what this control proves. It used to isolate the flush
+   * window as the CAUSE of loss — revoke early, the write is lost; revoke
+   * late, it survives. F151 makes that distinction stop mattering for a
+   * real revocation: revocation now erases the whole workspace regardless
+   * of when it lands relative to the window, because erasure is not a race
+   * with the flush timer the way silent loss was. This control now proves
+   * THAT — timing no longer matters, which is the stronger, intended
+   * property, not a weaker one.
    */
-  test("control: the same write, revoked AFTER the window closes, is durable", async ({
+  test("control: timing no longer matters — early or late, a real revocation erases either way", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -713,10 +828,13 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
 
       const victimSurvived = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);
       console.log(`S1/control durable state: victim=${JSON.stringify(victimSurvived)}`);
+      // F151. Was `.toBe(true)` — revoking late used to mean durable.
+      // Revoking late now STILL erases, exactly like revoking early (Q1).
+      // Timing stopped being the variable that decides the outcome.
       expect(
         (victimSurvived.value as { present?: boolean } | undefined)?.present,
-        `the window is the cause — the same write must be durable when the revocation lands after it: ${JSON.stringify(victimSurvived)}`,
-      ).toBe(true);
+        `F151 — a real revocation erases the workspace whether it lands inside or outside the flush window: ${JSON.stringify(victimSurvived)}`,
+      ).toBe(false);
     } finally {
       await context?.close();
       await sql.end();
