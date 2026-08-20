@@ -232,9 +232,7 @@ async function openWorkspace(page: Page, workspaceId: string): Promise<void> {
   });
 }
 
-async function tryInitialize(
-  page: Page,
-): Promise<{ opened: boolean; error?: string }> {
+async function tryInitialize(page: Page): Promise<{ opened: boolean; error?: string }> {
   return page.evaluate(async () => {
     const api = window.__vultoGraphPersistenceDiagnostics;
     if (!api) throw new Error("diagnostics API missing");
@@ -455,10 +453,9 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
       );
 
       const seed = await seedDurably(page, workspaceId);
-      expect(
-        status(seed),
-        `the durable seed must apply: ${JSON.stringify(seed)}`,
-      ).toBe("applied");
+      expect(status(seed), `the durable seed must apply: ${JSON.stringify(seed)}`).toBe(
+        "applied",
+      );
 
       await revokeMembership(sql, workspaceId, sharedAccount.userId);
       const run = await runRevocationRace(page, workspaceId, {
@@ -563,10 +560,9 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
       );
 
       const seed = await seedDurably(page, workspaceId);
-      expect(
-        status(seed),
-        `the durable seed must apply: ${JSON.stringify(seed)}`,
-      ).toBe("applied");
+      expect(status(seed), `the durable seed must apply: ${JSON.stringify(seed)}`).toBe(
+        "applied",
+      );
 
       await revokeMembership(sql, workspaceId, sharedAccount.userId);
       const run = await runRevocationRace(page, workspaceId, {
@@ -594,7 +590,9 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
       const shellStillUnlocked = await page
         .getByTestId("graph-persistence-unlocked")
         .isVisible();
-      console.log(`S1/Q2 shell still rendering unlocked after revocation: ${shellStillUnlocked}`);
+      console.log(
+        `S1/Q2 shell still rendering unlocked after revocation: ${shellStillUnlocked}`,
+      );
 
       // The instrument. Re-granting is how the plaintext is READ, not how it
       // is retained: the runtime held it throughout the revoked interval
@@ -709,15 +707,12 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
       await restoreMembership(sql, workspaceId, sharedAccount.userId);
       await openWorkspace(page, workspaceId);
       const reopened = await tryInitialize(page);
-      expect(
-        reopened.opened,
-        `the workspace must still open: ${reopened.error}`,
-      ).toBe(true);
+      expect(reopened.opened, `the workspace must still open: ${reopened.error}`).toBe(
+        true,
+      );
 
       const victimSurvived = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);
-      console.log(
-        `S1/control durable state: victim=${JSON.stringify(victimSurvived)}`,
-      );
+      console.log(`S1/control durable state: victim=${JSON.stringify(victimSurvived)}`);
       expect(
         (victimSurvived.value as { present?: boolean } | undefined)?.present,
         `the window is the cause — the same write must be durable when the revocation lands after it: ${JSON.stringify(victimSurvived)}`,

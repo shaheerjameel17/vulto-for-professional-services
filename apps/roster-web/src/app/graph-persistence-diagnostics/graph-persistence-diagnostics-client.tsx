@@ -201,7 +201,9 @@ interface GraphPersistenceDiagnosticsApi {
    * proof can distinguish "the gate refused" from "the Worker died" — a
    * distinction the whole finding turns on.
    */
-  mutate(base64Snapshots: readonly string[]): Promise<
+  mutate(
+    base64Snapshots: readonly string[],
+  ): Promise<
     { status: string; reason?: string; mergedDeltaCount?: number } | { thrown: string }
   >;
   /** F138 poison fixtures, from `@vulto/graph/testing/poisoning`. */

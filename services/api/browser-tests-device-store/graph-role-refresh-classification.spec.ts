@@ -131,9 +131,7 @@ async function openWorkspace(page: Page, workspaceId: string): Promise<void> {
   });
 }
 
-async function tryInitialize(
-  page: Page,
-): Promise<{ opened: boolean; error?: string }> {
+async function tryInitialize(page: Page): Promise<{ opened: boolean; error?: string }> {
   return page.evaluate(async () => {
     const api = window.__vultoGraphPersistenceDiagnostics;
     if (!api) throw new Error("diagnostics API missing");
@@ -335,7 +333,11 @@ test.describe("S4 — what a device concludes when it reconnects", () => {
         } catch (error: unknown) {
           refreshError = error instanceof Error ? error.message : String(error);
         }
-        return { lockedBefore, refreshError, lockedAfter: (await api.getStatus()).locked };
+        return {
+          lockedBefore,
+          refreshError,
+          lockedAfter: (await api.getStatus()).locked,
+        };
       });
 
       console.log(`S4/transient-503: ${JSON.stringify(observed)}`);
@@ -526,10 +528,9 @@ test.describe("S4 — what a device concludes when it reconnects", () => {
       await context.unroute("**/device-store/roles");
       await openWorkspace(page, workspaceId);
       const reopened = await tryInitialize(page);
-      expect(
-        reopened.opened,
-        `the workspace must still open: ${reopened.error}`,
-      ).toBe(true);
+      expect(reopened.opened, `the workspace must still open: ${reopened.error}`).toBe(
+        true,
+      );
 
       const seedSurvived = await employeeVisible(page, SEED_EMPLOYEE);
       const victimSurvived = await employeeVisible(page, FIRST_VICTIM_EMPLOYEE);

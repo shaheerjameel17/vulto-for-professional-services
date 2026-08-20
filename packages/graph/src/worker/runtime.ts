@@ -316,8 +316,7 @@ export class LocalGraphWorkerRuntime {
    * is explicit that nothing is wiped on expiry.
    */
   async #endLocalSession(): Promise<LocalSessionEndOutcome> {
-    const hadPendingWindow =
-      this.#flushTimer !== null || this.#flushInFlight !== null;
+    const hadPendingWindow = this.#flushTimer !== null || this.#flushInFlight !== null;
 
     // 1. Flush, while the key still exists. `#flushBeforeTeardown` captures
     //    its own failures into `#pendingFlushError` rather than throwing, so

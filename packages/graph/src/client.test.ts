@@ -57,9 +57,7 @@ describe("local graph client lifecycle", () => {
     const client = createLocalGraphClientWithFactory("workspace-1", () => worker);
 
     await expect(client.initialize()).resolves.toEqual({ state: "ready" });
-    await expect(
-      client.mutate([new Uint8Array([1, 2, 3])]),
-    ).resolves.toMatchObject({
+    await expect(client.mutate([new Uint8Array([1, 2, 3])])).resolves.toMatchObject({
       status: "applied",
       mergedDeltaCount: 1,
       availability: { state: "ready" },
@@ -88,7 +86,9 @@ describe("local graph client lifecycle", () => {
           : request.type === "mutate" && request.deltas.length === 1
             ? { kind: "mutation-denied" as const, reason: "no Full grant" }
             : { kind: "mutation-unsupported" as const, reason: "touches the Tree" };
-      queueMicrotask(() => worker.onmessage?.({ data: { ...base, result } } as MessageEvent));
+      queueMicrotask(() =>
+        worker.onmessage?.({ data: { ...base, result } } as MessageEvent),
+      );
     };
     const client = createLocalGraphClientWithFactory("workspace-1", () => worker);
     await client.initialize();

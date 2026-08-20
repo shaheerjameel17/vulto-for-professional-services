@@ -149,7 +149,10 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
             return;
           case "unsupported":
             scope.postMessage(
-              success(request, { kind: "mutation-unsupported", reason: outcome.reason }),
+              success(request, {
+                kind: "mutation-unsupported",
+                reason: outcome.reason,
+              }),
             );
             return;
           case "invalid":
@@ -159,7 +162,9 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
             return;
           default: {
             const exhaustive: never = outcome;
-            throw new Error(`Unhandled mutation outcome: ${JSON.stringify(exhaustive)}`);
+            throw new Error(
+              `Unhandled mutation outcome: ${JSON.stringify(exhaustive)}`,
+            );
           }
         }
       }
@@ -351,7 +356,12 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
     // here is precisely what destroyed the report before anyone read it.
     if (error instanceof PendingFlushDiscardedError) {
       scope.postMessage(
-        errorResponse(request.requestId, "local-writes-discarded", error.message, false),
+        errorResponse(
+          request.requestId,
+          "local-writes-discarded",
+          error.message,
+          false,
+        ),
       );
       return;
     }

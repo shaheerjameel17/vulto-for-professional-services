@@ -164,10 +164,7 @@ async function tryInitialize(page: Page): Promise<{ opened: boolean; error?: str
   });
 }
 
-type PoisonName =
-  | "foreignWorkspace"
-  | "conflictingNodeType"
-  | "malformedRecord";
+type PoisonName = "foreignWorkspace" | "conflictingNodeType" | "malformedRecord";
 
 interface StepOutcome {
   /** Present when the Worker never answered — the client hung rather than refusing. */
@@ -269,7 +266,9 @@ async function runPoison(
         // marker job_title is what distinguishes "the poison landed" from
         // "the clean seed is still there".
         const seen = result.queryAfterPoison.value as {
-          node?: { fragments: { partitionKey: string; record: Record<string, unknown> }[] } | null;
+          node?: {
+            fragments: { partitionKey: string; record: Record<string, unknown> }[];
+          } | null;
         };
         const operational = (seen.node?.fragments ?? []).find(
           (f) => f.partitionKey === "operational",

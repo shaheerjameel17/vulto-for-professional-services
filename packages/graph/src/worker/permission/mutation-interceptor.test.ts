@@ -110,7 +110,9 @@ describe("authorizeNodeWrite — Gate 1, exhaustive over every registered node t
 
 describe("authorizeEdgeWrite — Gate 1 endpoint approximation, exhaustive over every registered edge relationship with concrete endpoints", () => {
   const concreteRegistrations = EDGE_REGISTRY.filter(
-    (registration): registration is typeof registration & {
+    (
+      registration,
+    ): registration is typeof registration & {
       fromNodeType: NodeType;
       toNodeType: NodeType;
     } => isNodeType(registration.fromNodeType) && isNodeType(registration.toNodeType),
@@ -168,62 +170,104 @@ describe("authorizeEdgeWrite — Gate 1 endpoint approximation, exhaustive over 
 
 describe("diffChangedNodeFragments — the fork-then-diff half of runtime.ts's mutate", () => {
   it("returns nothing when before and after are identical", () => {
-    const fragments = [fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational")];
+    const fragments = [
+      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational"),
+    ];
     expect(diffChangedNodeFragments(fragments, fragments)).toEqual([]);
   });
 
   it("surfaces an added fragment", () => {
     const before: NodeFragmentInput[] = [];
-    const after = [fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational")];
+    const after = [
+      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational"),
+    ];
     const changed = diffChangedNodeFragments(before, after);
     expect(changed).toEqual([
-      { nodeId: "66666666-6666-4666-8666-666666666666", partitionKey: "operational", nodeType: "Employee" },
+      {
+        nodeId: "66666666-6666-4666-8666-666666666666",
+        partitionKey: "operational",
+        nodeType: "Employee",
+      },
     ]);
   });
 
   it("surfaces a removed fragment, keyed by the BEFORE record's type and partition", () => {
-    const before = [fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational")];
+    const before = [
+      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational"),
+    ];
     const after: NodeFragmentInput[] = [];
     const changed = diffChangedNodeFragments(before, after);
     expect(changed).toEqual([
-      { nodeId: "66666666-6666-4666-8666-666666666666", partitionKey: "operational", nodeType: "Employee" },
+      {
+        nodeId: "66666666-6666-4666-8666-666666666666",
+        partitionKey: "operational",
+        nodeType: "Employee",
+      },
     ]);
   });
 
   it("surfaces a changed fragment by canonical-JSON inequality, ignoring key order", () => {
     const before = [
-      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational", { title: "Engineer" }),
+      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational", {
+        title: "Engineer",
+      }),
     ];
     const after = [
-      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational", { title: "Senior Engineer" }),
+      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational", {
+        title: "Senior Engineer",
+      }),
     ];
     expect(diffChangedNodeFragments(before, after)).toHaveLength(1);
   });
 
   it("does not surface a fragment whose fields are reordered but unchanged in value", () => {
     const before: NodeFragmentInput = {
-      sourceDocumentId: "node-fragment:66666666-6666-4666-8666-666666666666:operational",
+      sourceDocumentId:
+        "node-fragment:66666666-6666-4666-8666-666666666666:operational",
       partitionKey: "operational",
-      record: { a: 1, ...baseRecord("66666666-6666-4666-8666-666666666666", "Employee") },
+      record: {
+        a: 1,
+        ...baseRecord("66666666-6666-4666-8666-666666666666", "Employee"),
+      },
     };
     const after: NodeFragmentInput = {
-      sourceDocumentId: "node-fragment:66666666-6666-4666-8666-666666666666:operational",
+      sourceDocumentId:
+        "node-fragment:66666666-6666-4666-8666-666666666666:operational",
       partitionKey: "operational",
-      record: { ...baseRecord("66666666-6666-4666-8666-666666666666", "Employee"), a: 1 },
+      record: {
+        ...baseRecord("66666666-6666-4666-8666-666666666666", "Employee"),
+        a: 1,
+      },
     };
     expect(diffChangedNodeFragments([before], [after])).toEqual([]);
   });
 
   it("only surfaces the specific fragment a batch touches, not every fragment in the snapshot", () => {
-    const untouched = fragmentInput("11111111-1111-4111-8111-111111111111", "Employee", "operational");
-    const before = [untouched, fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "compensation")];
+    const untouched = fragmentInput(
+      "11111111-1111-4111-8111-111111111111",
+      "Employee",
+      "operational",
+    );
+    const before = [
+      untouched,
+      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "compensation"),
+    ];
     const after = [
       untouched,
-      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "compensation", { salary: 1 }),
+      fragmentInput(
+        "66666666-6666-4666-8666-666666666666",
+        "Employee",
+        "compensation",
+        { salary: 1 },
+      ),
     ];
     const changed = diffChangedNodeFragments(before, after);
     expect(changed).toEqual([
-      { nodeId: "66666666-6666-4666-8666-666666666666", partitionKey: "compensation", nodeType: "Employee" },
+      {
+        nodeId: "66666666-6666-4666-8666-666666666666",
+        partitionKey: "compensation",
+        nodeType: "Employee",
+      },
     ]);
   });
 
@@ -233,12 +277,18 @@ describe("diffChangedNodeFragments — the fork-then-diff half of runtime.ts's m
       fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "compensation"),
     ];
     const after = [
-      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational", { title: "Changed" }),
+      fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "operational", {
+        title: "Changed",
+      }),
       fragmentInput("66666666-6666-4666-8666-666666666666", "Employee", "compensation"),
     ];
     const changed = diffChangedNodeFragments(before, after);
     expect(changed).toEqual([
-      { nodeId: "66666666-6666-4666-8666-666666666666", partitionKey: "operational", nodeType: "Employee" },
+      {
+        nodeId: "66666666-6666-4666-8666-666666666666",
+        partitionKey: "operational",
+        nodeType: "Employee",
+      },
     ]);
   });
 });
@@ -263,10 +313,9 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     extra: Record<string, unknown> = {},
   ): void {
     const key = `${nodeId}:${partitionKey}`;
-    const fragment = document.getMap(NODE_FRAGMENT_CONTAINER).setContainer(
-      key,
-      new LoroMap(),
-    );
+    const fragment = document
+      .getMap(NODE_FRAGMENT_CONTAINER)
+      .setContainer(key, new LoroMap());
     for (const [field, value] of Object.entries(baseRecord(nodeId, nodeType, extra))) {
       fragment.set(field, value);
     }
@@ -289,20 +338,40 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
 
   it("authorizes and reports nothing to refuse when the caller has Full write on the only changed fragment", async () => {
     const document = new LoroDoc();
-    const batch = nodeFragmentBatch("66666666-6666-4666-8666-666666666666", "Employee", "operational", {
-      title: "Engineer",
-    });
-    const outcome = await authorizeMutationBatch(document, [batch], OWNER, FIXTURE_WORKSPACE);
+    const batch = nodeFragmentBatch(
+      "66666666-6666-4666-8666-666666666666",
+      "Employee",
+      "operational",
+      {
+        title: "Engineer",
+      },
+    );
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
     expect(outcome).toEqual({ status: "authorized" });
     document.free();
   });
 
   it("denies when the caller does not have Full write on the changed fragment, and names it in the reason", async () => {
     const document = new LoroDoc();
-    const batch = nodeFragmentBatch("66666666-6666-4666-8666-666666666666", "Employee", "compensation", {
-      salary: 1,
-    });
-    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER, FIXTURE_WORKSPACE);
+    const batch = nodeFragmentBatch(
+      "66666666-6666-4666-8666-666666666666",
+      "Employee",
+      "compensation",
+      {
+        salary: 1,
+      },
+    );
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      TEAM_MEMBER,
+      FIXTURE_WORKSPACE,
+    );
     expect(outcome.status).toBe("denied");
     if (outcome.status === "denied") {
       expect(outcome.reason).toContain("Employee/compensation");
@@ -315,7 +384,12 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     const nodeId = "66666666-6666-4666-8666-666666666666";
     const batch = nodeFragmentBatch(nodeId, "Employee", "compensation");
 
-    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER, FIXTURE_WORKSPACE);
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      TEAM_MEMBER,
+      FIXTURE_WORKSPACE,
+    );
     expect(outcome.status).toBe("denied");
 
     // `readNodeFragments`, not raw `toJSON()`: calling `document.getMap(...)`
@@ -330,14 +404,24 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
 
   it("refuses the whole batch as unsupported when it touches the Movable Tree, even alongside an otherwise-authorized fragment write", async () => {
     const scratch = new LoroDoc();
-    writeFragment(scratch, "66666666-6666-4666-8666-666666666666", "Employee", "operational");
+    writeFragment(
+      scratch,
+      "66666666-6666-4666-8666-666666666666",
+      "Employee",
+      "operational",
+    );
     scratch.getTree("org_hierarchy").createNode();
     scratch.commit();
     const batch = scratch.export({ mode: "snapshot" });
     scratch.free();
 
     const document = new LoroDoc();
-    const outcome = await authorizeMutationBatch(document, [batch], OWNER, FIXTURE_WORKSPACE);
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
     expect(outcome.status).toBe("unsupported");
     if (outcome.status === "unsupported") {
       expect(outcome.reason).toContain("org_hierarchy");
@@ -353,7 +437,12 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     scratch.free();
 
     const document = new LoroDoc();
-    const outcome = await authorizeMutationBatch(document, [batch], OWNER, FIXTURE_WORKSPACE);
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
     expect(outcome.status).toBe("unsupported");
     if (outcome.status === "unsupported") {
       expect(outcome.reason).toContain("some_future_container_nobody_has_written_yet");
@@ -363,27 +452,51 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
 
   it("refuses the whole batch when ONE of several changed fragments is denied — no partial commit signaled", async () => {
     const scratch = new LoroDoc();
-    writeFragment(scratch, "44444444-4444-4444-8444-444444444444", "Employee", "operational");
-    writeFragment(scratch, "55555555-5555-4555-8555-555555555555", "Employee", "compensation");
+    writeFragment(
+      scratch,
+      "44444444-4444-4444-8444-444444444444",
+      "Employee",
+      "operational",
+    );
+    writeFragment(
+      scratch,
+      "55555555-5555-4555-8555-555555555555",
+      "Employee",
+      "compensation",
+    );
     scratch.commit();
     const batch = scratch.export({ mode: "snapshot" });
     scratch.free();
 
     const document = new LoroDoc();
-    const outcome = await authorizeMutationBatch(document, [batch], TEAM_MEMBER, FIXTURE_WORKSPACE);
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      TEAM_MEMBER,
+      FIXTURE_WORKSPACE,
+    );
     expect(outcome.status).toBe("denied");
     document.free();
   });
 
   it("authorizes a batch that changes nothing relative to the current document (idempotent re-apply), regardless of role", async () => {
     const document = new LoroDoc();
-    const batch = nodeFragmentBatch("66666666-6666-4666-8666-666666666666", "Employee", "operational");
+    const batch = nodeFragmentBatch(
+      "66666666-6666-4666-8666-666666666666",
+      "Employee",
+      "operational",
+    );
     // Land it for real first, the same way runtime.ts#mutate would commit
     // an authorized batch, so "before" already contains this fragment.
     document.import(batch);
     document.commit();
 
-    const outcome = await authorizeMutationBatch(document, [batch], [], FIXTURE_WORKSPACE);
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      [],
+      FIXTURE_WORKSPACE,
+    );
     expect(outcome).toEqual({ status: "authorized" });
     document.free();
   });

@@ -466,7 +466,9 @@ describe("F148 — the role-refresh checkpoint separates its failures from its d
     // admission query cannot run, so the route's own error path is what
     // answers. Renamed rather than dropped, and restored in `finally`, so a
     // failure here cannot leave the test database broken for later tests.
-    await db.execute(sql.raw('ALTER TABLE "member" RENAME COLUMN "status" TO "status_f148"'));
+    await db.execute(
+      sql.raw('ALTER TABLE "member" RENAME COLUMN "status" TO "status_f148"'),
+    );
     let response;
     try {
       response = await app.inject({
