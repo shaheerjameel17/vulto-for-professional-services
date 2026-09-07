@@ -109,4 +109,20 @@ describe("graph Worker protocol", () => {
       }),
     ).toThrow();
   });
+
+  it.each(["open-payload", "seal-payload"])(
+    "rejects the removed %s production operation (F175)",
+    (type) => {
+      expect(
+        graphWorkerRequestSchema.safeParse({
+          protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+          requestId: "request-f175",
+          sentAt,
+          type,
+          storeKey: "vulto:protected:predictable-internal-key",
+          plaintext: new Uint8Array([1]).buffer,
+        }).success,
+      ).toBe(false);
+    },
+  );
 });

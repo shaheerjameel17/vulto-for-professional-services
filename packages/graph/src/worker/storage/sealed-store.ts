@@ -64,8 +64,65 @@ interface PayloadRecord {
   storeKey: string;
   workspaceId: string;
   generation: number;
+  digest: string;
   iv: Uint8Array;
   ciphertext: Uint8Array;
+}
+
+const PAYLOAD_RECORD_KEYS = [
+  "ciphertext",
+  "digest",
+  "generation",
+  "iv",
+  "storeKey",
+  "workspaceId",
+] as const;
+
+/** IndexedDB is durable hostile input; TypeScript interfaces do not validate it. */
+export function parseSealedPayloadRecord(
+  value: unknown,
+  expectedStoreKey: string,
+  expectedWorkspaceId: string,
+): PayloadRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new SealedStoreCannotOpenError();
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  if (
+    keys.length !== PAYLOAD_RECORD_KEYS.length ||
+    keys.some((key, index) => key !== PAYLOAD_RECORD_KEYS[index]) ||
+    record.storeKey !== expectedStoreKey ||
+    record.workspaceId !== expectedWorkspaceId ||
+    !Number.isSafeInteger(record.generation) ||
+    (record.generation as number) < 0 ||
+    typeof record.digest !== "string" ||
+    !/^[A-Za-z0-9_-]{43}$/.test(record.digest) ||
+    !(record.iv instanceof Uint8Array) ||
+    record.iv.byteLength !== 12 ||
+    !(record.ciphertext instanceof Uint8Array) ||
+    record.ciphertext.byteLength < 16
+  ) {
+    throw new SealedStoreCannotOpenError();
+  }
+  return record as unknown as PayloadRecord;
+}
+
+export interface SealedStoreVersionedValue {
+  readonly value: Uint8Array | null;
+  readonly generation: number;
+  readonly digest: string | null;
+}
+
+export interface SealedStoreCommit {
+  readonly generation: number;
+  readonly digest: string;
+}
+
+export class SealedStoreConflictError extends Error {
+  constructor() {
+    super("The sealed record changed before this commit");
+  }
 }
 
 /** Wrong key and corrupted ciphertext are indistinguishable by design: one failure mode. */
@@ -145,6 +202,18 @@ function randomBase64Url(byteLength: number): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
+function base64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+async function contentDigest(bytes: Uint8Array): Promise<string> {
+  return base64Url(
+    new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as BufferSource)),
+  );
+}
+
 /**
  * The sealed store's public surface never exposes that its implementation
  * is IndexedDB; a later move to OPFS would not change this class's API.
@@ -158,6 +227,12 @@ export class SealedStore {
 
   get isUnlocked(): boolean {
     return this.#key !== null;
+  }
+
+  get unlockedWorkspaceId(): string | null {
+    return this.#key === null || this.#envelope === null
+      ? null
+      : this.#envelope.workspaceId;
   }
 
   /**
@@ -223,6 +298,12 @@ export class SealedStore {
     });
     if (!response.ok) throw new SealedStoreUnlockDeniedError();
     const grant = (await response.json()) as DeviceUnlockGrant;
+    if (
+      grant.envelope.workspaceId !== workspaceId ||
+      grant.envelope.deviceId !== identity.deviceId
+    ) {
+      throw new SealedStoreUnlockDeniedError();
+    }
     await this.unlock(grant, identity.deviceHalf);
   }
 
@@ -259,7 +340,7 @@ export class SealedStore {
       baseKey,
       { name: "AES-GCM", length: 256 },
       false,
-      ["encrypt", "decrypt"],
+      ["encrypt", "decrypt", "wrapKey", "unwrapKey"],
     );
 
     const database = await this.#requireDatabase();
@@ -307,15 +388,33 @@ export class SealedStore {
    * torn mix of old and new bytes.
    */
   async put(storeKey: string, plaintext: Uint8Array): Promise<void> {
+    for (;;) {
+      const current = await this.getVersioned(storeKey);
+      try {
+        await this.compareAndSwap(storeKey, plaintext, {
+          generation: current.generation,
+          digest: current.digest,
+        });
+        return;
+      } catch (error) {
+        if (!(error instanceof SealedStoreConflictError)) throw error;
+      }
+    }
+  }
+
+  /**
+   * F173's FDN-84-owned linearization primitive. Encryption and hashing are
+   * staged before opening the transaction; the expected generation/digest
+   * check and replacement then occur in one IndexedDB read-write transaction.
+   */
+  async compareAndSwap(
+    storeKey: string,
+    plaintext: Uint8Array,
+    expected: { readonly generation: number; readonly digest: string | null },
+  ): Promise<SealedStoreCommit> {
     const { key, envelope } = this.#requireUnlocked();
     const database = await this.#requireDatabase();
-
-    const readTx = database.transaction(PAYLOAD_STORE, "readonly");
-    const existing = (await requestToPromise(
-      readTx.objectStore(PAYLOAD_STORE).get(`${envelope.workspaceId}:${storeKey}`),
-    )) as PayloadRecord | undefined;
-    const nextGeneration = (existing?.generation ?? -1) + 1;
-
+    const digest = await contentDigest(plaintext);
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const ciphertext = new Uint8Array(
       await crypto.subtle.encrypt(
@@ -324,18 +423,49 @@ export class SealedStore {
         plaintext as BufferSource,
       ),
     );
-
+    const physicalKey = `${envelope.workspaceId}:${storeKey}`;
+    const nextGeneration = expected.generation + 1;
     const record: PayloadRecord = {
-      storeKey: `${envelope.workspaceId}:${storeKey}`,
+      storeKey: physicalKey,
       workspaceId: envelope.workspaceId,
       generation: nextGeneration,
+      digest,
       iv,
       ciphertext,
     };
 
-    const writeTx = database.transaction(PAYLOAD_STORE, "readwrite");
-    writeTx.objectStore(PAYLOAD_STORE).put(record);
-    await transactionDone(writeTx);
+    const transaction = database.transaction(PAYLOAD_STORE, "readwrite");
+    const objectStore = transaction.objectStore(PAYLOAD_STORE);
+    const stored = (await requestToPromise(objectStore.get(physicalKey))) as unknown;
+    let existing: PayloadRecord | undefined;
+    try {
+      existing =
+        stored === undefined
+          ? undefined
+          : parseSealedPayloadRecord(stored, physicalKey, envelope.workspaceId);
+    } catch (error) {
+      transaction.abort();
+      try {
+        await transactionDone(transaction);
+      } catch {
+        // The explicit abort prevents a malformed record from being overwritten.
+      }
+      throw error;
+    }
+    const actualGeneration = existing?.generation ?? -1;
+    const actualDigest = existing?.digest ?? null;
+    if (actualGeneration !== expected.generation || actualDigest !== expected.digest) {
+      transaction.abort();
+      try {
+        await transactionDone(transaction);
+      } catch {
+        // The explicit abort is the expected conflict path.
+      }
+      throw new SealedStoreConflictError();
+    }
+    objectStore.put(record);
+    await transactionDone(transaction);
+    return { generation: nextGeneration, digest };
   }
 
   /**
@@ -345,6 +475,11 @@ export class SealedStore {
    * one another. Returns null if nothing is stored under this key.
    */
   async get(storeKey: string): Promise<Uint8Array | null> {
+    return (await this.getVersioned(storeKey)).value;
+  }
+
+  /** Reads a sealed record together with the exact CAS token that opened it. */
+  async getVersioned(storeKey: string): Promise<SealedStoreVersionedValue> {
     const { key, envelope } = this.#requireUnlocked();
     const database = await this.#requireDatabase();
 
@@ -362,21 +497,59 @@ export class SealedStore {
     }
 
     const payloadTx = database.transaction(PAYLOAD_STORE, "readonly");
-    const record = (await requestToPromise(
+    const stored = (await requestToPromise(
       payloadTx.objectStore(PAYLOAD_STORE).get(`${envelope.workspaceId}:${storeKey}`),
-    )) as PayloadRecord | undefined;
-    if (!record) return null;
+    )) as unknown;
+    if (stored === undefined) return { value: null, generation: -1, digest: null };
+    const record = parseSealedPayloadRecord(
+      stored,
+      `${envelope.workspaceId}:${storeKey}`,
+      envelope.workspaceId,
+    );
 
     try {
-      const plaintext = await crypto.subtle.decrypt(
-        { name: "AES-GCM", iv: record.iv as BufferSource },
-        key,
-        record.ciphertext as BufferSource,
+      const plaintext = new Uint8Array(
+        await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: record.iv as BufferSource },
+          key,
+          record.ciphertext as BufferSource,
+        ),
       );
-      return new Uint8Array(plaintext);
+      const digest = await contentDigest(plaintext);
+      if (record.digest !== digest) throw new Error("Sealed record digest mismatch");
+      return { value: plaintext, generation: record.generation, digest };
     } catch {
       throw new SealedStoreCannotOpenError();
     }
+  }
+
+  /** Worker-private key wrapping under the volatile sealed-store key. */
+  async wrapPrivateKey(privateKey: CryptoKey, iv: Uint8Array): Promise<Uint8Array> {
+    const { key } = this.#requireUnlocked();
+    return new Uint8Array(
+      await crypto.subtle.wrapKey("pkcs8", privateKey, key, {
+        name: "AES-GCM",
+        iv: iv as BufferSource,
+      }),
+    );
+  }
+
+  /** Worker-private unwrap; callers choose extractability only for a narrow re-wrap ceremony. */
+  async unwrapPrivateKey(
+    wrappedKey: Uint8Array,
+    iv: Uint8Array,
+    extractable: boolean,
+  ): Promise<CryptoKey> {
+    const { key } = this.#requireUnlocked();
+    return crypto.subtle.unwrapKey(
+      "pkcs8",
+      wrappedKey as BufferSource,
+      key,
+      { name: "AES-GCM", iv: iv as BufferSource },
+      { name: "ECDH", namedCurve: "P-256" },
+      extractable,
+      ["deriveBits"],
+    );
   }
 
   /**

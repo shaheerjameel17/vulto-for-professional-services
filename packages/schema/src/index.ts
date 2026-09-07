@@ -56,7 +56,13 @@ export {
   type ConversionRegistration,
 } from "./registry/conversions";
 
-export { getProtectionPartitions, resolveInheritedTier } from "./registry/protection";
+export {
+  DEFAULT_PRIVACY_CLASS_TIERS,
+  getProtectionPartitions,
+  resolveInheritedTier,
+  resolvePrivacyClassDefaultTier,
+  resolveRegisteredProtectionTier,
+} from "./registry/protection";
 
 export {
   GRAPH_DOCUMENT_SCHEMA_GENERATION,

@@ -109,6 +109,15 @@ describe("local graph client lifecycle", () => {
     expect(client.applyDeltaBatch).toBeDefined();
   });
 
+  it("does not expose generic sealed-store payload access on LocalGraphClient (F175)", () => {
+    const worker = new FakeWorker();
+    const client = createLocalGraphClientWithFactory("workspace-1", () => worker);
+    // @ts-expect-error F175: arbitrary sealed-store reads are not a production API.
+    expect(client.openPayload).toBeUndefined();
+    // @ts-expect-error F175: arbitrary sealed-store writes are not a production API.
+    expect(client.sealPayload).toBeUndefined();
+  });
+
   it("still reaches applyDeltaBatch through the widened unchecked test client", async () => {
     const worker = new FakeWorker();
     const client = createUncheckedLocalGraphClientWithFactory(

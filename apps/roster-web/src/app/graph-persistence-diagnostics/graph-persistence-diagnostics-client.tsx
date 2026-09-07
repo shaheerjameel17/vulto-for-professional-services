@@ -94,9 +94,9 @@ interface GraphPersistenceDiagnosticsApi {
   storeKeyFor(workspaceId: string): string;
   /**
    * FDN-50 stage 3. Writes a base64 payload straight into the already
-   * unlocked sealed store through the real, already-existing
-   * `sealPayload` entrypoint on LocalGraphClient. Adds no new production
-   * surface: it is the same method stage 1's runtime already exposes.
+   * unlocked sealed store through the diagnostics-only sealed-store Worker.
+   * F175 deliberately removed this arbitrary-key operation from the
+   * production LocalGraphClient and its Worker protocol.
    *
    * This is how a test plants a document written by a NEWER client, which
    * is otherwise unconstructable — this build never writes a generation

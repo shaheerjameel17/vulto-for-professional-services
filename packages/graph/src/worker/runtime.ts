@@ -17,9 +17,40 @@ import {
   RoleRefreshDeniedError,
   type RoleRefreshDenialReason,
 } from "./permission/role-refresh";
-import { SealedStore, SealedStoreLockedError } from "./storage/sealed-store";
+import {
+  SealedStore,
+  SealedStoreConflictError,
+  SealedStoreEnvelopeMismatchError,
+  SealedStoreLockedError,
+  type SealedStoreCommit,
+  type SealedStoreVersionedValue,
+} from "./storage/sealed-store";
 import { SQLiteGraphIndex, type GraphQueryResult } from "./storage/sqlite-graph-index";
-import { graphSnapshotStoreKey } from "./storage/storage-keys";
+import {
+  graphSnapshotStoreKey,
+  protectedPartitionManifestStoreKey,
+  tier1IdentityStoreKey,
+  tier3PartitionManifestStoreKey,
+} from "./storage/storage-keys";
+import {
+  ProtectedPartitionRegistry,
+  type ProtectedReaderCredential,
+  type Tier1RetentionState,
+} from "./protected-partitions";
+import type { ProtectedDocumentAddress } from "./protected-document";
+import type { Tier1Recipient } from "./tier1-envelope";
+import {
+  assertP256KeyPair,
+  createTier1IdentityTransfer,
+  exportP256PublicKey,
+  generateTier1TransferKeyPair,
+  importP256PublicKey,
+  openTier1IdentityTransfer,
+  tier1IdentityTransferPayloadSchema,
+  type Tier1IdentityTransferPayload,
+} from "./tier1-identity-transfer";
+import { Tier3PartitionRegistry } from "./tier3-partitions";
+import type { Tier3RootAddress } from "./tier3-root";
 
 /**
  * F127's explicitly-labeled PLACEHOLDER delivery mechanism for the live
@@ -135,9 +166,94 @@ export class PendingFlushDiscardedError extends Error {
   }
 }
 
+interface Tier1IdentityRecord {
+  readonly formatVersion: 1;
+  readonly workspaceId: string;
+  readonly canonicalUserId: string;
+  readonly publicKey: string;
+  readonly wrapIv: string;
+  readonly wrappedPrivateKey: string;
+}
+
+function encodeBase64Url(bytes: Uint8Array): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+
+function decodeBase64Url(value: string): Uint8Array {
+  const padded = value.replaceAll("-", "+").replaceAll("_", "/");
+  return Uint8Array.from(
+    atob(padded + "=".repeat((4 - (padded.length % 4)) % 4)),
+    (character) => character.charCodeAt(0),
+  );
+}
+
+function parseTier1IdentityRecord(bytes: Uint8Array): Tier1IdentityRecord {
+  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Unsupported Tier 1 identity record");
+  }
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  const expected = [
+    "canonicalUserId",
+    "formatVersion",
+    "publicKey",
+    "workspaceId",
+    "wrapIv",
+    "wrappedPrivateKey",
+  ];
+  if (
+    keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index]) ||
+    record.formatVersion !== 1 ||
+    typeof record.workspaceId !== "string" ||
+    record.workspaceId.length === 0 ||
+    typeof record.canonicalUserId !== "string" ||
+    record.canonicalUserId.length === 0 ||
+    typeof record.publicKey !== "string" ||
+    typeof record.wrapIv !== "string" ||
+    typeof record.wrappedPrivateKey !== "string"
+  ) {
+    throw new Error("Unsupported Tier 1 identity record");
+  }
+  if (decodeBase64Url(record.wrapIv).byteLength !== 12) {
+    throw new Error("Malformed Tier 1 identity wrap IV");
+  }
+  return record as unknown as Tier1IdentityRecord;
+}
+
+function serializeTier1IdentityRecord(record: Tier1IdentityRecord): Uint8Array {
+  return new TextEncoder().encode(JSON.stringify(record));
+}
+
 export class LocalGraphWorkerRuntime {
   #availability: GraphAvailability = { state: "mid-sync" };
   #document: LoroDoc | null = null;
+  // FDN-52 Stage 3: separate from the Tier 0/2 workspace document by construction.
+  #protectedPartitions = new ProtectedPartitionRegistry();
+  #tier3Partitions = new Tier3PartitionRegistry();
+  #protectedVersion: Pick<SealedStoreVersionedValue, "generation" | "digest"> | null =
+    null;
+  #tier3Version: Pick<SealedStoreVersionedValue, "generation" | "digest"> | null = null;
+  #pendingTier3Proposal: Tier3PartitionRegistry | null = null;
+  #tier1Identity: {
+    readonly canonicalUserId: string;
+    readonly publicKey: CryptoKey;
+    readonly privateKey: CryptoKey;
+    readonly record: Tier1IdentityRecord;
+    readonly version: SealedStoreCommit;
+  } | null = null;
+  #pendingTier1TransferTargets = new Map<
+    string,
+    {
+      readonly canonicalUserId: string;
+      readonly sourceDeviceId: string;
+      readonly targetDeviceId: string;
+      readonly keyPair: CryptoKeyPair;
+    }
+  >();
   #index: SQLiteGraphIndex | null = null;
   #workspaceId: string | null = null;
   /**
@@ -249,7 +365,550 @@ export class LocalGraphWorkerRuntime {
     return this.#index;
   }
 
+  /** Worker-test seam only; no protocol exposes protected plaintext or keys. */
+  get protectedPartitionsForDiagnostics(): ProtectedPartitionRegistry {
+    return this.#protectedPartitions;
+  }
+
+  /** Worker-test seam only; no protocol exposes Tier 3 plaintext, roots or codes. */
+  get tier3PartitionsForDiagnostics(): Tier3PartitionRegistry {
+    return this.#tier3Partitions;
+  }
+
+  /** Creates or restores the one user/workspace Tier 1 identity generation. */
+  async initializeTier1Identity(canonicalUserId: string): Promise<CryptoKey> {
+    const workspaceId = this.#requireWorkspaceId();
+    if (this.#tier1Identity !== null) {
+      if (this.#tier1Identity.canonicalUserId !== canonicalUserId) {
+        throw new Error("This Worker already holds another Tier 1 identity");
+      }
+      return this.#tier1Identity.publicKey;
+    }
+    const storeKey = tier1IdentityStoreKey(workspaceId, canonicalUserId);
+    const existing = await this.#sealedStore.getVersioned(storeKey);
+    if (existing.value !== null) {
+      return this.#restoreTier1IdentityFromRecord(canonicalUserId, existing);
+    }
+
+    const pair = await crypto.subtle.generateKey(
+      { name: "ECDH", namedCurve: "P-256" },
+      true,
+      ["deriveBits"],
+    );
+    const wrapIv = crypto.getRandomValues(new Uint8Array(12));
+    const record: Tier1IdentityRecord = {
+      formatVersion: 1,
+      workspaceId,
+      canonicalUserId,
+      publicKey: await exportP256PublicKey(pair.publicKey),
+      wrapIv: encodeBase64Url(wrapIv),
+      wrappedPrivateKey: encodeBase64Url(
+        await this.#sealedStore.wrapPrivateKey(pair.privateKey, wrapIv),
+      ),
+    };
+    let version: SealedStoreCommit;
+    try {
+      version = await this.#sealedStore.compareAndSwap(
+        storeKey,
+        serializeTier1IdentityRecord(record),
+        { generation: -1, digest: null },
+      );
+    } catch (error) {
+      if (!(error instanceof SealedStoreConflictError)) throw error;
+      const winner = await this.#sealedStore.getVersioned(storeKey);
+      if (winner.value === null) throw error;
+      return this.#restoreTier1IdentityFromRecord(canonicalUserId, winner);
+    }
+    const privateKey = await this.#sealedStore.unwrapPrivateKey(
+      decodeBase64Url(record.wrappedPrivateKey),
+      wrapIv,
+      false,
+    );
+    this.#tier1Identity = {
+      canonicalUserId,
+      publicKey: pair.publicKey,
+      privateKey,
+      record,
+      version,
+    };
+    return pair.publicKey;
+  }
+
+  /** Normal cold-reopen path: no generation occurs when a sealed identity exists. */
+  async restoreTier1Identity(canonicalUserId: string): Promise<CryptoKey> {
+    const workspaceId = this.#requireWorkspaceId();
+    const versioned = await this.#sealedStore.getVersioned(
+      tier1IdentityStoreKey(workspaceId, canonicalUserId),
+    );
+    if (versioned.value === null) throw new Error("Tier 1 identity does not exist");
+    return this.#restoreTier1IdentityFromRecord(canonicalUserId, versioned);
+  }
+
+  get tier1IdentityCredentialForDiagnostics(): ProtectedReaderCredential | null {
+    const identity = this.#tier1Identity;
+    return identity === null
+      ? null
+      : { userId: identity.canonicalUserId, privateKey: identity.privateKey };
+  }
+
+  get tier1IdentityPublicKeyForDiagnostics(): CryptoKey | null {
+    return this.#tier1Identity?.publicKey ?? null;
+  }
+
+  async deviceIdForDiagnostics(): Promise<string> {
+    return this.#sealedStore.deviceId();
+  }
+
+  async beginTier1IdentityTransferTarget(input: {
+    readonly canonicalUserId: string;
+    readonly sourceDeviceId: string;
+    readonly transferId: string;
+  }): Promise<{
+    readonly targetDeviceId: string;
+    readonly targetTransferPublicKey: string;
+  }> {
+    this.#requireWorkspaceId();
+    if (this.#pendingTier1TransferTargets.has(input.transferId)) {
+      throw new Error("Tier 1 transfer target already exists");
+    }
+    const keyPair = await generateTier1TransferKeyPair();
+    const targetDeviceId = await this.#sealedStore.deviceId();
+    this.#pendingTier1TransferTargets.set(input.transferId, {
+      canonicalUserId: input.canonicalUserId,
+      sourceDeviceId: input.sourceDeviceId,
+      targetDeviceId,
+      keyPair,
+    });
+    return {
+      targetDeviceId,
+      targetTransferPublicKey: await exportP256PublicKey(keyPair.publicKey),
+    };
+  }
+
+  async createTier1IdentityTransfer(input: {
+    readonly canonicalUserId: string;
+    readonly targetDeviceId: string;
+    readonly targetTransferPublicKey: string;
+    readonly transferId: string;
+    readonly expiresAt: string;
+  }): Promise<Tier1IdentityTransferPayload> {
+    const workspaceId = this.#requireWorkspaceId();
+    const identity = this.#tier1Identity;
+    if (identity === null || identity.canonicalUserId !== input.canonicalUserId) {
+      throw new Error("Tier 1 identity is not operational for this user");
+    }
+    const transientPrivateKey = await this.#sealedStore.unwrapPrivateKey(
+      decodeBase64Url(identity.record.wrappedPrivateKey),
+      decodeBase64Url(identity.record.wrapIv),
+      true,
+    );
+    return createTier1IdentityTransfer({
+      identityPrivateKey: transientPrivateKey,
+      identityPublicKey: identity.publicKey,
+      targetTransferPublicKey: await importP256PublicKey(input.targetTransferPublicKey),
+      workspaceId,
+      canonicalUserId: input.canonicalUserId,
+      sourceDeviceId: await this.#sealedStore.deviceId(),
+      targetDeviceId: input.targetDeviceId,
+      transferId: input.transferId,
+      expiresAt: input.expiresAt,
+    });
+  }
+
+  async acceptTier1IdentityTransfer(input: {
+    readonly payload: Tier1IdentityTransferPayload;
+    readonly transferId: string;
+    readonly now: string;
+  }): Promise<CryptoKey> {
+    const workspaceId = this.#requireWorkspaceId();
+    const pending = this.#pendingTier1TransferTargets.get(input.transferId);
+    if (!pending) throw new Error("Tier 1 transfer is unknown or already consumed");
+    const parsedPayload = tier1IdentityTransferPayloadSchema.parse(input.payload);
+    const opened = await openTier1IdentityTransfer({
+      payload: parsedPayload,
+      targetTransferPrivateKey: pending.keyPair.privateKey,
+      expectedWorkspaceId: workspaceId,
+      expectedCanonicalUserId: pending.canonicalUserId,
+      expectedSourceDeviceId: pending.sourceDeviceId,
+      expectedTargetDeviceId: pending.targetDeviceId,
+      expectedTransferId: input.transferId,
+      expectedTargetTransferPublicKey: pending.keyPair.publicKey,
+      now: input.now,
+      extractable: true,
+    });
+    const storeKey = tier1IdentityStoreKey(workspaceId, pending.canonicalUserId);
+    const existing = await this.#sealedStore.getVersioned(storeKey);
+    if (existing.value !== null) {
+      throw new Error("Tier 1 identity already exists; transfer is a replay");
+    }
+    const wrapIv = crypto.getRandomValues(new Uint8Array(12));
+    const record: Tier1IdentityRecord = {
+      formatVersion: 1,
+      workspaceId,
+      canonicalUserId: pending.canonicalUserId,
+      publicKey: parsedPayload.header.sourceIdentityPublicKey,
+      wrapIv: encodeBase64Url(wrapIv),
+      wrappedPrivateKey: encodeBase64Url(
+        await this.#sealedStore.wrapPrivateKey(opened.privateKey, wrapIv),
+      ),
+    };
+    let version: SealedStoreCommit;
+    try {
+      version = await this.#sealedStore.compareAndSwap(
+        storeKey,
+        serializeTier1IdentityRecord(record),
+        { generation: -1, digest: null },
+      );
+    } catch (error) {
+      if (error instanceof SealedStoreConflictError) {
+        throw new Error("Tier 1 identity transfer lost a one-time install race");
+      }
+      throw error;
+    }
+    const operationalPrivateKey = await this.#sealedStore.unwrapPrivateKey(
+      decodeBase64Url(record.wrappedPrivateKey),
+      wrapIv,
+      false,
+    );
+    this.#tier1Identity = {
+      canonicalUserId: pending.canonicalUserId,
+      publicKey: opened.sourceIdentityPublicKey,
+      privateKey: operationalPrivateKey,
+      record,
+      version,
+    };
+    this.#pendingTier1TransferTargets.delete(input.transferId);
+    return opened.sourceIdentityPublicKey;
+  }
+
+  async #restoreTier1IdentityFromRecord(
+    canonicalUserId: string,
+    versioned: SealedStoreVersionedValue,
+  ): Promise<CryptoKey> {
+    const workspaceId = this.#requireWorkspaceId();
+    if (versioned.value === null || versioned.digest === null) {
+      throw new Error("Tier 1 identity does not exist");
+    }
+    const record = parseTier1IdentityRecord(versioned.value);
+    if (
+      record.workspaceId !== workspaceId ||
+      record.canonicalUserId !== canonicalUserId
+    ) {
+      throw new Error("Tier 1 identity record does not match this Worker");
+    }
+    const publicKey = await importP256PublicKey(record.publicKey);
+    const privateKey = await this.#sealedStore.unwrapPrivateKey(
+      decodeBase64Url(record.wrappedPrivateKey),
+      decodeBase64Url(record.wrapIv),
+      false,
+    );
+    await assertP256KeyPair(privateKey, publicKey);
+    this.#tier1Identity = {
+      canonicalUserId,
+      publicKey,
+      privateKey,
+      record,
+      version: { generation: versioned.generation, digest: versioned.digest },
+    };
+    return publicKey;
+  }
+
+  async beginTier3Enrollment(input: {
+    readonly address: ProtectedDocumentAddress;
+    readonly sessionUserId: string;
+    readonly credentialId: string;
+    readonly prfInput: Uint8Array;
+    readonly prfResult: Uint8Array;
+  }): Promise<string> {
+    this.#requireAddressWorkspace(input.address);
+    if (this.#pendingTier3Proposal !== null) {
+      throw new Error("A Tier 3 ceremony is already pending");
+    }
+    await this.#ensureTier3Version(true);
+    const proposal = this.#tier3Partitions.fork();
+    try {
+      const code = await proposal.beginEnrollment(input);
+      this.#pendingTier3Proposal = proposal;
+      return code;
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async confirmTier3Enrollment(recoveryCode: string): Promise<void> {
+    const proposal = this.#pendingTier3Proposal;
+    if (proposal === null) throw new Error("No Tier 3 enrollment awaits confirmation");
+    proposal.confirmEnrollment(recoveryCode);
+    try {
+      await this.#commitTier3Proposal(proposal);
+      this.#pendingTier3Proposal = null;
+    } catch (error) {
+      proposal.dispose();
+      this.#pendingTier3Proposal = null;
+      throw error;
+    }
+  }
+
+  async addTier3Document(
+    rootAddress: Tier3RootAddress,
+    address: ProtectedDocumentAddress,
+  ): Promise<void> {
+    this.#requireRootWorkspace(rootAddress);
+    this.#requireAddressWorkspace(address);
+    const proposal = this.#tier3Partitions.fork();
+    try {
+      await proposal.addDocument(rootAddress, address);
+      await this.#commitTier3Proposal(proposal);
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async persistTier3Partitions(): Promise<void> {
+    const workspaceId = this.#requireWorkspaceId();
+    await this.#ensureTier3Version(false);
+    const commit = await this.#sealedStore.compareAndSwap(
+      tier3PartitionManifestStoreKey(workspaceId),
+      await this.#tier3Partitions.serialize(),
+      this.#tier3Version!,
+    );
+    this.#tier3Version = commit;
+    await this.#materialize();
+  }
+
+  async restoreTier3Partitions(input: {
+    readonly sessionUserId: string;
+    readonly credentialId: string;
+    readonly prfResult: Uint8Array;
+  }): Promise<void> {
+    const workspaceId = this.#requireWorkspaceId();
+    const versioned = await this.#sealedStore.getVersioned(
+      tier3PartitionManifestStoreKey(workspaceId),
+    );
+    this.#tier3Version = {
+      generation: versioned.generation,
+      digest: versioned.digest,
+    };
+    if (versioned.value === null) return;
+    await this.#tier3Partitions.restore(versioned.value, {
+      ...input,
+      expectedWorkspaceId: workspaceId,
+    });
+    await this.#materialize();
+  }
+
+  async recoverTier3Partitions(input: {
+    readonly sessionUserId: string;
+    readonly credentialId: string;
+    readonly prfInput: Uint8Array;
+    readonly prfResult: Uint8Array;
+    readonly recoveryCode: string;
+  }): Promise<string> {
+    const workspaceId = this.#requireWorkspaceId();
+    const versioned = await this.#sealedStore.getVersioned(
+      tier3PartitionManifestStoreKey(workspaceId),
+    );
+    if (versioned.value === null)
+      throw new Error("Tier 3 durable state does not exist");
+    if (this.#pendingTier3Proposal !== null) {
+      throw new Error("A Tier 3 ceremony is already pending");
+    }
+    this.#tier3Version = {
+      generation: versioned.generation,
+      digest: versioned.digest,
+    };
+    const proposal = new Tier3PartitionRegistry();
+    try {
+      const code = await proposal.recover(versioned.value, {
+        ...input,
+        expectedWorkspaceId: workspaceId,
+      });
+      this.#pendingTier3Proposal = proposal;
+      return code;
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async confirmTier3Recovery(recoveryCode: string): Promise<void> {
+    const proposal = this.#pendingTier3Proposal;
+    if (proposal === null) throw new Error("No Tier 3 recovery awaits confirmation");
+    proposal.confirmRecovery(recoveryCode);
+    try {
+      await this.#commitTier3Proposal(proposal);
+      this.#pendingTier3Proposal = null;
+    } catch (error) {
+      proposal.dispose();
+      this.#pendingTier3Proposal = null;
+      throw error;
+    }
+  }
+
+  async createProtectedPartition(
+    address: ProtectedDocumentAddress,
+    recipients: readonly Tier1Recipient[],
+    retention?: Tier1RetentionState,
+  ): Promise<void> {
+    this.#requireAddressWorkspace(address);
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      await proposal.create(address, recipients, retention);
+      await this.#commitProtectedProposal(proposal);
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async removeProtectedReader(input: {
+    readonly address: ProtectedDocumentAddress;
+    readonly nextAddress: ProtectedDocumentAddress;
+    readonly removedUserId: string;
+    readonly remainingRecipients: readonly Tier1Recipient[];
+  }): Promise<void> {
+    this.#requireAddressWorkspace(input.address);
+    this.#requireAddressWorkspace(input.nextAddress);
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      await proposal.removeReader(input);
+      await this.#commitProtectedProposal(proposal);
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async addProtectedReader(input: {
+    readonly address: ProtectedDocumentAddress;
+    readonly nextAddress: ProtectedDocumentAddress;
+    readonly addedUserId: string;
+    readonly nextRecipients: readonly Tier1Recipient[];
+    readonly authorizingCredential: ProtectedReaderCredential;
+  }): Promise<void> {
+    this.#requireAddressWorkspace(input.address);
+    this.#requireAddressWorkspace(input.nextAddress);
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      await proposal.addReader(input);
+      await this.#commitProtectedProposal(proposal);
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  /**
+   * FDN-52's document-scoped handoff for a device that has lost access to
+   * one protected partition. This deliberately cannot reach FDN-63's
+   * workspace-wide eraseLocalStore path.
+   */
+  async purgeProtectedPartition(address: ProtectedDocumentAddress): Promise<void> {
+    this.#requireAddressWorkspace(address);
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      proposal.purge(address);
+      await this.#commitProtectedProposal(proposal);
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async persistProtectedPartitions(): Promise<void> {
+    await this.#persistProtectedPartitions();
+    await this.#materialize();
+  }
+
+  async restoreProtectedPartitions(
+    credentials: readonly ProtectedReaderCredential[],
+    options?: {
+      readonly now?: string;
+      readonly onDemandPartitionKeys?: readonly string[];
+    },
+  ): Promise<void> {
+    const workspaceId = this.#requireWorkspaceId();
+    const persisted = await this.#sealedStore.getVersioned(
+      protectedPartitionManifestStoreKey(workspaceId),
+    );
+    this.#protectedVersion = {
+      generation: persisted.generation,
+      digest: persisted.digest,
+    };
+    if (persisted.value === null) return;
+    await this.#protectedPartitions.restore(persisted.value, credentials, {
+      ...options,
+      expectedWorkspaceId: workspaceId,
+    });
+    await this.#materialize();
+  }
+
+  async configureProtectedRetention(
+    address: ProtectedDocumentAddress,
+    retention: Tier1RetentionState,
+  ): Promise<void> {
+    this.#requireAddressWorkspace(address);
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      proposal.configureRetention(address, retention);
+      await this.#commitProtectedProposal(proposal);
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async purgeExpiredProtectedRetention(now: string): Promise<number> {
+    this.#requireWorkspaceId();
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      const purged = await proposal.purgeExpiredRetention(now);
+      await this.#commitProtectedProposal(proposal);
+      return purged;
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async cryptographicallyEraseProtectedDomain(
+    erasureDomainId: string,
+  ): Promise<number> {
+    this.#requireWorkspaceId();
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      const erased =
+        await proposal.cryptographicallyEraseErasureDomain(erasureDomainId);
+      await this.#commitProtectedProposal(proposal);
+      return erased;
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  async cryptographicallyEraseTier3Domain(erasureDomainId: string): Promise<number> {
+    this.#requireWorkspaceId();
+    const proposal = this.#tier3Partitions.fork();
+    try {
+      const erased =
+        await proposal.cryptographicallyEraseErasureDomain(erasureDomainId);
+      await this.#commitTier3Proposal(proposal);
+      return erased;
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
   async unlockSealedStore(workspaceId: string, apiOrigin: string): Promise<void> {
+    if (this.#workspaceId !== null && this.#workspaceId !== workspaceId) {
+      throw new Error(
+        "The Worker cannot unlock a different workspace while initialized",
+      );
+    }
     await this.#sealedStore.unlockOnline(workspaceId, apiOrigin);
     this.#apiOrigin = apiOrigin;
     this.#startRolePolling(workspaceId);
@@ -428,6 +1087,9 @@ export class LocalGraphWorkerRuntime {
     if (!this.#sealedStore.isUnlocked) {
       throw new SealedStoreLockedError();
     }
+    if (this.#sealedStore.unlockedWorkspaceId !== workspaceId) {
+      throw new SealedStoreEnvelopeMismatchError("workspace");
+    }
     this.#availability = { state: "mid-sync" };
 
     await initializeLoro();
@@ -526,10 +1188,105 @@ export class LocalGraphWorkerRuntime {
    * quiet substitution.
    */
   async #materialize(): Promise<number> {
+    return this.#materializeWith(this.#protectedPartitions, this.#tier3Partitions);
+  }
+
+  async #materializeWith(
+    protectedPartitions: ProtectedPartitionRegistry,
+    tier3Partitions: Tier3PartitionRegistry,
+  ): Promise<number> {
     const document = this.#requireDocument();
     const index = this.#requireIndex();
     const { edges } = await materializeManagedByEdges(document);
-    return index.rebuild({ nodeFragments: readNodeFragments(document), edges });
+    return index.rebuild({
+      nodeFragments: [
+        ...readNodeFragments(document),
+        ...protectedPartitions.nodeFragments(),
+        ...tier3Partitions.nodeFragments(),
+      ],
+      edges,
+    });
+  }
+
+  async #ensureProtectedVersion(requireAbsent: boolean): Promise<void> {
+    if (this.#protectedVersion !== null) return;
+    const workspaceId = this.#requireWorkspaceId();
+    const current = await this.#sealedStore.getVersioned(
+      protectedPartitionManifestStoreKey(workspaceId),
+    );
+    if (requireAbsent && current.value !== null) {
+      throw new Error("Protected durable state must be restored before mutation");
+    }
+    this.#protectedVersion = {
+      generation: current.generation,
+      digest: current.digest,
+    };
+  }
+
+  async #ensureTier3Version(requireAbsent: boolean): Promise<void> {
+    if (this.#tier3Version !== null) return;
+    const workspaceId = this.#requireWorkspaceId();
+    const current = await this.#sealedStore.getVersioned(
+      tier3PartitionManifestStoreKey(workspaceId),
+    );
+    if (requireAbsent && current.value !== null) {
+      throw new Error("Tier 3 durable state must be restored before mutation");
+    }
+    this.#tier3Version = {
+      generation: current.generation,
+      digest: current.digest,
+    };
+  }
+
+  async #commitProtectedProposal(proposal: ProtectedPartitionRegistry): Promise<void> {
+    await this.#ensureProtectedVersion(true);
+    await this.#materializeWith(proposal, this.#tier3Partitions);
+    const workspaceId = this.#requireWorkspaceId();
+    try {
+      const commit = await this.#sealedStore.compareAndSwap(
+        protectedPartitionManifestStoreKey(workspaceId),
+        await proposal.serialize(),
+        this.#protectedVersion!,
+      );
+      const previous = this.#protectedPartitions;
+      this.#protectedPartitions = proposal;
+      this.#protectedVersion = commit;
+      previous.dispose();
+    } catch (error) {
+      await this.#materialize();
+      throw error;
+    }
+  }
+
+  async #commitTier3Proposal(proposal: Tier3PartitionRegistry): Promise<void> {
+    await this.#ensureTier3Version(true);
+    await this.#materializeWith(this.#protectedPartitions, proposal);
+    const workspaceId = this.#requireWorkspaceId();
+    try {
+      const commit = await this.#sealedStore.compareAndSwap(
+        tier3PartitionManifestStoreKey(workspaceId),
+        await proposal.serialize(),
+        this.#tier3Version!,
+      );
+      const previous = this.#tier3Partitions;
+      this.#tier3Partitions = proposal;
+      this.#tier3Version = commit;
+      previous.dispose();
+    } catch (error) {
+      await this.#materialize();
+      throw error;
+    }
+  }
+
+  async #persistProtectedPartitions(): Promise<void> {
+    const workspaceId = this.#requireWorkspaceId();
+    await this.#ensureProtectedVersion(false);
+    const commit = await this.#sealedStore.compareAndSwap(
+      protectedPartitionManifestStoreKey(workspaceId),
+      await this.#protectedPartitions.serialize(),
+      this.#protectedVersion!,
+    );
+    this.#protectedVersion = commit;
   }
 
   /**
@@ -844,6 +1601,14 @@ export class LocalGraphWorkerRuntime {
     this.#index = null;
     this.#document?.free();
     this.#document = null;
+    this.#protectedPartitions.dispose();
+    this.#tier3Partitions.dispose();
+    this.#pendingTier3Proposal?.dispose();
+    this.#pendingTier3Proposal = null;
+    this.#tier1Identity = null;
+    this.#pendingTier1TransferTargets.clear();
+    this.#protectedVersion = null;
+    this.#tier3Version = null;
     this.#workspaceId = null;
     this.#availability = { state: "mid-sync" };
     this.#sealedStore.dispose();
@@ -868,6 +1633,14 @@ export class LocalGraphWorkerRuntime {
     this.#index = null;
     this.#document?.free();
     this.#document = null;
+    this.#protectedPartitions.dispose();
+    this.#tier3Partitions.dispose();
+    this.#pendingTier3Proposal?.dispose();
+    this.#pendingTier3Proposal = null;
+    this.#tier1Identity = null;
+    this.#pendingTier1TransferTargets.clear();
+    this.#protectedVersion = null;
+    this.#tier3Version = null;
     this.#workspaceId = null;
     this.#availability = { state: "mid-sync" };
     this.#materializationFailed = false;
@@ -890,5 +1663,23 @@ export class LocalGraphWorkerRuntime {
   #requireWorkspaceId(): string {
     if (this.#workspaceId === null) throw new Error("Worker is not initialized");
     return this.#workspaceId;
+  }
+
+  #requireAddressWorkspace(address: ProtectedDocumentAddress): string {
+    const workspaceId = this.#requireWorkspaceId();
+    if (address.workspaceId !== workspaceId) {
+      throw new Error(
+        "Protected document workspace does not match the current Worker workspace",
+      );
+    }
+    return workspaceId;
+  }
+
+  #requireRootWorkspace(address: Tier3RootAddress): string {
+    const workspaceId = this.#requireWorkspaceId();
+    if (address.workspaceId !== workspaceId) {
+      throw new Error("Tier 3 root does not match the current Worker workspace");
+    }
+    return workspaceId;
   }
 }

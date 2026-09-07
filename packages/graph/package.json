@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@vulto/schema": "workspace:*",
+    "canonicalize": "4.0.0",
     "loro-crdt": "1.14.1",
     "wa-sqlite": "1.0.0",
     "zod": "4.4.3"
