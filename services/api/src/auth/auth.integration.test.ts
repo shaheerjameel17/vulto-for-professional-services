@@ -531,7 +531,10 @@ describe("F151 — the real revocation cascade classifies as membership-revoked"
       userId,
       `f151-cascade-${randomUUID()}`,
     );
-    const deviceId = `f151-cascade-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+    const deviceId = `f151-cascade-device-${randomUUID()}`.replace(
+      /[^A-Za-z0-9_-]/g,
+      "",
+    );
 
     const unlockResponse = await app.inject({
       method: "POST",

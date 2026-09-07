@@ -134,9 +134,7 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       if (error instanceof DeviceRoleRefreshDeniedError) {
         return reply.code(401).send({
           error: error.message,
-          ...(error.reason !== undefined
-            ? { revocation: { kind: error.reason } }
-            : {}),
+          ...(error.reason !== undefined ? { revocation: { kind: error.reason } } : {}),
         });
       }
       if (error instanceof DeviceUnlockDeniedError) {

@@ -114,9 +114,7 @@ async function openWorkspace(page: Page, workspaceId: string): Promise<void> {
   });
 }
 
-async function tryInitialize(
-  page: Page,
-): Promise<{ opened: boolean; error?: string }> {
+async function tryInitialize(page: Page): Promise<{ opened: boolean; error?: string }> {
   return page.evaluate(async () => {
     const api = window.__vultoGraphPersistenceDiagnostics;
     if (!api) throw new Error("diagnostics API missing");
@@ -132,7 +130,10 @@ async function tryInitialize(
   });
 }
 
-async function seedDurably(page: Page, workspaceId: string): Promise<string | undefined> {
+async function seedDurably(
+  page: Page,
+  workspaceId: string,
+): Promise<string | undefined> {
   return page.evaluate(async (id) => {
     const api = window.__vultoGraphPersistenceDiagnostics;
     if (!api) throw new Error("diagnostics API missing");

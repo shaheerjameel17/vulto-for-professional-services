@@ -176,7 +176,8 @@ export function parseDeviceRoleRefreshRequest(
   const record = value as Record<string, unknown>;
   return {
     workspaceId: uuidV4Schema.parse(record.workspaceId),
-    deviceId: record.deviceId === undefined ? undefined : parseDeviceId(record.deviceId),
+    deviceId:
+      record.deviceId === undefined ? undefined : parseDeviceId(record.deviceId),
   };
 }
 
@@ -241,7 +242,9 @@ async function classifyRevocationReason(
     .select({ memberStatus: member.status, userStatus: user.status })
     .from(member)
     .innerJoin(user, eq(user.id, member.userId))
-    .where(and(eq(member.userId, current.user.id), eq(member.organizationId, workspaceId)))
+    .where(
+      and(eq(member.userId, current.user.id), eq(member.organizationId, workspaceId)),
+    )
     .limit(1);
 
   if (row?.memberStatus === "revoked" || row?.userStatus === "suspended") {
@@ -280,7 +283,8 @@ export async function requestDeviceRoleRefresh(
   deviceIdInput?: string,
 ): Promise<DeviceRoleRefreshResult> {
   const workspaceId = uuidV4Schema.parse(workspaceIdInput);
-  const deviceId = deviceIdInput === undefined ? undefined : parseDeviceId(deviceIdInput);
+  const deviceId =
+    deviceIdInput === undefined ? undefined : parseDeviceId(deviceIdInput);
 
   let current;
   try {
