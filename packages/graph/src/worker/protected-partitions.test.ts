@@ -21,6 +21,11 @@ import {
   unwrapTier1DocumentKey,
   wrapTier1DocumentKey,
 } from "./tier1-envelope";
+import {
+  combineTier1RecoveryShares,
+  generateTier1RecoverySecret,
+  splitTier1RecoverySecret,
+} from "./tier1-recovery";
 
 const WORKSPACE = "123e4567-e89b-42d3-a456-426614174000";
 const ACTOR = "123e4567-e89b-42d3-a456-426614174001";
@@ -722,5 +727,235 @@ describe("FDN-52 Stage 3 protected partitions", () => {
 
     first.dispose();
     reopened.dispose();
+  });
+});
+
+describe("FDN-52 F167 — Tier 1 no-device recovery, integrated into the registry", () => {
+  it("establishes a recovery envelope, survives F173's fork-then-commit isolation, and recovers to a new reader set", async () => {
+    const first = registry();
+    const readerA = await generateTier1IdentityKeyPair();
+    const readerB = await generateTier1IdentityKeyPair();
+    const readerC = await generateTier1IdentityKeyPair();
+    const recoverable = await address(EMPLOYEE_A, ["reader-a", "reader-b"]);
+    const recoveredAddress = await address(EMPLOYEE_A, ["reader-c"]);
+    const partition = await first.create(recoverable, [
+      { userId: "reader-a", publicKey: readerA.publicKey },
+      { userId: "reader-b", publicKey: readerB.publicKey },
+    ]);
+    writeCompensation(partition.document, EMPLOYEE_A, 100);
+
+    const secret = generateTier1RecoverySecret();
+    const shares = await splitTier1RecoverySecret(secret);
+    await first.establishRecovery({ address: recoverable, recoverySecret: secret });
+    expect(first.get(recoverable)!.recoveryEnvelope).not.toBeNull();
+
+    // F173: forking must copy-on-write. Recovering inside the fork must not
+    // disturb `first`'s own, still-intact recovery envelope or reader set.
+    const proposal = first.fork();
+    const reconstructed = await combineTier1RecoveryShares([shares[0]!, shares[2]!]);
+    await proposal.recoverPartition({
+      address: recoverable,
+      recoverySecret: reconstructed,
+      nextAddress: recoveredAddress,
+      nextRecipients: [{ userId: "reader-c", publicKey: readerC.publicKey }],
+    });
+
+    expect(first.get(recoverable)!.recoveryEnvelope).not.toBeNull();
+    expect(first.get(recoverable)!.envelopes.has("reader-a")).toBe(true);
+    expect(first.get(recoveredAddress)).toBeUndefined();
+
+    expect(proposal.get(recoverable)).toBeUndefined();
+    const recoveredPartition = proposal.get(recoveredAddress)!;
+    expect(recoveredPartition.envelopes.has("reader-c")).toBe(true);
+    expect(recoveredPartition.envelopes.has("reader-a")).toBe(false);
+    // Recovery deliberately does not carry forward a usable envelope for the
+    // recovery secret itself — see recoverPartition's doc comment.
+    expect(recoveredPartition.recoveryEnvelope).toBeNull();
+    expect(
+      (
+        readNodeFragments(recoveredPartition.document)[0]!.record as Record<
+          string,
+          unknown
+        >
+      )["base_salary"],
+    ).toBe(100);
+    await expect(
+      proposal.openFor(recoveredAddress, "reader-c", readerC.privateKey),
+    ).resolves.toHaveLength(32);
+
+    first.dispose();
+    proposal.dispose();
+  });
+
+  it("survives a serialize-then-restore cold reopen with the recovery envelope intact", async () => {
+    const first = registry();
+    const readerA = await generateTier1IdentityKeyPair();
+    const recoverable = await address(EMPLOYEE_A, ["reader-a"]);
+    await first.create(recoverable, [
+      { userId: "reader-a", publicKey: readerA.publicKey },
+    ]);
+    const secret = generateTier1RecoverySecret();
+    const shares = await splitTier1RecoverySecret(secret);
+    await first.establishRecovery({ address: recoverable, recoverySecret: secret });
+    const manifest = await first.serialize();
+
+    const reopened = registry();
+    await reopened.restore(manifest, [
+      { userId: "reader-a", privateKey: readerA.privateKey },
+    ]);
+    expect(reopened.get(recoverable)!.recoveryEnvelope).not.toBeNull();
+
+    const reconstructed = await combineTier1RecoveryShares([shares[1]!, shares[2]!]);
+    const readerD = await generateTier1IdentityKeyPair();
+    const grantedAddress = await address(EMPLOYEE_A, ["reader-a", "reader-d"]);
+    await reopened.recoverPartition({
+      address: recoverable,
+      recoverySecret: reconstructed,
+      nextAddress: grantedAddress,
+      nextRecipients: [
+        { userId: "reader-a", publicKey: readerA.publicKey },
+        { userId: "reader-d", publicKey: readerD.publicKey },
+      ],
+    });
+    await expect(
+      reopened.openFor(grantedAddress, "reader-d", readerD.privateKey),
+    ).resolves.toHaveLength(32);
+
+    first.dispose();
+    reopened.dispose();
+  });
+
+  it("refuses recovery when no recovery envelope has been established", async () => {
+    const first = registry();
+    const readerA = await generateTier1IdentityKeyPair();
+    const neverEstablished = await address(EMPLOYEE_A, ["reader-a"]);
+    await first.create(neverEstablished, [
+      { userId: "reader-a", publicKey: readerA.publicKey },
+    ]);
+    const secret = generateTier1RecoverySecret();
+    const shares = await splitTier1RecoverySecret(secret);
+    const reconstructed = await combineTier1RecoveryShares([shares[0]!, shares[1]!]);
+
+    await expect(
+      first.recoverPartition({
+        address: neverEstablished,
+        recoverySecret: reconstructed,
+        nextAddress: await address(EMPLOYEE_A, ["reader-e"]),
+        nextRecipients: [
+          { userId: "reader-e", publicKey: (await generateTier1IdentityKeyPair()).publicKey },
+        ],
+      }),
+    ).rejects.toThrow("no established recovery envelope");
+
+    first.dispose();
+  });
+
+  it("refuses recovery from a wrong-holder pair of shares — a share from a different partition's split", async () => {
+    const first = registry();
+    const readerA = await generateTier1IdentityKeyPair();
+    const partitionAddress = await address(EMPLOYEE_A, ["reader-a"]);
+    await first.create(partitionAddress, [
+      { userId: "reader-a", publicKey: readerA.publicKey },
+    ]);
+    const secretA = generateTier1RecoverySecret();
+    const sharesA = await splitTier1RecoverySecret(secretA);
+    await first.establishRecovery({
+      address: partitionAddress,
+      recoverySecret: secretA,
+    });
+
+    const secretB = generateTier1RecoverySecret();
+    const sharesB = await splitTier1RecoverySecret(secretB);
+    const wrongPairSecret = await combineTier1RecoveryShares([
+      sharesA[0]!,
+      sharesB[1]!,
+    ]);
+
+    await expect(
+      first.recoverPartition({
+        address: partitionAddress,
+        recoverySecret: wrongPairSecret,
+        nextAddress: await address(EMPLOYEE_A, ["reader-f"]),
+        nextRecipients: [
+          { userId: "reader-f", publicKey: (await generateTier1IdentityKeyPair()).publicKey },
+        ],
+      }),
+    ).rejects.toThrow("cannot be opened");
+    // Refused, not partially applied: the reader set is untouched.
+    expect(first.get(partitionAddress)!.envelopes.has("reader-a")).toBe(true);
+
+    first.dispose();
+  });
+
+  it("refuses recovery from a corrupted share", async () => {
+    const first = registry();
+    const readerA = await generateTier1IdentityKeyPair();
+    const partitionAddress = await address(EMPLOYEE_A, ["reader-a"]);
+    await first.create(partitionAddress, [
+      { userId: "reader-a", publicKey: readerA.publicKey },
+    ]);
+    const secret = generateTier1RecoverySecret();
+    const shares = await splitTier1RecoverySecret(secret);
+    await first.establishRecovery({ address: partitionAddress, recoverySecret: secret });
+
+    const corrupted = new Uint8Array(shares[1]!);
+    corrupted[0] = corrupted[0]! ^ 0xff;
+    const wrongSecret = await combineTier1RecoveryShares([shares[0]!, corrupted]);
+    expect(wrongSecret).not.toEqual(secret);
+
+    await expect(
+      first.recoverPartition({
+        address: partitionAddress,
+        recoverySecret: wrongSecret,
+        nextAddress: await address(EMPLOYEE_A, ["reader-g"]),
+        nextRecipients: [
+          { userId: "reader-g", publicKey: (await generateTier1IdentityKeyPair()).publicKey },
+        ],
+      }),
+    ).rejects.toThrow("cannot be opened");
+
+    first.dispose();
+  });
+
+  it("invalidates an established recovery envelope on removeReader and addReader rotation, rather than leaving it silently stale", async () => {
+    const first = registry();
+    const readerA = await generateTier1IdentityKeyPair();
+    const readerB = await generateTier1IdentityKeyPair();
+    const readerC = await generateTier1IdentityKeyPair();
+    const original = await address(EMPLOYEE_A, ["reader-a", "reader-b"]);
+    await first.create(original, [
+      { userId: "reader-a", publicKey: readerA.publicKey },
+      { userId: "reader-b", publicKey: readerB.publicKey },
+    ]);
+    const secret = generateTier1RecoverySecret();
+    await first.establishRecovery({ address: original, recoverySecret: secret });
+    expect(first.get(original)!.recoveryEnvelope).not.toBeNull();
+
+    const afterRemoval = await address(EMPLOYEE_A, ["reader-a"]);
+    await first.removeReader({
+      address: original,
+      nextAddress: afterRemoval,
+      removedUserId: "reader-b",
+      remainingRecipients: [{ userId: "reader-a", publicKey: readerA.publicKey }],
+    });
+    expect(first.get(afterRemoval)!.recoveryEnvelope).toBeNull();
+
+    await first.establishRecovery({ address: afterRemoval, recoverySecret: secret });
+    expect(first.get(afterRemoval)!.recoveryEnvelope).not.toBeNull();
+
+    const afterGrant = await address(EMPLOYEE_A, ["reader-a", "reader-c"]);
+    await first.addReader({
+      address: afterRemoval,
+      nextAddress: afterGrant,
+      addedUserId: "reader-c",
+      nextRecipients: [
+        { userId: "reader-a", publicKey: readerA.publicKey },
+        { userId: "reader-c", publicKey: readerC.publicKey },
+      ],
+      authorizingCredential: { userId: "reader-a", privateKey: readerA.privateKey },
+    });
+    expect(first.get(afterGrant)!.recoveryEnvelope).toBeNull();
+
+    first.dispose();
   });
 });

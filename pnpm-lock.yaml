@@ -105,6 +105,9 @@ importers:
       loro-crdt:
         specifier: 1.14.1
         version: 1.14.1
+      shamir-secret-sharing:
+        specifier: 0.0.3
+        version: 0.0.3
       wa-sqlite:
         specifier: 1.0.0
         version: 1.0.0
@@ -3158,6 +3161,9 @@ packages:
   set-cookie-parser@3.1.2:
     resolution: {integrity: sha512-5/r/lTwbJ3zQ+qwdUFZYeRNqda7P5HD8zQKqlSjdGt1/S0cjLAphHusj4Y58ahDtWn/g32xrIS58/ikOvwl0Lw==}
 
+  shamir-secret-sharing@0.0.3:
+    resolution: {integrity: sha512-GPIb+QZDyjwwKSlVXEjHoOaBeevmdWz2IM2tz07nQvd0L9eMfLhzEqr7imajjjXCAO/cWgzXCCj0yFNMx6+miQ==}
+
   sharp@0.33.5:
     resolution: {integrity: sha512-haPVm1EkS9pgvHrQ/F3Xy+hgcuMV0Wm9vfIBSiwZ05k+xgb0PkBQpGsAA/oWdDobNaZTH5ppvHtzCFbnSEwHVw==}
     engines: {node: ^18.17.0 || ^20.3.0 || >=21.0.0}
@@ -6160,6 +6166,8 @@ snapshots:
   set-cookie-parser@2.7.2: {}
 
   set-cookie-parser@3.1.2: {}
+
+  shamir-secret-sharing@0.0.3: {}
 
   sharp@0.33.5:
     dependencies:

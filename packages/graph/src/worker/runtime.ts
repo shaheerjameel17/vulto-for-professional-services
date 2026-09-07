@@ -801,6 +801,50 @@ export class LocalGraphWorkerRuntime {
   }
 
   /**
+   * FDN-52/F167 — establishes (or replaces) the no-device recovery envelope
+   * for one protected partition, under F173's fork-then-commit discipline
+   * like every other protected-partition mutation.
+   */
+  async establishProtectedRecovery(input: {
+    readonly address: ProtectedDocumentAddress;
+    readonly recoverySecret: Uint8Array;
+  }): Promise<void> {
+    this.#requireAddressWorkspace(input.address);
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      await proposal.establishRecovery(input);
+      await this.#commitProtectedProposal(proposal);
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  /**
+   * FDN-52/F167 — no-device recovery. Authorized by the recovery envelope
+   * (unwrapped from a secret reconstructed from any two of three Shamir
+   * shares), never by an existing device credential. Same fork-then-commit
+   * discipline as `addProtectedReader`/`removeProtectedReader`.
+   */
+  async recoverProtectedPartition(input: {
+    readonly address: ProtectedDocumentAddress;
+    readonly recoverySecret: Uint8Array;
+    readonly nextAddress: ProtectedDocumentAddress;
+    readonly nextRecipients: readonly Tier1Recipient[];
+  }): Promise<void> {
+    this.#requireAddressWorkspace(input.address);
+    this.#requireAddressWorkspace(input.nextAddress);
+    const proposal = this.#protectedPartitions.fork();
+    try {
+      await proposal.recoverPartition(input);
+      await this.#commitProtectedProposal(proposal);
+    } catch (error) {
+      proposal.dispose();
+      throw error;
+    }
+  }
+
+  /**
    * FDN-52's document-scoped handoff for a device that has lost access to
    * one protected partition. This deliberately cannot reach FDN-63's
    * workspace-wide eraseLocalStore path.

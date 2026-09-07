@@ -83,6 +83,17 @@ const protectedEnvelopeHeaderBaseSchema = z
   })
   .strict();
 
+/**
+ * One branch per ciphertext kind, even the ones that add no extra field
+ * beyond the base shape — a single branch sharing several literal
+ * discriminants would validate identically, but `Extract<ProtectedEnvelopeHeader,
+ * {ciphertextKind: "..."}>` cannot narrow a multi-literal branch to one kind.
+ * `tier1-recovery.ts`'s `Tier1RecoveryEnvelope["header"]` type depends on
+ * this narrowing working, the same way `tier1-envelope.ts`'s already does
+ * for `"tier1-recipient-envelope"`. Purely a type-level refinement — every
+ * branch here validates exactly the same bytes as the single combined
+ * branch did.
+ */
 export const protectedEnvelopeHeaderSchema = z.discriminatedUnion("ciphertextKind", [
   protectedEnvelopeHeaderBaseSchema.extend({
     ciphertextKind: z.literal("tier1-recipient-envelope"),
@@ -90,14 +101,22 @@ export const protectedEnvelopeHeaderSchema = z.discriminatedUnion("ciphertextKin
     ephemeralPublicKey: z.string().min(1),
   }),
   protectedEnvelopeHeaderBaseSchema.extend({
-    ciphertextKind: z.union([
-      z.literal("document-snapshot"),
-      z.literal("document-update"),
-      z.literal("tier1-recovery-envelope"),
-      z.literal("tier3-prf-envelope"),
-      z.literal("tier3-recovery-code-envelope"),
-      z.literal("tier3-document-key-envelope"),
-    ]),
+    ciphertextKind: z.literal("document-snapshot"),
+  }),
+  protectedEnvelopeHeaderBaseSchema.extend({
+    ciphertextKind: z.literal("document-update"),
+  }),
+  protectedEnvelopeHeaderBaseSchema.extend({
+    ciphertextKind: z.literal("tier1-recovery-envelope"),
+  }),
+  protectedEnvelopeHeaderBaseSchema.extend({
+    ciphertextKind: z.literal("tier3-prf-envelope"),
+  }),
+  protectedEnvelopeHeaderBaseSchema.extend({
+    ciphertextKind: z.literal("tier3-recovery-code-envelope"),
+  }),
+  protectedEnvelopeHeaderBaseSchema.extend({
+    ciphertextKind: z.literal("tier3-document-key-envelope"),
   }),
 ]);
 

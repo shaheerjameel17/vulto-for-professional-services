@@ -16,6 +16,11 @@ import {
   unwrapTier1DocumentKey,
   wrapTier1DocumentKey,
 } from "./tier1-envelope";
+import {
+  type Tier1RecoveryEnvelope,
+  unwrapTier1RecoveryDocumentKey,
+  wrapTier1RecoveryDocumentKey,
+} from "./tier1-recovery";
 
 const MANIFEST_VERSION = 2 as const;
 const RETENTION_LEASE_DAYS = 30;
@@ -107,6 +112,15 @@ export function protectedPartitionKey(address: ProtectedDocumentAddress): string
   return base64(protectedEnvelopeAdditionalData(header)).replaceAll("=", "");
 }
 
+function constantTimeEqual(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let difference = 0;
+  for (let index = 0; index < a.length; index += 1) {
+    difference |= a[index]! ^ b[index]!;
+  }
+  return difference === 0;
+}
+
 function sameAddressExceptReaderSet(
   before: ProtectedDocumentAddress,
   after: ProtectedDocumentAddress,
@@ -186,6 +200,51 @@ function deserializeEnvelopes(
 function cloneRecipientEnvelope(
   envelope: Tier1RecipientEnvelope,
 ): Tier1RecipientEnvelope {
+  return {
+    header: structuredClone(envelope.header),
+    iv: new Uint8Array(envelope.iv),
+    ciphertext: new Uint8Array(envelope.ciphertext),
+  };
+}
+
+function serializeRecoveryEnvelope(
+  envelope: Tier1RecoveryEnvelope | null,
+): SerializedRecoveryEnvelope | null {
+  if (!envelope) return null;
+  return {
+    header: envelope.header,
+    iv: base64(envelope.iv),
+    ciphertext: base64(envelope.ciphertext),
+  };
+}
+
+function deserializeRecoveryEnvelope(
+  serialized: SerializedRecoveryEnvelope | null,
+  address: ProtectedDocumentAddress,
+  keyEpoch: number,
+): Tier1RecoveryEnvelope | null {
+  if (!serialized) return null;
+  const header = protectedEnvelopeHeaderSchema.parse(serialized.header);
+  if (
+    header.ciphertextKind !== "tier1-recovery-envelope" ||
+    header.keyEpoch !== keyEpoch ||
+    protectedPartitionKey(header.address) !== protectedPartitionKey(address)
+  ) {
+    throw new Error(
+      "Protected recovery envelope does not match its partition manifest",
+    );
+  }
+  return {
+    header: header as Tier1RecoveryEnvelope["header"],
+    iv: unbase64(serialized.iv),
+    ciphertext: unbase64(serialized.ciphertext),
+  };
+}
+
+function cloneRecoveryEnvelope(
+  envelope: Tier1RecoveryEnvelope | null,
+): Tier1RecoveryEnvelope | null {
+  if (!envelope) return null;
   return {
     header: structuredClone(envelope.header),
     iv: new Uint8Array(envelope.iv),
@@ -287,6 +346,12 @@ interface SerializedEnvelope {
   readonly ciphertext: string;
 }
 
+interface SerializedRecoveryEnvelope {
+  readonly header: Tier1RecoveryEnvelope["header"];
+  readonly iv: string;
+  readonly ciphertext: string;
+}
+
 interface SerializedPartition {
   readonly address: ProtectedDocumentAddress;
   readonly keyEpoch: number;
@@ -297,6 +362,8 @@ interface SerializedPartition {
   readonly currentCiphertext: string;
   readonly retention: Tier1RetentionState;
   readonly keyErased: boolean;
+  /** F167/A003-T13 no-device recovery. Null until `establishRecovery` runs. */
+  readonly recoveryEnvelope: SerializedRecoveryEnvelope | null;
 }
 
 interface SerializedEpoch {
@@ -322,6 +389,15 @@ export interface ProtectedPartition {
   historicalEpochs: ProtectedHistoricalEpoch[];
   epochBaseVersion: VersionVector | null;
   retention: Tier1RetentionState;
+  /**
+   * F167/A003-T13 no-device recovery envelope: the live document key wrapped
+   * under a secret reconstructed from any two of three Shamir shares. Null
+   * until `establishRecovery` is called, and explicitly nulled again by
+   * `addReader`/`removeReader`/`recoverPartition` whenever the address or
+   * document key it was wrapped for changes underneath it — a stale
+   * envelope is reset to absent, never left silently wrong.
+   */
+  recoveryEnvelope: Tier1RecoveryEnvelope | null;
 }
 
 interface ProtectedHistoricalEpoch {
@@ -368,6 +444,7 @@ export class ProtectedPartitionRegistry {
         })),
         epochBaseVersion: partition.epochBaseVersion,
         retention: { ...partition.retention },
+        recoveryEnvelope: cloneRecoveryEnvelope(partition.recoveryEnvelope),
       });
     }
     for (const [key, retained] of this.#retainedPartitions) {
@@ -421,6 +498,7 @@ export class ProtectedPartitionRegistry {
         historicalEpochs: [],
         epochBaseVersion: null,
         retention: retentionState(retentionInput),
+        recoveryEnvelope: null,
       };
       this.#partitions.set(partitionKey, partition);
       return partition;
@@ -576,6 +654,12 @@ export class ProtectedPartitionRegistry {
     for (const [userId, envelope] of nextEnvelopes) {
       partition.envelopes.set(userId, envelope);
     }
+    // F167/A003-T13: the recovery envelope (if any) was wrapped for the
+    // pre-rotation address and document key, both of which just changed —
+    // it is now stale. Reset to absent rather than left silently wrong;
+    // `establishRecovery` must be called again to restore no-device
+    // recovery for this partition.
+    partition.recoveryEnvelope = null;
     this.#partitions.delete(oldPartitionKey);
     this.#partitions.set(nextPartitionKey, partition);
     return partition;
@@ -699,6 +783,138 @@ export class ProtectedPartitionRegistry {
     for (const [userId, envelope] of nextEnvelopes) {
       partition.envelopes.set(userId, envelope);
     }
+    // Same staleness rule as removeReader: the recovery envelope's AAD is
+    // bound to the pre-grant address, which just changed.
+    partition.recoveryEnvelope = null;
+    this.#partitions.delete(oldPartitionKey);
+    this.#partitions.set(nextPartitionKey, partition);
+    return partition;
+  }
+
+  /**
+   * Establishes (or replaces) the F167/A003-T13 no-device recovery envelope
+   * for an already-materialized partition. Requires no existing device
+   * credential — like `create()`, it operates on the partition's already
+   * -unlocked document key, because this ceremony runs once, at setup,
+   * before any device-based credential model applies to it.
+   *
+   * The three shares `recoverySecret` was split into are never retained
+   * here, or anywhere else in this registry — only this wrapped envelope
+   * is. Losing two of the three shares makes this recovery path
+   * permanently unusable; it does not fall back to any weaker mechanism,
+   * per A003-T13.
+   */
+  async establishRecovery(input: {
+    readonly address: ProtectedDocumentAddress;
+    readonly recoverySecret: Uint8Array;
+  }): Promise<ProtectedPartition> {
+    const partition = this.get(input.address);
+    if (!partition) throw new Error("Protected partition does not exist");
+    partition.recoveryEnvelope = await wrapTier1RecoveryDocumentKey({
+      address: partition.address,
+      keyEpoch: partition.keyEpoch,
+      recoverySecret: input.recoverySecret,
+      documentKeyBytes: partition.documentKey,
+    });
+    return partition;
+  }
+
+  /**
+   * FDN-52 no-device recovery (F167, closed by founder ruling naming
+   * `shamir-secret-sharing@0.0.3`; A003-T13/T14). Authorized by successfully
+   * unwrapping `partition.recoveryEnvelope` under a secret reconstructed
+   * from any two of the three shares produced at `establishRecovery` time —
+   * never by an existing device credential, which by definition may not
+   * exist in this scenario. Re-wraps the already-materialized document key
+   * to `nextRecipients`, mirroring `addReader`/`removeReader`'s re-wrap
+   * step, at the same key epoch: the document key itself does not change,
+   * only who can open it.
+   *
+   * Scope, recorded rather than left implicit: this method requires the
+   * partition already be materialized in this registry — its LoroDoc
+   * already fully assembled, e.g. via `create()` or a prior `restore()`
+   * that found a matching credential. It does not bootstrap a partition
+   * from cold, undecrypted manifest ciphertext on a device that has never
+   * held any credential at all: that would additionally require
+   * reconstructing every historical epoch's own, separately wrapped
+   * document key, which this recovery envelope — deliberately scoped to the
+   * live document key only, per A003-T13 — does not provide. That
+   * cold-bootstrap case is not solved here and must not be assumed solved.
+   */
+  async recoverPartition(input: {
+    readonly address: ProtectedDocumentAddress;
+    readonly recoverySecret: Uint8Array;
+    readonly nextAddress: ProtectedDocumentAddress;
+    readonly nextRecipients: readonly Tier1Recipient[];
+  }): Promise<ProtectedPartition> {
+    const partition = this.get(input.address);
+    if (!partition) throw new Error("Protected partition does not exist");
+    if (!partition.recoveryEnvelope) {
+      throw new Error("Protected partition has no established recovery envelope");
+    }
+    const nextAddress = requireTier1Address(
+      protectedDocumentAddressSchema.parse(input.nextAddress),
+    );
+    if (
+      !sameAddressExceptReaderSet(partition.address, nextAddress) ||
+      partition.address.readerSetId === nextAddress.readerSetId
+    ) {
+      throw new Error("Recovery must change only the protected address reader set");
+    }
+    if (input.nextRecipients.length === 0) {
+      throw new Error("Tier 1 recovery cannot leave an empty reader set");
+    }
+    await requireRecipientsMatchAddress(nextAddress, input.nextRecipients);
+    const oldPartitionKey = protectedPartitionKey(partition.address);
+    const nextPartitionKey = protectedPartitionKey(nextAddress);
+    if (this.#partitions.has(nextPartitionKey)) {
+      throw new Error("Recovered protected address already exists");
+    }
+
+    const recovered = await unwrapTier1RecoveryDocumentKey({
+      envelope: partition.recoveryEnvelope,
+      recoverySecret: input.recoverySecret,
+    });
+    let matches: boolean;
+    try {
+      matches = constantTimeEqual(recovered, partition.documentKey);
+    } finally {
+      recovered.fill(0);
+    }
+    if (!matches) {
+      // Non-enumerating: a wrong pair of shares, a corrupted share, and a
+      // share from a different partition's split all land here identically.
+      throw new Error(
+        "Reconstructed recovery secret does not match this protected partition",
+      );
+    }
+
+    const nextEnvelopes = new Map<string, Tier1RecipientEnvelope>();
+    for (const recipient of input.nextRecipients) {
+      if (nextEnvelopes.has(recipient.userId)) {
+        throw new Error("A protected partition cannot wrap twice for one reader");
+      }
+      nextEnvelopes.set(
+        recipient.userId,
+        await wrapTier1DocumentKey({
+          address: nextAddress,
+          keyEpoch: partition.keyEpoch,
+          recipient,
+          documentKeyBytes: partition.documentKey,
+        }),
+      );
+    }
+
+    partition.address = nextAddress;
+    partition.envelopes.clear();
+    for (const [userId, envelope] of nextEnvelopes) {
+      partition.envelopes.set(userId, envelope);
+    }
+    // The recovery envelope's AAD is bound to the pre-recovery address; it
+    // is now stale the same way removeReader/addReader leave it stale on
+    // any address change. Re-establish explicitly if this partition should
+    // remain no-device-recoverable going forward.
+    partition.recoveryEnvelope = null;
     this.#partitions.delete(oldPartitionKey);
     this.#partitions.set(nextPartitionKey, partition);
     return partition;
@@ -849,7 +1065,9 @@ export class ProtectedPartitionRegistry {
             serialized.currentEncoding !== "update") ||
           serialized.historicalEpochs.length !== serialized.keyEpoch ||
           (serialized.keyEpoch === 0 && serialized.currentEncoding !== "snapshot") ||
-          (serialized.keyEpoch > 0 && serialized.currentEncoding !== "update")
+          (serialized.keyEpoch > 0 && serialized.currentEncoding !== "update") ||
+          (serialized.recoveryEnvelope !== null &&
+            typeof serialized.recoveryEnvelope !== "object")
         ) {
           throw new Error("Invalid protected partition epoch history");
         }
@@ -858,7 +1076,8 @@ export class ProtectedPartitionRegistry {
             serialized.envelopes.length !== 0 ||
             serialized.historicalEpochs.some(
               (epoch: SerializedEpoch) => epoch.envelopes.length !== 0,
-            )
+            ) ||
+            serialized.recoveryEnvelope !== null
           ) {
             throw new Error("Cryptographically erased partition retains an envelope");
           }
@@ -986,6 +1205,11 @@ export class ProtectedPartitionRegistry {
             historicalEpochs,
             epochBaseVersion,
             retention: effectiveRetention,
+            recoveryEnvelope: deserializeRecoveryEnvelope(
+              serialized.recoveryEnvelope,
+              address,
+              serialized.keyEpoch,
+            ),
           });
           keyToClear = null;
           documentToFree = null;
@@ -1044,6 +1268,7 @@ export class ProtectedPartitionRegistry {
       currentCiphertext: base64(encrypted.ciphertext),
       retention: retentionState(partition.retention),
       keyErased: false,
+      recoveryEnvelope: serializeRecoveryEnvelope(partition.recoveryEnvelope),
     };
   }
 
@@ -1055,6 +1280,7 @@ export class ProtectedPartitionRegistry {
         ...epoch,
         envelopes: [],
       })),
+      recoveryEnvelope: null,
       keyErased: true,
     };
   }
