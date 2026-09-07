@@ -5,6 +5,18 @@ const nextConfig: NextConfig = {
   // repository, per VPS-A001, and ship as source rather than as a build.
   transpilePackages: ["@vulto/tokens", "@vulto/ui", "@vulto/api", "@vulto/graph"],
 
+  webpack(config, { dev }) {
+    if (!dev) {
+      config.resolve.alias = {
+        ...config.resolve.alias,
+        "./device-store-diagnostics-client$": false,
+        "./graph-persistence-diagnostics-client$": false,
+        "./worker-diagnostics-client$": false,
+      };
+    }
+    return config;
+  },
+
   async rewrites() {
     /*
      * /diagnostics is development scaffolding: it reaches Postgres with no

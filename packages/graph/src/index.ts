@@ -24,6 +24,22 @@ export { graphQuerySchema, parseGraphQuery, type GraphQuery } from "./query";
 
 export { graphSnapshotStoreKey } from "./worker/storage/storage-keys";
 
+export {
+  createProtectedDocumentAddress,
+  createProtectedEnvelopeHeader,
+  createProtectedReaderSet,
+  protectedEnvelopeAdditionalData,
+  protectedCiphertextKindSchema,
+  protectedDocumentAddressSchema,
+  protectedEnvelopeHeaderSchema,
+  protectedReaderSetSchema,
+  PROTECTED_ENVELOPE_FORMAT_VERSION,
+  type ProtectedCiphertextKind,
+  type ProtectedDocumentAddress,
+  type ProtectedEnvelopeHeader,
+  type ProtectedReaderSet,
+} from "./worker/protected-document";
+
 export type {
   GraphQueryResult,
   MaterializedNeighbor,

@@ -53,8 +53,6 @@ export interface LocalGraphClient {
   /** Drops the sealed-store key from Worker memory without disposing the Worker. */
   lockSealedStore(): Promise<void>;
   getSealedStoreStatus(): Promise<{ locked: boolean }>;
-  sealPayload(storeKey: string, plaintext: Uint8Array): Promise<void>;
-  openPayload(storeKey: string): Promise<Uint8Array | null>;
   /**
    * FDN-53 stage 1: the first application-callable read path over graph
    * state (F105), permission-filtered per `VPS-A004` before it ever leaves
@@ -330,40 +328,6 @@ class BrowserLocalGraphClient implements LocalGraphClient {
       throw this.#fatal("Worker returned the wrong result for get-sealed-store-status");
     }
     return { locked: response.result.locked };
-  }
-
-  async sealPayload(storeKey: string, plaintext: Uint8Array): Promise<void> {
-    if (this.#disposed) throw new Error("Graph client is disposed");
-    const buffer = plaintext.slice().buffer;
-    const response = await this.#send(
-      {
-        protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
-        requestId: requestId(),
-        sentAt: now(),
-        type: "seal-payload",
-        storeKey,
-        plaintext: buffer,
-      },
-      [buffer],
-    );
-    if (response.result.kind !== "payload-sealed") {
-      throw this.#fatal("Worker returned the wrong result for seal-payload");
-    }
-  }
-
-  async openPayload(storeKey: string): Promise<Uint8Array | null> {
-    if (this.#disposed) throw new Error("Graph client is disposed");
-    const response = await this.#send({
-      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
-      requestId: requestId(),
-      sentAt: now(),
-      type: "open-payload",
-      storeKey,
-    });
-    if (response.result.kind !== "payload-opened") {
-      throw this.#fatal("Worker returned the wrong result for open-payload");
-    }
-    return response.result.plaintext ? new Uint8Array(response.result.plaintext) : null;
   }
 
   async query(query: GraphQuery): Promise<GraphQueryResult> {

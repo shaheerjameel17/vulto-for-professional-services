@@ -9,11 +9,14 @@ import {
   NODE_REGISTRY,
   OWNERSHIP_REGISTRY,
   PRIVACY_CLASSES,
+  DEFAULT_PRIVACY_CLASS_TIERS,
   assertRegisteredRelationship,
   edgeRecordSchema,
   getProtectionPartitions,
   nodeRecordSchema,
   resolveInheritedTier,
+  resolvePrivacyClassDefaultTier,
+  resolveRegisteredProtectionTier,
 } from "./index";
 import { validateRegistryDefinition } from "./registry/validate";
 import {
@@ -135,6 +138,48 @@ describe("canonical registry", () => {
     expect(resolveInheritedTier([0, 2, 1])).toBe(2);
     expect(resolveInheritedTier([3, 0])).toBe(3);
     expect(() => resolveInheritedTier([])).toThrow(/at least one source tier/);
+  });
+
+  it("enforces A003's total Privacy Class tier map and explicit registered departures", () => {
+    expect(Object.keys(DEFAULT_PRIVACY_CLASS_TIERS).sort()).toEqual(
+      PRIVACY_CLASSES.filter((value) => value !== "Inherited").sort(),
+    );
+    expect(resolvePrivacyClassDefaultTier("Finance-restricted")).toBe(1);
+    expect(resolvePrivacyClassDefaultTier("Self-only, absolute")).toBe(3);
+    expect(resolvePrivacyClassDefaultTier("Inherited", [0, 2, 1])).toBe(2);
+    expect(
+      resolveRegisteredProtectionTier({
+        nodeType: "HeadcountSnapshot",
+        schemaPartition: "record",
+      }),
+    ).toBe(0);
+    expect(
+      resolveRegisteredProtectionTier({
+        nodeType: "HRCase",
+        schemaPartition: "content",
+      }),
+    ).toBe(1);
+  });
+
+  it("fails closed for unknown classes, unresolved inheritance, and unknown split partitions", () => {
+    expect(() => resolvePrivacyClassDefaultTier("Invented")).toThrow(
+      /Unknown Privacy Class/,
+    );
+    expect(() => resolvePrivacyClassDefaultTier("Inherited")).toThrow(
+      /at least one source tier/,
+    );
+    expect(() =>
+      resolveRegisteredProtectionTier({
+        nodeType: "Employee",
+        schemaPartition: "invented",
+      }),
+    ).toThrow(/Unknown protection partition/);
+    expect(() =>
+      resolveRegisteredProtectionTier({
+        nodeType: "Document",
+        schemaPartition: "record",
+      }),
+    ).toThrow(/at least one source tier/);
   });
 
   it("exposes guaranteed partitions without reading instance data", () => {

@@ -57,7 +57,7 @@ An Owner or HR Admin reviews the retention schedule per record class, each shipp
 
 ### The purge
 
-A scheduled job identifies records past their retention period and acts: cryptographic erasure for Tier 1 and Tier 2 content, field-level redaction for Tier 0 personal data, and blob key destruction for documents.
+A scheduled job identifies records past their retention period and acts: cryptographic erasure for Tier 1 and Tier 3 protected content, data-layer redaction or deletion plus cache purge for Tier 0 and Tier 2 personal data, and blob key destruction for documents.
 
 **A purge never runs silently.** A monthly digest states what will be purged, and an HR Admin has fourteen days to place a hold. Something a firm did not intend to lose should not disappear because a default was left unexamined.
 
@@ -188,11 +188,11 @@ records_affected:     JSON summary — classes and counts, never content
 
 **Tier 1 and Tier 3** — cryptographic erasure per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. Every wrapped-key entry and the document key destroyed, no copy retained in any backup generation, a device wipe instruction fired. The node, its edges and its position remain.
 
-**Tier 2** — the same mechanism where the content is encrypted; field-level redaction where it is not.
+**Tier 2** — data-layer redaction or deletion plus local/server cache purge. Tier 2 uses A003's standard-encryption architecture and has no per-document end-to-end envelope key to destroy.
 
 **Tier 0** — field-level redaction. Personal identifying fields are overwritten with a stable pseudonymous token; structural and operational fields remain, so that assignments, utilization history and aggregate figures stay correct.
 
-**This is a weaker guarantee than cryptographic erasure and is stated as such.** Tier 0 keys are held by the application, so there is no key to destroy. Redaction removes the identification, not the record.
+**Tier 0 and Tier 2 provide a weaker guarantee than cryptographic erasure and are stated as such.** Their standard-encryption keys remain available to legitimate application operation, so erasure removes or redacts the subject data and purges reachable cached copies rather than making retained ciphertext mathematically unreadable. If a future record class requires mathematically irreversible subject-level erasure, its data should ordinarily be reclassified to Tier 1 or Tier 3 rather than acquiring a silent Tier 2 envelope architecture.
 
 **Documents** — blob key destruction per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]. The ciphertext remains in object storage until its own lifecycle expires it; it is unreadable from the moment the key is gone.
 
@@ -273,6 +273,7 @@ workspace.export(workspaceId)     -> { archiveUrl }
 | G08 | `records_affected` and every request record store counts and classes, never erased content |
 | G09 | Tier 0 erasure is field-level redaction, a weaker guarantee than cryptographic erasure, and is described as such |
 | G10 | Workspace export and subject access assembly run client-side. No server-side path assembles readable Tier 1 or Tier 3 content |
+| G11 | Tier 2 erasure is data-layer redaction or deletion plus local/server cache purge, not cryptographic erasure. A future record class requiring mathematical erasure SHOULD be reclassified to Tier 1 or Tier 3 |
 
 ---
 
@@ -311,7 +312,7 @@ workspace.export(workspaceId)     -> { archiveUrl }
 
 **GIVEN** an erasure is fulfilled
 **WHEN** it executes
-**THEN** every wrapped key and document key for the subject's Tier 1, Tier 2 and Tier 3 records is destroyed with no backup copy retained, and every node, edge and graph position remains intact
+**THEN** every usable current and historical document-key envelope and loaded raw document key for the subject's Tier 1 and Tier 3 records is destroyed with no usable backup copy retained; Tier 0 and Tier 2 subject data is redacted or deleted and its reachable caches are purged; and every required node, edge and graph position remains intact
 
 ---
 
@@ -357,7 +358,7 @@ workspace.export(workspaceId)     -> { archiveUrl }
 
 ## Security Considerations
 
-- **Cryptographic erasure is the mechanism that makes this feature possible without breaking the graph**, and its limits are stated rather than glossed: Tier 0 redaction is weaker, an unreachable device may retain a copy, and backups hold unreadable ciphertext.
+- **Cryptographic erasure makes Tier 1 and Tier 3 erasure possible without breaking the graph**, and its limits are stated rather than glossed: Tier 0/2 redaction or deletion is weaker, an unreachable device may retain a copy, and protected-tier backups hold unreadable ciphertext.
 - **Erasure is itself audited**, per [[VPS-F004_Silent_Audit_Log|VPS-F004]]. That a record was erased, when and by whom must survive the erasure, or the process cannot be demonstrated to have happened.
 - **Refusal is a legitimate outcome and is designed for.** Statutory retention frequently defeats an erasure request, and a product that fulfilled every request regardless would put its customers in breach of a different obligation.
 - **The two-phase purge exists because destruction is irreversible.** Every other operation in this product can be undone; this one cannot, and fourteen days of warning against an obligation measured in years is a trivial cost.
@@ -386,7 +387,7 @@ workspace.export(workspaceId)     -> { archiveUrl }
 
 **Refusal grounds are a fixed enum.** An erasure request refused with free text is a refusal nobody can audit, and the ground is precisely what a regulator asks about.
 
-**Tier 0 redaction is described as weaker rather than presented as equivalent.** There is no key to destroy, and claiming otherwise would be a false assurance about the one thing this feature exists to guarantee.
+**Tier 0 and Tier 2 redaction/deletion are described as weaker rather than presented as equivalent.** Their standard-encryption architecture has no subject-level envelope key to destroy, and claiming otherwise would be a false assurance about the one thing this feature exists to guarantee. F174 corrected the earlier Tier 2 contradiction without adding a second encryption model.
 
 **The workspace export is included** despite being a departure mechanism rather than a compliance one. A product holding a firm's employment records for years owes them a way to leave with them, and building it late is how it never gets built.
 

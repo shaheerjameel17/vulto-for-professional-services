@@ -1,6 +1,9 @@
 "use client";
 
-import { createLocalGraphClient, type LocalGraphClient } from "@vulto/graph";
+import {
+  createUncheckedLocalGraphClient,
+  type UncheckedLocalGraphClient,
+} from "@vulto/graph/testing/unchecked-mutation";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LockedShellGate } from "../../components/device-store/LockedShellGate";
@@ -36,11 +39,11 @@ function fromBase64(value: string): Uint8Array {
 export function DeviceStoreDiagnosticsClient() {
   const params = useSearchParams();
   const workspaceId = params.get("workspaceId") ?? "fdn-84-browser-proof";
-  const clientRef = useRef<LocalGraphClient | null>(null);
-  const [client, setClient] = useState<LocalGraphClient | null>(null);
+  const clientRef = useRef<UncheckedLocalGraphClient | null>(null);
+  const [client, setClient] = useState<UncheckedLocalGraphClient | null>(null);
 
   useEffect(() => {
-    const created = createLocalGraphClient(workspaceId);
+    const created = createUncheckedLocalGraphClient(workspaceId);
     clientRef.current = created;
     setClient(created);
     window.__vultoDeviceStoreDiagnostics = {

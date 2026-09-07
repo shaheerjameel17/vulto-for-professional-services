@@ -123,15 +123,6 @@ export const graphWorkerRequestSchema = z.discriminatedUnion("type", [
   }),
   messageBaseSchema.extend({ type: z.literal("lock-sealed-store") }),
   messageBaseSchema.extend({ type: z.literal("get-sealed-store-status") }),
-  messageBaseSchema.extend({
-    type: z.literal("seal-payload"),
-    storeKey: z.string().min(1),
-    plaintext: z.instanceof(ArrayBuffer),
-  }),
-  messageBaseSchema.extend({
-    type: z.literal("open-payload"),
-    storeKey: z.string().min(1),
-  }),
   // FDN-53 stage 1: the first production, permission-filtered graph read
   // path (F105). Routed through `LocalGraphWorkerRuntime#executeQuery`,
   // never directly against `SQLiteGraphIndex.execute()`.
@@ -227,17 +218,6 @@ const sealedStoreStatusResultSchema = z
   .object({ kind: z.literal("sealed-store-status"), locked: z.boolean() })
   .strict();
 
-const payloadSealedResultSchema = z
-  .object({ kind: z.literal("payload-sealed") })
-  .strict();
-
-const payloadOpenedResultSchema = z
-  .object({
-    kind: z.literal("payload-opened"),
-    plaintext: z.instanceof(ArrayBuffer).nullable(),
-  })
-  .strict();
-
 const localStoreErasedResultSchema = z
   .object({ kind: z.literal("local-store-erased") })
   .strict();
@@ -262,8 +242,6 @@ export const graphWorkerSuccessSchema = messageBaseSchema.extend({
     sealedStoreUnlockedResultSchema,
     sealedStoreLockedResultSchema,
     sealedStoreStatusResultSchema,
-    payloadSealedResultSchema,
-    payloadOpenedResultSchema,
     disposedResultSchema,
     roleRefreshedResultSchema,
     localStoreErasedResultSchema,

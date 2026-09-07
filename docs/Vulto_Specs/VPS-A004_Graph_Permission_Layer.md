@@ -263,9 +263,9 @@ WellnessTriggerEvent carries the most sensitive data in the graph. Its rule is a
 
 Three independent layers enforce this:
 
-- **Sync** ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): never synced to any device but the owning employee's own.
-- **Cryptographic** ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): end-to-end encrypted with a key that never leaves the owner's devices. No server-side or cross-device decryption is possible.
-- **Query** (this document): even if such a node existed locally and were somehow decrypted, the interceptor strips it for every role but the owner.
+- **Sync** ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): never synced to a device that is not authorized for the canonical data subject.
+- **Cryptographic** ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): end-to-end encrypted so only that data subject's currently authorized Tier 3 devices can obtain the current usable key. A company Owner role and the server cannot decrypt it; subject-only device establishment and recovery remain possible through A003's specified paths.
+- **Query** (this document): even if such a node existed locally and were somehow decrypted, the interceptor strips it for every role except the canonical data subject.
 
 The first two do not depend on this document functioning correctly. This is a structural guarantee, not a policy claim resting on query-layer discipline.
 

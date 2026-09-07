@@ -10,7 +10,13 @@ import { assertAnonymityRegistry } from "./anonymity";
 import { CONVERSION_REGISTRY } from "./conversions";
 import { NODE_REGISTRY, type NodeType } from "./nodes";
 import { OWNERSHIP_REGISTRY } from "./ownership";
-import { PRIVACY_CLASSES, type NodeRegistrationShape } from "./types";
+import { DEFAULT_PRIVACY_CLASS_TIERS } from "./protection";
+import {
+  PRIVACY_CLASSES,
+  type DataTier,
+  type NodeRegistrationShape,
+  type PrivacyClass,
+} from "./types";
 
 interface RegistryDefinition {
   readonly nodes: readonly NodeRegistrationShape[];
@@ -36,6 +42,36 @@ const requireUnique = (values: readonly string[], label: string): void => {
 const edgeKey = (edgeType: string, fromNodeType: string, toNodeType: string): string =>
   `${edgeType}\u0000${fromNodeType}\u0000${toNodeType}`;
 
+const isDataTier = (value: unknown): value is DataTier =>
+  value === 0 || value === 1 || value === 2 || value === 3;
+
+const assertConcreteProtection = (
+  nodeType: string,
+  privacyClass: unknown,
+  tier: unknown,
+  departureDeclared: boolean,
+  splitDeclared: boolean,
+): void => {
+  if (
+    privacyClass === "Inherited" ||
+    !PRIVACY_CLASSES.includes(privacyClass as PrivacyClass)
+  ) {
+    throw new Error(
+      `Unknown concrete Privacy Class on ${nodeType}: ${String(privacyClass)}`,
+    );
+  }
+  if (!isDataTier(tier)) {
+    throw new Error(`Invalid protection tier on ${nodeType}: ${String(tier)}`);
+  }
+  const defaultTier =
+    DEFAULT_PRIVACY_CLASS_TIERS[privacyClass as Exclude<PrivacyClass, "Inherited">];
+  if (tier !== defaultTier && !departureDeclared && !splitDeclared) {
+    throw new Error(
+      `Unmarked Privacy Class tier departure on ${nodeType}: ${privacyClass} defaults to ${defaultTier}, received ${tier}`,
+    );
+  }
+};
+
 /** Internal validator exported for malformed-registry fixtures, not package API. */
 export const validateRegistryDefinition = (definition: RegistryDefinition): void => {
   requireUnique(
@@ -57,11 +93,33 @@ export const validateRegistryDefinition = (definition: RegistryDefinition): void
       }
     }
 
-    if (node.protection.kind === "split") {
+    if (node.protection.kind === "fixed") {
+      assertConcreteProtection(
+        node.nodeType,
+        node.protection.privacyClass,
+        node.protection.tier,
+        node.protection.tierDepartureReason !== undefined,
+        false,
+      );
+    } else if (node.protection.kind === "split") {
       const [first, second] = node.protection.partitions;
       if (first.key === second.key) {
         throw new Error(`Duplicate protection partition: ${node.nodeType}`);
       }
+      for (const partition of node.protection.partitions) {
+        assertConcreteProtection(
+          `${node.nodeType}/${partition.key}`,
+          partition.privacyClass,
+          partition.tier,
+          false,
+          true,
+        );
+      }
+    } else if (
+      node.protection.privacyClass !== "Inherited" ||
+      node.protection.tier !== "Inherited"
+    ) {
+      throw new Error(`Malformed inherited protection on ${node.nodeType}`);
     }
   }
 
@@ -137,6 +195,18 @@ export const assertCanonicalRegistry = (): void => {
 
   if (PRIVACY_CLASSES.length !== 13) {
     throw new Error(`Expected 13 privacy classes, got ${PRIVACY_CLASSES.length}`);
+  }
+
+  const mappedClasses = Object.keys(DEFAULT_PRIVACY_CLASS_TIERS);
+  const expectedMappedClasses = PRIVACY_CLASSES.filter(
+    (privacyClass) => privacyClass !== "Inherited",
+  );
+  requireUnique(mappedClasses, "default Privacy Class tier mapping");
+  if (
+    mappedClasses.length !== expectedMappedClasses.length ||
+    expectedMappedClasses.some((privacyClass) => !mappedClasses.includes(privacyClass))
+  ) {
+    throw new Error("Default Privacy Class tier mapping is not total");
   }
 
   if (OWNERSHIP_REGISTRY.length !== 10) {
