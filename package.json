@@ -18,6 +18,7 @@
     "pretest:device-store-browser": "pnpm --dir services/api exec tsx src/test/browser-setup-device-store.ts",
     "test:device-store-browser": "playwright test --config services/api/playwright.device-store.config.ts",
     "pretest:sync-engine": "pnpm --dir services/api exec tsx src/test/sync-engine-setup.ts",
+    "stage5:opacity-fixtures": "pnpm --dir services/api exec tsx ../../packages/graph/src/worker/testing/stage5-opacity-fixtures.ts",
     "test:sync-engine": "services/sync-engine/scripts/pg-tests.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
