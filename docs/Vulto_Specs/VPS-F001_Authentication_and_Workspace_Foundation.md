@@ -177,9 +177,27 @@ tier1Keys.addRecoveryHolder(holderId)            -> { success }
 
 device.register(deviceName, platform, application?, pushToken?) -> { deviceId }
   // User and session identity derive from the httpOnly cookie on the request.
-device.revoke(deviceId)                         -> { success }
-device.listForWorkspace(workspaceId)            -> Device[]
+  // The device may supply its own generated identifier; absent one, the server
+  // mints it and the device adopts it.
+device.revoke(workspaceId, deviceId, reason?)   -> { success }
+  // Owner-gated and WORKSPACE-SCOPED (F191). Revokes this workspace's unlock
+  // secret only; the device keeps its access to every other workspace.
+  // `reason: "stale"` records a reversible staleness revocation.
+device.retire(deviceId)                         -> { success }
+  // GLOBAL, and available only to the device's own user (F191). Sets
+  // `is_revoked`, clears `push_token`, revokes every unlock secret the device
+  // holds. An Owner may not invoke this against a colleague's device.
+device.reapprove(workspaceId, deviceId)         -> { success }
+  // Owner-gated. Reverses a staleness revocation in this workspace, and only
+  // when the device's most recent trust event here is `stale-flagged`.
+device.listForWorkspace(workspaceId)
+    -> { devices: Device[], viewerIsOwner, viewerUserId }
+  // `viewerIsOwner` is a rendering capability so the screen need not guess
+  // which actions to offer; every action re-derives it server-side. The
+  // records omit `push_token`, which no listing has any use for.
 ```
+
+**Device revocation is two separately authorized actions, not one (F191).** A workspace Owner may cut a device off from *their* workspace; only the person who owns the device may retire it everywhere. The `device` record spans workspaces, so a global flag settable by any Owner would let one client of a professional-services firm destroy another client's local data on the same laptop. Both are Modal-confirmed, with copy naming their own scope rather than a shared "this cannot be undone."
 
 ---
 

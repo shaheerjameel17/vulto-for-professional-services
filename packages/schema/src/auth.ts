@@ -91,10 +91,16 @@ export type DeviceRegistrationInput = z.input<typeof deviceRegistrationInputSche
  * - `retired-by-user` is **global**, and only the device's own user may
  *   cause it: `device.is_revoked` set, every unlock secret revoked.
  * - `stale-flagged` alone is recoverable by an Owner re-approval.
+ *
+ * There is deliberately no `activity-refreshed`. An earlier draft declared
+ * one and never wrote it, which is the F130/F133/F143 pattern in miniature —
+ * a reader would find a named event type and reasonably assume something
+ * emitted it. Activity is `device.last_active_at`, a column that is already
+ * the record; a row every five minutes per device would be noise around a
+ * fact that is not a trust decision.
  */
 export const DEVICE_TRUST_EVENT_TYPES = [
   "registered",
-  "activity-refreshed",
   "revoked-explicit",
   "revoked-membership",
   "retired-by-user",

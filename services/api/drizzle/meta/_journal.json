@@ -50,6 +50,13 @@
       "when": 1788884707043,
       "tag": "0006_flimsy_iron_monger",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788886497250,
+      "tag": "0007_smart_red_ghost",
+      "breakpoints": true
     }
   ]
 }
