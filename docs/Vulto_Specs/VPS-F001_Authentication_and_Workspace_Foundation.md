@@ -137,6 +137,8 @@ User, Workspace, WorkspaceMembership and Device are registered in [[VPS-A002_Mas
 
 Device carries: `device_id`, `user_id`, `device_name`, `platform`, `application` (default `VultoRoster`), `push_token` (nullable, mobile only, invalidated on revocation), `registered_at`, `last_active_at`, `is_revoked`.
 
+**Device, like Workspace and WorkspaceMembership, is a Better Auth control-plane record whose local graph-node projection is deferred to [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]/FDN-85.** FDN-63 implements it as a Postgres `device` table carrying the fields above, distinct from [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s per-workspace `device_unlock_secret`: one identity row per `(user, application)`, one unlock secret per workspace under it. Device trust, the online unlock gate and the revocation signal read this row and the server session grant, not a graph node. Recorded as F189. The Devices management screen below is built by FDN-63 as a standalone session-gated route ahead of the full application shell (F190).
+
 ### Sync behavior
 
 User, WorkspaceMembership and Device are Tier 0. Workspace's display fields are Tier 0; its administrative fields are Tier 2. None require end-to-end encryption. The local store's AES-256 encryption, unlocked through a server-authorized session checkpoint per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], is what protects a lost device, independent of any node's tier. The encrypted store remains locked after every cold restart until that online checkpoint succeeds; afterward the complete product operates offline until the next cold restart.
@@ -175,9 +177,27 @@ tier1Keys.addRecoveryHolder(holderId)            -> { success }
 
 device.register(deviceName, platform, application?, pushToken?) -> { deviceId }
   // User and session identity derive from the httpOnly cookie on the request.
-device.revoke(deviceId)                         -> { success }
-device.listForWorkspace(workspaceId)            -> Device[]
+  // The device may supply its own generated identifier; absent one, the server
+  // mints it and the device adopts it.
+device.revoke(workspaceId, deviceId, reason?)   -> { success }
+  // Owner-gated and WORKSPACE-SCOPED (F191). Revokes this workspace's unlock
+  // secret only; the device keeps its access to every other workspace.
+  // `reason: "stale"` records a reversible staleness revocation.
+device.retire(deviceId)                         -> { success }
+  // GLOBAL, and available only to the device's own user (F191). Sets
+  // `is_revoked`, clears `push_token`, revokes every unlock secret the device
+  // holds. An Owner may not invoke this against a colleague's device.
+device.reapprove(workspaceId, deviceId)         -> { success }
+  // Owner-gated. Reverses a staleness revocation in this workspace, and only
+  // when the device's most recent trust event here is `stale-flagged`.
+device.listForWorkspace(workspaceId)
+    -> { devices: Device[], viewerIsOwner, viewerUserId }
+  // `viewerIsOwner` is a rendering capability so the screen need not guess
+  // which actions to offer; every action re-derives it server-side. The
+  // records omit `push_token`, which no listing has any use for.
 ```
+
+**Device revocation is two separately authorized actions, not one (F191).** A workspace Owner may cut a device off from *their* workspace; only the person who owns the device may retire it everywhere. The `device` record spans workspaces, so a global flag settable by any Owner would let one client of a professional-services firm destroy another client's local data on the same laptop. Both are Modal-confirmed, with copy naming their own scope rather than a shared "this cannot be undone."
 
 ---
 

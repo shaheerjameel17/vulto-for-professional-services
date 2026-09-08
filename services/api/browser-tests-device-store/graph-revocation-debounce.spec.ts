@@ -495,11 +495,21 @@ test.describe("S1 — revocation landing inside the debounce window", () => {
       ).toBeLessThan(FLUSH_DEBOUNCE_MS);
 
       // --- what the device did while revoked -----------------------------
-      // Recorded, not asserted: this is the observation Q2 turns on and the
-      // first pass has no ruling to assert against yet.
+      // F149: a call arriving after `#endLocalSession` purged the runtime is
+      // no longer answered with a bare `not-initialized` — it carries the
+      // classified revocation reason, so a shell can render the mid-session
+      // locked transition rather than a never-initialized error.
       console.log(
         `S1/Q1 while revoked: query=${JSON.stringify(run.queryWhileLocked)} mutate=${JSON.stringify(run.mutateWhileLocked)}`,
       );
+      expect(
+        JSON.stringify(run.queryWhileLocked),
+        "F149 — a query after a classified revocation reports membership-revoked, not bare not-initialized",
+      ).toContain("membership-revoked");
+      expect(
+        JSON.stringify(run.mutateWhileLocked),
+        "F149 — and so does a mutate; neither fatally terminates the Worker",
+      ).toContain("membership-revoked");
 
       // --- what actually reached disk ------------------------------------
       await restoreMembership(sql, workspaceId, sharedAccount.userId);

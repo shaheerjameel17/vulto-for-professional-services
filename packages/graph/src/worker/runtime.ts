@@ -982,6 +982,11 @@ export class LocalGraphWorkerRuntime {
     }
     await this.#sealedStore.unlockOnline(workspaceId, apiOrigin);
     this.#apiOrigin = apiOrigin;
+    // F149. A successful online unlock is the server re-authorizing this
+    // device — whatever ended the previous session is resolved. Clear the
+    // stale outcome so a `not-initialized` between this unlock and the next
+    // `initialize()` reports as never-initialized, not as the old revocation.
+    this.#lastSessionEnd = null;
     this.#startRolePolling(workspaceId);
   }
 
@@ -1353,6 +1358,12 @@ export class LocalGraphWorkerRuntime {
 
     this.#workspaceId = workspaceId;
     this.#availability = { state: "ready" };
+    // F149. A prior session's end outcome is stale once the Worker is serving
+    // a workspace again — a device that legitimately re-unlocked and
+    // re-initialized after a revocation-then-reinstatement must not report
+    // the old revocation on a later `not-initialized` (e.g. after a
+    // `switchWorkspace` away).
+    this.#lastSessionEnd = null;
   }
 
   /**

@@ -7,6 +7,8 @@ import { db, closeDatabase } from "../db.js";
 import { buildServer } from "../server.js";
 import {
   account,
+  device,
+  deviceTrustEvent,
   deviceUnlockSecret,
   member,
   session,
@@ -90,7 +92,12 @@ async function createSignedInAccount(email = `${randomUUID()}@example.com`) {
   return { cookie, email, userId: createdUser.id, response };
 }
 
-async function addWorkspace(userId: string, slug: string, confirmed = true) {
+async function addWorkspace(
+  userId: string,
+  slug: string,
+  confirmed = true,
+  roles: ("owner" | "hr-admin" | "finance-admin" | "team-member")[] = ["team-member"],
+) {
   const workspaceId = randomUUID();
   const membershipId = randomUUID();
   await createPendingWorkspaceAdmission({
@@ -99,7 +106,7 @@ async function addWorkspace(userId: string, slug: string, confirmed = true) {
     workspaceSlug: slug,
     membershipId,
     userId,
-    roles: ["team-member"],
+    roles,
   });
   if (confirmed) await confirmWorkspaceAdmission(membershipId);
   return { workspaceId, membershipId };
@@ -109,13 +116,28 @@ function headers(cookie: string): Headers {
   return new Headers({ cookie, origin: ORIGIN });
 }
 
+/**
+ * FDN-63 Stage 3. The unlock checkpoint now refuses a device with no
+ * registration row, so every direct `/device-store/unlock` inject must
+ * register first — the same order the graph client's `unlockOnline` follows.
+ */
+async function injectRegisterDevice(cookie: string, deviceId: string): Promise<void> {
+  const response = await app.inject({
+    method: "POST",
+    url: "/devices/register",
+    headers: { origin: ORIGIN, cookie },
+    payload: { deviceId, deviceName: "Test device", platform: "web" },
+  });
+  expect(response.statusCode, response.body).toBe(200);
+}
+
 beforeEach(async () => {
   await db.execute(
     sql.raw(`
     TRUNCATE TABLE
-      "passkey_registration_context", "passkey", "invitation", "member",
-      "organization", "session", "account", "verification", "user",
-      "rate_limit"
+      "device_trust_event", "device", "passkey_registration_context", "passkey",
+      "invitation", "member", "organization", "session", "account",
+      "verification", "user", "rate_limit"
     RESTART IDENTITY CASCADE
   `),
   );
@@ -544,15 +566,14 @@ describe("F151 — the real revocation cascade classifies as membership-revoked"
       "",
     );
 
+    await injectRegisterDevice(cookie, deviceId);
     const unlockResponse = await app.inject({
       method: "POST",
       url: "/device-store/unlock",
       headers: { origin: ORIGIN, cookie },
       payload: { workspaceId, deviceId },
     });
-    expect(unlockResponse.statusCode, "the device must register successfully").toBe(
-      200,
-    );
+    expect(unlockResponse.statusCode, "the device must unlock successfully").toBe(200);
 
     // The real function, not a hand-simulated cascade.
     await revokeWorkspaceAdmission(membershipId);
@@ -587,11 +608,766 @@ describe("F151 — the real revocation cascade classifies as membership-revoked"
   });
 });
 
+/**
+ * FDN-63 Stage 1 — the canonical Device identity record. `VPS-F001`'s
+ * `device.register` / `device.listForWorkspace` contract, over real Postgres.
+ */
+describe("FDN-63 — device registration and per-workspace listing", () => {
+  const deviceId = () => `fdn63-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+  async function register(
+    cookie: string,
+    body: Record<string, unknown>,
+  ): Promise<LightMyRequestResponse> {
+    return app.inject({
+      method: "POST",
+      url: "/devices/register",
+      headers: { origin: ORIGIN, cookie },
+      payload: body,
+    });
+  }
+
+  it("registers a device carrying VPS-F001's nine fields and echoes its id", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const id = deviceId();
+    const response = await register(cookie, {
+      deviceId: id,
+      deviceName: "Avery's MacBook",
+      platform: "macos",
+      pushToken: null,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(json(response).deviceId).toBe(id);
+
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(row).toMatchObject({
+      id,
+      userId,
+      deviceName: "Avery's MacBook",
+      platform: "macos",
+      application: "VultoRoster",
+      pushToken: null,
+      isRevoked: false,
+    });
+    expect(row?.registeredAt).toBeInstanceOf(Date);
+    expect(row?.lastActiveAt).toBeInstanceOf(Date);
+  });
+
+  it("writes an append-only 'registered' trust event on first registration only", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const id = deviceId();
+    await register(cookie, { deviceId: id, deviceName: "Device", platform: "web" });
+    await register(cookie, { deviceId: id, deviceName: "Renamed", platform: "web" });
+
+    const events = await db
+      .select()
+      .from(deviceTrustEvent)
+      .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventType: "registered",
+      userId,
+      actorUserId: userId,
+      workspaceId: null,
+    });
+  });
+
+  it("mints a device id when the client supplies none", async () => {
+    const { cookie } = await createSignedInAccount();
+    const response = await register(cookie, {
+      deviceName: "First device",
+      platform: "web",
+    });
+    expect(response.statusCode).toBe(200);
+    const minted = json(response).deviceId as string;
+    expect(minted).toMatch(/^[A-Za-z0-9_-]{16,128}$/);
+  });
+
+  it("is idempotent: re-registering updates mutable fields and keeps one row", async () => {
+    const { cookie } = await createSignedInAccount();
+    const id = deviceId();
+    await register(cookie, { deviceId: id, deviceName: "Old name", platform: "web" });
+    const second = await register(cookie, {
+      deviceId: id,
+      deviceName: "New name",
+      platform: "web",
+      pushToken: "apns-token",
+    });
+    expect(second.statusCode).toBe(200);
+
+    const rows = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.deviceName).toBe("New name");
+    expect(rows[0]?.pushToken).toBe("apns-token");
+  });
+
+  it("re-registering does NOT clear is_revoked", async () => {
+    const { cookie } = await createSignedInAccount();
+    const id = deviceId();
+    await register(cookie, { deviceId: id, deviceName: "Device", platform: "web" });
+    await db
+      .update(device)
+      .set({ isRevoked: true })
+      .where(sql`${device.id} = ${id}`);
+    await register(cookie, {
+      deviceId: id,
+      deviceName: "Device renamed",
+      platform: "web",
+    });
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(row?.isRevoked).toBe(true);
+  });
+
+  it("rejects an unauthenticated registration", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/devices/register",
+      headers: { origin: ORIGIN },
+      payload: { deviceName: "No session", platform: "web" },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("rejects registering a device id that belongs to another user", async () => {
+    const first = await createSignedInAccount();
+    const id = deviceId();
+    await register(first.cookie, { deviceId: id, deviceName: "Mine", platform: "web" });
+
+    const second = await createSignedInAccount();
+    const response = await register(second.cookie, {
+      deviceId: id,
+      deviceName: "Not yours",
+      platform: "web",
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("rejects an invalid platform", async () => {
+    const { cookie } = await createSignedInAccount();
+    const response = await register(cookie, {
+      deviceName: "Bad platform",
+      platform: "toaster",
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("an Owner lists every device with an unlock secret in the workspace; a non-Owner sees only their own", async () => {
+    const owner = await createSignedInAccount();
+    const workspace = await addWorkspace(
+      owner.userId,
+      `fdn63-list-${randomUUID()}`,
+      true,
+      ["owner"],
+    );
+
+    const member2 = await createSignedInAccount();
+    await db.insert(member).values({
+      id: randomUUID(),
+      organizationId: workspace.workspaceId,
+      userId: member2.userId,
+      role: "team-member",
+      createdAt: new Date(),
+      status: "active",
+      projectionState: "confirmed",
+    });
+
+    const ownerDevice = deviceId();
+    const memberDevice = deviceId();
+    await register(owner.cookie, {
+      deviceId: ownerDevice,
+      deviceName: "Owner laptop",
+      platform: "macos",
+    });
+    await register(member2.cookie, {
+      deviceId: memberDevice,
+      deviceName: "Member laptop",
+      platform: "windows",
+    });
+    // Both devices "enter" the workspace by unlocking it.
+    for (const [cookie, id] of [
+      [owner.cookie, ownerDevice],
+      [member2.cookie, memberDevice],
+    ] as const) {
+      const unlock = await app.inject({
+        method: "POST",
+        url: "/device-store/unlock",
+        headers: { origin: ORIGIN, cookie },
+        payload: { workspaceId: workspace.workspaceId, deviceId: id },
+      });
+      expect(unlock.statusCode).toBe(200);
+    }
+
+    const ownerList = await app.inject({
+      method: "POST",
+      url: "/devices/list",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId: workspace.workspaceId },
+    });
+    expect(ownerList.statusCode).toBe(200);
+    const ownerSeen = (json(ownerList).devices as { deviceId: string }[]).map(
+      (d) => d.deviceId,
+    );
+    expect(ownerSeen.sort()).toEqual([ownerDevice, memberDevice].sort());
+
+    const memberList = await app.inject({
+      method: "POST",
+      url: "/devices/list",
+      headers: { origin: ORIGIN, cookie: member2.cookie },
+      payload: { workspaceId: workspace.workspaceId },
+    });
+    expect(memberList.statusCode).toBe(200);
+    const memberSeen = (json(memberList).devices as { deviceId: string }[]).map(
+      (d) => d.deviceId,
+    );
+    expect(memberSeen).toEqual([memberDevice]);
+    expect(
+      json(ownerList).viewerIsOwner,
+      "the listing states the caller's Owner capability so the screen need not guess",
+    ).toBe(true);
+    expect(json(memberList).viewerIsOwner).toBe(false);
+  });
+});
+
+/**
+ * FDN-63 Stage 3 — the trust gate on unlock and the revocation cascades onto
+ * the canonical `device` row. Paired with the browser spec's erase/no-erase
+ * proof; this half is the server-side state and audit trail.
+ */
+describe("FDN-63 — device trust gate and revocation cascade", () => {
+  const deviceId = () => `fdn63s3-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+  async function unlock(cookie: string, workspaceId: string, id: string) {
+    return app.inject({
+      method: "POST",
+      url: "/device-store/unlock",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+  }
+
+  it("denies unlock for a device that never registered", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(userId, `fdn63s3-unreg-${randomUUID()}`);
+    const response = await unlock(cookie, workspaceId, deviceId());
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("denies unlock for a revoked device even when its unlock secret is not revoked", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(userId, `fdn63s3-rev-${randomUUID()}`);
+    const id = deviceId();
+    await injectRegisterDevice(cookie, id);
+    expect((await unlock(cookie, workspaceId, id)).statusCode).toBe(200);
+
+    // The device identity is revoked; the per-workspace secret is left intact.
+    await db
+      .update(device)
+      .set({ isRevoked: true })
+      .where(sql`${device.id} = ${id}`);
+    const [secret] = await db
+      .select({ revokedAt: deviceUnlockSecret.revokedAt })
+      .from(deviceUnlockSecret)
+      .where(sql`${deviceUnlockSecret.deviceId} = ${id}`);
+    expect(secret?.revokedAt).toBeNull();
+
+    expect((await unlock(cookie, workspaceId, id)).statusCode).toBe(401);
+  });
+
+  it("an Owner's revoke is workspace-scoped: it never touches the global device row (F191)", async () => {
+    const owner = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(
+      owner.userId,
+      `fdn63s3-revoke-${randomUUID()}`,
+      true,
+      ["owner"],
+    );
+    const id = deviceId();
+    await app.inject({
+      method: "POST",
+      url: "/devices/register",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { deviceId: id, deviceName: "D", platform: "web", pushToken: "apns" },
+    });
+    expect((await unlock(owner.cookie, workspaceId, id)).statusCode).toBe(200);
+
+    const first = await app.inject({
+      method: "POST",
+      url: "/device-store/revoke",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+    expect(first.statusCode).toBe(200);
+    const second = await app.inject({
+      method: "POST",
+      url: "/device-store/revoke",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+    expect(second.statusCode).toBe(200);
+
+    // F191. The workspace secret is revoked; the GLOBAL identity row is not.
+    const [secret] = await db
+      .select({ revokedAt: deviceUnlockSecret.revokedAt })
+      .from(deviceUnlockSecret)
+      .where(sql`${deviceUnlockSecret.deviceId} = ${id}`);
+    expect(secret?.revokedAt).not.toBeNull();
+
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(
+      row?.isRevoked,
+      "an Owner may not retire a device globally — that authority is the device owner's alone",
+    ).toBe(false);
+    expect(
+      row?.pushToken,
+      "and may not invalidate a device-global push token from one workspace",
+    ).toBe("apns");
+
+    const events = await db
+      .select()
+      .from(deviceTrustEvent)
+      .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
+    const revokeEvents = events.filter((e) => e.eventType === "revoked-explicit");
+    expect(revokeEvents).toHaveLength(1);
+    expect(revokeEvents[0]?.actorUserId).toBe(owner.userId);
+    expect(
+      revokeEvents[0]?.workspaceId,
+      "the audit row records the scope the action actually had",
+    ).toBe(workspaceId);
+  });
+
+  /**
+   * F191's flagship pair, at the API layer. One physical device, two
+   * workspaces. An Owner of A revoking it must leave B's access completely
+   * intact — otherwise one tenant can destroy another tenant's local data.
+   */
+  it("an Owner's revoke in workspace A leaves the same device's workspace B unlockable", async () => {
+    const owner = await createSignedInAccount();
+    const a = await addWorkspace(owner.userId, `fdn63-x-a-${randomUUID()}`, true, [
+      "owner",
+    ]);
+    const b = await addWorkspace(owner.userId, `fdn63-x-b-${randomUUID()}`, true, [
+      "owner",
+    ]);
+    const id = deviceId();
+    await injectRegisterDevice(owner.cookie, id);
+    expect((await unlock(owner.cookie, a.workspaceId, id)).statusCode).toBe(200);
+    expect((await unlock(owner.cookie, b.workspaceId, id)).statusCode).toBe(200);
+
+    const revoked = await app.inject({
+      method: "POST",
+      url: "/device-store/revoke",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId: a.workspaceId, deviceId: id },
+    });
+    expect(revoked.statusCode).toBe(200);
+
+    expect(
+      (await unlock(owner.cookie, a.workspaceId, id)).statusCode,
+      "workspace A, where the revoke happened, is denied",
+    ).toBe(401);
+    expect(
+      (await unlock(owner.cookie, b.workspaceId, id)).statusCode,
+      "F191 — workspace B must be untouched by workspace A's Owner",
+    ).toBe(200);
+  });
+
+  it("the device's own user retiring it globally blocks unlock in every workspace", async () => {
+    const owner = await createSignedInAccount();
+    const a = await addWorkspace(owner.userId, `fdn63-r-a-${randomUUID()}`, true, [
+      "owner",
+    ]);
+    const b = await addWorkspace(owner.userId, `fdn63-r-b-${randomUUID()}`, true, [
+      "owner",
+    ]);
+    const id = deviceId();
+    await injectRegisterDevice(owner.cookie, id);
+    expect((await unlock(owner.cookie, a.workspaceId, id)).statusCode).toBe(200);
+    expect((await unlock(owner.cookie, b.workspaceId, id)).statusCode).toBe(200);
+
+    const retired = await app.inject({
+      method: "POST",
+      url: "/devices/retire",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { deviceId: id },
+    });
+    expect(retired.statusCode).toBe(200);
+
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(row?.isRevoked).toBe(true);
+    expect(row?.pushToken).toBeNull();
+
+    expect((await unlock(owner.cookie, a.workspaceId, id)).statusCode).toBe(401);
+    expect((await unlock(owner.cookie, b.workspaceId, id)).statusCode).toBe(401);
+
+    const events = await db
+      .select()
+      .from(deviceTrustEvent)
+      .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
+    const retirement = events.filter((e) => e.eventType === "retired-by-user");
+    expect(retirement).toHaveLength(1);
+    expect(retirement[0]?.workspaceId, "global retirement has no workspace scope").toBe(
+      null,
+    );
+  });
+
+  it("an Owner cannot retire another user's device through the global path", async () => {
+    const owner = await createSignedInAccount();
+    const colleague = await createSignedInAccount();
+    const workspace = await addWorkspace(
+      owner.userId,
+      `fdn63-cross-${randomUUID()}`,
+      true,
+      ["owner"],
+    );
+    await db.insert(member).values({
+      id: randomUUID(),
+      organizationId: workspace.workspaceId,
+      userId: colleague.userId,
+      role: "team-member",
+      createdAt: new Date(),
+      status: "active",
+      projectionState: "confirmed",
+    });
+    const id = deviceId();
+    await injectRegisterDevice(colleague.cookie, id);
+
+    const attempt = await app.inject({
+      method: "POST",
+      url: "/devices/retire",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { deviceId: id },
+    });
+    expect(attempt.statusCode, "retirement is the device owner's authority alone").toBe(
+      401,
+    );
+
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(row?.isRevoked).toBe(false);
+  });
+
+  it("revokeWorkspaceAdmission stays workspace-scoped and logs revoked-membership", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId, membershipId } = await addWorkspace(
+      userId,
+      `fdn63s3-cascade-${randomUUID()}`,
+    );
+    const other = await addWorkspace(userId, `fdn63s3-cascade-b-${randomUUID()}`);
+    const id = deviceId();
+    await injectRegisterDevice(cookie, id);
+    expect((await unlock(cookie, workspaceId, id)).statusCode).toBe(200);
+    expect((await unlock(cookie, other.workspaceId, id)).statusCode).toBe(200);
+
+    await revokeWorkspaceAdmission(membershipId);
+
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(
+      row?.isRevoked,
+      "F191 — an offboarding from one workspace must not retire the device globally",
+    ).toBe(false);
+    expect(
+      (await unlock(cookie, other.workspaceId, id)).statusCode,
+      "and the other workspace must remain unlockable",
+    ).toBe(200);
+
+    const events = await db
+      .select()
+      .from(deviceTrustEvent)
+      .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
+    const membershipEvents = events.filter((e) => e.eventType === "revoked-membership");
+    expect(membershipEvents).toHaveLength(1);
+    expect(membershipEvents[0]?.workspaceId).toBe(workspaceId);
+  });
+
+  it("suspendUserAndRevokeSessions revokes every workspace's secret and audits each device", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const a = await addWorkspace(userId, `fdn63s3-susp-a-${randomUUID()}`);
+    const b = await addWorkspace(userId, `fdn63s3-susp-b-${randomUUID()}`);
+    const id = deviceId();
+    await injectRegisterDevice(cookie, id);
+    expect((await unlock(cookie, a.workspaceId, id)).statusCode).toBe(200);
+    expect((await unlock(cookie, b.workspaceId, id)).statusCode).toBe(200);
+
+    await suspendUserAndRevokeSessions(userId);
+
+    // Suspension already blocks unlock everywhere by revoking every secret,
+    // so it does not need — and per F191 does not take — the global
+    // `is_revoked` flag, which means one thing only: the owner retired it.
+    const secrets = await db
+      .select({ revokedAt: deviceUnlockSecret.revokedAt })
+      .from(deviceUnlockSecret)
+      .where(sql`${deviceUnlockSecret.deviceId} = ${id}`);
+    expect(secrets).toHaveLength(2);
+    expect(secrets.every((s) => s.revokedAt !== null)).toBe(true);
+
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(row?.isRevoked).toBe(false);
+
+    const events = await db
+      .select()
+      .from(deviceTrustEvent)
+      .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
+    expect(events.filter((e) => e.eventType === "revoked-membership")).toHaveLength(1);
+  });
+});
+
+/**
+ * FDN-63 Stage 5 — lost/stale devices at the identity and trust layer.
+ * Staleness is derived at read, never stored; re-approval reverses exactly
+ * one revocation reason and nothing else.
+ */
+describe("FDN-63 — stale devices and re-approval", () => {
+  const deviceId = () => `fdn63s5-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+  async function ownerWorkspaceWithDevice() {
+    const owner = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(
+      owner.userId,
+      `fdn63s5-${randomUUID()}`,
+      true,
+      ["owner"],
+    );
+    const id = deviceId();
+    await injectRegisterDevice(owner.cookie, id);
+    const unlocked = await app.inject({
+      method: "POST",
+      url: "/device-store/unlock",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+    expect(unlocked.statusCode).toBe(200);
+    return { owner, workspaceId, id };
+  }
+
+  async function listDevices(cookie: string, workspaceId: string) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/devices/list",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId },
+    });
+    expect(response.statusCode).toBe(200);
+    return json(response).devices as {
+      deviceId: string;
+      isStale: boolean;
+      revokedInWorkspace: boolean;
+      retiredByOwner: boolean;
+      pushToken?: unknown;
+    }[];
+  }
+
+  async function revoke(
+    cookie: string,
+    workspaceId: string,
+    id: string,
+    reason?: "stale",
+  ) {
+    return app.inject({
+      method: "POST",
+      url: "/device-store/revoke",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId: id, ...(reason ? { reason } : {}) },
+    });
+  }
+
+  async function reapprove(cookie: string, workspaceId: string, id: string) {
+    return app.inject({
+      method: "POST",
+      url: "/devices/re-approve",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+  }
+
+  it("derives staleness at read from last_active_at, and stores no staleness column", async () => {
+    const { owner, workspaceId, id } = await ownerWorkspaceWithDevice();
+
+    const fresh = await listDevices(owner.cookie, workspaceId);
+    expect(fresh[0]?.isStale).toBe(false);
+
+    // Age the only input staleness has. Nothing else is touched.
+    await db
+      .update(device)
+      .set({ lastActiveAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) })
+      .where(sql`${device.id} = ${id}`);
+
+    const stale = await listDevices(owner.cookie, workspaceId);
+    expect(stale[0]?.isStale, "staleness follows last_active_at alone").toBe(true);
+    // The proof it is derived rather than stored: the row is otherwise untouched.
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(row?.isRevoked).toBe(false);
+  });
+
+  it("never returns a device's push token to a devices listing", async () => {
+    const owner = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(
+      owner.userId,
+      `fdn63s5-push-${randomUUID()}`,
+      true,
+      ["owner"],
+    );
+    const id = deviceId();
+    await app.inject({
+      method: "POST",
+      url: "/devices/register",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { deviceId: id, deviceName: "D", platform: "ios", pushToken: "secret" },
+    });
+    await app.inject({
+      method: "POST",
+      url: "/device-store/unlock",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+
+    const devices = await listDevices(owner.cookie, workspaceId);
+    expect(devices).toHaveLength(1);
+    expect(devices[0]?.pushToken).toBeUndefined();
+  });
+
+  it("a staleness revocation is reversible by an Owner, and restores unlock", async () => {
+    const { owner, workspaceId, id } = await ownerWorkspaceWithDevice();
+
+    expect((await revoke(owner.cookie, workspaceId, id, "stale")).statusCode).toBe(200);
+    const events = await db
+      .select()
+      .from(deviceTrustEvent)
+      .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
+    expect(events.some((e) => e.eventType === "stale-flagged")).toBe(true);
+
+    const denied = await app.inject({
+      method: "POST",
+      url: "/device-store/unlock",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+    expect(denied.statusCode, "a stale-revoked device is denied while revoked").toBe(
+      401,
+    );
+
+    expect((await reapprove(owner.cookie, workspaceId, id)).statusCode).toBe(200);
+    const restored = await app.inject({
+      method: "POST",
+      url: "/device-store/unlock",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+    expect(restored.statusCode, "re-approval restores unlock in that workspace").toBe(
+      200,
+    );
+
+    const after = await db
+      .select()
+      .from(deviceTrustEvent)
+      .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
+    const reapprovals = after.filter((e) => e.eventType === "re-approved");
+    expect(reapprovals).toHaveLength(1);
+    expect(reapprovals[0]?.actorUserId).toBe(owner.userId);
+  });
+
+  /** The paired counterweight — the reason the audit log is the gate. */
+  it("a deliberate revocation is NOT reversible", async () => {
+    const { owner, workspaceId, id } = await ownerWorkspaceWithDevice();
+    expect((await revoke(owner.cookie, workspaceId, id)).statusCode).toBe(200);
+
+    const attempt = await reapprove(owner.cookie, workspaceId, id);
+    expect(attempt.statusCode, "revoked-explicit is irreversible").toBe(409);
+
+    const denied = await app.inject({
+      method: "POST",
+      url: "/device-store/unlock",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId, deviceId: id },
+    });
+    expect(denied.statusCode).toBe(401);
+  });
+
+  it("a later deliberate revocation supersedes an earlier stale flag", async () => {
+    const { owner, workspaceId, id } = await ownerWorkspaceWithDevice();
+    expect((await revoke(owner.cookie, workspaceId, id, "stale")).statusCode).toBe(200);
+    expect((await reapprove(owner.cookie, workspaceId, id)).statusCode).toBe(200);
+    expect((await revoke(owner.cookie, workspaceId, id)).statusCode).toBe(200);
+
+    expect(
+      (await reapprove(owner.cookie, workspaceId, id)).statusCode,
+      "the most recent event decides, not the presence of an old stale flag",
+    ).toBe(409);
+  });
+
+  it("an Owner cannot re-approve a device its own user retired globally", async () => {
+    const { owner, workspaceId, id } = await ownerWorkspaceWithDevice();
+    expect((await revoke(owner.cookie, workspaceId, id, "stale")).statusCode).toBe(200);
+
+    // The device's own user retires it — which here is the same person, but
+    // through the other authorized path.
+    expect(
+      (
+        await app.inject({
+          method: "POST",
+          url: "/devices/retire",
+          headers: { origin: ORIGIN, cookie: owner.cookie },
+          payload: { deviceId: id },
+        })
+      ).statusCode,
+    ).toBe(200);
+
+    expect(
+      (await reapprove(owner.cookie, workspaceId, id)).statusCode,
+      "an Owner has no authority to undo the device owner's global retirement",
+    ).toBe(409);
+  });
+
+  it("a non-Owner cannot re-approve", async () => {
+    const { owner, workspaceId, id } = await ownerWorkspaceWithDevice();
+    expect((await revoke(owner.cookie, workspaceId, id, "stale")).statusCode).toBe(200);
+
+    const colleague = await createSignedInAccount();
+    await db.insert(member).values({
+      id: randomUUID(),
+      organizationId: workspaceId,
+      userId: colleague.userId,
+      role: "team-member",
+      createdAt: new Date(),
+      status: "active",
+      projectionState: "confirmed",
+    });
+
+    expect((await reapprove(colleague.cookie, workspaceId, id)).statusCode).toBe(401);
+  });
+});
+
 describe("FDN-51 Stage 4a — POST /sync/ticket", () => {
   const deviceId = () =>
     `sync-ticket-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
 
   async function registerDevice(cookie: string, workspaceId: string, device: string) {
+    await injectRegisterDevice(cookie, device);
     const response = await app.inject({
       method: "POST",
       url: "/device-store/unlock",

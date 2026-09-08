@@ -66,6 +66,53 @@ function errorResponse(
   };
 }
 
+/**
+ * F149. The Worker is not serving a workspace. Usually that means it was
+ * never initialized — a bare `not-initialized`, fatal. But if a session
+ * ended out from under the caller (`#endLocalSession` purged the runtime
+ * back to its pre-`initialize()` state), this call — in flight when the
+ * purge ran, or issued just after by a caller with every reason to think
+ * the Worker was live — deserves to know which. Then the shell can render
+ * the mid-session locked transition (VPS-D004 / F146) instead of a generic
+ * startup error, and re-unlock + re-initialize on this same Worker is the
+ * recovery path (so: non-fatal).
+ */
+function notInitialized(
+  request: GraphWorkerRequest,
+  neverInitializedMessage: string,
+): GraphWorkerError {
+  const end = runtime.lastSessionEnd;
+  if (end?.erased) {
+    return end.eraseReason === "device-revoked"
+      ? errorResponse(
+          request.requestId,
+          "device-revoked",
+          "This device was revoked and its local store has been erased",
+          false,
+        )
+      : errorResponse(
+          request.requestId,
+          "membership-revoked",
+          "This workspace's membership was revoked and this device's local store has been erased",
+          false,
+        );
+  }
+  if (end !== null) {
+    return errorResponse(
+      request.requestId,
+      "local-session-ended",
+      "This device's access to the workspace ended mid-session; re-unlock to continue",
+      false,
+    );
+  }
+  return errorResponse(
+    request.requestId,
+    "not-initialized",
+    neverInitializedMessage,
+    true,
+  );
+}
+
 async function handle(request: GraphWorkerRequest): Promise<void> {
   try {
     switch (request.type) {
@@ -118,12 +165,7 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
         // doc comment.
         if (runtime.workspaceId === null) {
           scope.postMessage(
-            errorResponse(
-              request.requestId,
-              "not-initialized",
-              "Initialize the Worker before applying deltas",
-              true,
-            ),
+            notInitialized(request, "Initialize the Worker before applying deltas"),
           );
           return;
         }
@@ -134,12 +176,7 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
       case "mutate": {
         if (runtime.workspaceId === null) {
           scope.postMessage(
-            errorResponse(
-              request.requestId,
-              "not-initialized",
-              "Initialize the Worker before mutating it",
-              true,
-            ),
+            notInitialized(request, "Initialize the Worker before mutating it"),
           );
           return;
         }
@@ -215,12 +252,7 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
       case "query": {
         if (runtime.workspaceId === null) {
           scope.postMessage(
-            errorResponse(
-              request.requestId,
-              "not-initialized",
-              "Initialize the Worker before querying it",
-              true,
-            ),
+            notInitialized(request, "Initialize the Worker before querying it"),
           );
           return;
         }
@@ -235,12 +267,7 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
       case "refresh-role": {
         if (runtime.workspaceId === null) {
           scope.postMessage(
-            errorResponse(
-              request.requestId,
-              "not-initialized",
-              "Initialize the Worker before refreshing its role",
-              true,
-            ),
+            notInitialized(request, "Initialize the Worker before refreshing its role"),
           );
           return;
         }
@@ -308,11 +335,9 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
       case "get-availability": {
         if (runtime.workspaceId === null) {
           scope.postMessage(
-            errorResponse(
-              request.requestId,
-              "not-initialized",
+            notInitialized(
+              request,
               "Initialize the Worker before reading availability",
-              true,
             ),
           );
           return;
@@ -323,11 +348,9 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
       case "start-sync": {
         if (runtime.workspaceId === null) {
           scope.postMessage(
-            errorResponse(
-              request.requestId,
-              "not-initialized",
+            notInitialized(
+              request,
               "Initialize and unlock the Worker before starting sync",
-              true,
             ),
           );
           return;

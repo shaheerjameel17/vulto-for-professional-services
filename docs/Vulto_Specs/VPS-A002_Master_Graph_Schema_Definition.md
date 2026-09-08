@@ -188,6 +188,8 @@ Nodes marked **A002-owned** have their lifecycle statuses, privacy class and tie
 | **Device** | Active, Revoked | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | Standard | 0 |
 | **Entity** | Active, Dissolved | [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] | Standard | 0 |
 
+**Device, Workspace and WorkspaceMembership are registered here but not yet projected as local graph nodes.** Their online records are Better Auth control-plane rows, and the mechanisms that consume them — session admission, `deriveEffectiveRoles` reading `SealedStore.roles`, device trust and the revocation signal — read the server grant, never a local node. FDN-63 implements `Device` as a Postgres control-plane row (`VPS-F001`'s nine fields); the node projection is deferred alongside Workspace/WorkspaceMembership to FDN-85. Registration precedes implementation per A002-T09, so the rows stay. Recorded as F189.
+
 Entity is permanently Roster-owned and scoped specifically to employment jurisdiction: which entity's employment law, leave policy and payroll applies to a person. Consolidated financial reporting remains [[Vulto Accounts]]' territory; intercompany contract structuring remains [[Vulto Legal]]'s.
 
 ### Calendar and time — [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]

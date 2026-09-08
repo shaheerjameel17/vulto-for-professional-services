@@ -202,6 +202,39 @@ function randomBase64Url(byteLength: number): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
+/**
+ * FDN-63. A coarse, human-readable label for this browser, used as the
+ * `device_name` at registration. The `/devices` page lets the user rename it;
+ * this is only the default so the row is not blank. Best-effort — an
+ * unparseable or absent user-agent falls back to "Web browser".
+ */
+function describeWebClient(): string {
+  const ua = (globalThis.navigator as Navigator | undefined)?.userAgent ?? "";
+  const browser = /Firefox\/\d/.test(ua)
+    ? "Firefox"
+    : /Edg\/\d/.test(ua)
+      ? "Edge"
+      : /Chrome\/\d/.test(ua)
+        ? "Chrome"
+        : /Safari\/\d/.test(ua)
+          ? "Safari"
+          : null;
+  const os = /Mac OS X|Macintosh/.test(ua)
+    ? "macOS"
+    : /Windows/.test(ua)
+      ? "Windows"
+      : /Android/.test(ua)
+        ? "Android"
+        : /iPhone|iPad|iPod/.test(ua)
+          ? "iOS"
+          : /Linux/.test(ua)
+            ? "Linux"
+            : null;
+  if (browser && os) return `${browser} on ${os}`;
+  if (browser) return browser;
+  return "Web browser";
+}
+
 function base64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -290,6 +323,28 @@ export class SealedStore {
    */
   async unlockOnline(workspaceId: string, apiOrigin: string): Promise<void> {
     const identity = await this.#deviceIdentity();
+
+    // FDN-63. A device registers its identity as part of coming online —
+    // `VPS-F001`: "Every device authenticating into a workspace for the first
+    // time registers as a Device node and initializes its own local graph
+    // store." The unlock checkpoint refuses a device with no registration
+    // row, so this is not optional; it is the explicit `device.register` the
+    // spec requires ("no silent auto-approval" means an explicit call, made
+    // here by the device itself, not a human approval step). Idempotent
+    // server-side.
+    const registration = await fetch(`${apiOrigin}/devices/register`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        deviceId: identity.deviceId,
+        deviceName: describeWebClient(),
+        platform: "web",
+        application: "VultoRoster",
+      }),
+    });
+    if (!registration.ok) throw new SealedStoreUnlockDeniedError();
+
     const response = await fetch(`${apiOrigin}/device-store/unlock`, {
       method: "POST",
       credentials: "include",

@@ -29,6 +29,34 @@
       "when": 1788845445644,
       "tag": "0003_nappy_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788874165102,
+      "tag": "0004_curvy_raider",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788874424141,
+      "tag": "0005_outstanding_lilith",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788884707043,
+      "tag": "0006_flimsy_iron_monger",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1788886497250,
+      "tag": "0007_smart_red_ghost",
+      "breakpoints": true
     }
   ]
 }

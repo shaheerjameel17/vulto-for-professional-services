@@ -366,8 +366,26 @@ export const graphWorkerErrorSchema = z
           // Never fatal, for the same reason `local-writes-discarded` is
           // not: the loss already happened, and killing the Worker over the
           // report would only hide it.
+          //
+          // F149. These two codes also answer a call that arrives (or was
+          // already in flight) AFTER `#endLocalSession` has purged the
+          // runtime back to its pre-`initialize()` state: without this, that
+          // call resolved to a bare `not-initialized`, indistinguishable
+          // from a Worker that was never initialized at all — so a shell
+          // could render a mid-session revocation as a generic startup
+          // error rather than the locked-shell transition VPS-D004 (F146)
+          // defines for it.
           "device-revoked",
           "membership-revoked",
+          // F149. The session ended and the runtime was purged, but the
+          // server did NOT classify it as one of the two revocation events
+          // above — an unclassified denial (org suspension, an unreadable
+          // body). The store was locked and memory purged, not erased. Its
+          // own code so a caller can tell "your access ended mid-session,
+          // re-unlock to continue" from "you never initialized" (bare
+          // `not-initialized`) and from an erase. Non-fatal: a re-unlock and
+          // re-initialize on the same Worker is the recovery path.
+          "local-session-ended",
         ]),
         message: z.string().min(1),
         fatal: z.boolean(),
