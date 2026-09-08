@@ -212,6 +212,20 @@ raw session token; and a positive control (scanning for the workspace id,
 which is present). The A003-T09 observability note in `VPS-A003` records that
 any future metrics or tracing exporter must re-run this scan.
 
+### Stage 6 — closure audit
+
+The requirements-inward walk of `VPS-A003`'s sync rows (T36–T45 plus every
+earlier row Stage 0–5 touched) and acceptance criteria against this build is
+the **FDN-51 Stage 6 closure-audit comment** on the Linear issue. Every
+FDN-51-owned row is a pass or a documented, ruled partial; the branch is a
+merge candidate. Two non-blocking findings — **F187** (the 30-second
+convergence bound is demonstrated but not asserted as a deadline) and **F188**
+(`A003-T10`/`T36`'s "single shared core" prose vs. the Rust `[lib]` +
+vector-synchronized TypeScript mirror) — are in `docs/Foundations_Findings.md`.
+The one specified behavior FDN-51 does not deliver, per-recipient delivery
+filtering, is **F186**, ruled out of scope and named in the FDN-88 / FDN-54
+handoff.
+
 ### TLS
 
 Deferred (A003-T36): the local relay runs plain `ws://`. Production terminates
