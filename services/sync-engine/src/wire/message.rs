@@ -71,13 +71,19 @@ pub enum PayloadKind {
     Snapshot = 1,
 }
 
-/// The four states A003-T08's `SyncStatus` observable surfaces.
+/// The on-wire `SyncStatus.state`. The relay only ever sends `Synced` /
+/// `Syncing` (`connection.rs::sync_state`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum SyncState {
     Synced = 0,
     Syncing = 1,
+    /// Retained but unused. Founder ruling 4 on the Stage 4 plan moved
+    /// pending-local-changes to a client-side boolean flag
+    /// (`SyncStatusSnapshot.pendingLocalChanges`), so no relay ever emits
+    /// this and no client surfaces it as a state (FDN-51 Stage 6, F188).
     PendingChanges = 2,
+    /// Client-derived on socket loss; the relay never sends this either.
     Offline = 3,
 }
 

@@ -40,6 +40,13 @@ export type PayloadKind = "update" | "snapshot";
 const PAYLOAD_KIND_BYTE: Record<PayloadKind, number> = { update: 0, snapshot: 1 };
 const PAYLOAD_KIND_BY_BYTE = ["update", "snapshot"] as const;
 
+/**
+ * The on-wire `SyncStatus.state`. The relay only ever sends `synced` /
+ * `syncing`. `pending_changes` is retained but unused: founder ruling 4 on
+ * the Stage 4 plan moved pending-local-changes to a client-side boolean
+ * (`SyncStatusSnapshot.pendingLocalChanges`), and `offline` is client-derived
+ * on socket loss (FDN-51 Stage 6, F188).
+ */
 export type SyncState = "synced" | "syncing" | "pending_changes" | "offline";
 const SYNC_STATE_BYTE: Record<SyncState, number> = {
   synced: 0,

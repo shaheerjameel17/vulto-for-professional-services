@@ -218,13 +218,14 @@ The requirements-inward walk of `VPS-A003`'s sync rows (T36–T45 plus every
 earlier row Stage 0–5 touched) and acceptance criteria against this build is
 the **FDN-51 Stage 6 closure-audit comment** on the Linear issue. Every
 FDN-51-owned row is a pass or a documented, ruled partial; the branch is a
-merge candidate. Two non-blocking findings — **F187** (the 30-second
-convergence bound is demonstrated but not asserted as a deadline) and **F188**
-(`A003-T10`/`T36`'s "single shared core" prose vs. the Rust `[lib]` +
-vector-synchronized TypeScript mirror) — are in `docs/Foundations_Findings.md`.
-The one specified behavior FDN-51 does not deliver, per-recipient delivery
-filtering, is **F186**, ruled out of scope and named in the FDN-88 / FDN-54
-handoff.
+merge candidate. Two Stage 6 findings, both closed by founder ruling —
+**F187** (the 30-second convergence bound is demonstrated but not asserted as a
+deadline; a real deadline assertion is deferred to FDN-55) and **F188** (the
+`A003-T10` / `T36` "single shared core" prose is corrected to match the Rust
+`[lib]` + vector-synchronized TypeScript mirror, per `A003-T42`) — are in
+`docs/Foundations_Findings.md`. The one specified behavior FDN-51 does not
+deliver, per-recipient delivery filtering, is **F186**, ruled out of scope and
+named in the FDN-88 / FDN-54 handoff.
 
 ### TLS
 
