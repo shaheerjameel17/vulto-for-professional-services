@@ -320,7 +320,18 @@ export class WorkspaceSyncClient {
     };
     socket.onmessage = (event) => {
       const { data } = event;
-      this.#inbound = this.#inbound.then(() => this.#handleFrame(data));
+      this.#inbound = this.#inbound.then(() =>
+        this.#handleFrame(data).catch((error: unknown) => {
+          // A frame handler that throws (e.g. `applyRemoteDeltas` could not
+          // merge a delta) ends this connection; a reconnect retries it from
+          // the durable ack. Never let it wedge the inbound chain silently.
+          if (typeof console !== "undefined") {
+            console.error("[sync] inbound frame failed", error);
+          }
+          if (this.#lastError === null) this.#lastError = "internal";
+          this.#handleDisconnect();
+        }),
+      );
     };
     socket.onerror = () => {
       if (this.#lastError === null) this.#lastError = "network";
@@ -440,6 +451,19 @@ export class WorkspaceSyncClient {
         this.#handshakeComplete = true;
         this.#reconnectAttempts = 0;
         this.#lastError = null;
+        if (message.highestAcknowledgedCursor > this.#ackedCursor) {
+          // The relay believes this device is further ahead than its local
+          // state says — the local store was erased, or restored from an
+          // older backup. Auto-replay-from-ack (A003-T40) then delivers
+          // nothing, so explicitly re-pull from where this device actually
+          // is. The resulting `DeltaBatch`es flow through the same path as
+          // replay, re-advancing the durable cursor as they apply.
+          this.#send({
+            type: "pull_since_cursor",
+            documentId: "",
+            afterCursor: this.#ackedCursor,
+          });
+        }
         // The relay is caught up with us as of Hello; push anything queued.
         this.#pumpOutbox();
         this.#recomputeSyncedState();

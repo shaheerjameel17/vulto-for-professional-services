@@ -39,6 +39,8 @@ class FakeRelay implements SyncSocket {
   replayBacklog: DeltaEntry[][] = [];
   /** If set, `Hello` is answered with this error instead of a replay. */
   rejectWith: Message | null = null;
+  /** What the relay's `SyncStatus` reports as this device's durable ack (server-side). */
+  deviceAckedCursor = 0n;
 
   constructor(seed: Array<{ payload: Uint8Array; origin?: string }> = []) {
     for (const entry of seed) this.#append(entry.payload, entry.origin ?? "peer");
@@ -83,7 +85,7 @@ class FakeRelay implements SyncSocket {
         type: "sync_status",
         status: "synced",
         highestKnownCursor: this.#cursor,
-        highestAcknowledgedCursor: 0n,
+        highestAcknowledgedCursor: this.deviceAckedCursor,
       });
       return;
     }
@@ -95,6 +97,10 @@ class FakeRelay implements SyncSocket {
         clientRef: message.clientRef,
         assignedCursor: entry.cursor,
       });
+    }
+    if (message.type === "pull_since_cursor") {
+      const entries = this.log.filter((e) => e.cursor > message.afterCursor);
+      if (entries.length > 0) this.#emit({ type: "delta_batch", entries });
     }
   }
 
@@ -128,6 +134,7 @@ interface Harness {
   markers: Map<string, Uint8Array>;
   applied: Uint8Array[][];
   localUpdate: (bytes: Uint8Array) => void;
+  failApplyOnce: () => void;
   mintCalls: number;
   timers: Array<{ fn: () => void; ms: number }>;
   runTimers: () => void;
@@ -145,13 +152,17 @@ function makeHarness(
   const markers = new Map<string, Uint8Array>();
   const applied: Uint8Array[][] = [];
   const timers: Array<{ fn: () => void; ms: number }> = [];
-  const state = { mintCalls: 0 };
+  const state = { mintCalls: 0, failApplyOnce: false };
 
   const bindings: SyncHostBindings = {
     workspaceId: WORKSPACE,
     deviceId: DEVICE,
     documentId: DOCUMENT,
     async applyRemoteDeltas(payloads) {
+      if (state.failApplyOnce) {
+        state.failApplyOnce = false;
+        throw new Error("materialization refused this batch");
+      }
       applied.push(payloads.map((p) => p.slice()));
     },
     async loadMarker(key) {
@@ -197,6 +208,9 @@ function makeHarness(
     markers,
     applied,
     localUpdate: (bytes) => client.enqueueLocalDelta(bytes),
+    failApplyOnce: () => {
+      state.failApplyOnce = true;
+    },
     get mintCalls() {
       return state.mintCalls;
     },
@@ -317,6 +331,56 @@ describe("WorkspaceSyncClient", () => {
         m.type === "ack" && m.ackKind === "client_cumulative",
     ).at(-1)!;
     expect(Number(lastAck.acknowledgedCursor)).toBe(1);
+    expect(h.statuses.at(-1)!.state).toBe("synced");
+  });
+
+  it("re-pulls when the relay's ack is ahead of local state (erased store)", async () => {
+    // The relay already has a delta and thinks this device acked it, but the
+    // device's local cursor marker is gone.
+    const h = makeHarness({
+      seed: [{ payload: new Uint8Array([9, 9]), origin: "peer" }],
+      configureRelay: (r) => {
+        r.deviceAckedCursor = 1n;
+      },
+    });
+    await h.client.start();
+    await flush();
+    await flush();
+    await flush();
+
+    // Auto-replay-from-ack delivered nothing; the client pulled instead.
+    const relay = h.relays[0]!;
+    expect(relay.received.some((m) => m.type === "pull_since_cursor")).toBe(true);
+    expect(h.applied.at(-1)!.map((p) => [...p])).toEqual([[9, 9]]);
+    expect(h.statuses.at(-1)!.state).toBe("synced");
+    expect(h.statuses.at(-1)!.highestAckedCursor).toBe(1);
+  });
+
+  it("drops and retries the connection when applyRemoteDeltas fails", async () => {
+    const h = makeHarness({
+      configureRelay: (r) => {
+        r.replayBacklog = [[entry(1n, new Uint8Array([5]))]];
+      },
+    });
+    h.failApplyOnce();
+
+    await h.client.start();
+    await flush();
+    await flush();
+    await flush();
+
+    // The first replay failed; the connection dropped.
+    expect(h.statuses.at(-1)!.state).toBe("offline");
+    expect(h.statuses.at(-1)!.lastError).toBe("internal");
+
+    // Reconnect (backoff timer) -> the replay succeeds this time.
+    h.runTimers();
+    await flush();
+    await flush();
+    await flush();
+
+    expect(h.relays.length).toBeGreaterThanOrEqual(2);
+    expect(h.applied.flat().map((p) => [...p])).toContainEqual([5]);
     expect(h.statuses.at(-1)!.state).toBe("synced");
   });
 
