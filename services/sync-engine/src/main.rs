@@ -100,8 +100,7 @@ fn handle(mut stream: TcpStream) {
                 body
             )
         }
-        _ => "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-            .to_string(),
+        _ => "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n".to_string(),
     };
 
     let _ = stream.write_all(response.as_bytes());

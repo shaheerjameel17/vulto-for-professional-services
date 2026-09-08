@@ -1,0 +1,12 @@
+{
+  "description": "Hello: client offers protocol range [1,1] with workspace/device IDs and an opaque 8-byte session token",
+  "message": {
+    "type": "hello",
+    "client_min_version": 1,
+    "client_max_version": 1,
+    "workspace_id": "ws-demo-0001",
+    "device_id": "dev-demo-0001",
+    "session_token_hex": "0011223344556677"
+  },
+  "encoded_hex": "010101010000000c77732d64656d6f2d303030310000000d6465762d64656d6f2d30303031000000080011223344556677"
+}

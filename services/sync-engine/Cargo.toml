@@ -1,7 +1,8 @@
 # The only Rust in this repository, per VPS-A001's A001-T01. A second Rust
 # service requires a superseding decision document.
 #
-# PLACEHOLDER. Content arrives with FDN-51. See src/lib.rs and src/main.rs.
+# FDN-51 Stage 1 filled the [lib] with the wire format (src/wire/). The [[bin]]
+# server is still the Stage 0 placeholder; it gets its content in Stage 2.
 #
 # One package, two build targets, per FDN-46:
 #
@@ -45,7 +46,18 @@ name = "vulto-sync-engine"
 path = "src/main.rs"
 
 [dependencies]
-# Intentionally empty. See the module docs in src/lib.rs.
+# Intentionally empty. The shared core (A003-T36) is transport-agnostic and
+# standard-library only — no async runtime, no serialization framework, no
+# codegen toolchain (A003-T42). Stage 2's [[bin]] relay adds its own runtime
+# dependencies; the [lib] stays clean.
+
+[dev-dependencies]
+# Test-only, never in the shipped binary. Used by tests/wire_vectors.rs to read
+# the canonical tests/vectors/*.json fixtures that also drive the TypeScript
+# implementation (packages/graph/src/sync/wire.test.ts). The exact resolved
+# versions are pinned in Cargo.lock and enforced by --locked in CI and Docker.
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [profile.release]
 strip = true

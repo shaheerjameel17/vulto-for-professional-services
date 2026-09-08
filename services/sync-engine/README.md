@@ -1,55 +1,57 @@
 # services/sync-engine
 
-**This is a placeholder. It contains no sync logic.**
+The shared sync core (A003-T10) plus the relay server that deploys it.
 
-The sync engine's substance — the sync protocol, the encryption model, key
-wrapping, and permission-filtered relay — belongs to `VPS-A003` and `VPS-A004`.
-Neither is the Core Engineering and Graph Foundations phase's specification, and
-building a relay before there is a protocol for it to speak would be building
-against nothing.
+## What is built: the wire format (`[lib]`, FDN-51 Stage 1)
 
-**Content arrives with FDN-51**, "Deliver encrypted multi-device delta
-synchronization and convergence."
+`src/wire/` encodes and decodes the framed protocol messages defined in
+`VPS-A003`'s "Sync transport contract" section (A003-T36–T42):
 
-## Why it exists now rather than later
+- `Hello`, `PushDelta`, `PullSinceCursor`, `DeltaBatch`, `Ack`, `SyncStatus`,
+  `Error` — a fixed 2-byte header (protocol version, message type) followed by
+  length-prefixed fields, all integers big-endian, hand-rolled, no codegen
+  toolchain.
+- Version negotiation that rejects rather than downgrades (`wire::negotiate`).
+- The delivery `Cursor` type and its ordering — the authoritative assignment
+  (a per-workspace commit sequence handed out at PostgreSQL transaction commit)
+  belongs to Stage 2.
 
-`A001-T04` requires every engineer not working on the sync engine to run the
-full local stack without a Rust toolchain. **That requirement is vacuous while no
-Rust exists** — "runs without Rust" is trivially true when there is no Rust — and
-the first time it means anything is the day someone adds a crate and finds the
-bootstrap path assumed `cargo`.
+The core is transport-agnostic (A003-T36): no socket, no async runtime, no
+database. It compiles natively, to `wasm32-unknown-unknown`, and as a
+`cdylib`/`staticlib` for mobile from this one source.
 
-This crate makes the test real from the first commit. `VPS-A007`'s `A007-T19`
-assigns the `A001-T04` proof to the development image, which is what the compose
-stack and the devcontainer provide.
+### Cross-implementation vectors (A003-T42)
 
-## What is deliberately absent
+`tests/vectors/*.json` is the single source of truth for the byte layout. Both
+`tests/wire_vectors.rs` here and `packages/graph/src/sync/wire.test.ts` on the
+TypeScript side decode each vector's `encoded_hex` to its structured `message`
+and re-encode it back, so the two implementations are checked against each other
+rather than each against itself.
 
-**Dependencies.** Standard library only. An async runtime and an HTTP framework
-would cost minutes of compile time for no benefit and would commit this crate to
-choices FDN-51 should make with the real requirements in front of it.
+`serde`/`serde_json` are `[dev-dependencies]` only — used to read those JSON
+fixtures. The shipped `[lib]` and the runtime `[dependencies]` are standard
+library only.
 
-**The WASM and mobile targets.** `VPS-A007`'s sixth gate requires this crate to
-build three ways from one source. Proving that is **FDN-46**'s, not this issue's.
-`rust-toolchain.toml` already installs the `wasm32-unknown-unknown` target so the
-proof is a build away.
+## What is still a placeholder: the relay server (`[[bin]]`)
 
-## `GET /health` is not an API
+`src/main.rs` remains the Stage 0 placeholder — a std-only readiness endpoint,
+not an API. It gets its real content in **FDN-51 Stage 2**: the WebSocket relay
+on Tokio + Axum (A003-T36), PostgreSQL delta persistence and catch-up, per-device
+cursors assigned at transaction commit (A003-T39), acknowledgement / replay
+(A003-T40), and the VPS-F004 delta-log hook (A003-T09). `GET /health` exists only
+so `docker compose up --wait` can tell the container is up; nothing should be
+built against it.
 
-It exists so the container reports readiness and `docker compose up --wait` can
-tell the stack is up. **It is not the sync engine's interface**, it is not part of
-any contract, and nothing should be built against it. The delta and snapshot
-contract this service will speak is defined by FDN-46. Everything here is
-replaced wholesale rather than extended.
+## Build
 
-## Two costs recorded, so neither is mistaken for a defect later
+`rust-toolchain.toml` pins the toolchain; nobody outside this crate needs it
+installed (A001-T04) — the compose stack builds the crate in a container. The
+`Dockerfile` uses cargo-chef dependency-layer caching so a cold
+`docker compose up` does not recompile the dependency graph on a source-only
+edit.
 
-**A cold `docker compose up` compiles Rust inside the container.** Your host stays
-clean, which is what `A001-T04` requires, but the first build pays a compile. For
-a std-only placeholder that is seconds. **When FDN-51 gives this crate real
-content that becomes minutes**, and the answer changes to pulling a prebuilt image
-from a registry rather than building locally. That is a deliberate scope boundary,
-not a performance regression to file a bug against.
-
-**The image is built, not pulled.** There is no registry in this setup yet.
-Publishing is part of the pipeline, which `VPS-A007` owns and FDN-55 implements.
+```
+cargo test                                   # unit tests + tests/wire_vectors.rs
+cargo fmt --check && cargo clippy -- -D warnings
+cargo build --lib --release --target wasm32-unknown-unknown
+```
