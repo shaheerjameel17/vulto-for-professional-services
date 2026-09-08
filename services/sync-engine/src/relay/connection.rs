@@ -203,7 +203,7 @@ async fn run(socket: &mut WebSocket, deps: &ConnectionDeps) -> Result<(), Closed
                 let message = message.map_err(|_| Closed::silent())?;
                 match message {
                     WsMessage::Binary(bytes) => {
-                        handle_inbound(socket, deps, &workspace_id, &device_id, &bytes, &mut sent).await?;
+                        handle_inbound(socket, deps, &workspace_id, &device_id, &bytes).await?;
                     }
                     WsMessage::Close(_) => return Ok(()),
                     WsMessage::Ping(_) | WsMessage::Pong(_) => {}
@@ -297,7 +297,6 @@ async fn handle_inbound(
     workspace_id: &str,
     device_id: &str,
     bytes: &[u8],
-    sent: &mut Cursor,
 ) -> Result<(), Closed> {
     let message = decode(bytes)
         .map_err(|error| Closed::protocol(ErrorKind::MalformedFrame, error.to_string()))?;
@@ -338,7 +337,13 @@ async fn handle_inbound(
                 "sync delta accepted"
             );
 
-            *sent = Cursor(sent.value().max(entry.cursor.value()));
+            // `sent` is deliberately NOT advanced here. The doorbell wake this
+            // push triggers runs `deliver_pending(skip_own = true)`, which reads
+            // from the true `sent` in cursor order, filters this device's own
+            // deltas by `origin_device_id`, and advances `sent` past the page.
+            // Advancing `sent` to this delta's cursor now would jump it over any
+            // lower-cursor delta from another device that this connection has
+            // not yet delivered, permanently skipping it on the live path.
             send(
                 socket,
                 &Message::Ack(Ack::RelayReceipt {

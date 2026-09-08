@@ -72,7 +72,7 @@ and the SQL-level ack clamp.
 ### Stage 3 — acknowledgement, retry, replay, resume hardening
 
 Three corrections, proven on the real stack (`tests/relay_pg.rs` grows to
-seventeen cases):
+eighteen cases):
 
 - **Mid-session eviction (A003-T45).** A re-authorization timer re-runs the
   admission check every `SYNC_REVALIDATION_SECS` (default 10, jittered first
@@ -94,6 +94,18 @@ seventeen cases):
 Duplicate delivery is safe without relay bookkeeping: the payload is Loro update
 bytes (or an FDN-52 envelope over them) and Loro dedupes by `(peer id, counter)`
 (A003-T02); `packages/graph`'s Loro round-trip tests cover the client side.
+
+**Stage 3 addendum — the `PushDelta` handler must not advance `sent`.** The
+review that followed the loss and reconstruction of `connection.rs` (recorded on
+FDN-51) found a vestigial line carried over from Stage 2a: on a client's own
+push, `sent` jumped to that delta's cursor, which could skip a delta another
+device had committed at a lower cursor but that this connection had not yet
+delivered — a live-path gap that healed only on reconnect, the same class of bug
+the doorbell redesign eliminated for the broadcast path. The line is deleted;
+`deliver_pending(skip_own = true)` already advances `sent` correctly and filters
+this device's own deltas by origin. Covered by
+`a_pushing_device_still_receives_a_concurrent_peers_lower_cursor_delta(s)_live`
+in both suites.
 
 **Stage 4 client-contract note.** During a large replay a client should send
 `Ack{ClientCumulative}` incrementally as it applies each batch, not once at the

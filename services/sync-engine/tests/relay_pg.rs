@@ -919,6 +919,110 @@ async fn concurrent_writers_deliver_a_gapless_ordered_stream_to_every_reader() {
     drop(relay);
 }
 
+/// Regression for the Stage 3 review finding (the vestigial `*sent = max(sent,
+/// pushed_cursor)` in the `PushDelta` handler). A connection that pushes must
+/// still receive every delta a peer committed at a lower cursor that it had not
+/// yet been delivered — advancing `sent` to the pushed cursor skipped those on
+/// the live path until reconnect. Here both devices push concurrently and each
+/// must end holding the other's complete set.
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_pushing_device_still_receives_a_concurrent_peers_lower_cursor_deltas_live() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let b_token = add_device(&pool, &s, "device-b").await;
+    let relay = spawn_relay(pool.clone()).await;
+
+    const ROUNDS: usize = 40;
+
+    let peers: [(&str, String); 2] = [
+        (s.device_id.as_str(), s.token.clone()),
+        ("device-b", b_token.clone()),
+    ];
+
+    let mut tasks = Vec::new();
+    for (device, token) in peers {
+        let addr = relay.addr;
+        let ws = s.workspace_id;
+        let device = device.to_owned();
+        tasks.push(tokio::spawn(async move {
+            let mut c = open(addr).await;
+            handshake(&mut c, ws, &token, &device).await;
+
+            let mut mine: Vec<u64> = Vec::new();
+            let mut from_peer: Vec<u64> = Vec::new();
+            let mut pushed = 0usize;
+
+            // Push all of ROUNDS, interleaving with whatever the peer sends.
+            send(&mut c, &push("doc", format!("{device}-0").as_bytes(), b"x")).await;
+            pushed += 1;
+            while mine.len() < ROUNDS || from_peer.len() < ROUNDS {
+                match tokio::time::timeout(Duration::from_secs(20), recv(&mut c)).await {
+                    Ok(Message::Ack(Ack::RelayReceipt {
+                        assigned_cursor, ..
+                    })) => {
+                        mine.push(assigned_cursor.value());
+                        if pushed < ROUNDS {
+                            send(
+                                &mut c,
+                                &push("doc", format!("{device}-{pushed}").as_bytes(), b"x"),
+                            )
+                            .await;
+                            pushed += 1;
+                        }
+                    }
+                    Ok(Message::DeltaBatch(batch)) => {
+                        for entry in batch.entries {
+                            assert_ne!(
+                                entry.origin_device_id, device,
+                                "a device must never be sent its own delta"
+                            );
+                            from_peer.push(entry.cursor.value());
+                        }
+                    }
+                    Ok(other) => panic!("unexpected {other:?}"),
+                    Err(_) => panic!(
+                        "{device} stalled: mine={} from_peer={}",
+                        mine.len(),
+                        from_peer.len()
+                    ),
+                }
+            }
+            (mine, from_peer)
+        }));
+    }
+
+    let mut results = Vec::new();
+    for t in tasks {
+        results.push(t.await.unwrap());
+    }
+    let (a_mine, a_from_peer) = &results[0];
+    let (b_mine, b_from_peer) = &results[1];
+
+    let sorted = |v: &Vec<u64>| {
+        let mut c = v.clone();
+        c.sort_unstable();
+        c
+    };
+    assert_eq!(
+        sorted(a_from_peer),
+        sorted(b_mine),
+        "device-a received every delta device-b committed, live"
+    );
+    assert_eq!(
+        sorted(b_from_peer),
+        sorted(a_mine),
+        "device-b received every delta device-a committed, live"
+    );
+    assert_eq!(
+        sorted(&[sorted(a_mine), sorted(b_mine)].concat()),
+        (1..=(2 * ROUNDS) as u64).collect::<Vec<_>>(),
+        "the two devices' pushes together are a gapless 1..=2N"
+    );
+
+    drop(relay);
+}
+
 #[tokio::test]
 #[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
 async fn a_slow_consumer_is_caught_up_not_dropped() {

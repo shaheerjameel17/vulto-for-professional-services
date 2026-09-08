@@ -423,3 +423,106 @@ async fn a_reader_that_stops_reading_is_caught_up_not_dropped() {
     }
     assert_eq!(seen, (1..=20u64).collect::<Vec<_>>(), "gapless, in order");
 }
+
+#[tokio::test]
+async fn a_pushing_device_still_receives_a_concurrent_peers_lower_cursor_delta_live() {
+    // Regression for the Stage 3 review finding. The `PushDelta` handler must
+    // NOT advance `sent` to the pushed delta's cursor: doing so jumped `sent`
+    // over a delta another device had already committed at a lower cursor but
+    // that this connection had not yet delivered, skipping it permanently on the
+    // live path (it reappeared only on reconnect). With the fix, the doorbell's
+    // own `deliver_pending` reads from the true `sent` and filters this device's
+    // own deltas by origin, so nothing is skipped.
+    let addr = spawn_relay(default_authorizer()).await;
+
+    let mut a = open(addr).await;
+    let mut b = open(addr).await;
+    handshake(&mut a, TOKEN_A, "device-a").await;
+    handshake(&mut b, TOKEN_B, "device-b").await;
+
+    const ROUNDS: usize = 50;
+
+    // Split A so a background collector drains every frame it is delivered while
+    // this task keeps pushing.
+    let (mut a_tx, mut a_rx) = a.split();
+
+    let collector = tokio::spawn(async move {
+        let mut from_b: Vec<u64> = Vec::new();
+        loop {
+            // A second of silence means the relay has quiesced.
+            match tokio::time::timeout(Duration::from_secs(1), a_rx.next()).await {
+                Ok(Some(Ok(WsMessage::Binary(bytes)))) => match decode(&bytes).expect("decode") {
+                    Message::DeltaBatch(batch) => {
+                        for entry in batch.entries {
+                            assert_eq!(
+                                entry.origin_device_id, "device-b",
+                                "A must never be sent its own delta"
+                            );
+                            from_b.push(entry.cursor.value());
+                        }
+                    }
+                    Message::Ack(Ack::RelayReceipt { .. }) => {}
+                    other => panic!("A received unexpected {other:?}"),
+                },
+                Ok(Some(Ok(WsMessage::Ping(_) | WsMessage::Pong(_)))) => {}
+                Ok(Some(Ok(other))) => panic!("A received unexpected frame {other:?}"),
+                Ok(Some(Err(error))) => panic!("A websocket error: {error}"),
+                Ok(None) => break,
+                Err(_) => break,
+            }
+        }
+        from_b
+    });
+
+    let b_pusher = tokio::spawn(async move {
+        let mut committed = Vec::new();
+        for n in 0..ROUNDS {
+            b.send(WsMessage::Binary(encode(&push(
+                "doc",
+                format!("b-{n}").as_bytes(),
+                b"pb",
+            ))))
+            .await
+            .expect("b send");
+            loop {
+                match b.next().await.expect("b stream").expect("b ws") {
+                    WsMessage::Binary(bytes) => match decode(&bytes).expect("decode") {
+                        Message::Ack(Ack::RelayReceipt {
+                            assigned_cursor, ..
+                        }) => {
+                            committed.push(assigned_cursor.value());
+                            break;
+                        }
+                        Message::DeltaBatch(_) => {}
+                        other => panic!("b received unexpected {other:?}"),
+                    },
+                    WsMessage::Ping(_) | WsMessage::Pong(_) => {}
+                    other => panic!("b received unexpected frame {other:?}"),
+                }
+            }
+        }
+        committed
+    });
+
+    for n in 0..ROUNDS {
+        a_tx.send(WsMessage::Binary(encode(&push(
+            "doc",
+            format!("a-{n}").as_bytes(),
+            b"pa",
+        ))))
+        .await
+        .expect("a send");
+        tokio::task::yield_now().await;
+    }
+
+    let mut b_cursors = b_pusher.await.expect("b task");
+    let mut a_saw = collector.await.expect("collector task");
+    b_cursors.sort_unstable();
+    a_saw.sort_unstable();
+
+    assert_eq!(
+        a_saw, b_cursors,
+        "A received exactly every delta B committed, live and gapless — no lower-cursor \
+         delta was skipped by A's own concurrent pushes"
+    );
+}
