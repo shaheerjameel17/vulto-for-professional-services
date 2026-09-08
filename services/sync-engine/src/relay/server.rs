@@ -6,6 +6,7 @@
 
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::Duration;
 
 use axum::extract::{ws::WebSocketUpgrade, State};
 use axum::http::header::CONTENT_TYPE;
@@ -21,12 +22,15 @@ use super::session::SessionAuthorizer;
 use super::store::DeltaStore;
 
 /// Everything the relay shares across connections. Cheap to clone — every field
-/// is an `Arc` or `Arc`-backed.
+/// is an `Arc`, `Arc`-backed, or `Copy`.
 #[derive(Clone)]
 pub struct RelayState {
     pub store: Arc<dyn DeltaStore>,
     pub authorizer: Arc<dyn SessionAuthorizer>,
     pub hubs: Hubs,
+    /// How often an open connection re-checks its authorization (Stage 3).
+    /// `Duration::ZERO` disables the check.
+    pub revalidation_interval: Duration,
 }
 
 /// Build the router.
@@ -56,6 +60,7 @@ async fn sync_upgrade(State(state): State<RelayState>, upgrade: WebSocketUpgrade
                 store: state.store.clone(),
                 authorizer: state.authorizer.clone(),
                 hubs: state.hubs.clone(),
+                revalidation_interval: state.revalidation_interval,
             },
         )
         .await

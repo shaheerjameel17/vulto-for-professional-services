@@ -16,15 +16,17 @@ use sqlx::postgres::PgPool;
 use sqlx::Row;
 use tokio::net::TcpStream;
 use tokio::task::JoinHandle;
+use tokio::time::Instant;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use uuid::Uuid;
 use vulto_sync_engine::relay::{
-    connect_pool, serve_ephemeral, DeltaStore, Hubs, PgDeltaStore, PgSessionAuthorizer, RelayState,
+    connect_pool, serve_ephemeral, DeltaStore, Hubs, NewDelta, PgDeltaStore, PgSessionAuthorizer,
+    RelayState, MAX_DELTA_PAGE,
 };
 use vulto_sync_engine::wire::{
-    decode, encode, Ack, Cursor, DeltaEntry, ErrorKind, Hello, Message, PayloadKind, PushDelta,
-    SyncStatus, TierTag,
+    decode, encode, Ack, Cursor, DeltaEntry, ErrorKind, Hello, Message, PayloadKind,
+    PullSinceCursor, PushDelta, SyncState, SyncStatus, TierTag,
 };
 
 // ---------------------------------------------------------------------------
@@ -181,10 +183,15 @@ impl Drop for RunningRelay {
 }
 
 async fn spawn_relay(pool: PgPool) -> RunningRelay {
+    spawn_relay_with_reauth(pool, Duration::ZERO).await
+}
+
+async fn spawn_relay_with_reauth(pool: PgPool, revalidation_interval: Duration) -> RunningRelay {
     let state = RelayState {
         store: Arc::new(PgDeltaStore::new(pool.clone())),
         authorizer: Arc::new(PgSessionAuthorizer::new(pool)),
         hubs: Hubs::default(),
+        revalidation_interval,
     };
     let (addr, server) = serve_ephemeral(state).await.expect("bind ephemeral relay");
     RunningRelay {
@@ -665,4 +672,468 @@ async fn ack_clamp_is_enforced_in_sql_not_application_code() {
     .await
     .unwrap();
     assert_eq!(stored, 9);
+}
+
+// ===========================================================================
+// FDN-51 Stage 3 — acknowledgement / retry / replay / resume hardening
+// ===========================================================================
+
+/// Seed a backlog straight into PostgreSQL through the store (fast — no WS).
+async fn seed_deltas(pool: &PgPool, workspace_id: Uuid, origin: &str, count: usize) {
+    let store = PgDeltaStore::new(pool.clone());
+    for n in 0..count {
+        store
+            .append(NewDelta {
+                workspace_id: workspace_id.to_string(),
+                document_id: "doc".to_owned(),
+                tier_tag: TierTag::Opaque,
+                payload_kind: PayloadKind::Update,
+                origin_device_id: origin.to_owned(),
+                payload: format!("p{n}").into_bytes(),
+            })
+            .await
+            .unwrap();
+    }
+}
+
+const REAUTH: Duration = Duration::from_millis(700);
+
+// --- Mid-session eviction ---
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_revoked_device_open_connection_is_evicted() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let relay = spawn_relay_with_reauth(pool.clone(), REAUTH).await;
+
+    let mut a = open(relay.addr).await;
+    handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+
+    let revoked_at = Instant::now();
+    sqlx::query(
+        "UPDATE device_unlock_secret SET revoked_at = now() \
+         WHERE workspace_id = $1 AND user_id = $2 AND device_id = 'device-a'",
+    )
+    .bind(s.workspace_id)
+    .bind(s.user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        expect_closed(&mut a).await,
+        Some(ErrorKind::Unauthenticated)
+    );
+    let elapsed = revoked_at.elapsed();
+    assert!(
+        elapsed >= REAUTH / 2,
+        "eviction waited for the re-auth tick, not instant: {elapsed:?}"
+    );
+    assert!(
+        elapsed < REAUTH * 5,
+        "eviction happened within a few intervals: {elapsed:?}"
+    );
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn an_expired_session_evicts_the_open_connection() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let relay = spawn_relay_with_reauth(pool.clone(), REAUTH).await;
+
+    let mut a = open(relay.addr).await;
+    handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+
+    sqlx::query("UPDATE session SET expires_at = now() - interval '1 second' WHERE token = $1")
+        .bind(&s.token)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        expect_closed(&mut a).await,
+        Some(ErrorKind::Unauthenticated)
+    );
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_membership_revocation_evicts_the_open_connection() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let relay = spawn_relay_with_reauth(pool.clone(), REAUTH).await;
+
+    let mut a = open(relay.addr).await;
+    handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+
+    sqlx::query("UPDATE member SET status = 'revoked' WHERE organization_id = $1 AND user_id = $2")
+        .bind(s.workspace_id)
+        .bind(s.user_id)
+        .execute(&pool)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        expect_closed(&mut a).await,
+        Some(ErrorKind::Unauthenticated)
+    );
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn eviction_does_not_disturb_other_devices() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let b_token = add_device(&pool, &s, "device-b").await;
+    let c_token = add_device(&pool, &s, "device-c").await;
+    let relay = spawn_relay_with_reauth(pool.clone(), REAUTH).await;
+
+    let mut a = open(relay.addr).await;
+    handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+    let mut b = open(relay.addr).await;
+    handshake(&mut b, s.workspace_id, &b_token, "device-b").await;
+    let mut c = open(relay.addr).await;
+    handshake(&mut c, s.workspace_id, &c_token, "device-c").await;
+
+    sqlx::query(
+        "UPDATE device_unlock_secret SET revoked_at = now() \
+         WHERE workspace_id = $1 AND user_id = $2 AND device_id = 'device-a'",
+    )
+    .bind(s.workspace_id)
+    .bind(s.user_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    assert_eq!(
+        expect_closed(&mut a).await,
+        Some(ErrorKind::Unauthenticated)
+    );
+
+    // B (a different device) keeps pushing; C (a third device) keeps receiving.
+    send(&mut b, &push("doc", b"r1", b"p1")).await;
+    assert_eq!(recv_receipt(&mut b).await, 1);
+    match recv(&mut c).await {
+        Message::DeltaBatch(batch) => assert_eq!(cursors(&batch.entries), [1]),
+        other => panic!("device C should still receive live deltas, got {other:?}"),
+    }
+    send(&mut b, &push("doc", b"r2", b"p2")).await;
+    assert_eq!(recv_receipt(&mut b).await, 2);
+    match recv(&mut c).await {
+        Message::DeltaBatch(batch) => assert_eq!(cursors(&batch.entries), [2]),
+        other => panic!("device C should still receive live deltas, got {other:?}"),
+    }
+
+    drop(relay);
+}
+
+// --- Delivery ---
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn concurrent_writers_deliver_a_gapless_ordered_stream_to_every_reader() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+
+    const WRITERS: usize = 4;
+    const PER_WRITER: usize = 15;
+    const READERS: usize = 2;
+    let total = (WRITERS * PER_WRITER) as u64;
+
+    let mut writer_devs = Vec::new();
+    for i in 0..WRITERS {
+        let d = format!("writer-{i}");
+        let t = add_device(&pool, &s, &d).await;
+        writer_devs.push((d, t));
+    }
+    let mut reader_devs = Vec::new();
+    for i in 0..READERS {
+        let d = format!("reader-{i}");
+        let t = add_device(&pool, &s, &d).await;
+        reader_devs.push((d, t));
+    }
+
+    let relay = spawn_relay(pool.clone()).await;
+
+    // Readers connect and go idle.
+    let mut reader_tasks = Vec::new();
+    for (device, token) in reader_devs {
+        let addr = relay.addr;
+        let ws = s.workspace_id;
+        reader_tasks.push(tokio::spawn(async move {
+            let mut c = open(addr).await;
+            handshake(&mut c, ws, &token, &device).await;
+            let mut seen = Vec::new();
+            while (seen.len() as u64) < total {
+                match recv(&mut c).await {
+                    Message::DeltaBatch(batch) => seen.extend(cursors(&batch.entries)),
+                    other => panic!("reader got {other:?}"),
+                }
+            }
+            seen
+        }));
+    }
+
+    // Writers push concurrently.
+    let mut writer_tasks = Vec::new();
+    for (device, token) in writer_devs {
+        let addr = relay.addr;
+        let ws = s.workspace_id;
+        writer_tasks.push(tokio::spawn(async move {
+            let mut c = open(addr).await;
+            handshake(&mut c, ws, &token, &device).await;
+            for n in 0..PER_WRITER {
+                send(
+                    &mut c,
+                    &push("doc", format!("{device}-{n}").as_bytes(), b"x"),
+                )
+                .await;
+                loop {
+                    match recv(&mut c).await {
+                        Message::Ack(Ack::RelayReceipt { .. }) => break,
+                        Message::DeltaBatch(_) => {}
+                        other => panic!("writer got {other:?}"),
+                    }
+                }
+            }
+        }));
+    }
+    for t in writer_tasks {
+        t.await.unwrap();
+    }
+    for t in reader_tasks {
+        let seen = t.await.unwrap();
+        assert_eq!(
+            seen,
+            (1..=total).collect::<Vec<_>>(),
+            "every reader received a gapless, in-order stream"
+        );
+    }
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_slow_consumer_is_caught_up_not_dropped() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let b_token = add_device(&pool, &s, "device-b").await;
+    let relay = spawn_relay(pool.clone()).await;
+
+    let mut a = open(relay.addr).await;
+    handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+
+    // B pushes a batch larger than one page while A does not read.
+    let count = MAX_DELTA_PAGE + 77;
+    let mut b = open(relay.addr).await;
+    handshake(&mut b, s.workspace_id, &b_token, "device-b").await;
+    for n in 0..count {
+        send(&mut b, &push("doc", format!("r{n}").as_bytes(), b"x")).await;
+        recv_receipt(&mut b).await;
+    }
+
+    // A resumes: gets everything, paged, gapless.
+    let mut seen = Vec::new();
+    while seen.len() < count {
+        match recv(&mut a).await {
+            Message::DeltaBatch(batch) => seen.extend(cursors(&batch.entries)),
+            other => panic!("got {other:?}"),
+        }
+    }
+    assert_eq!(seen, (1..=count as u64).collect::<Vec<_>>());
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_failed_send_advances_no_durable_state() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let b_token = add_device(&pool, &s, "device-b").await;
+    let relay = spawn_relay(pool.clone()).await;
+
+    let mut a = open(relay.addr).await;
+    handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+
+    let mut b = open(relay.addr).await;
+    handshake(&mut b, s.workspace_id, &b_token, "device-b").await;
+    for n in 0..20 {
+        send(&mut b, &push("doc", format!("r{n}").as_bytes(), b"x")).await;
+        recv_receipt(&mut b).await;
+    }
+
+    // A receives a few, then vanishes without acknowledging.
+    let mut got = 0;
+    while got < 3 {
+        if let Message::DeltaBatch(batch) = recv(&mut a).await {
+            got += batch.entries.len();
+        }
+    }
+    drop(a);
+    tokio::time::sleep(Duration::from_millis(150)).await;
+
+    let acked: Option<i64> = sqlx::query_scalar(
+        "SELECT acked_cursor FROM sync_device_ack WHERE workspace_id = $1 AND device_id = 'device-a'",
+    )
+    .bind(s.workspace_id)
+    .fetch_optional(&pool)
+    .await
+    .unwrap();
+    assert!(
+        acked.is_none() || acked == Some(0),
+        "a failed send never moves the durable ack; only an explicit Ack does: {acked:?}"
+    );
+
+    drop(relay);
+}
+
+// --- Interrupted-sync resume ---
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn replay_pages_through_a_backlog_larger_than_one_batch() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let total = MAX_DELTA_PAGE + 213;
+    seed_deltas(&pool, s.workspace_id, "device-b", total).await;
+
+    let relay = spawn_relay(pool.clone()).await;
+    let mut a = open(relay.addr).await;
+    let (replay, status) = handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+
+    assert_eq!(cursors(&replay), (1..=total as u64).collect::<Vec<_>>());
+    assert_eq!(status.state, SyncState::Synced);
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_device_that_disconnects_mid_replay_resumes_without_gap_or_duplicate() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let b_token = add_device(&pool, &s, "device-b").await;
+    seed_deltas(&pool, s.workspace_id, "device-b", 800).await;
+
+    let relay = spawn_relay(pool.clone()).await;
+
+    // A connects and reads only the first replay page (one DeltaBatch), applies
+    // and acknowledges it, then drops mid-replay — before the remaining pages.
+    let mut a = open(relay.addr).await;
+    send(&mut a, &hello(s.workspace_id, &s.token, "device-a")).await;
+    let first_page = match recv(&mut a).await {
+        Message::DeltaBatch(batch) => cursors(&batch.entries),
+        other => panic!("expected the first replay page, got {other:?}"),
+    };
+    assert_eq!(
+        first_page.len(),
+        MAX_DELTA_PAGE,
+        "the first page is a full batch"
+    );
+    let ack_to = *first_page.last().unwrap();
+    ack(&mut a, ack_to).await;
+    tokio::time::sleep(Duration::from_millis(150)).await;
+    drop(a);
+
+    // A reconnects: replay resumes right after the ack, contiguous to 800.
+    let mut a = open(relay.addr).await;
+    let (replay, _) = handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+    let got = cursors(&replay);
+    assert_eq!(got.first().copied(), Some(ack_to + 1), "resumes at ack + 1");
+    assert_eq!(got.last().copied(), Some(800));
+    assert_eq!(
+        got,
+        (ack_to + 1..=800).collect::<Vec<_>>(),
+        "contiguous, no gap or dup"
+    );
+
+    // Live continues.
+    let mut b = open(relay.addr).await;
+    handshake(&mut b, s.workspace_id, &b_token, "device-b").await;
+    send(&mut b, &push("doc", b"r801", b"p")).await;
+    assert_eq!(recv_receipt(&mut b).await, 801);
+    match recv(&mut a).await {
+        Message::DeltaBatch(batch) => assert_eq!(cursors(&batch.entries), [801]),
+        other => panic!("expected live 801, got {other:?}"),
+    }
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_device_that_never_acks_during_replay_re_replays_cleanly() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    seed_deltas(&pool, s.workspace_id, "device-b", 800).await;
+
+    let relay = spawn_relay(pool.clone()).await;
+
+    let mut a = open(relay.addr).await;
+    send(&mut a, &hello(s.workspace_id, &s.token, "device-a")).await;
+    let mut received = Vec::new();
+    while received.len() < 300 {
+        if let Message::DeltaBatch(batch) = recv(&mut a).await {
+            received.extend(cursors(&batch.entries));
+        }
+    }
+    drop(a); // no ack
+
+    let mut a = open(relay.addr).await;
+    let (replay, _) = handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+    assert_eq!(
+        cursors(&replay),
+        (1..=800u64).collect::<Vec<_>>(),
+        "full re-replay from cursor 0 (safe to re-apply)"
+    );
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn pull_since_cursor_is_an_equivalent_client_driven_resume() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    seed_deltas(&pool, s.workspace_id, "device-b", 800).await;
+
+    // A has already acknowledged through 600, so auto-replay on Hello starts at 601.
+    let store = PgDeltaStore::new(pool.clone());
+    store
+        .record_ack(&s.workspace_id.to_string(), "device-a", Cursor(600))
+        .await
+        .unwrap();
+
+    let relay = spawn_relay(pool.clone()).await;
+    let mut a = open(relay.addr).await;
+    let (replay, _) = handshake(&mut a, s.workspace_id, &s.token, "device-a").await;
+    assert_eq!(cursors(&replay), (601..=800u64).collect::<Vec<_>>());
+
+    // An explicit pull for an already-held range comes back paged and in order.
+    send(
+        &mut a,
+        &Message::PullSinceCursor(PullSinceCursor {
+            document_id: String::new(),
+            after_cursor: 200u64.into(),
+        }),
+    )
+    .await;
+    let mut pulled = Vec::new();
+    while pulled.len() < 600 {
+        match recv(&mut a).await {
+            Message::DeltaBatch(batch) => pulled.extend(cursors(&batch.entries)),
+            other => panic!("got {other:?}"),
+        }
+    }
+    assert_eq!(pulled, (201..=800u64).collect::<Vec<_>>());
+
+    drop(relay);
 }

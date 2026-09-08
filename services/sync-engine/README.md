@@ -30,11 +30,15 @@ compose readiness contract.
 
 The connection state machine (`src/relay/connection.rs`): first frame must be
 `Hello`; negotiate the version (A003-T38); authorize the session
-(`SessionAuthorizer`); subscribe to the workspace hub; replay everything after
-the device's last acknowledgement before live traffic (A003-T40); then serve —
-`PushDelta` → store → `Ack{RelayReceipt}` → fan out to every other connected
-device (A003-T44), `Ack{ClientCumulative}` → record, `PullSinceCursor` →
-`DeltaBatch`. The relay never inspects a payload (A003-T43).
+(`SessionAuthorizer`); subscribe to the workspace doorbell; replay everything
+after the device's last acknowledgement before live traffic (A003-T40), paged;
+then serve — `PushDelta` → store → `Ack{RelayReceipt}` → ring the doorbell,
+`Ack{ClientCumulative}` → record, `PullSinceCursor` → `DeltaBatch` (paged). A
+doorbell wake re-reads the durable log in cursor order and delivers whatever is
+now past this connection's cursor. A re-authorization timer re-runs the full
+admission check every `SYNC_REVALIDATION_SECS` (default 10) and evicts a
+connection that no longer passes (A003-T45). The relay never inspects a payload
+(A003-T43).
 
 ### Stage 2a — server + protocol + seams
 
@@ -58,11 +62,44 @@ The schema is **Drizzle-managed** — `services/api/src/auth/schema.ts`, migrati
 `sync_device_ack`). Run `pnpm --filter @vulto/api db:migrate` before first start;
 the compose `sync-engine` service gets `DATABASE_URL` from the compose environment.
 
-`tests/relay_pg.rs` (six `#[ignore]` cases) runs against a real, ephemeral
-PostgreSQL via `pnpm test:sync-engine`: concurrent-push gapless commit order,
+`tests/relay_pg.rs` (`#[ignore]` cases — Stage 2b's six, Stage 3's eleven more)
+runs against a real, ephemeral PostgreSQL via `pnpm test:sync-engine`:
+concurrent-push gapless commit order,
 durable reconnect replay across a simulated relay restart, revoked-device denial,
 expired-session denial, `sync_delta.payload` byte-for-byte opacity + log scrub,
 and the SQL-level ack clamp.
+
+### Stage 3 — acknowledgement, retry, replay, resume hardening
+
+Three corrections, proven on the real stack (`tests/relay_pg.rs` grows to
+seventeen cases):
+
+- **Mid-session eviction (A003-T45).** A re-authorization timer re-runs the
+  admission check every `SYNC_REVALIDATION_SECS` (default 10, jittered first
+  tick). A revoked device, expired session or removed membership is closed with
+  `Error{unauthenticated}` within one interval — the pre-Stage-3 relay only
+  gated new connections. `Duration::ZERO` disables the timer (tests set this).
+- **The live path is a doorbell over the durable log, not an in-memory queue.**
+  `hub.rs` is a per-workspace `tokio::sync::watch` channel carrying `()`. A push
+  rings it; every connection wakes and `deliver_pending` re-reads `sync_delta`
+  in `ORDER BY cursor` from its own cursor forward. The log is the single
+  ordering authority, so a wake that races ahead of a lower cursor cannot drop a
+  delta for a live consumer (the bug the Stage 2a `broadcast` fan-out had), and
+  a slow consumer is caught up on its next wake rather than lagged out of the
+  channel.
+- **Replay and pull page.** `read_since` returns at most `MAX_DELTA_PAGE` (500);
+  `deliver_pending` and the `PullSinceCursor` handler loop until a short page, so
+  a backlog larger than one batch replays completely and gaplessly.
+
+Duplicate delivery is safe without relay bookkeeping: the payload is Loro update
+bytes (or an FDN-52 envelope over them) and Loro dedupes by `(peer id, counter)`
+(A003-T02); `packages/graph`'s Loro round-trip tests cover the client side.
+
+**Stage 4 client-contract note.** During a large replay a client should send
+`Ack{ClientCumulative}` incrementally as it applies each batch, not once at the
+end — an interrupted replay then resumes from the last applied batch instead of
+re-sending the whole backlog. The relay already supports this (every `Ack`
+advances the durable cursor); it is a client discipline to specify in Stage 4.
 
 ### TLS
 

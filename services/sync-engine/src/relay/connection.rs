@@ -5,35 +5,54 @@
 //!
 //! 1. First frame MUST be `Hello`. Negotiate the protocol version (A003-T38),
 //!    then authorize the session against the workspace and device.
-//! 2. Subscribe to the workspace's live stream, then replay every delta after
-//!    this device's last acknowledgement, in cursor order, **before** live
+//! 2. Subscribe to the workspace doorbell, then replay every delta after this
+//!    device's last acknowledgement, **paged**, in cursor order, before live
 //!    traffic (A003-T40).
-//! 3. Serve the loop: inbound `PushDelta` -> store -> `Ack{RelayReceipt}` ->
-//!    fan out; inbound `Ack{ClientCumulative}` -> record; inbound
-//!    `PullSinceCursor` -> `DeltaBatch`. Outbound: forward live deltas from
-//!    other devices as single-entry `DeltaBatch`es.
+//! 3. Serve the loop:
+//!    - inbound `PushDelta` -> store -> `Ack{RelayReceipt}` -> ring the doorbell;
+//!    - inbound `Ack{ClientCumulative}` -> record; `PullSinceCursor` ->
+//!      `DeltaBatch` (paged).
+//!    - the doorbell wakes -> deliver everything now in the store after this
+//!      connection's cursor, **read in `ORDER BY cursor` from the store** — the
+//!      doorbell carries no ordering, so an out-of-order notification can never
+//!      corrupt delivery.
+//!    - a re-authorization timer (Stage 3) re-checks admission every
+//!      `revalidation_interval`; a device revoked or expired while connected is
+//!      cut off within one interval.
 //!
 //! Any protocol violation or decode failure sends a typed `Error` frame and
 //! closes the socket (A003-T37). The relay never inspects a payload (A003-T43).
+//!
+//! **Duplicate delivery is safe.** A client can apply a delta and then drop
+//! before acknowledging; on reconnect the relay replays it from the older
+//! `acked_cursor`. Re-applying it is a mathematical no-op: the payload is Loro
+//! CRDT update bytes (Tier 0/2) or an FDN-52 envelope wrapping them (Tier 1/3),
+//! and Loro identifies every operation by `(peer id, counter)` — importing ops
+//! already in the document's version vector changes nothing (A003-T02;
+//! `packages/graph`'s Loro round-trip tests cover the client side). The relay
+//! never needs to reason about the payload.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::wire::{
     decode, encode, negotiate, Ack, Cursor, DeltaBatch, DeltaEntry, ErrorKind, Message,
     PullSinceCursor, PushDelta, SyncState, SyncStatus, WireErrorMessage, SUPPORTED_VERSIONS,
 };
 use axum::extract::ws::{Message as WsMessage, WebSocket};
-use tokio::sync::broadcast::error::RecvError;
+use tokio::time::{interval_at, Instant, MissedTickBehavior};
 
 use super::hub::Hubs;
 use super::session::SessionAuthorizer;
-use super::store::{DeltaStore, NewDelta, StoreError};
+use super::store::{DeltaStore, NewDelta, StoreError, MAX_DELTA_PAGE};
 
 /// What every connection needs, cloned in from the shared relay state.
 pub struct ConnectionDeps {
     pub store: Arc<dyn DeltaStore>,
     pub authorizer: Arc<dyn SessionAuthorizer>,
     pub hubs: Hubs,
+    /// `Duration::ZERO` disables the mid-session re-authorization check.
+    pub revalidation_interval: Duration,
 }
 
 /// A reason the connection is ending. `frame` is an `Error` message to send
@@ -105,9 +124,12 @@ async fn run(socket: &mut WebSocket, deps: &ConnectionDeps) -> Result<(), Closed
         )
     })?;
 
+    // Kept for the mid-session re-authorization check below.
+    let session_token = hello.session_token;
+
     let session = deps
         .authorizer
-        .authorize(&hello.session_token, &hello.workspace_id, &hello.device_id)
+        .authorize(&session_token, &hello.workspace_id, &hello.device_id)
         .await
         .map_err(|_| {
             Closed::protocol(
@@ -120,8 +142,9 @@ async fn run(socket: &mut WebSocket, deps: &ConnectionDeps) -> Result<(), Closed
     let device_id = session.device_id;
     tracing::info!(%workspace_id, %device_id, user_id = %session.user_id, "device connected");
 
-    // 2. Subscribe before replay so nothing committed in the gap is missed.
-    let mut live = deps.hubs.subscribe(&workspace_id);
+    // 2. Subscribe before replay so a delta committed during replay still wakes
+    //    us afterwards.
+    let mut doorbell = deps.hubs.subscribe(&workspace_id);
 
     let acked = deps
         .store
@@ -129,23 +152,15 @@ async fn run(socket: &mut WebSocket, deps: &ConnectionDeps) -> Result<(), Closed
         .await
         .map_err(Closed::from_store)?;
 
-    // `sent` tracks the highest cursor this connection has either delivered to
-    // the client or knows the client already holds (its own pushes).
+    // `sent` tracks the highest cursor this connection has delivered to the
+    // client or knows the client already holds (its own pushes). Only ever
+    // advanced past a cursor once that cursor has been successfully sent.
     let mut sent = acked;
 
-    let backlog = deps
-        .store
-        .read_since(&workspace_id, None, acked)
-        .await
-        .map_err(Closed::from_store)?;
-    if let Some(last) = backlog.last() {
-        sent = last.cursor;
-        send(
-            socket,
-            &Message::DeltaBatch(DeltaBatch { entries: backlog }),
-        )
-        .await?;
-    }
+    // Replay: everything after the durable ack, paged, own deltas included
+    // (a reconnecting device may legitimately need its own history re-sent —
+    // idempotent per the module doc).
+    deliver_pending(socket, deps, &workspace_id, &device_id, &mut sent, false).await?;
 
     // 3. Initial status.
     let highest = deps
@@ -164,6 +179,23 @@ async fn run(socket: &mut WebSocket, deps: &ConnectionDeps) -> Result<(), Closed
     .await?;
 
     // 4. Serve.
+    let reauth_enabled = !deps.revalidation_interval.is_zero();
+    let mut reauth = {
+        let period = if reauth_enabled {
+            deps.revalidation_interval
+        } else {
+            Duration::from_secs(3600)
+        };
+        // Jitter the first tick over the interval so connections do not stampede
+        // the database together.
+        let jitter =
+            Duration::from_nanos(u64::from(subsec_nanos()) % period.as_nanos().max(1) as u64);
+        let mut timer = interval_at(Instant::now() + jitter + period, period);
+        timer.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        timer
+    };
+    let mut doorbell_open = true;
+
     loop {
         tokio::select! {
             inbound = socket.recv() => {
@@ -183,19 +215,78 @@ async fn run(socket: &mut WebSocket, deps: &ConnectionDeps) -> Result<(), Closed
                     }
                 }
             }
-            broadcast = live.recv() => {
-                match broadcast {
-                    Ok(entry) => {
-                        forward_live(socket, &device_id, &entry, &mut sent).await?;
+            changed = doorbell.changed(), if doorbell_open => {
+                match changed {
+                    Ok(()) => {
+                        deliver_pending(socket, deps, &workspace_id, &device_id, &mut sent, true).await?;
                     }
-                    Err(RecvError::Lagged(_)) => {
-                        catch_up(socket, deps, &workspace_id, &device_id, &mut sent).await?;
-                    }
-                    Err(RecvError::Closed) => {
-                        // The hub channel is gone; keep serving inbound traffic.
+                    Err(_) => {
+                        // The workspace doorbell was dropped (only at shutdown).
+                        // Stop selecting on it; keep serving inbound traffic.
+                        doorbell_open = false;
                     }
                 }
             }
+            _ = reauth.tick(), if reauth_enabled => {
+                if deps
+                    .authorizer
+                    .authorize(&session_token, &workspace_id, &device_id)
+                    .await
+                    .is_err()
+                {
+                    tracing::info!(%workspace_id, %device_id, "session revoked or expired mid-session; evicting");
+                    return Err(Closed::protocol(
+                        ErrorKind::Unauthenticated,
+                        "session revoked or expired mid-session",
+                    ));
+                }
+            }
+        }
+    }
+}
+
+/// Send every delta in the workspace after `sent`, in cursor order, paging until
+/// the store returns a short page. `skip_own` filters this device's own deltas
+/// from the live path (it already holds them); replay passes `false`.
+///
+/// `sent` is advanced only after a page is successfully sent — a send failure
+/// leaves it at the last delivered cursor and the connection ends, so reconnect
+/// resumes cleanly from the durable ack.
+async fn deliver_pending(
+    socket: &mut WebSocket,
+    deps: &ConnectionDeps,
+    workspace_id: &str,
+    device_id: &str,
+    sent: &mut Cursor,
+    skip_own: bool,
+) -> Result<(), Closed> {
+    loop {
+        let page = deps
+            .store
+            .read_since(workspace_id, None, *sent)
+            .await
+            .map_err(Closed::from_store)?;
+        let Some(last) = page.last() else {
+            return Ok(());
+        };
+
+        let page_len = page.len();
+        let max_cursor = last.cursor;
+        let entries: Vec<DeltaEntry> = if skip_own {
+            page.into_iter()
+                .filter(|entry| entry.origin_device_id != device_id)
+                .collect()
+        } else {
+            page
+        };
+
+        if !entries.is_empty() {
+            send(socket, &Message::DeltaBatch(DeltaBatch { entries })).await?;
+        }
+        *sent = max_cursor;
+
+        if page_len < MAX_DELTA_PAGE {
+            return Ok(());
         }
     }
 }
@@ -248,7 +339,6 @@ async fn handle_inbound(
             );
 
             *sent = Cursor(sent.value().max(entry.cursor.value()));
-            let entry = Arc::new(entry);
             send(
                 socket,
                 &Message::Ack(Ack::RelayReceipt {
@@ -257,7 +347,7 @@ async fn handle_inbound(
                 }),
             )
             .await?;
-            deps.hubs.publish(workspace_id, entry);
+            deps.hubs.notify(workspace_id);
             Ok(())
         }
 
@@ -280,12 +370,25 @@ async fn handle_inbound(
             } else {
                 Some(document_id.as_str())
             };
-            let entries = deps
-                .store
-                .read_since(workspace_id, document, after_cursor)
-                .await
-                .map_err(Closed::from_store)?;
-            send(socket, &Message::DeltaBatch(DeltaBatch { entries })).await?;
+            // Paged, like replay — an explicit pull of a huge range comes back
+            // as several batches.
+            let mut cursor = after_cursor;
+            loop {
+                let page = deps
+                    .store
+                    .read_since(workspace_id, document, cursor)
+                    .await
+                    .map_err(Closed::from_store)?;
+                let Some(last) = page.last() else {
+                    break;
+                };
+                let page_len = page.len();
+                cursor = last.cursor;
+                send(socket, &Message::DeltaBatch(DeltaBatch { entries: page })).await?;
+                if page_len < MAX_DELTA_PAGE {
+                    break;
+                }
+            }
             Ok(())
         }
 
@@ -302,52 +405,6 @@ async fn handle_inbound(
             ),
         )),
     }
-}
-
-async fn forward_live(
-    socket: &mut WebSocket,
-    device_id: &str,
-    entry: &Arc<DeltaEntry>,
-    sent: &mut Cursor,
-) -> Result<(), Closed> {
-    if entry.origin_device_id == device_id || !entry.cursor.succeeds(*sent) {
-        // Our own push echoed back, or something already delivered.
-        *sent = Cursor(sent.value().max(entry.cursor.value()));
-        return Ok(());
-    }
-    *sent = entry.cursor;
-    send(
-        socket,
-        &Message::DeltaBatch(DeltaBatch {
-            entries: vec![(**entry).clone()],
-        }),
-    )
-    .await
-}
-
-async fn catch_up(
-    socket: &mut WebSocket,
-    deps: &ConnectionDeps,
-    workspace_id: &str,
-    device_id: &str,
-    sent: &mut Cursor,
-) -> Result<(), Closed> {
-    let missed = deps
-        .store
-        .read_since(workspace_id, None, *sent)
-        .await
-        .map_err(Closed::from_store)?;
-    if let Some(last) = missed.last() {
-        *sent = Cursor(sent.value().max(last.cursor.value()));
-    }
-    let entries: Vec<DeltaEntry> = missed
-        .into_iter()
-        .filter(|entry| entry.origin_device_id != device_id)
-        .collect();
-    if !entries.is_empty() {
-        send(socket, &Message::DeltaBatch(DeltaBatch { entries })).await?;
-    }
-    Ok(())
 }
 
 async fn send(socket: &mut WebSocket, message: &Message) -> Result<(), Closed> {
@@ -376,4 +433,13 @@ fn sync_state(sent: Cursor, highest: Cursor) -> SyncState {
     } else {
         SyncState::Syncing
     }
+}
+
+/// A cheap, non-cryptographic jitter source. Only needs to spread connections'
+/// first re-auth tick across the interval.
+fn subsec_nanos() -> u32 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.subsec_nanos())
+        .unwrap_or(0)
 }

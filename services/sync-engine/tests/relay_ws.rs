@@ -14,7 +14,8 @@ use tokio::net::TcpStream;
 use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{connect_async, MaybeTlsStream, WebSocketStream};
 use vulto_sync_engine::relay::{
-    serve_ephemeral, Hubs, MemoryDeltaStore, RelayState, StaticSessionAuthorizer,
+    serve_ephemeral, DeltaStore, Hubs, MemoryDeltaStore, NewDelta, RelayState,
+    StaticSessionAuthorizer, MAX_DELTA_PAGE,
 };
 use vulto_sync_engine::wire::{
     decode, encode, Ack, DeltaEntry, ErrorKind, Hello, Message, PayloadKind, PullSinceCursor,
@@ -28,10 +29,20 @@ const TOKEN_B: &[u8] = b"token-device-b";
 type Client = WebSocketStream<MaybeTlsStream<TcpStream>>;
 
 async fn spawn_relay(authorizer: StaticSessionAuthorizer) -> SocketAddr {
+    spawn_relay_with_store(Arc::new(MemoryDeltaStore::default()), authorizer).await
+}
+
+async fn spawn_relay_with_store(
+    store: Arc<MemoryDeltaStore>,
+    authorizer: StaticSessionAuthorizer,
+) -> SocketAddr {
     let state = RelayState {
-        store: Arc::new(MemoryDeltaStore::default()),
+        store,
         authorizer: Arc::new(authorizer),
         hubs: Hubs::default(),
+        // These tests do not exercise mid-session eviction; the Postgres suite
+        // (relay_pg.rs) owns that.
+        revalidation_interval: Duration::ZERO,
     };
     let (addr, server) = serve_ephemeral(state).await.expect("bind ephemeral relay");
     tokio::spawn(server);
@@ -352,4 +363,63 @@ async fn rejects_a_relay_to_client_message_sent_inbound() {
         expect_closed(&mut client).await,
         Some(ErrorKind::MalformedFrame)
     );
+}
+
+// --- FDN-51 Stage 3 additions (still no database) ---
+
+#[tokio::test]
+async fn replay_pages_through_a_backlog_larger_than_one_batch() {
+    let store: Arc<MemoryDeltaStore> = Arc::new(MemoryDeltaStore::default());
+    let total = MAX_DELTA_PAGE + 137;
+    for n in 0..total {
+        store
+            .append(NewDelta {
+                workspace_id: WORKSPACE.to_owned(),
+                document_id: "doc".to_owned(),
+                tier_tag: TierTag::Opaque,
+                payload_kind: PayloadKind::Update,
+                origin_device_id: "device-b".to_owned(),
+                payload: format!("p{n}").into_bytes(),
+            })
+            .await
+            .unwrap();
+    }
+
+    let addr = spawn_relay_with_store(store, default_authorizer()).await;
+    let mut a = open(addr).await;
+    let (replay, status) = handshake(&mut a, TOKEN_A, "device-a").await;
+
+    assert_eq!(
+        cursors(&replay),
+        (1..=total as u64).collect::<Vec<_>>(),
+        "the whole backlog arrives, in cursor order, across multiple batches"
+    );
+    assert_eq!(status.state, SyncState::Synced);
+}
+
+#[tokio::test]
+async fn a_reader_that_stops_reading_is_caught_up_not_dropped() {
+    let addr = spawn_relay(default_authorizer()).await;
+
+    let mut reader = open(addr).await;
+    handshake(&mut reader, TOKEN_A, "device-a").await;
+
+    // The reader stops reading. The writer pushes 20 deltas while it is idle.
+    let mut writer = open(addr).await;
+    handshake(&mut writer, TOKEN_B, "device-b").await;
+    for n in 0..20u64 {
+        send(&mut writer, &push("doc", format!("r{n}").as_bytes(), b"x")).await;
+        assert_eq!(recv_receipt(&mut writer).await, n + 1);
+    }
+
+    // The reader resumes: the doorbell + store read delivers every delta, in
+    // cursor order, gapless — a bounded channel would have dropped some.
+    let mut seen = Vec::new();
+    while seen.len() < 20 {
+        match recv(&mut reader).await {
+            Message::DeltaBatch(batch) => seen.extend(cursors(&batch.entries)),
+            other => panic!("unexpected {other:?}"),
+        }
+    }
+    assert_eq!(seen, (1..=20u64).collect::<Vec<_>>(), "gapless, in order");
 }

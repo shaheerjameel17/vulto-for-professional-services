@@ -21,6 +21,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::wire::{Cursor, DeltaEntry, PayloadKind, TierTag};
 
+/// The largest number of deltas `read_since` returns in one call. Callers that
+/// need the whole range past a cursor page: call again with the last cursor of
+/// the previous page until a short page comes back (`connection.rs` does this
+/// for both reconnect replay and live catch-up).
+pub const MAX_DELTA_PAGE: usize = 500;
+
 /// A store operation failed. The relay maps this to `Error { internal }` and
 /// closes the socket without leaking the cause to the client.
 #[derive(Debug)]
@@ -141,6 +147,7 @@ impl DeltaStore for MemoryDeltaStore {
             .iter()
             .filter(|e| e.cursor.succeeds(after))
             .filter(|e| document_id.is_none_or(|doc| e.document_id == doc))
+            .take(MAX_DELTA_PAGE)
             .cloned()
             .collect())
     }

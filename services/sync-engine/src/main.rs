@@ -55,6 +55,7 @@ async fn main() -> ExitCode {
         store: Arc::new(PgDeltaStore::new(pool.clone())),
         authorizer: Arc::new(PgSessionAuthorizer::new(pool)),
         hubs: Hubs::default(),
+        revalidation_interval: config.revalidation_interval,
     };
 
     if let Err(error) = serve(&config, state).await {

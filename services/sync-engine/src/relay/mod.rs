@@ -29,9 +29,10 @@ pub mod server;
 pub mod session;
 pub mod store;
 
-pub use config::RelayConfig;
+pub use config::{RelayConfig, DEFAULT_REVALIDATION_SECS};
 pub use hub::Hubs;
 pub use pg::{connect_pool, PgDeltaStore, PgSessionAuthorizer};
 pub use server::{serve, serve_ephemeral, RelayState};
 pub use session::{AuthorizedSession, SessionAuthorizer, SessionDenied, StaticSessionAuthorizer};
+pub use store::MAX_DELTA_PAGE;
 pub use store::{DeltaStore, MemoryDeltaStore, NewDelta, StoreError};

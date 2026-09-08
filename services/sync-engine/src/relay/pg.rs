@@ -17,11 +17,7 @@ use uuid::Uuid;
 use crate::wire::{Cursor, DeltaEntry, PayloadKind, TierTag};
 
 use super::session::{AuthorizedSession, SessionAuthorizer, SessionDenied};
-use super::store::{DeltaStore, NewDelta, StoreError};
-
-/// Replay batch cap. A backlog larger than this is delivered as several
-/// `DeltaBatch`es (`connection.rs` pages by advancing its own `sent` cursor).
-const MAX_READ_BATCH: i64 = 500;
+use super::store::{DeltaStore, NewDelta, StoreError, MAX_DELTA_PAGE};
 
 /// Open a pooled connection to PostgreSQL.
 pub async fn connect_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
@@ -176,7 +172,7 @@ impl DeltaStore for PgDeltaStore {
         .bind(workspace)
         .bind(cursor_to_i64(after))
         .bind(document_id)
-        .bind(MAX_READ_BATCH)
+        .bind(MAX_DELTA_PAGE as i64)
         .fetch_all(&self.pool)
         .await
         .map_err(backend)?;
