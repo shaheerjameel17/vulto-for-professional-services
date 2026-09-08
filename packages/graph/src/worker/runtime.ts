@@ -38,6 +38,7 @@ import {
   WorkspaceSyncClient,
   type SyncStatusSnapshot,
 } from "../sync/client";
+import { SyncLeadership } from "../sync/single-active";
 import {
   ProtectedPartitionRegistry,
   type ProtectedReaderCredential,
@@ -316,8 +317,12 @@ export class LocalGraphWorkerRuntime {
    */
   #lastSessionEnd: LocalSessionEndOutcome | null = null;
 
-  /** FDN-51 Stage 4a. The relay sync client, live only between `startSync` and `stopSync`/teardown. */
+  /** FDN-51 Stage 4a. The relay sync client — non-null only while this tab holds sync leadership. */
   #sync: WorkspaceSyncClient | null = null;
+  /** True between `startSync` and `stopSync`, whether or not this tab currently leads. */
+  #syncActive = false;
+  /** Cross-tab sync-leadership arbitration (one Web Lock per workspace+device). */
+  #leadership: SyncLeadership | null = null;
   #syncStatus: SyncStatusSnapshot = {
     state: "offline",
     pendingLocalChanges: false,
@@ -1040,16 +1045,55 @@ export class LocalGraphWorkerRuntime {
     return this.#syncStatus;
   }
 
+  /**
+   * FDN-51 Stage 4a — start relay synchronization for this workspace.
+   *
+   * Leadership is arbitrated across tabs by [`SyncLeadership`]: one exclusive
+   * `navigator.locks` lock per `(workspace, device)` (see that module for
+   * why). The tab that holds it runs the client; the others queue with the
+   * status `offline` and take over when the holder releases — on `stopSync`,
+   * or when the tab closes and the browser frees the lock. Full multi-tab
+   * live convergence is out of scope (FDN-90).
+   */
   async startSync(relayUrl: string): Promise<void> {
-    if (this.#sync !== null) return;
+    if (this.#syncActive) return;
     const workspaceId = this.#requireWorkspaceId();
     this.#requireDocument();
     this.#requireIndex();
-    const apiOrigin = this.#apiOrigin;
-    if (apiOrigin === null) throw new SealedStoreLockedError();
+    if (this.#apiOrigin === null) throw new SealedStoreLockedError();
     const deviceId = await this.#sealedStore.deviceId();
 
-    this.#sync = new WorkspaceSyncClient({
+    this.#syncActive = true;
+    // Queued (or about to lead) — report offline until the client says otherwise.
+    this.#emitSyncStatus({
+      state: "offline",
+      pendingLocalChanges: false,
+      highestKnownCursor: 0,
+      highestAckedCursor: 0,
+      lastError: null,
+    });
+
+    this.#leadership = new SyncLeadership(
+      `vulto-sync:${workspaceId}:${deviceId}`,
+      async () => {
+        this.#sync = this.#buildSyncClient(relayUrl, deviceId);
+        await this.#sync.start();
+        return async () => {
+          const sync = this.#sync;
+          this.#sync = null;
+          await sync?.stop();
+        };
+      },
+      (globalThis.navigator as Navigator | undefined)?.locks,
+    );
+    this.#leadership.start();
+  }
+
+  #buildSyncClient(relayUrl: string, deviceId: string): WorkspaceSyncClient {
+    const workspaceId = this.#requireWorkspaceId();
+    const apiOrigin = this.#apiOrigin;
+    if (apiOrigin === null) throw new SealedStoreLockedError();
+    return new WorkspaceSyncClient({
       relayUrl,
       bindings: {
         workspaceId,
@@ -1079,25 +1123,34 @@ export class LocalGraphWorkerRuntime {
           return { ticket: grant.ticket, expiresAtMs: Date.parse(grant.expiresAt) };
         },
       },
-      onStatusChange: (snapshot) => {
-        this.#syncStatus = snapshot;
-        this.#syncStatusListener?.(snapshot);
-      },
+      onStatusChange: (snapshot) => this.#emitSyncStatus(snapshot),
     });
-    await this.#sync.start();
+  }
+
+  #emitSyncStatus(snapshot: SyncStatusSnapshot): void {
+    this.#syncStatus = snapshot;
+    this.#syncStatusListener?.(snapshot);
   }
 
   async stopSync(): Promise<void> {
-    const sync = this.#sync;
+    if (!this.#syncActive) return;
+    this.#syncActive = false;
+    const leadership = this.#leadership;
+    this.#leadership = null;
+    await leadership?.stop();
     this.#sync = null;
-    await sync?.stop();
+    this.#emitSyncStatus({
+      state: "offline",
+      pendingLocalChanges: false,
+      highestKnownCursor: 0,
+      highestAckedCursor: 0,
+      lastError: null,
+    });
   }
 
   /** Fire-and-forget teardown for the lock / purge / dispose paths. */
   #stopSyncInternal(): void {
-    const sync = this.#sync;
-    this.#sync = null;
-    void sync?.stop();
+    void this.stopSync();
   }
 
   /**
