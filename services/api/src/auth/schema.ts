@@ -435,3 +435,42 @@ export const syncDeviceAck = pgTable(
     check("sync_device_ack_acked_cursor_non_negative", sql`${table.ackedCursor} >= 0`),
   ],
 );
+
+/**
+ * FDN-51 Stage 4a — short-lived sync-handshake tickets.
+ *
+ * The browser holds its Better Auth session only in an httpOnly cookie, so
+ * neither the page nor the graph Worker can read the raw `session.token` the
+ * relay's `Hello` needs. `POST /sync/ticket` (authenticated by the session
+ * cookie, via `requireCurrentWorkspaceSession`) mints a random ticket bound to
+ * one `(workspace, device)` with a ~10-minute TTL; the Worker puts it in
+ * `Hello`; the relay validates it here instead of a session token.
+ *
+ * Only the SHA-256 hash of the ticket is stored — the raw ticket is a bearer
+ * credential and is never persisted, mirroring how the relay keys on hashes
+ * elsewhere. A leaked ticket buys sync for one workspace + one device until
+ * `expires_at`, nothing more; the relay's periodic re-authorization (A003-T45)
+ * still evicts a revoked device or removed member within one interval.
+ *
+ * Written by `services/api`, read by `services/sync-engine` (the Rust relay,
+ * via `sqlx`). Like the other `sync_*` tables, Drizzle owns the DDL only.
+ */
+export const syncTicket = pgTable(
+  "sync_ticket",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  },
+  (table) => [
+    index("sync_ticket_workspace_device_idx").on(table.workspaceId, table.deviceId),
+    index("sync_ticket_expires_at_idx").on(table.expiresAt),
+  ],
+);

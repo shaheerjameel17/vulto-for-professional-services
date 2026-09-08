@@ -698,6 +698,144 @@ async fn seed_deltas(pool: &PgPool, workspace_id: Uuid, origin: &str, count: usi
 
 const REAUTH: Duration = Duration::from_millis(700);
 
+/// Insert a `sync_ticket` row the way `POST /sync/ticket` would, and return the
+/// raw ticket string to present in `Hello`. `expires_sql` is a SQL expression
+/// for `expires_at`, e.g. `"now() + interval '10 minutes'"`. Only the SHA-256
+/// hash is stored — computed by Postgres here, exactly as the relay's lookup
+/// recomputes it, so the two never drift.
+async fn mint_ticket(pool: &PgPool, s: &Seeded, device_id: &str, expires_sql: &str) -> String {
+    let ticket = format!(
+        "vlt_sync_{}{}",
+        Uuid::new_v4().simple(),
+        Uuid::new_v4().simple()
+    );
+    sqlx::query(&format!(
+        "INSERT INTO sync_ticket (token_hash, workspace_id, user_id, device_id, expires_at) \
+         VALUES (encode(sha256($1), 'hex'), $2, $3, $4, {expires_sql})"
+    ))
+    .bind(ticket.as_bytes())
+    .bind(s.workspace_id)
+    .bind(s.user_id)
+    .bind(device_id)
+    .execute(pool)
+    .await
+    .expect("insert sync_ticket");
+    ticket
+}
+
+// --- Sync tickets (FDN-51 Stage 4a) ---
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_sync_ticket_admits_a_connection_like_a_session_token() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let relay = spawn_relay(pool.clone()).await;
+    let ticket = mint_ticket(&pool, &s, "device-a", "now() + interval '10 minutes'").await;
+
+    let mut a = open(relay.addr).await;
+    let (replay, status) = handshake(&mut a, s.workspace_id, &ticket, "device-a").await;
+    assert!(replay.is_empty());
+    assert_eq!(status.state, SyncState::Synced);
+
+    send(&mut a, &push("doc", b"r1", b"opaque")).await;
+    assert_eq!(recv_receipt(&mut a).await, 1);
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn an_expired_sync_ticket_is_denied() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let relay = spawn_relay(pool.clone()).await;
+    let ticket = mint_ticket(&pool, &s, "device-a", "now() - interval '1 minute'").await;
+
+    let mut a = open(relay.addr).await;
+    send(&mut a, &hello(s.workspace_id, &ticket, "device-a")).await;
+    assert_eq!(
+        expect_closed(&mut a).await,
+        Some(ErrorKind::Unauthenticated)
+    );
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_sync_ticket_is_bound_to_one_device() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    add_device(&pool, &s, "device-b").await;
+    let relay = spawn_relay(pool.clone()).await;
+
+    // Minted for device-a; presented as device-b (which is itself authorized).
+    let ticket = mint_ticket(&pool, &s, "device-a", "now() + interval '10 minutes'").await;
+    let mut b = open(relay.addr).await;
+    send(&mut b, &hello(s.workspace_id, &ticket, "device-b")).await;
+    assert_eq!(
+        expect_closed(&mut b).await,
+        Some(ErrorKind::Unauthenticated)
+    );
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_sync_ticket_for_a_revoked_device_is_denied() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let relay = spawn_relay(pool.clone()).await;
+    let ticket = mint_ticket(&pool, &s, "device-a", "now() + interval '10 minutes'").await;
+
+    sqlx::query(
+        "UPDATE device_unlock_secret SET revoked_at = now() \
+         WHERE workspace_id = $1 AND device_id = 'device-a'",
+    )
+    .bind(s.workspace_id)
+    .execute(&pool)
+    .await
+    .unwrap();
+
+    let mut a = open(relay.addr).await;
+    send(&mut a, &hello(s.workspace_id, &ticket, "device-a")).await;
+    assert_eq!(
+        expect_closed(&mut a).await,
+        Some(ErrorKind::Unauthenticated)
+    );
+
+    drop(relay);
+}
+
+#[tokio::test]
+#[ignore = "needs a real PostgreSQL — run via `pnpm test:sync-engine`"]
+async fn a_ticket_connection_is_evicted_when_the_ticket_expires_mid_session() {
+    let pool = connect_test_pool().await;
+    let s = seed(&pool).await;
+    let relay = spawn_relay_with_reauth(pool.clone(), REAUTH).await;
+    let ticket = mint_ticket(
+        &pool,
+        &s,
+        "device-a",
+        "now() + interval '1500 milliseconds'",
+    )
+    .await;
+
+    let mut a = open(relay.addr).await;
+    handshake(&mut a, s.workspace_id, &ticket, "device-a").await;
+
+    // The re-auth loop (A003-T45) re-checks the ticket's own expiry, so an
+    // expired ticket evicts the live connection just as a revoked device does.
+    assert_eq!(
+        expect_closed(&mut a).await,
+        Some(ErrorKind::Unauthenticated)
+    );
+
+    drop(relay);
+}
+
 // --- Mid-session eviction ---
 
 #[tokio::test]

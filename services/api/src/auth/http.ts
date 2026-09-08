@@ -17,6 +17,11 @@ import {
   issuePasskeyRegistrationContext,
   PasskeyRegistrationRateLimitError,
 } from "./passkey-registration.js";
+import {
+  mintSyncTicket,
+  parseSyncTicketRequest,
+  SyncTicketDeniedError,
+} from "./sync-ticket.js";
 
 const SENSITIVE_RESPONSE_KEYS = new Set([
   "token",
@@ -178,6 +183,36 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return reply
         .code(503)
         .send({ error: "The device revocation checkpoint is temporarily unavailable" });
+    }
+  });
+
+  app.post("/sync/ticket", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string; deviceId: string };
+    try {
+      parsed = parseSyncTicketRequest(request.body);
+    } catch {
+      return reply.code(401).send({
+        error: "This device is not authorized to synchronize this workspace",
+      });
+    }
+
+    try {
+      return await mintSyncTicket(
+        requestHeaders(request),
+        parsed.workspaceId,
+        parsed.deviceId,
+      );
+    } catch (error) {
+      if (error instanceof SyncTicketDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      // Like the other device-facing checkpoints: an error that is ours must
+      // not be reported as one about the caller's authorization.
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The sync ticket service is temporarily unavailable" });
     }
   });
 

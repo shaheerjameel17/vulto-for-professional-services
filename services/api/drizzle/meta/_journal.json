@@ -22,6 +22,13 @@
       "when": 1788835395308,
       "tag": "0002_wealthy_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1788845445644,
+      "tag": "0003_nappy_kid_colt",
+      "breakpoints": true
     }
   ]
 }

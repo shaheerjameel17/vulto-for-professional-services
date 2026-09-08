@@ -2,9 +2,10 @@
 //!
 //! `sqlx` is used only as a query executor: the runtime `query()` / `query_scalar()`
 //! API over a `PgPool`, no `query!` macro and no `sqlx::migrate!`. The schema is
-//! owned by Drizzle (`services/api/src/auth/schema.ts`, migration
-//! `0002_wealthy_magneto`), so `cargo build` and the Docker image need no
-//! database and no `.sqlx` cache.
+//! owned by Drizzle (`services/api/src/auth/schema.ts`, migrations
+//! `0002_wealthy_magneto` for the `sync_*` log tables and `0003_nappy_kid_colt`
+//! for `sync_ticket`), so `cargo build` and the Docker image need no database
+//! and no `.sqlx` cache.
 
 use std::time::Duration;
 
@@ -18,6 +19,11 @@ use crate::wire::{Cursor, DeltaEntry, PayloadKind, TierTag};
 
 use super::session::{AuthorizedSession, SessionAuthorizer, SessionDenied};
 use super::store::{DeltaStore, NewDelta, StoreError, MAX_DELTA_PAGE};
+
+/// Marks a `Hello` credential as a short-lived `sync_ticket` (FDN-51 Stage 4a)
+/// rather than a raw Better Auth session token. Must match `SYNC_TICKET_PREFIX`
+/// in `services/api/src/auth/sync-ticket.ts`.
+const SYNC_TICKET_PREFIX: &[u8] = b"vlt_sync_";
 
 /// Open a pooled connection to PostgreSQL.
 pub async fn connect_pool(database_url: &str) -> Result<PgPool, sqlx::Error> {
@@ -258,70 +264,109 @@ impl SessionAuthorizer for PgSessionAuthorizer {
         workspace_id: &str,
         device_id: &str,
     ) -> Result<AuthorizedSession, SessionDenied> {
-        // `session_token` is the raw Better Auth token — `session.token` is
-        // stored unhashed (verified against better-auth@1.6.29; see the FDN-51
-        // Stage 2b confirmation comment). Possession of the unguessable 32-char
-        // token is the proof, exactly as Better Auth's own `findSession` treats
-        // it. A client sending the signed `<token>.<sig>` cookie form is a
-        // Stage 4 concern.
-        let token = match std::str::from_utf8(session_token) {
-            Ok(token) => token,
-            Err(_) => return Err(SessionDenied::Unauthenticated),
-        };
         let workspace = match Uuid::parse_str(workspace_id) {
             Ok(id) => id,
             Err(_) => return Err(SessionDenied::Unauthenticated),
         };
 
+        // Two credential forms reach this seam. A browser's graph Worker cannot
+        // read the httpOnly session cookie, so it presents a short-lived
+        // `sync_ticket` minted by `POST /sync/ticket` (FDN-51 Stage 4a); it is
+        // recognizable by its `vlt_sync_` prefix. A native client presents the
+        // raw Better Auth `session.token` directly (`session.token` is stored
+        // unhashed — verified against better-auth@1.6.29, see the Stage 2b
+        // confirmation comment). Either way the downstream checks are identical:
+        // whatever the credential, the connection is admitted only if a live,
+        // confirmed membership and a non-revoked device back it right now.
+        //
         // ----------------------------------------------------------------------
         // DELIBERATE, NECESSARY RE-DERIVATION of Better Auth's session-validity
         // logic. The relay is a Rust process and cannot call the Node
         // `better-auth` library or `requireCurrentWorkspaceSession`, so the
         // session / membership / status / expiry checks are reproduced here by
-        // hand. This SQL MUST be manually re-checked against
-        // `services/api/src/auth/workspace-session.ts` any time that file's
-        // admission query changes — there is no compiler or type system linking
-        // the two, and a divergence would either lock out valid sessions or
-        // admit ones the HTTP layer rejects.
+        // hand. Both queries below MUST be manually re-checked against
+        // `services/api/src/auth/workspace-session.ts` (and `sync-ticket.ts` for
+        // the ticket form) any time that admission logic changes — there is no
+        // compiler or type system linking the two, and a divergence would either
+        // lock out valid sessions or admit ones the HTTP layer rejects.
         //
         // The `device_unlock_secret.revoked_at IS NULL` join is an intentional
-        // ADDITION the HTTP guard does not have (an HTTP request carries no
-        // device). It must be preserved: it is the one condition between a
+        // ADDITION the HTTP session guard does not have (an HTTP request carries
+        // no device). It must be preserved: it is the one condition between a
         // centrally revoked device and "still gets in". The INNER join plus the
         // predicate mean a device with no row, or a row with a non-null
         // `revoked_at`, yields zero rows -> SessionDenied.
         // ----------------------------------------------------------------------
-        let row = sqlx::query(
-            r#"
-            SELECT u.id::text AS user_id,
-                   o.id::text AS workspace_id
-            FROM session s
-            JOIN "user" u                ON u.id = s.user_id
-            JOIN member m                ON m.user_id = u.id
-                                       AND m.organization_id = $2
-            JOIN organization o          ON o.id = m.organization_id
-            JOIN device_unlock_secret d  ON d.workspace_id = o.id
-                                       AND d.user_id = u.id
-                                       AND d.device_id = $3
-            WHERE s.token            = $1
-              AND s.expires_at       > now()
-              AND u.status           = 'active'
-              AND o.status           = 'active'
-              AND m.status           = 'active'
-              AND m.projection_state = 'confirmed'
-              AND d.revoked_at IS NULL
-            LIMIT 1
-            "#,
-        )
-        .bind(token)
-        .bind(workspace)
-        .bind(device_id)
-        .fetch_optional(&self.pool)
-        .await
-        .map_err(|error| {
-            tracing::error!(%error, "session authorization query failed");
-            SessionDenied::Unauthenticated
-        })?;
+        let query = if session_token.starts_with(SYNC_TICKET_PREFIX) {
+            // The ticket path. `$1` is the raw ticket bytes; only its SHA-256
+            // hash is stored (`sync-ticket.ts` writes it, Postgres `sha256()`
+            // reproduces it here). The ticket is bound to one workspace and one
+            // device — `t.workspace_id = $2 AND t.device_id = $3` — so a ticket
+            // minted for one device cannot be replayed as another.
+            sqlx::query(
+                r#"
+                SELECT u.id::text AS user_id,
+                       o.id::text AS workspace_id
+                FROM sync_ticket t
+                JOIN "user" u                ON u.id = t.user_id
+                JOIN member m                ON m.user_id = u.id
+                                           AND m.organization_id = $2
+                JOIN organization o          ON o.id = m.organization_id
+                JOIN device_unlock_secret d  ON d.workspace_id = o.id
+                                           AND d.user_id = u.id
+                                           AND d.device_id = $3
+                WHERE t.token_hash       = encode(sha256($1), 'hex')
+                  AND t.workspace_id     = $2
+                  AND t.device_id        = $3
+                  AND t.expires_at       > now()
+                  AND u.status           = 'active'
+                  AND o.status           = 'active'
+                  AND m.status           = 'active'
+                  AND m.projection_state = 'confirmed'
+                  AND d.revoked_at IS NULL
+                LIMIT 1
+                "#,
+            )
+            .bind(session_token)
+        } else {
+            let token = match std::str::from_utf8(session_token) {
+                Ok(token) => token,
+                Err(_) => return Err(SessionDenied::Unauthenticated),
+            };
+            sqlx::query(
+                r#"
+                SELECT u.id::text AS user_id,
+                       o.id::text AS workspace_id
+                FROM session s
+                JOIN "user" u                ON u.id = s.user_id
+                JOIN member m                ON m.user_id = u.id
+                                           AND m.organization_id = $2
+                JOIN organization o          ON o.id = m.organization_id
+                JOIN device_unlock_secret d  ON d.workspace_id = o.id
+                                           AND d.user_id = u.id
+                                           AND d.device_id = $3
+                WHERE s.token            = $1
+                  AND s.expires_at       > now()
+                  AND u.status           = 'active'
+                  AND o.status           = 'active'
+                  AND m.status           = 'active'
+                  AND m.projection_state = 'confirmed'
+                  AND d.revoked_at IS NULL
+                LIMIT 1
+                "#,
+            )
+            .bind(token)
+        };
+
+        let row = query
+            .bind(workspace)
+            .bind(device_id)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(|error| {
+                tracing::error!(%error, "session authorization query failed");
+                SessionDenied::Unauthenticated
+            })?;
 
         match row {
             Some(row) => {
