@@ -138,6 +138,34 @@ shared across a browser's tabs but the Worker is one per tab, so a
 only the lock holder syncs; the others stay `offline` and take over on release.
 Full multi-tab live convergence is FDN-90.
 
+### Stage 4b — two-device convergence
+
+The Stage 4b proof (`services/api/browser-tests-device-store/graph-sync.spec.ts`)
+runs two — for one case three — independent devices as separate Playwright
+`BrowserContext`s. Separate contexts have separate IndexedDB, so each gets its
+own `deviceId`, its own `device_unlock_secret` row, its own `sync_ticket`, its
+own `sync_device_ack` row, and its own in-memory `LoroDoc` replica with a
+distinct Loro peer id — a genuine second replica, not a second view of one
+document. All against the same `cargo run` relay and the same Postgres.
+
+Six cases: concurrent offline non-conflicting edits converge to the union;
+concurrent offline edits to the **same** field converge to one value on both
+replicas (Loro's own map-register resolution — the test asserts replica
+equality and stability, never a chosen winner); a device applies a peer's live
+pushes while replaying its own backlog larger than one `MAX_DELTA_PAGE`, every
+delta once and gapless; a device offline across an extended multi-page gap
+catches up fully on return; replayed delivery into an erased replica rebuilds
+the converged state with no new `sync_delta` rows and no extra ack row; a cold
+third device bootstraps by plain `update` replay from cursor zero (no snapshot
+bootstrap — `PayloadKind::Snapshot` stays defined-but-unused).
+
+What was already proven by Stage 2b/3/4a is not re-proven: durable
+cursor-at-commit and gapless ordering, paged replay and mid-replay resume,
+mid-session eviction, the monotonic ack clamp, the ticket handshake, and
+single-device push/replay/materialize. What is new to 4b is two real replicas
+reaching identical materialized state — CRDT convergence, not just correct byte
+delivery — and the A003 30 s acceptance window.
+
 ### TLS
 
 Deferred (A003-T36): the local relay runs plain `ws://`. Production terminates

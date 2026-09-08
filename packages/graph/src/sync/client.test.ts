@@ -426,6 +426,38 @@ describe("WorkspaceSyncClient", () => {
     await flush();
     expect(h.relays).toHaveLength(0); // never opened a socket
   });
+
+  it("acknowledges the gapless prefix when a replay frame is reordered and duplicated", async () => {
+    const h = makeHarness({
+      configureRelay: (r) => {
+        r.replayBacklog = [
+          [
+            entry(2n, new Uint8Array([20])),
+            entry(1n, new Uint8Array([10])),
+            entry(3n, new Uint8Array([30])),
+            entry(2n, new Uint8Array([20])), // duplicate of cursor 2
+          ],
+        ];
+      },
+    });
+    await h.client.start();
+    await flush();
+    await flush();
+
+    // Every entry is handed to the merge layer; Loro import is idempotent
+    // (A003-T02), so re-applying cursor 2 changes nothing downstream.
+    expect(h.applied.flat().map((p) => [...p])).toEqual([[20], [10], [30], [20]]);
+
+    // The cumulative ack is the contiguous prefix — 3 — regardless of the
+    // order the cursors arrived in or that one repeated.
+    const acks = h.relays[0]!.received.filter(
+      (m): m is Extract<Message, { type: "ack"; ackKind: "client_cumulative" }> =>
+        m.type === "ack" && m.ackKind === "client_cumulative",
+    );
+    expect(Number(acks.at(-1)!.acknowledgedCursor)).toBe(3);
+    expect(h.statuses.at(-1)!.state).toBe("synced");
+    expect(h.markers.get("sync/acked-cursor")).toEqual(u64(3n));
+  });
 });
 
 // --- helpers ---
