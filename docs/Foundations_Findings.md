@@ -166,6 +166,7 @@ This file is not a specification and is deliberately outside `docs/Vulto_Specs/`
 | F188 | `A003-T10` and the `A003-T36` prose require "a single shared core … the same core drives … the WASM client," but `A003-T42` and the build have the Rust `[lib]` plus a hand-written TypeScript wire-codec mirror the browser actually uses, synchronized by shared vectors | `VPS-A003`, FDN-51 | **Closed by founder ruling, 8 September 2026 — accepted; spec corrected to match the architecture.** `A003-T10` and the `A003-T36` prose now describe the Rust `[lib]` (native + future mobile) mirrored by a vector-synchronized TypeScript implementation for the browser, per `A003-T42`. The wire `SyncState::pending_changes` value is marked retained-but-unused (post-ruling-4) with a comment on both sides rather than removed. Code was already `A003-T42`-compliant. Does not block the FDN-51 merge |
 | F189 | `VPS-F001` G03 says "a Device node is created when a new device authenticates," but FDN-63 needs device identity as a Postgres control-plane row, not a graph node — the same shape as `organization` / `member`, whose graph projection is deferred to FDN-85 | `VPS-F001`, `VPS-A002`, Repository, FDN-63 | **Recorded design decision, approved by founder before Stage 1.** The `device` table is a Better Auth control-plane row; its graph `Device` node projection is deferred alongside Workspace/WorkspaceMembership per F150 — `deriveEffectiveRoles` reads `SealedStore.roles` from the server grant, never a local node, so trust and revocation need no `Device` graph object. One identity row per `(user, application)`; N `device_unlock_secret` rows, one per workspace. `VPS-F001`/`VPS-A002` carry the matching one-line correction |
 | F190 | `CLAUDE.md`'s current-phase text says "no feature work," but `VPS-F001`'s Devices screen (the Modal-confirmed Revoke table) is in FDN-63's scope and F151 explicitly deferred it to "FDN-63's own remaining work" | `CLAUDE.md`, `VPS-F001`, FDN-63 | **Recorded — founder ruled the standalone `/devices` page in for FDN-63.** Built as a real session-gated route like `sign-in` / `auth-ready`, not wired into the still-fixture app shell. Recorded so a later reader sees the phase-text deviation was deliberate, not drift |
+| F192 | `next.config.ts` stubs three diagnostics clients out of the optimized build but omits the fourth — `graph-sync-diagnostics-client` is compiled and emitted as a 50.5 kB static chunk in `next build`, where its three siblings leave 145 B. The route still 404s at runtime, so this is a shipped-artifact gap, not a reachable one; FDN-52's "zero diagnostics matches in the production artifact" claim is nonetheless wrong | Repository, `VPS-A007`, FDN-52 | **Open — raised, not fixed, and deliberately not fixed in the FDN-63 branch.** Reported at the founder's request while checking a discrepancy between FDN-52's checkpoint and the 8 September audit. The audit is right and FDN-52's claim is wrong. `graph-persistence-diagnostics` — the route the question named — **is** correctly excluded. Needs its own issue: add the missing alias, and make the exclusion list impossible to forget an entry in |
 | F191 | FDN-63's first implementation let a workspace Owner's Revoke set the canonical `device.is_revoked` flag, which spans workspaces (one row per user+application, N unlock secrets under it) — so one tenant could irreversibly destroy another tenant's local data on the same physical device, with no authority over that workspace and no visibility into it | `VPS-F001`, Repository, FDN-63 | **Closed by founder ruling and repository fix — the global model was rejected as built.** Explicit revocation is now two separately authorized actions: a workspace Owner's Revoke is strictly workspace-scoped (`device_unlock_secret` only, never the `device` row), and global retirement belongs to the device's own user alone (`POST /devices/retire` → `retireOwnDevice`), the only path that may set `is_revoked`. The membership-revocation and account-suspension cascades are audit-only, for the same reason. Paired cross-workspace tests at the API and browser layers; mutation-tested by restoring the global write, which fails both |
 
 
@@ -2301,6 +2302,39 @@ This is the same treatment `organization` and `member` already get: Better Auth 
 The tension is real rather than apparent: the Devices screen is user-facing feature surface, and roster-web's shell is still the static fixture prototype (only `sign-in` / `sign-up` / `auth-ready` are real authenticated pages).
 
 **Recorded — the founder ruled the page in for FDN-63.** It is built as a standalone session-gated route (`/devices`), the same category of real surface as `auth-ready`, not wired into the fixture shell and not requiring the shell's auth plumbing to be built first. The full `VPS-D004` shell integration remains later work. Recorded here so a later reader sees the phase-text deviation was a deliberate founder call, not scope drift.
+
+---
+
+### F192 — one of the four diagnostics clients is missing from the production-build exclusion list
+
+Raised at the founder's request during FDN-63 Stage 5, reconciling FDN-52's checkpoint claim that "production artifact search found zero diagnostics matches" against the 8 September audit's claim that a graph-sync diagnostics route is in the production bundle. **Reported only — not fixed here, and not fixed in the FDN-63 branch.**
+
+`apps/roster-web/next.config.ts` excludes diagnostics clients from an optimized build by aliasing them to `false`:
+
+```
+"./device-store-diagnostics-client$": false,
+"./graph-persistence-diagnostics-client$": false,
+"./worker-diagnostics-client$": false,
+```
+
+There are **four** diagnostics client components. `./graph-sync-diagnostics-client$` is not in the list.
+
+**Measured, not read off the config.** A clean `next build` reports:
+
+| Route | First-load size |
+|---|---|
+| `/device-store-diagnostics` | 145 B |
+| `/graph-persistence-diagnostics` | 145 B |
+| `/worker-diagnostics` | 145 B |
+| **`/graph-sync-diagnostics`** | **50.5 kB** |
+
+and `__vultoGraphSyncDiagnostics` is present in the emitted static chunks, where `__vultoGraphPersistenceDiagnostics` and `__vultoDeviceStoreDiagnostics` are absent.
+
+**The founder's specific question, answered: `graph-persistence-diagnostics` IS excluded**, exactly like device-store and worker. The outlier is `graph-sync-diagnostics`, which is precisely what the audit named.
+
+**Scoped accurately rather than dramatically, in both directions.** All four routes carry the same Server Component env gate (`VULTO_DEVICE_STORE_DIAGNOSTICS !== "1"` → `notFound()`), and all four prerender to a 404 in a production build; the graph-sync 404 HTML does not reference its client chunk. So the diagnostics surface is **not reachable through its route** in production — this is a shipped-artifact and defense-in-depth gap, not a live hole. Two things make it worth a finding anyway: the emitted chunk is a static asset that ships with the deployment and is fetchable by URL, and FDN-52's "zero diagnostics matches in the production artifact" is, as a statement about the artifact, false. Separately confirmed as *not* a problem: `createUncheckedLocalGraphClient` — the widened test client that can send the un-permission-checked `apply-delta-batch` — is absent from every production chunk, so F131/F145's containment argument still holds. The `apply-delta-batch` and `erase-local-store` protocol strings do appear in the production Worker bundle, which is expected and harmless: the Worker is one artifact, and no production client can send either message.
+
+**Belongs in its own issue, not FDN-63.** The fix is one alias line, but the finding underneath it is that a four-item exclusion list drifted to three without anything noticing — so the issue should also make the list impossible to forget an entry in (derive it, or fail the build when a `*-diagnostics-client` file has no alias), and correct FDN-52's record.
 
 ---
 
