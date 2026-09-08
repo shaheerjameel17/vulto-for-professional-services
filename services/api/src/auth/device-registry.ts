@@ -5,12 +5,12 @@ import {
   uuidV4Schema,
   type DeviceApplication,
   type DevicePlatform,
-  type DeviceTrustEventType,
 } from "@vulto/schema";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
-import { device, deviceTrustEvent, deviceUnlockSecret } from "./schema.js";
+import { recordTrustEvent } from "./device-trust-log.js";
+import { device, deviceUnlockSecret } from "./schema.js";
 import {
   requireCurrentWorkspaceSession,
   UnauthorizedWorkspaceSessionError,
@@ -92,41 +92,6 @@ function toDeviceRecord(row: typeof device.$inferSelect): DeviceRecord {
     lastActiveAt: row.lastActiveAt.toISOString(),
     isRevoked: row.isRevoked,
   };
-}
-
-/**
- * Any Drizzle executor — the top-level `db` or a transaction handle — so a
- * trust event enlists in the same transaction as the state change it records
- * (the revocation cascades in Stage 3 depend on this).
- */
-type DbExecutor = typeof db | Parameters<Parameters<(typeof db)["transaction"]>[0]>[0];
-
-export interface TrustEvent {
-  deviceId: string;
-  userId: string;
-  workspaceId?: string | null;
-  eventType: DeviceTrustEventType;
-  actorUserId?: string | null;
-  reason?: string | null;
-}
-
-/**
- * FDN-63 Stage 2. Append one row to the immutable device/trust log. There is
- * no update or delete path anywhere for this table — the log is the audit
- * trail for every registration, trust decision and revocation.
- */
-export async function recordTrustEvent(
-  executor: DbExecutor,
-  event: TrustEvent,
-): Promise<void> {
-  await executor.insert(deviceTrustEvent).values({
-    deviceId: event.deviceId,
-    userId: event.userId,
-    workspaceId: event.workspaceId ?? null,
-    eventType: event.eventType,
-    actorUserId: event.actorUserId ?? null,
-    reason: event.reason ?? null,
-  });
 }
 
 /**

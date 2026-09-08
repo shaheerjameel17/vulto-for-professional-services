@@ -4,10 +4,18 @@ import {
   uuidV4Schema,
   type WorkspaceRole,
 } from "@vulto/schema";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, inArray } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
-import { deviceUnlockSecret, member, organization, session, user } from "./schema.js";
+import { recordTrustEvent } from "./device-trust-log.js";
+import {
+  device,
+  deviceUnlockSecret,
+  member,
+  organization,
+  session,
+  user,
+} from "./schema.js";
 
 export interface CurrentWorkspaceSession {
   sessionId: string;
@@ -171,7 +179,55 @@ export async function revokeWorkspaceAdmission(
           eq(deviceUnlockSecret.userId, revoked.userId),
         ),
       );
+
+    // FDN-63. The same cascade retires the canonical Device identities: every
+    // device of this user that had touched this workspace. `membership-revoked`,
+    // not `revoked-explicit` — the classifier's priority rule (F151).
+    await retireDevicesForWorkspaceUser(
+      transaction,
+      revoked.workspaceId,
+      revoked.userId,
+    );
   });
+}
+
+/**
+ * FDN-63 cascade helper. Marks every device of `userId` that holds an unlock
+ * secret in `workspaceId` as revoked and records one `revoked-membership`
+ * trust event per device. Idempotent — a device already `is_revoked` is
+ * skipped and writes no audit row.
+ */
+async function retireDevicesForWorkspaceUser(
+  transaction: Parameters<Parameters<(typeof db)["transaction"]>[0]>[0],
+  workspaceId: string,
+  userId: string,
+): Promise<void> {
+  const secrets = await transaction
+    .select({ deviceId: deviceUnlockSecret.deviceId })
+    .from(deviceUnlockSecret)
+    .where(
+      and(
+        eq(deviceUnlockSecret.workspaceId, workspaceId),
+        eq(deviceUnlockSecret.userId, userId),
+      ),
+    );
+  const deviceIds = secrets.map((row) => row.deviceId);
+  if (deviceIds.length === 0) return;
+
+  const retired = await transaction
+    .update(device)
+    .set({ isRevoked: true, pushToken: null })
+    .where(and(inArray(device.id, deviceIds), eq(device.isRevoked, false)))
+    .returning({ id: device.id });
+
+  for (const row of retired) {
+    await recordTrustEvent(transaction, {
+      deviceId: row.id,
+      userId,
+      workspaceId,
+      eventType: "revoked-membership",
+    });
+  }
 }
 
 export async function confirmWorkspaceRevocationProjection(
@@ -209,5 +265,21 @@ export async function suspendUserAndRevokeSessions(userIdInput: string): Promise
       .update(deviceUnlockSecret)
       .set({ revokedAt: new Date() })
       .where(eq(deviceUnlockSecret.userId, userId));
+
+    // FDN-63. Account suspension retires every one of this user's devices,
+    // in every workspace — this codebase already treats suspension as
+    // offboarding (F151), so the classifier folds it into `membership-revoked`.
+    const retired = await transaction
+      .update(device)
+      .set({ isRevoked: true, pushToken: null })
+      .where(and(eq(device.userId, userId), eq(device.isRevoked, false)))
+      .returning({ id: device.id });
+    for (const row of retired) {
+      await recordTrustEvent(transaction, {
+        deviceId: row.id,
+        userId,
+        eventType: "revoked-membership",
+      });
+    }
   });
 }

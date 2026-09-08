@@ -3,7 +3,8 @@ import { uuidV4Schema, type WorkspaceRole } from "@vulto/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
-import { deviceUnlockSecret, member, user } from "./schema.js";
+import { recordTrustEvent } from "./device-trust-log.js";
+import { device, deviceUnlockSecret, member, user } from "./schema.js";
 import {
   requireCurrentWorkspaceSession,
   UnauthorizedWorkspaceSessionError,
@@ -121,6 +122,19 @@ export async function requestDeviceUnlock(
       throw new DeviceUnlockDeniedError();
     }
     throw error;
+  }
+
+  // FDN-63. `VPS-F001`: "No path grants access without `device.register`."
+  // The device must hold a registered, non-revoked identity row for this
+  // user before any unlock secret is released. An untrusted or revoked
+  // device is denied here, non-enumerably, exactly like a bad session.
+  const [identity] = await db
+    .select({ isRevoked: device.isRevoked })
+    .from(device)
+    .where(and(eq(device.id, deviceId), eq(device.userId, current.userId)))
+    .limit(1);
+  if (!identity || identity.isRevoked) {
+    throw new DeviceUnlockDeniedError();
   }
 
   const [existing] = await db
@@ -298,6 +312,20 @@ export async function requestDeviceRoleRefresh(
   }
 
   if (deviceId !== undefined) {
+    // Two positive facts, either of which classifies `device-revoked`: the
+    // canonical `device.is_revoked` flag (`VPS-F001`'s Devices-table Revoke
+    // action, FDN-63), and — kept as a belt-and-suspenders check the merged
+    // F151 slice already relied on — this workspace's unlock secret being
+    // revoked. `revokeDevice` sets both in one transaction, and the
+    // membership cascade sets `device.is_revoked` too, but this checkpoint
+    // reaches here only when the session (and therefore membership) is still
+    // valid, so the broader `membership-revoked` has already won above if it
+    // applied.
+    const [identity] = await db
+      .select({ isRevoked: device.isRevoked })
+      .from(device)
+      .where(eq(device.id, deviceId))
+      .limit(1);
     const [secret] = await db
       .select({ revokedAt: deviceUnlockSecret.revokedAt })
       .from(deviceUnlockSecret)
@@ -308,7 +336,7 @@ export async function requestDeviceRoleRefresh(
         ),
       )
       .limit(1);
-    if (secret?.revokedAt != null) {
+    if (identity?.isRevoked === true || secret?.revokedAt != null) {
       throw new DeviceRoleRefreshDeniedError("device-revoked");
     }
   }
@@ -356,11 +384,21 @@ export function parseDeviceRevokeRequest(value: unknown): DeviceRevokeRequest {
  * Idempotent: revoking an already-revoked or nonexistent (workspace,
  * device) pair succeeds silently rather than erroring, so a second click
  * on Revoke is never a visible failure.
+ *
+ * FDN-63: revocation now also retires the canonical `device` identity —
+ * `is_revoked = true`, `push_token` cleared ("invalidated on revocation",
+ * `VPS-F001`) — and records a `revoked-explicit` (or `stale-flagged`, for a
+ * staleness-driven revoke) trust event, all in one transaction with the
+ * unlock-secret revoke. `is_revoked` is workspace-agnostic: an Owner
+ * clicking Revoke is declaring the device untrusted, and the common reasons
+ * (lost, stolen, ex-employee) mean it should not retain access anywhere.
+ * See F191.
  */
 export async function revokeDevice(
   headers: Headers,
   workspaceIdInput: string,
   deviceIdInput: string,
+  options?: { readonly stale?: boolean },
 ): Promise<void> {
   const workspaceId = uuidV4Schema.parse(workspaceIdInput);
   const deviceId = parseDeviceId(deviceIdInput);
@@ -378,14 +416,34 @@ export async function revokeDevice(
     throw new DeviceRevokeDeniedError();
   }
 
-  await db
-    .update(deviceUnlockSecret)
-    .set({ revokedAt: new Date() })
-    .where(
-      and(
-        eq(deviceUnlockSecret.workspaceId, workspaceId),
-        eq(deviceUnlockSecret.deviceId, deviceId),
-        isNull(deviceUnlockSecret.revokedAt),
-      ),
-    );
+  await db.transaction(async (tx) => {
+    await tx
+      .update(deviceUnlockSecret)
+      .set({ revokedAt: new Date() })
+      .where(
+        and(
+          eq(deviceUnlockSecret.workspaceId, workspaceId),
+          eq(deviceUnlockSecret.deviceId, deviceId),
+          isNull(deviceUnlockSecret.revokedAt),
+        ),
+      );
+
+    const [retired] = await tx
+      .update(device)
+      .set({ isRevoked: true, pushToken: null })
+      .where(and(eq(device.id, deviceId), eq(device.isRevoked, false)))
+      .returning({ userId: device.userId });
+
+    // Only log when this call is the one that flipped the flag — idempotent
+    // re-revocation writes no second audit row.
+    if (retired) {
+      await recordTrustEvent(tx, {
+        deviceId,
+        userId: retired.userId,
+        workspaceId,
+        eventType: options?.stale ? "stale-flagged" : "revoked-explicit",
+        actorUserId: current.userId,
+      });
+    }
+  });
 }

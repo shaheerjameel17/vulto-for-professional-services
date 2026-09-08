@@ -185,6 +185,17 @@ async function membershipStatus(
   return row?.status;
 }
 
+/** FDN-63 — the canonical Device identity row's revocation flag. */
+async function deviceRowRevoked(
+  sql: ReturnType<typeof postgres>,
+  deviceId: string,
+): Promise<boolean | undefined> {
+  const [row] = await sql<
+    { isRevoked: boolean }[]
+  >`select "is_revoked" as "isRevoked" from "device" where "id" = ${deviceId}`;
+  return row?.isRevoked;
+}
+
 let sharedAccount: { email: string; userId: string; cookies: Cookie[] } | undefined;
 
 test.beforeAll(async ({ browser }) => {
@@ -332,7 +343,17 @@ test.describe("F151 — the enumerable revocation signal", () => {
         await membershipStatus(sql, workspaceId, sharedAccount.userId),
         "the membership itself must still be active — only device B was revoked",
       ).toBe("active");
-      expect(deviceA).toBeTruthy(); // deviceA captured for readability of the destructure above
+
+      // FDN-63: the revoke endpoint retires the canonical Device identity row,
+      // not only its per-workspace unlock secret — and leaves device A alone.
+      expect(
+        await deviceRowRevoked(sql, deviceB),
+        "device B's canonical identity row must be is_revoked",
+      ).toBe(true);
+      expect(
+        await deviceRowRevoked(sql, deviceA),
+        "device A's identity row must be untouched",
+      ).toBe(false);
     } finally {
       await contextA?.close();
       await contextB?.close();
@@ -652,6 +673,74 @@ test.describe("F151 — the enumerable revocation signal", () => {
         body.revocation?.kind,
         `a pending membership must never be classified as a revocation: ${JSON.stringify(body)}`,
       ).toBeUndefined();
+    } finally {
+      await context?.close();
+      await sql.end();
+    }
+  });
+
+  /**
+   * FDN-63 — the canonical Device identity flag is load-bearing on its own.
+   * With the per-workspace unlock secret left intact, retiring the `device`
+   * row (`is_revoked = true`) alone must still classify `device-revoked` and
+   * erase — proving the signal is keyed off the identity record, not only the
+   * secret the merged F151 slice used.
+   */
+  test("retiring the canonical device row alone classifies device-revoked and erases", async ({
+    browser,
+  }) => {
+    test.setTimeout(180_000);
+    const sql = postgres(databaseUrl, { max: 1 });
+    let context: BrowserContext | undefined;
+    try {
+      if (!sharedAccount) throw new Error("shared account was not created");
+      context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      await context.addCookies(sharedAccount.cookies);
+      const workspaceId = await createOwnerWorkspace(sql, sharedAccount.userId);
+
+      await openWorkspace(page, workspaceId);
+      expect((await tryInitialize(page)).opened).toBe(true);
+      expect(await seedDurably(page, workspaceId)).toBe("applied");
+
+      const [deviceId] = await unlockedDeviceIds(sql, workspaceId);
+      expect(deviceId).toBeTruthy();
+
+      // Retire the identity row only. The unlock secret stays non-revoked.
+      await sql`update "device" set "is_revoked" = true where "id" = ${deviceId}`;
+      const [secret] = await sql<
+        { revokedAt: Date | null }[]
+      >`select "revoked_at" as "revokedAt" from "device_unlock_secret" where "device_id" = ${deviceId}`;
+      expect(
+        secret?.revokedAt,
+        "the per-workspace secret must remain intact for this test to mean anything",
+      ).toBeNull();
+
+      const observed = await page.evaluate(async () => {
+        const api = window.__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        let refreshError: string | undefined;
+        try {
+          await api.refreshRole();
+        } catch (error: unknown) {
+          refreshError = error instanceof Error ? error.message : String(error);
+        }
+        return { refreshError, locked: (await api.getStatus()).locked };
+      });
+      console.log(`F151/device-row-only: ${JSON.stringify(observed)}`);
+      expect(observed.locked, "the retired device must lock").toBe(true);
+      expect(observed.refreshError).toContain("device-revoked");
+      expect(observed.refreshError).not.toContain("membership-revoked");
+
+      await openWorkspace(page, workspaceId).catch(() => undefined);
+      const unlockedVisible = await page
+        .getByTestId("graph-persistence-unlocked")
+        .isVisible()
+        .catch(() => false);
+      expect(
+        unlockedVisible,
+        "a retired device must not reopen the workspace it was erased from",
+      ).toBe(false);
     } finally {
       await context?.close();
       await sql.end();
