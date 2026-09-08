@@ -8,7 +8,13 @@ import {
 import { z } from "zod";
 import { graphQuerySchema } from "./query";
 
-export const GRAPH_WORKER_PROTOCOL_VERSION = 1 as const;
+/**
+ * Bumped to 2 in FDN-51 Stage 4a: the `start-sync` / `stop-sync` /
+ * `get-sync-status` requests, the `sync-status` result, and — the first
+ * unsolicited Worker -> main message on this protocol — the
+ * `sync-status-changed` event.
+ */
+export const GRAPH_WORKER_PROTOCOL_VERSION = 2 as const;
 
 /**
  * FDN-53 stage 1. Mirrors `packages/graph/src/worker/storage/sqlite-graph-index.ts`'s
@@ -144,6 +150,15 @@ export const graphWorkerRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("erase-local-store"),
     workspaceId: z.string().min(1),
   }),
+  // FDN-51 Stage 4a. Start / stop the relay sync client (it runs in the
+  // Worker) and read the current SyncStatus. Transitions also arrive
+  // unsolicited as `sync-status-changed` events (see below).
+  messageBaseSchema.extend({
+    type: z.literal("start-sync"),
+    relayUrl: z.string().min(1),
+  }),
+  messageBaseSchema.extend({ type: z.literal("stop-sync") }),
+  messageBaseSchema.extend({ type: z.literal("get-sync-status") }),
   messageBaseSchema.extend({ type: z.literal("dispose") }),
 ]);
 
@@ -228,6 +243,32 @@ const roleRefreshedResultSchema = z
   .object({ kind: z.literal("role-refreshed"), roles: z.array(workspaceRoleSchema) })
   .strict();
 
+/** FDN-51 Stage 4a — A003-T08's observable, carried both as a result and an event. */
+export const syncStatusSnapshotSchema = z
+  .object({
+    state: z.enum(["offline", "connecting", "syncing", "synced"]),
+    pendingLocalChanges: z.boolean(),
+    highestKnownCursor: z.number().int().nonnegative(),
+    highestAckedCursor: z.number().int().nonnegative(),
+    lastError: z
+      .enum([
+        "unsupported_version",
+        "unauthenticated",
+        "malformed_frame",
+        "unknown_message_type",
+        "internal",
+        "network",
+      ])
+      .nullable(),
+  })
+  .strict();
+
+const syncStartedResultSchema = z.object({ kind: z.literal("sync-started") }).strict();
+const syncStoppedResultSchema = z.object({ kind: z.literal("sync-stopped") }).strict();
+const syncStatusResultSchema = z
+  .object({ kind: z.literal("sync-status"), status: syncStatusSnapshotSchema })
+  .strict();
+
 export const graphWorkerSuccessSchema = messageBaseSchema.extend({
   type: z.literal("success"),
   availability: graphAvailabilitySchema,
@@ -245,9 +286,29 @@ export const graphWorkerSuccessSchema = messageBaseSchema.extend({
     disposedResultSchema,
     roleRefreshedResultSchema,
     localStoreErasedResultSchema,
+    syncStartedResultSchema,
+    syncStoppedResultSchema,
+    syncStatusResultSchema,
     ...graphQueryResultSchema.options,
   ]),
 });
+
+/**
+ * The first unsolicited Worker -> main message on this protocol (FDN-51
+ * Stage 4a). It is NOT a response to any request — `requestId` is null — so
+ * `LocalGraphClient` routes it to `onSyncStatusChange` subscribers rather
+ * than a pending promise.
+ */
+export const graphWorkerEventSchema = z
+  .object({
+    protocolVersion: z.literal(GRAPH_WORKER_PROTOCOL_VERSION),
+    requestId: z.null(),
+    sentAt: utcTimestampSchema,
+    type: z.literal("event"),
+    event: z.literal("sync-status-changed"),
+    status: syncStatusSnapshotSchema,
+  })
+  .strict();
 
 export const graphWorkerErrorSchema = z
   .object({
@@ -318,10 +379,12 @@ export const graphWorkerErrorSchema = z
 export const graphWorkerResponseSchema = z.discriminatedUnion("type", [
   graphWorkerSuccessSchema,
   graphWorkerErrorSchema,
+  graphWorkerEventSchema,
 ]);
 
 export type GraphWorkerSuccess = z.infer<typeof graphWorkerSuccessSchema>;
 export type GraphWorkerError = z.infer<typeof graphWorkerErrorSchema>;
+export type GraphWorkerEvent = z.infer<typeof graphWorkerEventSchema>;
 export type GraphWorkerResponse = z.infer<typeof graphWorkerResponseSchema>;
 
 export function parseGraphWorkerRequest(value: unknown): GraphWorkerRequest {

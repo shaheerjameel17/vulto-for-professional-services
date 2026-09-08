@@ -42,6 +42,13 @@ export {
 export { graphSnapshotStoreKey } from "./worker/storage/storage-keys";
 
 export {
+  WORKSPACE_GRAPH_DOCUMENT_ID,
+  type SyncStatusSnapshot,
+  type SyncStatusState,
+  type SyncStatusError,
+} from "./sync/client";
+
+export {
   createProtectedDocumentAddress,
   createProtectedEnvelopeHeader,
   createProtectedReaderSet,

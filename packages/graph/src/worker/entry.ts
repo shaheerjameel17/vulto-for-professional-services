@@ -20,6 +20,19 @@ const scope = self as unknown as WorkerScope;
 const runtime = new LocalGraphWorkerRuntime();
 let work = Promise.resolve();
 
+// FDN-51 Stage 4a. SyncStatus transitions are pushed to the main thread
+// unsolicited — the first message on this protocol that is not a response.
+runtime.setSyncStatusListener((status) => {
+  scope.postMessage({
+    protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+    requestId: null,
+    sentAt: sentAt(),
+    type: "event",
+    event: "sync-status-changed",
+    status,
+  });
+});
+
 function sentAt(): string {
   return new Date().toISOString();
 }
@@ -305,6 +318,33 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
           return;
         }
         scope.postMessage(success(request, { kind: "availability" }));
+        return;
+      }
+      case "start-sync": {
+        if (runtime.workspaceId === null) {
+          scope.postMessage(
+            errorResponse(
+              request.requestId,
+              "not-initialized",
+              "Initialize and unlock the Worker before starting sync",
+              true,
+            ),
+          );
+          return;
+        }
+        await runtime.startSync(request.relayUrl);
+        scope.postMessage(success(request, { kind: "sync-started" }));
+        return;
+      }
+      case "stop-sync": {
+        await runtime.stopSync();
+        scope.postMessage(success(request, { kind: "sync-stopped" }));
+        return;
+      }
+      case "get-sync-status": {
+        scope.postMessage(
+          success(request, { kind: "sync-status", status: runtime.getSyncStatus() }),
+        );
         return;
       }
       case "dispose": {

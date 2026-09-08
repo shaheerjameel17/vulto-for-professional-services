@@ -29,9 +29,15 @@ import { SQLiteGraphIndex, type GraphQueryResult } from "./storage/sqlite-graph-
 import {
   graphSnapshotStoreKey,
   protectedPartitionManifestStoreKey,
+  syncMarkerStoreKey,
   tier1IdentityStoreKey,
   tier3PartitionManifestStoreKey,
 } from "./storage/storage-keys";
+import {
+  WORKSPACE_GRAPH_DOCUMENT_ID,
+  WorkspaceSyncClient,
+  type SyncStatusSnapshot,
+} from "../sync/client";
 import {
   ProtectedPartitionRegistry,
   type ProtectedReaderCredential,
@@ -224,6 +230,11 @@ function parseTier1IdentityRecord(bytes: Uint8Array): Tier1IdentityRecord {
   return record as unknown as Tier1IdentityRecord;
 }
 
+/** A standalone `ArrayBuffer` holding exactly `bytes` — `#commitDeltaBatch` takes `ArrayBuffer`. */
+function bufferOfExact(bytes: Uint8Array): ArrayBuffer {
+  return bytes.slice().buffer;
+}
+
 function serializeTier1IdentityRecord(record: Tier1IdentityRecord): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(record));
 }
@@ -304,6 +315,17 @@ export class LocalGraphWorkerRuntime {
    * code instead of folding it into the denial's fixed message.
    */
   #lastSessionEnd: LocalSessionEndOutcome | null = null;
+
+  /** FDN-51 Stage 4a. The relay sync client, live only between `startSync` and `stopSync`/teardown. */
+  #sync: WorkspaceSyncClient | null = null;
+  #syncStatus: SyncStatusSnapshot = {
+    state: "offline",
+    pendingLocalChanges: false,
+    highestKnownCursor: 0,
+    highestAckedCursor: 0,
+    lastError: null,
+  };
+  #syncStatusListener: ((snapshot: SyncStatusSnapshot) => void) | null = null;
 
   get availability(): GraphAvailability {
     return this.#availability;
@@ -960,6 +982,7 @@ export class LocalGraphWorkerRuntime {
 
   lockSealedStore(): void {
     this.#stopRolePolling();
+    this.#stopSyncInternal();
     this.#sealedStore.lock();
     this.#apiOrigin = null;
   }
@@ -994,6 +1017,87 @@ export class LocalGraphWorkerRuntime {
       }
       throw error;
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // FDN-51 Stage 4a — relay synchronization.
+  //
+  // The sync client runs here, in the Worker, next to the document and the
+  // sealed store (founder ruling). It pushes local commits to the relay,
+  // applies remote ones through the SAME un-gated merge path as any other
+  // delta (`#commitDeltaBatch`) — remote deltas are NOT re-run through
+  // VPS-A004 Gate 1, because access is decided only by the read interceptor
+  // (founder ruling 3) — and exposes a `SyncStatus` observable.
+  // -------------------------------------------------------------------------
+
+  setSyncStatusListener(
+    listener: ((snapshot: SyncStatusSnapshot) => void) | null,
+  ): void {
+    this.#syncStatusListener = listener;
+  }
+
+  getSyncStatus(): SyncStatusSnapshot {
+    return this.#syncStatus;
+  }
+
+  async startSync(relayUrl: string): Promise<void> {
+    if (this.#sync !== null) return;
+    const workspaceId = this.#requireWorkspaceId();
+    this.#requireDocument();
+    this.#requireIndex();
+    const apiOrigin = this.#apiOrigin;
+    if (apiOrigin === null) throw new SealedStoreLockedError();
+    const deviceId = await this.#sealedStore.deviceId();
+
+    this.#sync = new WorkspaceSyncClient({
+      relayUrl,
+      bindings: {
+        workspaceId,
+        deviceId,
+        documentId: WORKSPACE_GRAPH_DOCUMENT_ID,
+        applyRemoteDeltas: async (payloads) => {
+          await this.#commitDeltaBatch(payloads.map((p) => bufferOfExact(p)));
+        },
+        onLocalUpdate: (listener) =>
+          this.#requireDocument().subscribeLocalUpdates((bytes) => listener(bytes)),
+        loadMarker: (key) =>
+          this.#sealedStore.get(syncMarkerStoreKey(workspaceId, key)),
+        storeMarker: (key, value) =>
+          this.#sealedStore.put(syncMarkerStoreKey(workspaceId, key), value),
+        mintTicket: async () => {
+          const response = await fetch(`${apiOrigin}/sync/ticket`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ workspaceId, deviceId }),
+          });
+          if (!response.ok) throw new Error("sync ticket denied");
+          const grant = (await response.json()) as {
+            ticket: string;
+            expiresAt: string;
+          };
+          return { ticket: grant.ticket, expiresAtMs: Date.parse(grant.expiresAt) };
+        },
+      },
+      onStatusChange: (snapshot) => {
+        this.#syncStatus = snapshot;
+        this.#syncStatusListener?.(snapshot);
+      },
+    });
+    await this.#sync.start();
+  }
+
+  async stopSync(): Promise<void> {
+    const sync = this.#sync;
+    this.#sync = null;
+    await sync?.stop();
+  }
+
+  /** Fire-and-forget teardown for the lock / purge / dispose paths. */
+  #stopSyncInternal(): void {
+    const sync = this.#sync;
+    this.#sync = null;
+    void sync?.stop();
   }
 
   /**
@@ -1639,6 +1743,7 @@ export class LocalGraphWorkerRuntime {
 
   async dispose(): Promise<void> {
     this.#stopRolePolling();
+    await this.stopSync();
     this.#apiOrigin = null;
     await this.#flushBeforeTeardown();
     await this.#index?.dispose();
@@ -1673,6 +1778,7 @@ export class LocalGraphWorkerRuntime {
    * clears disk and leaves a queryable plaintext index behind.
    */
   async #purgeInMemoryState(): Promise<void> {
+    this.#stopSyncInternal();
     await this.#index?.dispose();
     this.#index = null;
     this.#document?.free();

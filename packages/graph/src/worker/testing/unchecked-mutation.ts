@@ -108,6 +108,24 @@ class TestingLocalGraphClient implements UncheckedLocalGraphClient {
     return this.#graph.refreshRole();
   }
 
+  startSync(relayUrl: string): Promise<void> {
+    return this.#graph.startSync(relayUrl);
+  }
+
+  stopSync(): Promise<void> {
+    return this.#graph.stopSync();
+  }
+
+  getSyncStatus() {
+    return this.#graph.getSyncStatus();
+  }
+
+  onSyncStatusChange(
+    listener: Parameters<GraphUncheckedClient["onSyncStatusChange"]>[0],
+  ): () => void {
+    return this.#graph.onSyncStatusChange(listener);
+  }
+
   async dispose(): Promise<void> {
     await Promise.allSettled([this.#graph.dispose(), this.#sealed.dispose()]).then(
       (results) => {
