@@ -5,10 +5,10 @@
  * protocol from `./wire` to the `services/sync-engine` relay over one
  * WebSocket:
  *
- * - **outbound** — every local commit to the workspace graph `LoroDoc` produces
- *   update bytes (`onLocalUpdate`); they queue in a durable outbox and are
- *   pushed one at a time, each cleared when the relay acknowledges it with a
- *   `RelayReceipt`.
+ * - **outbound** — the runtime hands each local mutation's update bytes to
+ *   `enqueueLocalDelta` (never a delta that arrived from the relay); they queue
+ *   in a durable outbox and are pushed one at a time, each cleared when the
+ *   relay acknowledges it with a `RelayReceipt`.
  * - **inbound** — `DeltaBatch` frames (replay after `Hello`, then live) are
  *   applied to the document via `applyRemoteDeltas` and acknowledged
  *   **incrementally, one `Ack` per frame** (Stage 3 ruling 5), so an
@@ -77,8 +77,6 @@ export interface SyncHostBindings {
    * ends the connection and is retried on reconnect.
    */
   applyRemoteDeltas(payloads: readonly Uint8Array[]): Promise<void>;
-  /** Fires once per local commit with that commit's update bytes. Returns an unsubscribe. */
-  onLocalUpdate(listener: (bytes: Uint8Array) => void): () => void;
   /** Read a durable sealed sync marker, or null if unset. */
   loadMarker(key: string): Promise<Uint8Array | null>;
   /** Write a durable sealed sync marker. */
@@ -194,7 +192,6 @@ export class WorkspaceSyncClient {
 
   #running = false;
   #socket: SyncSocket | null = null;
-  #unsubscribeLocal: (() => void) | null = null;
 
   #state: SyncStatusState = "offline";
   #lastError: SyncStatusError | null = null;
@@ -228,7 +225,7 @@ export class WorkspaceSyncClient {
       ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   }
 
-  /** Load durable markers, subscribe to local commits, and start connecting. */
+  /** Load durable markers and start connecting. */
   async start(): Promise<void> {
     if (this.#running) return;
     this.#running = true;
@@ -238,10 +235,6 @@ export class WorkspaceSyncClient {
     );
     this.#outbox = decodeOutbox(await this.#bindings.loadMarker(OUTBOX_MARKER));
 
-    this.#unsubscribeLocal = this.#bindings.onLocalUpdate((bytes) => {
-      void this.#enqueueLocal(bytes);
-    });
-
     this.#connect();
   }
 
@@ -250,10 +243,20 @@ export class WorkspaceSyncClient {
     this.#running = false;
     this.#clearReconnect();
     this.#clearTicketTimer();
-    this.#unsubscribeLocal?.();
-    this.#unsubscribeLocal = null;
     this.#teardownSocket();
     this.#setState("offline");
+  }
+
+  /**
+   * Hand a local mutation's Loro update bytes to the outbox. Called by the
+   * runtime after a `mutate` / `applyDeltaBatch` commits — NOT for deltas
+   * that arrived from the relay (`applyRemoteDeltas`), so a delta is never
+   * echoed back to the server. The bytes are the exact update the caller
+   * built and the runtime imported; peers re-import them idempotently
+   * (A003-T02). Buffered durably and survives offline periods / restarts.
+   */
+  enqueueLocalDelta(bytes: Uint8Array): void {
+    void this.#enqueueLocal(bytes);
   }
 
   snapshot(): SyncStatusSnapshot {

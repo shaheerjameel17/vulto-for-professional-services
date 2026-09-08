@@ -145,7 +145,6 @@ function makeHarness(
   const markers = new Map<string, Uint8Array>();
   const applied: Uint8Array[][] = [];
   const timers: Array<{ fn: () => void; ms: number }> = [];
-  let localListener: (bytes: Uint8Array) => void = () => {};
   const state = { mintCalls: 0 };
 
   const bindings: SyncHostBindings = {
@@ -154,12 +153,6 @@ function makeHarness(
     documentId: DOCUMENT,
     async applyRemoteDeltas(payloads) {
       applied.push(payloads.map((p) => p.slice()));
-    },
-    onLocalUpdate(listener) {
-      localListener = listener;
-      return () => {
-        localListener = () => {};
-      };
     },
     async loadMarker(key) {
       return markers.get(key) ?? null;
@@ -203,7 +196,7 @@ function makeHarness(
     statuses,
     markers,
     applied,
-    localUpdate: (bytes) => localListener(bytes),
+    localUpdate: (bytes) => client.enqueueLocalDelta(bytes),
     get mintCalls() {
       return state.mintCalls;
     },

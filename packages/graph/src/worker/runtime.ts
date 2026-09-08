@@ -1102,8 +1102,6 @@ export class LocalGraphWorkerRuntime {
         applyRemoteDeltas: async (payloads) => {
           await this.#commitDeltaBatch(payloads.map((p) => bufferOfExact(p)));
         },
-        onLocalUpdate: (listener) =>
-          this.#requireDocument().subscribeLocalUpdates((bytes) => listener(bytes)),
         loadMarker: (key) =>
           this.#sealedStore.get(syncMarkerStoreKey(workspaceId, key)),
         storeMarker: (key, value) =>
@@ -1512,7 +1510,21 @@ export class LocalGraphWorkerRuntime {
     this.#throwPendingFlushError();
     this.#requireDocument();
     this.#requireIndex();
-    return this.#commitDeltaBatch(deltas);
+    const committed = await this.#commitDeltaBatch(deltas);
+    this.#enqueueLocalDeltasForSync(deltas);
+    return committed;
+  }
+
+  /**
+   * FDN-51 Stage 4a. Hand a locally-authored batch's bytes to the sync
+   * outbox, if this tab currently leads sync. NOT called for deltas that
+   * arrived from the relay (`applyRemoteDeltas` merges those directly), so a
+   * delta is never pushed back to the server it came from.
+   */
+  #enqueueLocalDeltasForSync(deltas: readonly ArrayBuffer[]): void {
+    const sync = this.#sync;
+    if (sync === null) return;
+    for (const delta of deltas) sync.enqueueLocalDelta(new Uint8Array(delta));
   }
 
   /**
@@ -1569,6 +1581,7 @@ export class LocalGraphWorkerRuntime {
     if (authorization.status !== "authorized") return authorization;
 
     const committed = await this.#commitDeltaBatch(deltas);
+    this.#enqueueLocalDeltasForSync(deltas);
     return { status: "applied", ...committed };
   }
 
