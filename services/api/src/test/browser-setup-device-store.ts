@@ -29,6 +29,7 @@ await migrate(drizzle(client), {
 });
 await client.unsafe(`
   TRUNCATE TABLE
+    "sync_delta", "sync_device_ack", "sync_workspace_cursor", "sync_ticket",
     "device_unlock_secret", "passkey_registration_context", "passkey",
     "invitation", "member", "organization", "session", "account",
     "verification", "user", "rate_limit"

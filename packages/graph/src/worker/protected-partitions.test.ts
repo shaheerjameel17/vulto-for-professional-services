@@ -842,7 +842,10 @@ describe("FDN-52 F167 — Tier 1 no-device recovery, integrated into the registr
         recoverySecret: reconstructed,
         nextAddress: await address(EMPLOYEE_A, ["reader-e"]),
         nextRecipients: [
-          { userId: "reader-e", publicKey: (await generateTier1IdentityKeyPair()).publicKey },
+          {
+            userId: "reader-e",
+            publicKey: (await generateTier1IdentityKeyPair()).publicKey,
+          },
         ],
       }),
     ).rejects.toThrow("no established recovery envelope");
@@ -877,7 +880,10 @@ describe("FDN-52 F167 — Tier 1 no-device recovery, integrated into the registr
         recoverySecret: wrongPairSecret,
         nextAddress: await address(EMPLOYEE_A, ["reader-f"]),
         nextRecipients: [
-          { userId: "reader-f", publicKey: (await generateTier1IdentityKeyPair()).publicKey },
+          {
+            userId: "reader-f",
+            publicKey: (await generateTier1IdentityKeyPair()).publicKey,
+          },
         ],
       }),
     ).rejects.toThrow("cannot be opened");
@@ -896,7 +902,10 @@ describe("FDN-52 F167 — Tier 1 no-device recovery, integrated into the registr
     ]);
     const secret = generateTier1RecoverySecret();
     const shares = await splitTier1RecoverySecret(secret);
-    await first.establishRecovery({ address: partitionAddress, recoverySecret: secret });
+    await first.establishRecovery({
+      address: partitionAddress,
+      recoverySecret: secret,
+    });
 
     const corrupted = new Uint8Array(shares[1]!);
     corrupted[0] = corrupted[0]! ^ 0xff;
@@ -909,7 +918,10 @@ describe("FDN-52 F167 — Tier 1 no-device recovery, integrated into the registr
         recoverySecret: wrongSecret,
         nextAddress: await address(EMPLOYEE_A, ["reader-g"]),
         nextRecipients: [
-          { userId: "reader-g", publicKey: (await generateTier1IdentityKeyPair()).publicKey },
+          {
+            userId: "reader-g",
+            publicKey: (await generateTier1IdentityKeyPair()).publicKey,
+          },
         ],
       }),
     ).rejects.toThrow("cannot be opened");

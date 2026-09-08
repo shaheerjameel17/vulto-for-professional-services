@@ -8,6 +8,7 @@ import {
   type GraphWorkerResponse,
   type GraphWorkerSuccess,
 } from "./protocol";
+import type { SyncStatusSnapshot } from "./sync/client";
 import type { GraphQuery } from "./query";
 import type { GraphQueryResult } from "./worker/storage/sqlite-graph-index";
 
@@ -61,6 +62,17 @@ export interface LocalGraphClient {
   query(query: GraphQuery): Promise<GraphQueryResult>;
   /** F127's live role-refresh entrypoint: re-validates against the server and returns the caller's current roles. */
   refreshRole(): Promise<WorkspaceRole[]>;
+  /**
+   * FDN-51 Stage 4a: start relay synchronization for the initialized,
+   * unlocked workspace. Idempotent — a second call while sync is running
+   * resolves without doing anything.
+   */
+  startSync(relayUrl: string): Promise<void>;
+  stopSync(): Promise<void>;
+  /** The last SyncStatus the Worker reported, or the initial `offline` snapshot. */
+  getSyncStatus(): SyncStatusSnapshot;
+  /** Subscribe to SyncStatus transitions (A003-T08). Returns an unsubscribe. */
+  onSyncStatusChange(listener: (status: SyncStatusSnapshot) => void): () => void;
   dispose(): Promise<void>;
 }
 
@@ -131,6 +143,14 @@ class BrowserLocalGraphClient implements LocalGraphClient {
    */
   #fatalError: Error | null = null;
   readonly #pending = new Map<string, PendingRequest>();
+  readonly #syncStatusListeners = new Set<(status: SyncStatusSnapshot) => void>();
+  #lastSyncStatus: SyncStatusSnapshot = {
+    state: "offline",
+    pendingLocalChanges: false,
+    highestKnownCursor: 0,
+    highestAckedCursor: 0,
+    lastError: null,
+  };
   readonly #workerFactory: WorkerFactory;
 
   constructor(workspaceId: string, workerFactory: WorkerFactory) {
@@ -368,6 +388,42 @@ class BrowserLocalGraphClient implements LocalGraphClient {
     return response.result.roles;
   }
 
+  async startSync(relayUrl: string): Promise<void> {
+    this.#assertInitialized();
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "start-sync",
+      relayUrl,
+    });
+    if (response.result.kind !== "sync-started") {
+      throw this.#fatal("Worker returned the wrong result for start-sync");
+    }
+  }
+
+  async stopSync(): Promise<void> {
+    this.#assertInitialized();
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "stop-sync",
+    });
+    if (response.result.kind !== "sync-stopped") {
+      throw this.#fatal("Worker returned the wrong result for stop-sync");
+    }
+  }
+
+  getSyncStatus(): SyncStatusSnapshot {
+    return this.#lastSyncStatus;
+  }
+
+  onSyncStatusChange(listener: (status: SyncStatusSnapshot) => void): () => void {
+    this.#syncStatusListeners.add(listener);
+    return () => this.#syncStatusListeners.delete(listener);
+  }
+
   /**
    * FDN-87. `VPS-F001` G04's erase, exposed so the revocation orchestration
    * FDN-63 builds has something to call. This client decides nothing about
@@ -454,6 +510,13 @@ class BrowserLocalGraphClient implements LocalGraphClient {
         this.#pending.delete(parsed.requestId);
       }
       if (parsed.error.fatal) this.#terminate(error);
+      return;
+    }
+
+    if (parsed.type === "event") {
+      // FDN-51 Stage 4a: an unsolicited SyncStatus transition, not a reply.
+      this.#lastSyncStatus = parsed.status;
+      for (const listener of this.#syncStatusListeners) listener(parsed.status);
       return;
     }
 

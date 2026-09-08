@@ -26,6 +26,15 @@ export function tier3PartitionManifestStoreKey(workspaceId: string): string {
   return `tier3-partition-manifest:${workspaceId}`;
 }
 
+/**
+ * FDN-51 Stage 4a's durable sync markers — the last acknowledged relay cursor
+ * and the outbox of local commits not yet pushed. Namespaced like the others so
+ * a `sealPayload` caller cannot collide with them.
+ */
+export function syncMarkerStoreKey(workspaceId: string, marker: string): string {
+  return `sync-marker:${workspaceId}:${marker}`;
+}
+
 /** FDN-52's wrapped Tier 1 identity record, one generation per workspace/person. */
 export function tier1IdentityStoreKey(
   workspaceId: string,

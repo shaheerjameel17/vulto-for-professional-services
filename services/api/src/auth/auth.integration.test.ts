@@ -1,11 +1,19 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { verifyPassword } from "better-auth/crypto";
 import { sql } from "drizzle-orm";
 import type { LightMyRequestResponse } from "fastify";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { db, closeDatabase } from "../db.js";
 import { buildServer } from "../server.js";
-import { account, deviceUnlockSecret, member, session, user } from "./schema.js";
+import {
+  account,
+  deviceUnlockSecret,
+  member,
+  session,
+  syncTicket,
+  user,
+} from "./schema.js";
+import { SYNC_TICKET_PREFIX, SYNC_TICKET_TTL_SECONDS } from "./sync-ticket.js";
 import {
   confirmWorkspaceAdmission,
   createPendingWorkspaceAdmission,
@@ -576,5 +584,160 @@ describe("F151 — the real revocation cascade classifies as membership-revoked"
       body.revocation?.kind,
       `must be classified membership-revoked against the real cascade: ${rolesResponse.body}`,
     ).toBe("membership-revoked");
+  });
+});
+
+describe("FDN-51 Stage 4a — POST /sync/ticket", () => {
+  const deviceId = () =>
+    `sync-ticket-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+  async function registerDevice(cookie: string, workspaceId: string, device: string) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/device-store/unlock",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId: device },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+  }
+
+  it("mints a prefixed ticket, stores only its hash, and never returns a session token", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(
+      userId,
+      `sync-ticket-ok-${randomUUID()}`,
+    );
+    const device = deviceId();
+    await registerDevice(cookie, workspaceId, device);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/sync/ticket",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId: device },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    const grant = json(response) as {
+      ticket: string;
+      expiresAt: string;
+      ttlSeconds: number;
+    };
+
+    expect(grant.ticket.startsWith(SYNC_TICKET_PREFIX)).toBe(true);
+    expect(grant.ttlSeconds).toBe(SYNC_TICKET_TTL_SECONDS);
+    expect(sensitiveKeys(grant)).toEqual([]);
+    expect(response.headers["cache-control"]).toBe("no-store");
+
+    const rows = await db
+      .select({
+        tokenHash: syncTicket.tokenHash,
+        deviceId: syncTicket.deviceId,
+        userId: syncTicket.userId,
+        workspaceId: syncTicket.workspaceId,
+      })
+      .from(syncTicket)
+      .where(sql`${syncTicket.workspaceId} = ${workspaceId}`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.tokenHash).toBe(
+      createHash("sha256").update(grant.ticket, "utf8").digest("hex"),
+    );
+    // The raw ticket is never stored.
+    expect(rows[0]!.tokenHash).not.toContain(grant.ticket);
+    expect(rows[0]!.deviceId).toBe(device);
+    expect(rows[0]!.userId).toBe(userId);
+
+    const expiresInMs = new Date(grant.expiresAt).getTime() - Date.now();
+    expect(expiresInMs).toBeGreaterThan((SYNC_TICKET_TTL_SECONDS - 60) * 1000);
+    expect(expiresInMs).toBeLessThanOrEqual(SYNC_TICKET_TTL_SECONDS * 1000);
+  });
+
+  it("replaces the device's previous ticket rather than accumulating them", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(
+      userId,
+      `sync-ticket-rotate-${randomUUID()}`,
+    );
+    const device = deviceId();
+    await registerDevice(cookie, workspaceId, device);
+
+    const mint = () =>
+      app.inject({
+        method: "POST",
+        url: "/sync/ticket",
+        headers: { origin: ORIGIN, cookie },
+        payload: { workspaceId, deviceId: device },
+      });
+    const first = json(await mint()) as { ticket: string };
+    const second = json(await mint()) as { ticket: string };
+    expect(first.ticket).not.toBe(second.ticket);
+
+    const rows = await db
+      .select({ tokenHash: syncTicket.tokenHash })
+      .from(syncTicket)
+      .where(sql`${syncTicket.deviceId} = ${device}`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.tokenHash).toBe(
+      createHash("sha256").update(second.ticket, "utf8").digest("hex"),
+    );
+  });
+
+  it("denies a device with no unlock secret", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(
+      userId,
+      `sync-ticket-nodev-${randomUUID()}`,
+    );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/sync/ticket",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId: deviceId() },
+    });
+    expect(response.statusCode).toBe(401);
+    expect(sensitiveKeys(json(response))).toEqual([]);
+  });
+
+  it("denies a revoked device", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(
+      userId,
+      `sync-ticket-revoked-${randomUUID()}`,
+    );
+    const device = deviceId();
+    await registerDevice(cookie, workspaceId, device);
+
+    await db
+      .update(deviceUnlockSecret)
+      .set({ revokedAt: new Date() })
+      .where(
+        sql`${deviceUnlockSecret.workspaceId} = ${workspaceId} and ${deviceUnlockSecret.deviceId} = ${device}`,
+      );
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/sync/ticket",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, deviceId: device },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("denies an unauthenticated caller", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const { workspaceId } = await addWorkspace(
+      userId,
+      `sync-ticket-anon-${randomUUID()}`,
+    );
+    const device = deviceId();
+    await registerDevice(cookie, workspaceId, device);
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/sync/ticket",
+      headers: { origin: ORIGIN },
+      payload: { workspaceId, deviceId: device },
+    });
+    expect(response.statusCode).toBe(401);
   });
 });

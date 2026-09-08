@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { createProtectedDocumentAddress, createProtectedReaderSet } from "./protected-document";
+import {
+  createProtectedDocumentAddress,
+  createProtectedReaderSet,
+} from "./protected-document";
 import {
   combineTier1RecoveryShares,
   decodeTier1RecoveryShare,
@@ -78,9 +81,9 @@ describe("FDN-52 F167 — Tier 1 recovery: split, combine, share encoding", () =
     const code = encodeTier1RecoveryShare(share);
     expect(verifyTier1RecoveryShareReentry(share, code)).toBe(true);
     expect(verifyTier1RecoveryShareReentry(share, code.toLowerCase())).toBe(true);
-    expect(verifyTier1RecoveryShareReentry(share, encodeTier1RecoveryShare(shares[1]!))).toBe(
-      false,
-    );
+    expect(
+      verifyTier1RecoveryShareReentry(share, encodeTier1RecoveryShare(shares[1]!)),
+    ).toBe(false);
     expect(verifyTier1RecoveryShareReentry(share, "not a share")).toBe(false);
   });
 });
@@ -127,7 +130,10 @@ describe("FDN-52 F167 — Tier 1 recovery envelope: wraps/unwraps under the reco
     // an entirely different workspace/document's split. combine() itself
     // has no way to know these came from different secrets — it will
     // produce 32 bytes regardless. The envelope must still refuse to open.
-    const wrongPairSecret = await combineTier1RecoveryShares([sharesA[0]!, sharesB[1]!]);
+    const wrongPairSecret = await combineTier1RecoveryShares([
+      sharesA[0]!,
+      sharesB[1]!,
+    ]);
     await expect(
       unwrapTier1RecoveryDocumentKey({ envelope, recoverySecret: wrongPairSecret }),
     ).rejects.toThrow();

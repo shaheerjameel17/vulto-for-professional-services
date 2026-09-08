@@ -1,0 +1,8 @@
+{
+  "description": "DeltaBatch with zero entries — a valid 'you are fully caught up' delivery",
+  "message": {
+    "type": "delta_batch",
+    "entries": []
+  },
+  "encoded_hex": "010400000000"
+}

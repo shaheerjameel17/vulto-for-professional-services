@@ -1,0 +1,12 @@
+{
+  "description": "PushDelta: one Tier 1/3 opaque update for a document, with a client correlation ref and a small payload",
+  "message": {
+    "type": "push_delta",
+    "document_id": "doc-payrun-2026-08",
+    "tier_tag": "opaque",
+    "payload_kind": "update",
+    "client_ref_hex": "a1b2c3d4",
+    "payload_hex": "cafebabe0102030405"
+  },
+  "encoded_hex": "010200000012646f632d70617972756e2d323032362d3038010000000004a1b2c3d400000009cafebabe0102030405"
+}

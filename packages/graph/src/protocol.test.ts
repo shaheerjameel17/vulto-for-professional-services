@@ -100,7 +100,7 @@ describe("graph Worker protocol", () => {
   it("rejects a protocol version mismatch", () => {
     expect(() =>
       graphWorkerResponseSchema.parse({
-        protocolVersion: 2,
+        protocolVersion: 99,
         requestId: "request-1",
         sentAt,
         type: "success",

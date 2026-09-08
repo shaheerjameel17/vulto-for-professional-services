@@ -1,0 +1,9 @@
+{
+  "description": "PullSinceCursor: replay everything in the workspace (empty document_id) after cursor 42",
+  "message": {
+    "type": "pull_since_cursor",
+    "document_id": "",
+    "after_cursor": 42
+  },
+  "encoded_hex": "010300000000000000000000002a"
+}

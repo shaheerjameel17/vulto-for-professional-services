@@ -43,6 +43,24 @@ export default defineConfig({
       },
     },
     {
+      // FDN-51 Stage 4a: the real relay, against the same test database. A
+      // browser page over HTTPS may still open `ws://localhost` — loopback is
+      // a potentially-trustworthy origin, so this is not mixed content.
+      command: "cargo run --quiet --manifest-path services/sync-engine/Cargo.toml",
+      cwd: repositoryRoot,
+      url: "http://localhost:3112/health",
+      reuseExistingServer: false,
+      timeout: 300_000,
+      env: {
+        DATABASE_URL: databaseUrl,
+        SYNC_ENGINE_HOST: "127.0.0.1",
+        SYNC_ENGINE_PORT: "3112",
+        // Short so the two-tab eviction/handover case does not wait 10s.
+        SYNC_REVALIDATION_SECS: "3",
+        RUST_LOG: "warn",
+      },
+    },
+    {
       command:
         "pnpm --filter roster-web exec next dev --port 3110 --experimental-https --experimental-https-key /tmp/vulto-fdn84-browser/key.pem --experimental-https-cert /tmp/vulto-fdn84-browser/cert.pem",
       cwd: repositoryRoot,
@@ -52,6 +70,7 @@ export default defineConfig({
       timeout: 120_000,
       env: {
         NEXT_PUBLIC_API_ORIGIN: "https://localhost:3111",
+        NEXT_PUBLIC_SYNC_RELAY_URL: "ws://localhost:3112/sync",
         VULTO_DEVICE_STORE_DIAGNOSTICS: "1",
       },
     },

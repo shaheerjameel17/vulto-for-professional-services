@@ -29,9 +29,16 @@ import { SQLiteGraphIndex, type GraphQueryResult } from "./storage/sqlite-graph-
 import {
   graphSnapshotStoreKey,
   protectedPartitionManifestStoreKey,
+  syncMarkerStoreKey,
   tier1IdentityStoreKey,
   tier3PartitionManifestStoreKey,
 } from "./storage/storage-keys";
+import {
+  WORKSPACE_GRAPH_DOCUMENT_ID,
+  WorkspaceSyncClient,
+  type SyncStatusSnapshot,
+} from "../sync/client";
+import { SyncLeadership } from "../sync/single-active";
 import {
   ProtectedPartitionRegistry,
   type ProtectedReaderCredential,
@@ -224,6 +231,11 @@ function parseTier1IdentityRecord(bytes: Uint8Array): Tier1IdentityRecord {
   return record as unknown as Tier1IdentityRecord;
 }
 
+/** A standalone `ArrayBuffer` holding exactly `bytes` — `#commitDeltaBatch` takes `ArrayBuffer`. */
+function bufferOfExact(bytes: Uint8Array): ArrayBuffer {
+  return bytes.slice().buffer;
+}
+
 function serializeTier1IdentityRecord(record: Tier1IdentityRecord): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(record));
 }
@@ -304,6 +316,21 @@ export class LocalGraphWorkerRuntime {
    * code instead of folding it into the denial's fixed message.
    */
   #lastSessionEnd: LocalSessionEndOutcome | null = null;
+
+  /** FDN-51 Stage 4a. The relay sync client — non-null only while this tab holds sync leadership. */
+  #sync: WorkspaceSyncClient | null = null;
+  /** True between `startSync` and `stopSync`, whether or not this tab currently leads. */
+  #syncActive = false;
+  /** Cross-tab sync-leadership arbitration (one Web Lock per workspace+device). */
+  #leadership: SyncLeadership | null = null;
+  #syncStatus: SyncStatusSnapshot = {
+    state: "offline",
+    pendingLocalChanges: false,
+    highestKnownCursor: 0,
+    highestAckedCursor: 0,
+    lastError: null,
+  };
+  #syncStatusListener: ((snapshot: SyncStatusSnapshot) => void) | null = null;
 
   get availability(): GraphAvailability {
     return this.#availability;
@@ -960,6 +987,7 @@ export class LocalGraphWorkerRuntime {
 
   lockSealedStore(): void {
     this.#stopRolePolling();
+    this.#stopSyncInternal();
     this.#sealedStore.lock();
     this.#apiOrigin = null;
   }
@@ -994,6 +1022,133 @@ export class LocalGraphWorkerRuntime {
       }
       throw error;
     }
+  }
+
+  // -------------------------------------------------------------------------
+  // FDN-51 Stage 4a — relay synchronization.
+  //
+  // The sync client runs here, in the Worker, next to the document and the
+  // sealed store (founder ruling). It pushes local commits to the relay,
+  // applies remote ones through the SAME un-gated merge path as any other
+  // delta (`#commitDeltaBatch`) — remote deltas are NOT re-run through
+  // VPS-A004 Gate 1, because access is decided only by the read interceptor
+  // (founder ruling 3) — and exposes a `SyncStatus` observable.
+  // -------------------------------------------------------------------------
+
+  setSyncStatusListener(
+    listener: ((snapshot: SyncStatusSnapshot) => void) | null,
+  ): void {
+    this.#syncStatusListener = listener;
+  }
+
+  getSyncStatus(): SyncStatusSnapshot {
+    return this.#syncStatus;
+  }
+
+  /**
+   * FDN-51 Stage 4a — start relay synchronization for this workspace.
+   *
+   * Leadership is arbitrated across tabs by [`SyncLeadership`]: one exclusive
+   * `navigator.locks` lock per `(workspace, device)` (see that module for
+   * why). The tab that holds it runs the client; the others queue with the
+   * status `offline` and take over when the holder releases — on `stopSync`,
+   * or when the tab closes and the browser frees the lock. Full multi-tab
+   * live convergence is out of scope (FDN-90).
+   */
+  async startSync(relayUrl: string): Promise<void> {
+    if (this.#syncActive) return;
+    const workspaceId = this.#requireWorkspaceId();
+    this.#requireDocument();
+    this.#requireIndex();
+    if (this.#apiOrigin === null) throw new SealedStoreLockedError();
+    const deviceId = await this.#sealedStore.deviceId();
+
+    this.#syncActive = true;
+    // Queued (or about to lead) — report offline until the client says otherwise.
+    this.#emitSyncStatus({
+      state: "offline",
+      pendingLocalChanges: false,
+      highestKnownCursor: 0,
+      highestAckedCursor: 0,
+      lastError: null,
+    });
+
+    this.#leadership = new SyncLeadership(
+      `vulto-sync:${workspaceId}:${deviceId}`,
+      async () => {
+        this.#sync = this.#buildSyncClient(relayUrl, deviceId);
+        await this.#sync.start();
+        return async () => {
+          const sync = this.#sync;
+          this.#sync = null;
+          await sync?.stop();
+        };
+      },
+      (globalThis.navigator as Navigator | undefined)?.locks,
+    );
+    this.#leadership.start();
+  }
+
+  #buildSyncClient(relayUrl: string, deviceId: string): WorkspaceSyncClient {
+    const workspaceId = this.#requireWorkspaceId();
+    const apiOrigin = this.#apiOrigin;
+    if (apiOrigin === null) throw new SealedStoreLockedError();
+    return new WorkspaceSyncClient({
+      relayUrl,
+      bindings: {
+        workspaceId,
+        deviceId,
+        documentId: WORKSPACE_GRAPH_DOCUMENT_ID,
+        applyRemoteDeltas: async (payloads) => {
+          await this.#commitDeltaBatch(payloads.map((p) => bufferOfExact(p)));
+        },
+        loadMarker: (key) =>
+          this.#sealedStore.get(syncMarkerStoreKey(workspaceId, key)),
+        storeMarker: (key, value) =>
+          this.#sealedStore.put(syncMarkerStoreKey(workspaceId, key), value),
+        mintTicket: async () => {
+          const response = await fetch(`${apiOrigin}/sync/ticket`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ workspaceId, deviceId }),
+          });
+          if (!response.ok) throw new Error("sync ticket denied");
+          const grant = (await response.json()) as {
+            ticket: string;
+            expiresAt: string;
+          };
+          return { ticket: grant.ticket, expiresAtMs: Date.parse(grant.expiresAt) };
+        },
+      },
+      onStatusChange: (snapshot) => this.#emitSyncStatus(snapshot),
+    });
+  }
+
+  #emitSyncStatus(snapshot: SyncStatusSnapshot): void {
+    this.#syncStatus = snapshot;
+    this.#syncStatusListener?.(snapshot);
+  }
+
+  async stopSync(): Promise<void> {
+    if (!this.#syncActive) return;
+    this.#syncActive = false;
+    const leadership = this.#leadership;
+    this.#leadership = null;
+    await leadership?.stop();
+    this.#sync = null;
+    this.#emitSyncStatus({
+      state: "offline",
+      pendingLocalChanges: false,
+      highestKnownCursor: 0,
+      highestAckedCursor: 0,
+      lastError: null,
+    });
+  }
+
+  /** Fire-and-forget teardown for the lock / purge / dispose paths. */
+  #stopSyncInternal(): void {
+    void this.stopSync();
   }
 
   /**
@@ -1355,7 +1510,21 @@ export class LocalGraphWorkerRuntime {
     this.#throwPendingFlushError();
     this.#requireDocument();
     this.#requireIndex();
-    return this.#commitDeltaBatch(deltas);
+    const committed = await this.#commitDeltaBatch(deltas);
+    this.#enqueueLocalDeltasForSync(deltas);
+    return committed;
+  }
+
+  /**
+   * FDN-51 Stage 4a. Hand a locally-authored batch's bytes to the sync
+   * outbox, if this tab currently leads sync. NOT called for deltas that
+   * arrived from the relay (`applyRemoteDeltas` merges those directly), so a
+   * delta is never pushed back to the server it came from.
+   */
+  #enqueueLocalDeltasForSync(deltas: readonly ArrayBuffer[]): void {
+    const sync = this.#sync;
+    if (sync === null) return;
+    for (const delta of deltas) sync.enqueueLocalDelta(new Uint8Array(delta));
   }
 
   /**
@@ -1412,6 +1581,7 @@ export class LocalGraphWorkerRuntime {
     if (authorization.status !== "authorized") return authorization;
 
     const committed = await this.#commitDeltaBatch(deltas);
+    this.#enqueueLocalDeltasForSync(deltas);
     return { status: "applied", ...committed };
   }
 
@@ -1639,6 +1809,7 @@ export class LocalGraphWorkerRuntime {
 
   async dispose(): Promise<void> {
     this.#stopRolePolling();
+    await this.stopSync();
     this.#apiOrigin = null;
     await this.#flushBeforeTeardown();
     await this.#index?.dispose();
@@ -1673,6 +1844,7 @@ export class LocalGraphWorkerRuntime {
    * clears disk and leaves a queryable plaintext index behind.
    */
   async #purgeInMemoryState(): Promise<void> {
+    this.#stopSyncInternal();
     await this.#index?.dispose();
     this.#index = null;
     this.#document?.free();
