@@ -107,11 +107,36 @@ this device's own deltas by origin. Covered by
 `a_pushing_device_still_receives_a_concurrent_peers_lower_cursor_delta(s)_live`
 in both suites.
 
-**Stage 4 client-contract note.** During a large replay a client should send
-`Ack{ClientCumulative}` incrementally as it applies each batch, not once at the
-end — an interrupted replay then resumes from the last applied batch instead of
-re-sending the whole backlog. The relay already supports this (every `Ack`
-advances the durable cursor); it is a client discipline to specify in Stage 4.
+### Stage 4a — the sync handshake ticket
+
+The browser's graph Worker cannot read the httpOnly Better Auth session cookie,
+so it cannot present a raw `session.token` in `Hello`. `POST /sync/ticket`
+(`services/api`, session-cookie authenticated) mints a short-lived
+(`SYNC_TICKET_TTL_SECONDS`, 600) ticket bound to one `(workspace, device)`;
+`sync_ticket` (Drizzle migration `0003_nappy_kid_colt`) stores only its
+SHA-256 hash. `PgSessionAuthorizer` recognizes a `vlt_sync_`-prefixed credential,
+looks it up by `encode(sha256($1),'hex')`, and runs the identical
+membership / status / device-revocation checks as the session-token path.
+Native clients still present a session token directly. The periodic re-auth
+(A003-T45) re-checks the ticket's own expiry, so an expired ticket evicts a live
+connection just as a revoked device does.
+
+The client (`packages/graph/src/sync/client.ts`, running in the Worker) re-mints
+and reconnects before expiry; an `unauthenticated` close is retried with a fresh
+ticket and stays offline only if that mint also fails (the device is revoked).
+
+**Incremental replay acknowledgement (Stage 3 ruling 5):** the client sends one
+`Ack{ClientCumulative}` per applied `DeltaBatch` — and only for a gapless prefix
+— so an interrupted replay resumes from the last applied batch. If a reconnect's
+`SyncStatus` reports the relay's ack ahead of the client's own cursor (the local
+store was erased or restored from an old backup), the client sends an explicit
+`PullSinceCursor` from its real cursor rather than trusting auto-replay.
+
+**Single-active-sync across tabs (Stage 4a, founder ruling):** `deviceId` is
+shared across a browser's tabs but the Worker is one per tab, so a
+`navigator.locks` exclusive lock per `(workspace, device)` gates the connection —
+only the lock holder syncs; the others stay `offline` and take over on release.
+Full multi-tab live convergence is FDN-90.
 
 ### TLS
 
