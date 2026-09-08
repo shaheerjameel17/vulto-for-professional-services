@@ -236,10 +236,26 @@ export function parseDeviceListRequest(value: unknown): DeviceListRequest {
  * device is "in" a workspace when it has unlocked it, and a person may own
  * devices that never touched this workspace.
  */
+export interface DeviceListing {
+  devices: DeviceRecord[];
+  /**
+   * Whether the caller may use the Owner-gated actions on this screen. A
+   * statement of capability for rendering, never the decision itself — every
+   * one of those endpoints re-derives it server-side. It is here because a
+   * screen that offers a non-Owner a Revoke button the server will always
+   * refuse is both a broken affordance and a leak of the Restricted state
+   * `VPS-F001` defines ("sees only their own devices, with no indication
+   * others exist").
+   */
+  viewerIsOwner: boolean;
+  /** So the screen can tell the viewer's own devices from a colleague's. */
+  viewerUserId: string;
+}
+
 export async function listDevicesForWorkspace(
   headers: Headers,
   workspaceIdInput: string,
-): Promise<DeviceRecord[]> {
+): Promise<DeviceListing> {
   const workspaceId = uuidV4Schema.parse(workspaceIdInput);
 
   let current;
@@ -269,12 +285,16 @@ export async function listDevicesForWorkspace(
     .orderBy(desc(device.lastActiveAt));
 
   const now = Date.now();
-  return rows.map((row) =>
-    toDeviceRecord(row.device, {
-      revokedInWorkspace: row.secretRevokedAt !== null,
-      now,
-    }),
-  );
+  return {
+    devices: rows.map((row) =>
+      toDeviceRecord(row.device, {
+        revokedInWorkspace: row.secretRevokedAt !== null,
+        now,
+      }),
+    ),
+    viewerIsOwner: !restrictToSelf,
+    viewerUserId: current.userId,
+  };
 }
 
 /** Non-enumerating, matching every other device checkpoint's denial shape. */

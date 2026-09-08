@@ -130,11 +130,7 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       });
     }
     try {
-      const devices = await listDevicesForWorkspace(
-        requestHeaders(request),
-        parsed.workspaceId,
-      );
-      return { devices };
+      return await listDevicesForWorkspace(requestHeaders(request), parsed.workspaceId);
     } catch (error) {
       if (error instanceof DeviceListDeniedError) {
         return reply.code(401).send({ error: error.message });

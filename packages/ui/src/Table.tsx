@@ -36,6 +36,26 @@ export type TableColumn<T> = {
    * be dropped onto them. A directory whose name column can be pushed into
    * the middle has stopped being a directory. */
   pinned?: boolean;
+  /**
+   * FDN-63. Hides the column below a breakpoint, header and cells together.
+   *
+   * Several `VPS-` feature specs state a responsive drop ORDER for a table —
+   * `VPS-F001`'s Devices "drops `registered`, then `platform`" — and until
+   * now there was no way to express that except a `cellClassName`, which
+   * reaches the `<td>` and not the `<th>` and so left a floating header over
+   * a column that was no longer there.
+   *
+   * A closed set of two breakpoints rather than an arbitrary class, so this
+   * stays a design-system decision: a caller cannot smuggle a bespoke
+   * viewport rule through it.
+   */
+  hideBelow?: "lg" | "xl";
+};
+
+/** Tailwind needs whole class names, so these cannot be interpolated. */
+const HIDE_BELOW: Record<NonNullable<TableColumn<unknown>["hideBelow"]>, string> = {
+  lg: "hidden lg:table-cell",
+  xl: "hidden xl:table-cell",
 };
 
 export type TableProps<T> = {
@@ -231,6 +251,7 @@ export function Table<T>({
                     movable && "cursor-grab touch-none",
                     reorder.dragging === column.key && "opacity-40",
                     "motion-fast transition-colors",
+                    column.hideBelow && HIDE_BELOW[column.hideBelow],
                   )}
                 >
                   {/*
@@ -313,6 +334,7 @@ export function Table<T>({
                       onRowClick && "group-hover:bg-bg-hover",
                       selected && "bg-bg-active",
                       column.align === "right" ? "text-right" : "text-left",
+                      column.hideBelow && HIDE_BELOW[column.hideBelow],
                       column.cellClassName,
                     )}
                   >

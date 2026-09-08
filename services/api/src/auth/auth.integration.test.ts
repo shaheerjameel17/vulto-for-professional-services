@@ -829,6 +829,11 @@ describe("FDN-63 — device registration and per-workspace listing", () => {
       (d) => d.deviceId,
     );
     expect(memberSeen).toEqual([memberDevice]);
+    expect(
+      json(ownerList).viewerIsOwner,
+      "the listing states the caller's Owner capability so the screen need not guess",
+    ).toBe(true);
+    expect(json(memberList).viewerIsOwner).toBe(false);
   });
 });
 
