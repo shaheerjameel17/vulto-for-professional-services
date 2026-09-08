@@ -137,6 +137,8 @@ User, Workspace, WorkspaceMembership and Device are registered in [[VPS-A002_Mas
 
 Device carries: `device_id`, `user_id`, `device_name`, `platform`, `application` (default `VultoRoster`), `push_token` (nullable, mobile only, invalidated on revocation), `registered_at`, `last_active_at`, `is_revoked`.
 
+**Device, like Workspace and WorkspaceMembership, is a Better Auth control-plane record whose local graph-node projection is deferred to [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]/FDN-85.** FDN-63 implements it as a Postgres `device` table carrying the fields above, distinct from [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s per-workspace `device_unlock_secret`: one identity row per `(user, application)`, one unlock secret per workspace under it. Device trust, the online unlock gate and the revocation signal read this row and the server session grant, not a graph node. Recorded as F189. The Devices management screen below is built by FDN-63 as a standalone session-gated route ahead of the full application shell (F190).
+
 ### Sync behavior
 
 User, WorkspaceMembership and Device are Tier 0. Workspace's display fields are Tier 0; its administrative fields are Tier 2. None require end-to-end encryption. The local store's AES-256 encryption, unlocked through a server-authorized session checkpoint per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], is what protects a lost device, independent of any node's tier. The encrypted store remains locked after every cold restart until that online checkpoint succeeds; afterward the complete product operates offline until the next cold restart.
