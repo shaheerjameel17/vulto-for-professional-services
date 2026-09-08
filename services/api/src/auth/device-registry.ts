@@ -6,11 +6,11 @@ import {
   type DeviceApplication,
   type DevicePlatform,
 } from "@vulto/schema";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { recordTrustEvent } from "./device-trust-log.js";
-import { device, deviceUnlockSecret } from "./schema.js";
+import { device, deviceTrustEvent, deviceUnlockSecret } from "./schema.js";
 import {
   requireCurrentWorkspaceSession,
   UnauthorizedWorkspaceSessionError,
@@ -28,6 +28,36 @@ import {
  */
 
 const DEVICE_ID_BYTES = 24;
+
+/**
+ * FDN-63 Stage 5. How long a device may go without a successful authorized
+ * checkpoint before it is *surfaced* as stale.
+ *
+ * Not read from any specification — `VPS-F001` names no staleness window, so
+ * this is reasoned about the way `FLUSH_DEBOUNCE_MS` and
+ * `ROLE_REFRESH_POLL_INTERVAL_MS` were, and recorded here rather than left
+ * as a bare number. Thirty days is long enough that ordinary absence — a
+ * holiday, parental leave, a secondary laptop used monthly — does not flag a
+ * healthy device and train an Owner to ignore the column, and short enough
+ * that a genuinely lost device surfaces inside a review cycle rather than a
+ * year later. Approved by the founder at the FDN-63 plan checkpoint.
+ *
+ * **This is a display fact, not an authorization one.** Staleness grants
+ * nothing and takes nothing away: it is derived at read from `last_active_at`
+ * and never stored (the never-store-what-can-be-derived rule), and the only
+ * thing that acts on it is a human deciding whether to revoke.
+ */
+export const DEVICE_STALE_AFTER_MS = 30 * 24 * 60 * 60 * 1000;
+
+/**
+ * How stale `last_active_at` must be before a checkpoint bothers writing it
+ * again. The role-refresh poll runs every 15 seconds per unlocked Worker;
+ * without this every device would rewrite its own row four times a minute
+ * forever to move a value nothing reads at that resolution. Five minutes is
+ * far finer than the thirty-day window above needs, and turns the write into
+ * a rounding error.
+ */
+const ACTIVITY_WRITE_INTERVAL_MS = 5 * 60 * 1000;
 
 /** Non-enumerating, mirroring the unlock/revoke checkpoints' own denial shape. */
 export class DeviceRegistrationDeniedError extends Error {
@@ -74,23 +104,45 @@ export interface DeviceRecord {
   deviceName: string;
   platform: string;
   application: string;
-  pushToken: string | null;
   registeredAt: string;
   lastActiveAt: string;
-  isRevoked: boolean;
+  /**
+   * F191. Two different facts, deliberately not collapsed into one flag —
+   * they have different scopes and different people may act on them:
+   *
+   * `revokedInWorkspace` — this device's unlock secret for THIS workspace is
+   * revoked. An Owner's action, undoable by an Owner when it was a staleness
+   * revocation.
+   *
+   * `retiredByOwner` — the canonical `device.is_revoked` flag: the device's
+   * own user retired it everywhere. No Owner may set or clear this.
+   */
+  revokedInWorkspace: boolean;
+  retiredByOwner: boolean;
+  /** FDN-63 Stage 5. Derived at read from `lastActiveAt`; never stored. */
+  isStale: boolean;
 }
 
-function toDeviceRecord(row: typeof device.$inferSelect): DeviceRecord {
+/**
+ * `pushToken` is deliberately absent from `DeviceRecord`. It is a bearer
+ * credential for addressing the device, it is of no use to the Devices table,
+ * and an Owner listing a colleague's devices has no business receiving it.
+ */
+function toDeviceRecord(
+  row: typeof device.$inferSelect,
+  input: { readonly revokedInWorkspace: boolean; readonly now: number },
+): DeviceRecord {
   return {
     deviceId: row.id,
     userId: row.userId,
     deviceName: row.deviceName,
     platform: row.platform,
     application: row.application,
-    pushToken: row.pushToken,
     registeredAt: row.registeredAt.toISOString(),
     lastActiveAt: row.lastActiveAt.toISOString(),
-    isRevoked: row.isRevoked,
+    revokedInWorkspace: input.revokedInWorkspace,
+    retiredByOwner: row.isRevoked,
+    isStale: input.now - row.lastActiveAt.getTime() > DEVICE_STALE_AFTER_MS,
   };
 }
 
@@ -203,7 +255,7 @@ export async function listDevicesForWorkspace(
   const restrictToSelf = !current.roles.includes("owner");
 
   const rows = await db
-    .select({ device })
+    .select({ device, secretRevokedAt: deviceUnlockSecret.revokedAt })
     .from(deviceUnlockSecret)
     .innerJoin(device, eq(device.id, deviceUnlockSecret.deviceId))
     .where(
@@ -216,7 +268,13 @@ export async function listDevicesForWorkspace(
     )
     .orderBy(desc(device.lastActiveAt));
 
-  return rows.map((row) => toDeviceRecord(row.device));
+  const now = Date.now();
+  return rows.map((row) =>
+    toDeviceRecord(row.device, {
+      revokedInWorkspace: row.secretRevokedAt !== null,
+      now,
+    }),
+  );
 }
 
 /** Non-enumerating, matching every other device checkpoint's denial shape. */
@@ -314,15 +372,148 @@ export async function retireOwnDevice(
 }
 
 /**
- * Bump `last_active_at`. Called from the unlock and role-refresh checkpoints
- * on success. A missing row is not an error here — Stage 3's unlock gate is
- * what refuses an unregistered device; this is bookkeeping, not a check.
+ * Bump `last_active_at`, at most once every `ACTIVITY_WRITE_INTERVAL_MS`.
+ * Called from the unlock and role-refresh checkpoints on success — the two
+ * places the server has just confirmed this device is authorized, which is
+ * exactly what "active" should mean here rather than "made a request."
+ *
+ * A missing row is not an error: Stage 3's unlock gate is what refuses an
+ * unregistered device; this is bookkeeping, not a check. Failures are
+ * swallowed by the callers for the same reason — a stale activity timestamp
+ * must never turn an otherwise-successful authorization into a denial.
  */
 export async function touchDeviceActivity(deviceId: string): Promise<void> {
+  const staleBefore = new Date(Date.now() - ACTIVITY_WRITE_INTERVAL_MS);
   await db
     .update(device)
     .set({ lastActiveAt: new Date() })
-    .where(eq(device.id, deviceId));
+    .where(and(eq(device.id, deviceId), lt(device.lastActiveAt, staleBefore)));
+}
+
+/** Owner-gated, like the revoke it undoes. */
+export class DeviceReapprovalDeniedError extends Error {
+  constructor() {
+    super("This session is not authorized to re-approve that device");
+  }
+}
+
+/** Raised when the revocation being undone was not a staleness one. */
+export class DeviceNotReapprovableError extends Error {
+  constructor() {
+    super("This device's revocation is not reversible");
+  }
+}
+
+export interface DeviceReapprovalRequest {
+  workspaceId: string;
+  deviceId: string;
+}
+
+export function parseDeviceReapprovalRequest(value: unknown): DeviceReapprovalRequest {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Invalid request body");
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    workspaceId: uuidV4Schema.parse(record.workspaceId),
+    deviceId: deviceIdSchema.parse(record.deviceId),
+  };
+}
+
+/**
+ * FDN-63 Stage 5 — the narrow, deliberate exception to `VPS-F001`'s
+ * "revocation is destructive, irreversible from the user's side."
+ *
+ * A staleness revocation is a *precaution*, not a judgment: an Owner saw a
+ * device that had not checked in for a month and cut it off. When the answer
+ * turns out to be parental leave rather than a lost laptop, forcing the
+ * colleague to re-register from scratch punishes the Owner for having been
+ * careful. So exactly one revocation reason is reversible, and the rule is
+ * checked against the audit log rather than inferred:
+ *
+ *   **The most recent trust event for this device in this workspace must be
+ *   `stale-flagged`.** A `revoked-explicit` (a deliberate judgment about the
+ *   device), a `revoked-membership` (the person is no longer a member) or
+ *   anything else refuses. A later event of any kind supersedes an earlier
+ *   `stale-flagged`, so a device flagged stale and *then* explicitly revoked
+ *   is not reversible.
+ *
+ * Workspace-scoped, exactly like the revoke it undoes (F191): it clears this
+ * workspace's `device_unlock_secret.revokedAt` and nothing else. It cannot
+ * clear `device.is_revoked` — an Owner has no authority to undo the device
+ * owner's own global retirement — and refuses outright while that flag is
+ * set, rather than appearing to succeed and leaving the device still locked
+ * out.
+ */
+export async function reapproveStaleDevice(
+  headers: Headers,
+  workspaceIdInput: string,
+  deviceIdInput: string,
+): Promise<void> {
+  const workspaceId = uuidV4Schema.parse(workspaceIdInput);
+  const deviceId = deviceIdSchema.parse(deviceIdInput);
+
+  let current;
+  try {
+    current = await requireCurrentWorkspaceSession(headers, workspaceId);
+  } catch (error) {
+    if (error instanceof UnauthorizedWorkspaceSessionError) {
+      throw new DeviceReapprovalDeniedError();
+    }
+    throw error;
+  }
+  if (!current.roles.includes("owner")) {
+    throw new DeviceReapprovalDeniedError();
+  }
+
+  const [identity] = await db
+    .select({ isRevoked: device.isRevoked })
+    .from(device)
+    .where(eq(device.id, deviceId))
+    .limit(1);
+  if (!identity) throw new DeviceReapprovalDeniedError();
+  if (identity.isRevoked) {
+    // The device's own user retired it. Not an Owner's to undo, and saying so
+    // is not enumeration — the caller already knows this device exists.
+    throw new DeviceNotReapprovableError();
+  }
+
+  const [latest] = await db
+    .select({ eventType: deviceTrustEvent.eventType })
+    .from(deviceTrustEvent)
+    .where(
+      and(
+        eq(deviceTrustEvent.deviceId, deviceId),
+        eq(deviceTrustEvent.workspaceId, workspaceId),
+      ),
+    )
+    .orderBy(desc(deviceTrustEvent.createdAt), desc(deviceTrustEvent.id))
+    .limit(1);
+  if (latest?.eventType !== "stale-flagged") {
+    throw new DeviceNotReapprovableError();
+  }
+
+  await db.transaction(async (tx) => {
+    const [restored] = await tx
+      .update(deviceUnlockSecret)
+      .set({ revokedAt: null })
+      .where(
+        and(
+          eq(deviceUnlockSecret.workspaceId, workspaceId),
+          eq(deviceUnlockSecret.deviceId, deviceId),
+        ),
+      )
+      .returning({ userId: deviceUnlockSecret.userId });
+    if (!restored) throw new DeviceNotReapprovableError();
+
+    await recordTrustEvent(tx, {
+      deviceId,
+      userId: restored.userId,
+      workspaceId,
+      eventType: "re-approved",
+      actorUserId: current.userId,
+    });
+  });
 }
 
 function randomBase64Url(bytes: number): string {

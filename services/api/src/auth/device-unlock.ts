@@ -3,6 +3,7 @@ import { uuidV4Schema, type WorkspaceRole } from "@vulto/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
+import { touchDeviceActivity } from "./device-registry.js";
 import { recordTrustEvent } from "./device-trust-log.js";
 import { device, deviceUnlockSecret, member, user } from "./schema.js";
 import {
@@ -152,6 +153,7 @@ export async function requestDeviceUnlock(
     if (existing.revokedAt !== null || existing.userId !== current.userId) {
       throw new DeviceUnlockDeniedError();
     }
+    await touchDeviceActivity(deviceId).catch(() => {});
     return toGrant(existing, current.roles, current.membershipId);
   }
 
@@ -341,6 +343,12 @@ export async function requestDeviceRoleRefresh(
     }
   }
 
+  // FDN-63 Stage 5. `last_active_at` means "the server last confirmed this
+  // device authorized", which is exactly this moment. Throttled inside
+  // touchDeviceActivity, and its failure must never turn a successful
+  // authorization into a denial — hence the swallowed catch.
+  if (deviceId !== undefined) await touchDeviceActivity(deviceId).catch(() => {});
+
   return { roles: current.roles, membershipId: current.membershipId };
 }
 
@@ -358,15 +366,26 @@ export class DeviceRevokeDeniedError extends Error {
 export interface DeviceRevokeRequest {
   workspaceId: string;
   deviceId: string;
+  /**
+   * FDN-63 Stage 5. `"stale"` records the revocation as `stale-flagged`
+   * rather than `revoked-explicit`, which is the one reason an Owner may
+   * later reverse (`reapproveStaleDevice`). Anything else — including an
+   * absent value — is a deliberate, irreversible judgment about the device.
+   */
+  reason?: "stale";
 }
 
 export function parseDeviceRevokeRequest(value: unknown): DeviceRevokeRequest {
   if (typeof value !== "object" || value === null)
     throw new Error("Invalid request body");
   const record = value as Record<string, unknown>;
+  if (record.reason !== undefined && record.reason !== "stale") {
+    throw new Error("Invalid revocation reason");
+  }
   return {
     workspaceId: uuidV4Schema.parse(record.workspaceId),
     deviceId: parseDeviceId(record.deviceId),
+    reason: record.reason,
   };
 }
 

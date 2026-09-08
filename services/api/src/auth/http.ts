@@ -14,12 +14,16 @@ import {
 } from "./device-unlock.js";
 import {
   DeviceListDeniedError,
+  DeviceNotReapprovableError,
+  DeviceReapprovalDeniedError,
   DeviceRegistrationDeniedError,
   DeviceRetireDeniedError,
   listDevicesForWorkspace,
   parseDeviceListRequest,
+  parseDeviceReapprovalRequest,
   parseDeviceRegistrationRequest,
   parseDeviceRetireRequest,
+  reapproveStaleDevice,
   registerDevice,
   retireOwnDevice,
 } from "./device-registry.js";
@@ -171,6 +175,43 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
     }
   });
 
+  // FDN-63 Stage 5. Undoes a STALENESS revocation only, and only in the
+  // workspace it happened in — see `reapproveStaleDevice` for why that is the
+  // single reversible reason.
+  app.post("/devices/re-approve", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string; deviceId: string };
+    try {
+      parsed = parseDeviceReapprovalRequest(request.body);
+    } catch {
+      return reply.code(401).send({
+        error: "This session is not authorized to re-approve that device",
+      });
+    }
+    try {
+      await reapproveStaleDevice(
+        requestHeaders(request),
+        parsed.workspaceId,
+        parsed.deviceId,
+      );
+      return reply.code(200).send({ reapproved: true });
+    } catch (error) {
+      if (error instanceof DeviceReapprovalDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      // 409, not 401: the caller IS authorized, and the answer is about the
+      // device's history rather than about them. Reporting it as a denial
+      // would be the F148 shape of mistake in miniature.
+      if (error instanceof DeviceNotReapprovableError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The device re-approval service is temporarily unavailable" });
+    }
+  });
+
   app.post("/device-store/unlock", async (request, reply) => {
     reply.header("cache-control", "no-store");
     let parsed: { workspaceId: string; deviceId: string };
@@ -251,7 +292,7 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
 
   app.post("/device-store/revoke", async (request, reply) => {
     reply.header("cache-control", "no-store");
-    let parsed: { workspaceId: string; deviceId: string };
+    let parsed: { workspaceId: string; deviceId: string; reason?: "stale" };
     try {
       parsed = parseDeviceRevokeRequest(request.body);
     } catch {
@@ -261,7 +302,9 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
     }
 
     try {
-      await revokeDevice(requestHeaders(request), parsed.workspaceId, parsed.deviceId);
+      await revokeDevice(requestHeaders(request), parsed.workspaceId, parsed.deviceId, {
+        stale: parsed.reason === "stale",
+      });
       return reply.code(200).send({ revoked: true });
     } catch (error) {
       if (error instanceof DeviceRevokeDeniedError) {
