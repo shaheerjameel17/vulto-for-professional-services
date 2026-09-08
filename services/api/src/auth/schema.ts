@@ -351,7 +351,7 @@ export const deviceTrustEvent = pgTable(
     index("device_trust_event_device_created_idx").on(table.deviceId, table.createdAt),
     check(
       "device_trust_event_type_check",
-      sql`${table.eventType} in ('registered', 'activity-refreshed', 'revoked-explicit', 'revoked-membership', 'stale-flagged', 're-approved')`,
+      sql`${table.eventType} in ('registered', 'activity-refreshed', 'revoked-explicit', 'revoked-membership', 'retired-by-user', 'stale-flagged', 're-approved')`,
     ),
   ],
 );

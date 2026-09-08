@@ -385,14 +385,21 @@ export function parseDeviceRevokeRequest(value: unknown): DeviceRevokeRequest {
  * device) pair succeeds silently rather than erroring, so a second click
  * on Revoke is never a visible failure.
  *
- * FDN-63: revocation now also retires the canonical `device` identity —
- * `is_revoked = true`, `push_token` cleared ("invalidated on revocation",
- * `VPS-F001`) — and records a `revoked-explicit` (or `stale-flagged`, for a
- * staleness-driven revoke) trust event, all in one transaction with the
- * unlock-secret revoke. `is_revoked` is workspace-agnostic: an Owner
- * clicking Revoke is declaring the device untrusted, and the common reasons
- * (lost, stolen, ex-employee) mean it should not retain access anywhere.
- * See F191.
+ * **STRICTLY WORKSPACE-SCOPED, and that is a founder ruling, not a
+ * detail (F191).** This writes `device_unlock_secret.revokedAt` for THIS
+ * workspace and nothing else — it deliberately does NOT touch the canonical
+ * `device` row's `is_revoked` or `push_token`, because that row spans
+ * workspaces (one per user+application, N unlock secrets under it). An
+ * Owner setting a global flag would let one tenant irreversibly destroy
+ * another tenant's local data on the same physical device, with no
+ * authority over that workspace and no visibility into it — a live risk in
+ * a product whose market is firms serving multiple clients. Global
+ * retirement exists, but only the device's own user may invoke it:
+ * `retireOwnDevice` in `device-registry.ts`.
+ *
+ * A `revoked-explicit` (or `stale-flagged`, for a staleness-driven revoke)
+ * trust event is written in the same transaction, carrying this workspace's
+ * id so the audit trail records the scope the action actually had.
  */
 export async function revokeDevice(
   headers: Headers,
@@ -417,7 +424,7 @@ export async function revokeDevice(
   }
 
   await db.transaction(async (tx) => {
-    await tx
+    const [revoked] = await tx
       .update(deviceUnlockSecret)
       .set({ revokedAt: new Date() })
       .where(
@@ -426,20 +433,15 @@ export async function revokeDevice(
           eq(deviceUnlockSecret.deviceId, deviceId),
           isNull(deviceUnlockSecret.revokedAt),
         ),
-      );
+      )
+      .returning({ userId: deviceUnlockSecret.userId });
 
-    const [retired] = await tx
-      .update(device)
-      .set({ isRevoked: true, pushToken: null })
-      .where(and(eq(device.id, deviceId), eq(device.isRevoked, false)))
-      .returning({ userId: device.userId });
-
-    // Only log when this call is the one that flipped the flag — idempotent
-    // re-revocation writes no second audit row.
-    if (retired) {
+    // Only log when this call is the one that revoked something — an
+    // idempotent second click writes no second audit row.
+    if (revoked) {
       await recordTrustEvent(tx, {
         deviceId,
-        userId: retired.userId,
+        userId: revoked.userId,
         workspaceId,
         eventType: options?.stale ? "stale-flagged" : "revoked-explicit",
         actorUserId: current.userId,

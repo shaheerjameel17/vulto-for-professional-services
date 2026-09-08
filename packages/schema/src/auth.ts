@@ -81,16 +81,23 @@ export const deviceRegistrationInputSchema = z.object({
 export type DeviceRegistrationInput = z.input<typeof deviceRegistrationInputSchema>;
 
 /**
- * The reason a device was revoked, carried on the append-only trust-event log
- * (FDN-63 Stage 2). `stale-flagged` alone is recoverable by an Owner
- * re-approval; `revoked-explicit` and `revoked-membership` are irreversible
- * from every side (`VPS-F001`).
+ * The reason a device's trust changed, carried on the append-only trust-event
+ * log (FDN-63 Stage 2). The scope each one had matters as much as the reason,
+ * so they are not interchangeable (F191):
+ *
+ * - `revoked-explicit` / `revoked-membership` / `stale-flagged` are
+ *   **workspace-scoped** — the event row carries the workspace whose unlock
+ *   secret was revoked, and the device keeps its access to every other one.
+ * - `retired-by-user` is **global**, and only the device's own user may
+ *   cause it: `device.is_revoked` set, every unlock secret revoked.
+ * - `stale-flagged` alone is recoverable by an Owner re-approval.
  */
 export const DEVICE_TRUST_EVENT_TYPES = [
   "registered",
   "activity-refreshed",
   "revoked-explicit",
   "revoked-membership",
+  "retired-by-user",
   "stale-flagged",
   "re-approved",
 ] as const;

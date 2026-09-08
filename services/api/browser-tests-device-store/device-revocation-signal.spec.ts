@@ -344,12 +344,14 @@ test.describe("F151 — the enumerable revocation signal", () => {
         "the membership itself must still be active — only device B was revoked",
       ).toBe("active");
 
-      // FDN-63: the revoke endpoint retires the canonical Device identity row,
-      // not only its per-workspace unlock secret — and leaves device A alone.
+      // F191: an Owner's Revoke is workspace-scoped. It revokes this
+      // workspace's unlock secret and leaves the GLOBAL identity row alone,
+      // so the same physical device keeps whatever access it holds in other
+      // workspaces this Owner has no authority over.
       expect(
         await deviceRowRevoked(sql, deviceB),
-        "device B's canonical identity row must be is_revoked",
-      ).toBe(true);
+        "an Owner's revoke must not set the workspace-spanning is_revoked flag",
+      ).toBe(false);
       expect(
         await deviceRowRevoked(sql, deviceA),
         "device A's identity row must be untouched",
@@ -680,13 +682,15 @@ test.describe("F151 — the enumerable revocation signal", () => {
   });
 
   /**
-   * FDN-63 — the canonical Device identity flag is load-bearing on its own.
-   * With the per-workspace unlock secret left intact, retiring the `device`
-   * row (`is_revoked = true`) alone must still classify `device-revoked` and
-   * erase — proving the signal is keyed off the identity record, not only the
-   * secret the merged F151 slice used.
+   * FDN-63 / F191 — the canonical Device identity flag is load-bearing on its
+   * own. This is the state `retireOwnDevice` produces (the device's own user
+   * retiring it globally): `is_revoked = true` with the per-workspace unlock
+   * secret left intact. It must still classify `device-revoked` and erase,
+   * proving the signal reads the identity record and not only the secret the
+   * merged F151 slice used. Set directly here so the assertion isolates the
+   * flag; the endpoint that sets it is proven in `auth.integration.test.ts`.
    */
-  test("retiring the canonical device row alone classifies device-revoked and erases", async ({
+  test("a globally retired device row alone classifies device-revoked and erases", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -740,6 +744,128 @@ test.describe("F151 — the enumerable revocation signal", () => {
       expect(
         unlockedVisible,
         "a retired device must not reopen the workspace it was erased from",
+      ).toBe(false);
+    } finally {
+      await context?.close();
+      await sql.end();
+    }
+  });
+
+  /**
+   * F191's flagship pair, on the real stack, in one browser context — so it
+   * is genuinely ONE device (one IndexedDB, one generated deviceId) holding
+   * two workspaces, which is the situation the founder ruling exists for.
+   *
+   * Half one: an Owner of workspace A revokes the device. Workspace B's
+   * store must survive intact and still open. A global flag set by A's Owner
+   * would destroy B's local data with no authority over B — the cross-tenant
+   * hole this ruling closed.
+   *
+   * Half two: the device's own user retires it globally. Now BOTH are gone.
+   * Same device, same content, different authorized actor — and only the
+   * second one may reach across workspaces.
+   */
+  test("an Owner's revoke spares the device's other workspace; the user's own retirement does not", async ({
+    browser,
+  }) => {
+    test.setTimeout(240_000);
+    const sql = postgres(databaseUrl, { max: 1 });
+    let context: BrowserContext | undefined;
+    try {
+      if (!sharedAccount) throw new Error("shared account was not created");
+      context = await browser.newContext({ ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      await context.addCookies(sharedAccount.cookies);
+
+      const workspaceA = await createOwnerWorkspace(sql, sharedAccount.userId);
+      const workspaceB = await createOwnerWorkspace(sql, sharedAccount.userId);
+
+      // One device, both workspaces, real content seeded in each.
+      await openWorkspace(page, workspaceA);
+      expect((await tryInitialize(page)).opened).toBe(true);
+      expect(await seedDurably(page, workspaceA)).toBe("applied");
+
+      await openWorkspace(page, workspaceB);
+      expect((await tryInitialize(page)).opened).toBe(true);
+      expect(await seedDurably(page, workspaceB)).toBe("applied");
+
+      const inA = await unlockedDeviceIds(sql, workspaceA);
+      const inB = await unlockedDeviceIds(sql, workspaceB);
+      expect(
+        inA.length === 1 && inB.length === 1 && inA[0] === inB[0],
+        `both workspaces must be held by the SAME device for this to prove anything: ${JSON.stringify({ inA, inB })}`,
+      ).toBe(true);
+      const deviceId = inA[0]!;
+
+      // --- half one: workspace A's Owner revokes ---------------------------
+      const revoke = await context.request.post(`${apiOrigin}/device-store/revoke`, {
+        data: { workspaceId: workspaceA, deviceId },
+      });
+      expect(revoke.status()).toBe(200);
+
+      expect(
+        await deviceRowRevoked(sql, deviceId),
+        "F191 — a workspace Owner may not set the workspace-spanning retirement flag",
+      ).toBe(false);
+      const [secretB] = await sql<
+        { revokedAt: Date | null }[]
+      >`select "revoked_at" as "revokedAt" from "device_unlock_secret"
+        where "workspace_id" = ${workspaceB} and "device_id" = ${deviceId}`;
+      expect(
+        secretB?.revokedAt,
+        "and may not revoke the device's secret for a workspace they have no authority over",
+      ).toBeNull();
+
+      // Workspace B still opens, with its content intact.
+      await openWorkspace(page, workspaceB);
+      expect(
+        (await tryInitialize(page)).opened,
+        "workspace B must still open after workspace A revoked this device",
+      ).toBe(true);
+      const survivedB = await employeeVisible(page, SEED_EMPLOYEE);
+      console.log(
+        `F191/cross-workspace: B after A's revoke = ${JSON.stringify(survivedB)}`,
+      );
+      expect(
+        survivedB.present,
+        `F191 — one tenant's revoke must not destroy another tenant's local data: ${JSON.stringify(survivedB)}`,
+      ).toBe(true);
+
+      // --- half two: the device's own user retires it globally -------------
+      const retire = await context.request.post(`${apiOrigin}/devices/retire`, {
+        data: { deviceId },
+      });
+      expect(retire.status(), "the device's own user may retire it").toBe(200);
+      expect(await deviceRowRevoked(sql, deviceId)).toBe(true);
+
+      const observed = await page.evaluate(async () => {
+        const api = window.__vultoGraphPersistenceDiagnostics;
+        if (!api) throw new Error("diagnostics API missing");
+        let refreshError: string | undefined;
+        try {
+          await api.refreshRole();
+        } catch (error: unknown) {
+          refreshError = error instanceof Error ? error.message : String(error);
+        }
+        return { refreshError, locked: (await api.getStatus()).locked };
+      });
+      console.log(
+        `F191/cross-workspace: B after self-retirement = ${JSON.stringify(observed)}`,
+      );
+      expect(
+        observed.locked,
+        "a globally retired device locks in workspace B too",
+      ).toBe(true);
+      expect(observed.refreshError).toContain("device-revoked");
+
+      await openWorkspace(page, workspaceB).catch(() => undefined);
+      const stillOpens = await page
+        .getByTestId("graph-persistence-unlocked")
+        .isVisible()
+        .catch(() => false);
+      expect(
+        stillOpens,
+        "and cannot reopen workspace B — global retirement really is global",
       ).toBe(false);
     } finally {
       await context?.close();

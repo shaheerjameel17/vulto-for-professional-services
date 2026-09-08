@@ -4,7 +4,7 @@ import {
   uuidV4Schema,
   type WorkspaceRole,
 } from "@vulto/schema";
-import { and, eq, gt, inArray } from "drizzle-orm";
+import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { recordTrustEvent } from "./device-trust-log.js";
@@ -180,10 +180,13 @@ export async function revokeWorkspaceAdmission(
         ),
       );
 
-    // FDN-63. The same cascade retires the canonical Device identities: every
-    // device of this user that had touched this workspace. `membership-revoked`,
-    // not `revoked-explicit` — the classifier's priority rule (F151).
-    await retireDevicesForWorkspaceUser(
+    // FDN-63. Audit only. The cascade above is workspace-scoped — it revokes
+    // this user's unlock secrets IN THIS WORKSPACE — and per F191 it must
+    // stay that way: the canonical `device.is_revoked` flag spans workspaces,
+    // so setting it here would let an offboarding from one client destroy the
+    // same laptop's local data for another client. Only the device's own user
+    // may retire a device globally (`retireOwnDevice`).
+    await recordMembershipRevocationEvents(
       transaction,
       revoked.workspaceId,
       revoked.userId,
@@ -192,37 +195,35 @@ export async function revokeWorkspaceAdmission(
 }
 
 /**
- * FDN-63 cascade helper. Marks every device of `userId` that holds an unlock
- * secret in `workspaceId` as revoked and records one `revoked-membership`
- * trust event per device. Idempotent — a device already `is_revoked` is
- * skipped and writes no audit row.
+ * FDN-63 cascade helper. Writes one `revoked-membership` trust event per
+ * device of `userId` that holds an unlock secret in `workspaceId`, so the
+ * audit trail records which devices this workspace-scoped revocation
+ * actually reached. Writes no `device` state — see F191.
+ *
+ * Joined against `device` rather than read from `device_unlock_secret`
+ * alone, because the trust log has a foreign key to `device.id`: a legacy
+ * secret with no identity row must be skipped, not made to abort the
+ * revocation transaction.
  */
-async function retireDevicesForWorkspaceUser(
+async function recordMembershipRevocationEvents(
   transaction: Parameters<Parameters<(typeof db)["transaction"]>[0]>[0],
   workspaceId: string,
   userId: string,
 ): Promise<void> {
-  const secrets = await transaction
+  const affected = await transaction
     .select({ deviceId: deviceUnlockSecret.deviceId })
     .from(deviceUnlockSecret)
+    .innerJoin(device, eq(device.id, deviceUnlockSecret.deviceId))
     .where(
       and(
         eq(deviceUnlockSecret.workspaceId, workspaceId),
         eq(deviceUnlockSecret.userId, userId),
       ),
     );
-  const deviceIds = secrets.map((row) => row.deviceId);
-  if (deviceIds.length === 0) return;
 
-  const retired = await transaction
-    .update(device)
-    .set({ isRevoked: true, pushToken: null })
-    .where(and(inArray(device.id, deviceIds), eq(device.isRevoked, false)))
-    .returning({ id: device.id });
-
-  for (const row of retired) {
+  for (const row of affected) {
     await recordTrustEvent(transaction, {
-      deviceId: row.id,
+      deviceId: row.deviceId,
       userId,
       workspaceId,
       eventType: "revoked-membership",
@@ -266,15 +267,18 @@ export async function suspendUserAndRevokeSessions(userIdInput: string): Promise
       .set({ revokedAt: new Date() })
       .where(eq(deviceUnlockSecret.userId, userId));
 
-    // FDN-63. Account suspension retires every one of this user's devices,
-    // in every workspace — this codebase already treats suspension as
-    // offboarding (F151), so the classifier folds it into `membership-revoked`.
-    const retired = await transaction
-      .update(device)
-      .set({ isRevoked: true, pushToken: null })
-      .where(and(eq(device.userId, userId), eq(device.isRevoked, false)))
-      .returning({ id: device.id });
-    for (const row of retired) {
+    // FDN-63. Audit only, for the same reason the membership cascade is
+    // (F191). Suspension already revokes every unlock secret this user holds
+    // in every workspace, so access is blocked everywhere without touching
+    // `device.is_revoked` — and leaving that flag alone keeps it meaning
+    // exactly one thing: the device's own user retired it. This codebase
+    // treats suspension as offboarding (F151), so the classifier reports
+    // `membership-revoked`, which the audit rows match.
+    const owned = await transaction
+      .select({ id: device.id })
+      .from(device)
+      .where(eq(device.userId, userId));
+    for (const row of owned) {
       await recordTrustEvent(transaction, {
         deviceId: row.id,
         userId,

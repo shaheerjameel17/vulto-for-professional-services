@@ -15,10 +15,13 @@ import {
 import {
   DeviceListDeniedError,
   DeviceRegistrationDeniedError,
+  DeviceRetireDeniedError,
   listDevicesForWorkspace,
   parseDeviceListRequest,
   parseDeviceRegistrationRequest,
+  parseDeviceRetireRequest,
   registerDevice,
+  retireOwnDevice,
 } from "./device-registry.js";
 import {
   enforcePasskeyRegistrationRateLimit,
@@ -136,6 +139,35 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return reply
         .code(503)
         .send({ error: "The device list service is temporarily unavailable" });
+    }
+  });
+
+  // F191. Global retirement, and deliberately NOT under `/device-store/`
+  // beside the workspace-scoped Owner revoke: they are two different
+  // authorized actions with two different scopes, and a reader should not
+  // have to check the handler to tell which is which. This one takes no
+  // workspaceId, because it has no workspace scope.
+  app.post("/devices/retire", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { deviceId: string };
+    try {
+      parsed = parseDeviceRetireRequest(request.body);
+    } catch {
+      return reply
+        .code(401)
+        .send({ error: "This session is not authorized to retire that device" });
+    }
+    try {
+      await retireOwnDevice(requestHeaders(request), parsed.deviceId);
+      return reply.code(200).send({ retired: true });
+    } catch (error) {
+      if (error instanceof DeviceRetireDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The device retirement service is temporarily unavailable" });
     }
   });
 

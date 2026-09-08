@@ -219,6 +219,100 @@ export async function listDevicesForWorkspace(
   return rows.map((row) => toDeviceRecord(row.device));
 }
 
+/** Non-enumerating, matching every other device checkpoint's denial shape. */
+export class DeviceRetireDeniedError extends Error {
+  constructor() {
+    super("This session is not authorized to retire that device");
+  }
+}
+
+export interface DeviceRetireRequest {
+  deviceId: string;
+}
+
+export function parseDeviceRetireRequest(value: unknown): DeviceRetireRequest {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Invalid request body");
+  }
+  const record = value as Record<string, unknown>;
+  return { deviceId: deviceIdSchema.parse(record.deviceId) };
+}
+
+/**
+ * FDN-63 / F191 — **global** device retirement, and the only path that may
+ * set `device.is_revoked`.
+ *
+ * The founder ruling this implements: a workspace Owner's Revoke action is
+ * strictly workspace-scoped (`revokeDevice` in `device-unlock.ts`), because
+ * the `device` row spans workspaces and letting one tenant flip a global
+ * flag would destroy another tenant's local data on the same physical
+ * device — with no authority over that workspace and no visibility into it.
+ * Retiring a device everywhere is a real and necessary action (a lost or
+ * stolen laptop), but it belongs to **the person who owns the device**, who
+ * is the only party with authority over every workspace it holds.
+ *
+ * Authorized by the account session alone — no workspace context, because
+ * the action deliberately has no workspace scope. The device must belong to
+ * the session's own user; an Owner cannot reach another user's device here.
+ *
+ * Revokes every unlock secret the device holds, in every workspace, in the
+ * same transaction, so the effect is immediate rather than waiting on the
+ * `is_revoked` gate alone. Clears `push_token` per `VPS-F001` ("invalidated
+ * on revocation"). Idempotent: retiring an already-retired device succeeds
+ * and writes no second audit row.
+ */
+export async function retireOwnDevice(
+  headers: Headers,
+  deviceIdInput: string,
+): Promise<void> {
+  const deviceId = deviceIdSchema.parse(deviceIdInput);
+
+  const session = await auth.api.getSession({
+    headers,
+    query: { disableCookieCache: true },
+  });
+  if (!session) throw new DeviceRetireDeniedError();
+  const userId = session.user.id;
+
+  const [owned] = await db
+    .select({ id: device.id })
+    .from(device)
+    .where(and(eq(device.id, deviceId), eq(device.userId, userId)))
+    .limit(1);
+  // Non-enumerating: "not yours" and "does not exist" are one answer.
+  if (!owned) throw new DeviceRetireDeniedError();
+
+  await db.transaction(async (tx) => {
+    const [retired] = await tx
+      .update(device)
+      .set({ isRevoked: true, pushToken: null })
+      .where(
+        and(
+          eq(device.id, deviceId),
+          eq(device.userId, userId),
+          eq(device.isRevoked, false),
+        ),
+      )
+      .returning({ id: device.id });
+
+    // Every workspace, deliberately — this is what "global" means, and it is
+    // sound precisely because the acting user owns the device in all of them.
+    await tx
+      .update(deviceUnlockSecret)
+      .set({ revokedAt: new Date() })
+      .where(eq(deviceUnlockSecret.deviceId, deviceId));
+
+    if (retired) {
+      await recordTrustEvent(tx, {
+        deviceId,
+        userId,
+        eventType: "retired-by-user",
+        actorUserId: userId,
+      });
+    }
+  });
+}
+
 /**
  * Bump `last_active_at`. Called from the unlock and role-refresh checkpoints
  * on success. A missing row is not an error here — Stage 3's unlock gate is

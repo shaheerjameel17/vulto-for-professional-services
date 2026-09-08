@@ -43,6 +43,13 @@
       "when": 1788874424141,
       "tag": "0005_outstanding_lilith",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788884707043,
+      "tag": "0006_flimsy_iron_monger",
+      "breakpoints": true
     }
   ]
 }
