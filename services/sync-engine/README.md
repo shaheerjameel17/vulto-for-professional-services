@@ -36,34 +36,47 @@ the device's last acknowledgement before live traffic (A003-T40); then serve —
 device (A003-T44), `Ack{ClientCumulative}` → record, `PullSinceCursor` →
 `DeltaBatch`. The relay never inspects a payload (A003-T43).
 
-### Stage 2a (current)
+### Stage 2a — server + protocol + seams
 
-The server, the state machine, the `SessionAuthorizer` seam, and in-memory
-fan-out. Persistence is behind the `DeltaStore` trait; `MemoryDeltaStore` is the
-only implementation. `tests/relay_ws.rs` proves it end-to-end with real
-WebSocket clients and no database.
+The server, the state machine, the `SessionAuthorizer` / `DeltaStore` seams, and
+in-memory fan-out. `tests/relay_ws.rs` proves it end-to-end with real WebSocket
+clients and no database (`MemoryDeltaStore` + `StaticSessionAuthorizer`).
 
-**The binary is not production-wired yet.** With no `DATABASE_URL` it runs on
-`MemoryDeltaStore` + an empty `StaticSessionAuthorizer`, so `/health` works and
-`/sync` speaks the full protocol but rejects every real connection as
-unauthenticated. Stage 2b supplies `PgDeltaStore` and `PgSessionAuthorizer`.
+### Stage 2b — PostgreSQL backend (`src/relay/pg.rs`)
 
-### Stage 2b (next)
+`PgDeltaStore` and `PgSessionAuthorizer`, `sqlx` as a runtime query executor only
+(no `query!` macro, no `sqlx::migrate!`). `append` assigns the delivery cursor
+from a per-workspace locked counter (`SELECT … FOR UPDATE`) inside the same
+transaction that commits the delta row, so cursor order equals commit order
+(A003-T39). `PgSessionAuthorizer` re-derives Better Auth's admission logic
+(`services/api/src/auth/workspace-session.ts`) plus a
+`device_unlock_secret.revoked_at IS NULL` check. **The shipped binary requires
+`DATABASE_URL`** and refuses to start without it.
 
-`PgDeltaStore` (`sync_delta` / `sync_device_ack` / `sync_workspace_cursor`
-tables; the cursor drawn from a per-workspace locked counter inside the same
-transaction that commits the delta row, so cursor order equals commit order —
-A003-T39), `PgSessionAuthorizer` (the admission query from
-`services/api/src/auth/workspace-session.ts` plus a device-revocation check),
-optional in-process TLS, and the real-Postgres integration proof.
+The schema is **Drizzle-managed** — `services/api/src/auth/schema.ts`, migration
+`0002_wealthy_magneto` (`sync_workspace_cursor` / `sync_delta` /
+`sync_device_ack`). Run `pnpm --filter @vulto/api db:migrate` before first start;
+the compose `sync-engine` service gets `DATABASE_URL` from the compose environment.
+
+`tests/relay_pg.rs` (six `#[ignore]` cases) runs against a real, ephemeral
+PostgreSQL via `pnpm test:sync-engine`: concurrent-push gapless commit order,
+durable reconnect replay across a simulated relay restart, revoked-device denial,
+expired-session denial, `sync_delta.payload` byte-for-byte opacity + log scrub,
+and the SQL-level ack clamp.
+
+### TLS
+
+Deferred (A003-T36): the local relay runs plain `ws://`. Production terminates
+TLS 1.3 at least at the ingress; optional in-process `wss://` would be gated on
+`SYNC_TLS_CERT_PATH` / `SYNC_TLS_KEY_PATH`.
 
 ## Dependencies
 
-The `[lib]` and the shipped binary's runtime have **no** standard
-`[dependencies]`. The relay's Tokio/Axum/tracing dependencies live under
+The `[lib]` and the shipped binary's **runtime `[dependencies]` are empty**. The
+relay's Tokio / Axum / tracing / sqlx dependencies live under
 `[target.'cfg(not(target_arch = "wasm32"))'.dependencies]`, so
 `cargo build --lib --target wasm32-unknown-unknown` still resolves to zero
-dependencies and the three-target build holds. `serde`/`serde_json` (vector
+dependencies and the three-target build holds. `serde` / `serde_json` (vector
 fixtures) and `tokio-tungstenite` (test clients) are `[dev-dependencies]`.
 
 ## Build

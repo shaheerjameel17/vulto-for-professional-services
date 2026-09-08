@@ -43,8 +43,7 @@ async fn health() -> impl IntoResponse {
         concat!(
             "{\"service\":\"vulto-sync-engine\",",
             "\"status\":\"relay running\",",
-            "\"transport\":\"websocket\",",
-            "\"stage\":\"FDN-51 Stage 2a\"}"
+            "\"transport\":\"websocket\"}"
         ),
     )
 }

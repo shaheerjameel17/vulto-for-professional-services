@@ -48,18 +48,23 @@ services:
       timeout: 5s
       retries: 20
 
-  # The reason this service is here at all is A001-T04. It has no sync logic.
-  # See services/sync-engine/README.md.
+  # The Vulto sync engine relay (FDN-51). See services/sync-engine/README.md.
   sync-engine:
     build:
       context: ./services/sync-engine
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    environment:
+      # Inside the compose network Postgres is the sibling host `postgres`.
+      DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto
+      RUST_LOG: info
+    depends_on:
+      postgres:
+        condition: service_healthy
     # No healthcheck. The runtime image carries a binary and libc and nothing
     # else — no curl, no wget — because A007-T17 keeps build and probe tooling
-    # out of a service image. Adding a probe utility to a placeholder would be
-    # surface for no benefit. `docker compose up --wait` therefore waits on
+    # out of a service image. `docker compose up --wait` therefore waits on
     # postgres and redis; the sync engine is confirmed by `curl :8080/health`
     # from the host, which is documented in docs/Bootstrap.md.
 

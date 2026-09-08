@@ -24,12 +24,14 @@
 pub mod config;
 pub mod connection;
 pub mod hub;
+pub mod pg;
 pub mod server;
 pub mod session;
 pub mod store;
 
 pub use config::RelayConfig;
 pub use hub::Hubs;
+pub use pg::{connect_pool, PgDeltaStore, PgSessionAuthorizer};
 pub use server::{serve, serve_ephemeral, RelayState};
 pub use session::{AuthorizedSession, SessionAuthorizer, SessionDenied, StaticSessionAuthorizer};
 pub use store::{DeltaStore, MemoryDeltaStore, NewDelta, StoreError};

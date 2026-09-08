@@ -59,6 +59,17 @@ axum = { version = "0.8", features = ["ws"] }
 async-trait = "0.1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+# PostgreSQL, runtime query API only — no `macros`/`migrate` features, so the
+# build needs no database and no `.sqlx` cache (Drizzle owns the schema; see
+# services/api/src/auth/schema.ts). Stage 2b.
+sqlx = { version = "0.8", default-features = false, features = [
+  "runtime-tokio",
+  "postgres",
+  "uuid",
+  "chrono",
+] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", default-features = false, features = ["std", "clock"] }
 
 [dev-dependencies]
 # Test-only, never in the shipped binary.

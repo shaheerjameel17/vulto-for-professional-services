@@ -15,6 +15,13 @@
       "when": 1786994904722,
       "tag": "0001_strong_bucky",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1788835395308,
+      "tag": "0002_wealthy_magneto",
+      "breakpoints": true
     }
   ]
 }

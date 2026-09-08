@@ -17,6 +17,8 @@
     "test:worker-browser": "playwright test --config packages/graph/playwright.config.ts",
     "pretest:device-store-browser": "pnpm --dir services/api exec tsx src/test/browser-setup-device-store.ts",
     "test:device-store-browser": "playwright test --config services/api/playwright.device-store.config.ts",
+    "pretest:sync-engine": "pnpm --dir services/api exec tsx src/test/sync-engine-setup.ts",
+    "test:sync-engine": "services/sync-engine/scripts/pg-tests.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "stack:up": "docker compose up -d --wait",

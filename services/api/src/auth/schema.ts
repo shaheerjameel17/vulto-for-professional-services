@@ -1,7 +1,10 @@
 import { relations, sql } from "drizzle-orm";
 import {
   check,
+  customType,
   pgTable,
+  primaryKey,
+  smallint,
   text,
   bigint,
   timestamp,
@@ -11,6 +14,13 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+
+/** Postgres `bytea`. drizzle-orm has no first-class helper for it. */
+const bytea = customType<{ data: Buffer; notNull: true; default: false }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const user = pgTable(
   "user",
@@ -341,3 +351,87 @@ export const passkeyRelations = relations(passkey, ({ one }) => ({
     references: [user.id],
   }),
 }));
+
+/**
+ * FDN-51 sync-engine tables.
+ *
+ * These three tables are written and read **exclusively by `services/sync-engine`**
+ * (the Rust relay), which reaches Postgres with `sqlx`. Drizzle owns their DDL
+ * only, because the repo has one schema-management story and one migration
+ * lineage against the shared database — nothing in TypeScript queries them.
+ *
+ * `sync_delta` holds the durable, opaque delta log; `sync_workspace_cursor` is
+ * the per-workspace locked counter that assigns each delta its delivery cursor
+ * at transaction commit (A003-T39); `sync_device_ack` is per-device
+ * acknowledgement state with a SQL-level monotonic clamp.
+ */
+
+export const syncWorkspaceCursor = pgTable(
+  "sync_workspace_cursor",
+  {
+    workspaceId: uuid("workspace_id")
+      .primaryKey()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    lastCursor: bigint("last_cursor", { mode: "bigint" })
+      .default(sql`0`)
+      .notNull(),
+  },
+  (table) => [
+    check(
+      "sync_workspace_cursor_last_cursor_non_negative",
+      sql`${table.lastCursor} >= 0`,
+    ),
+  ],
+);
+
+export const syncDelta = pgTable(
+  "sync_delta",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    cursor: bigint("cursor", { mode: "bigint" }).notNull(),
+    documentId: text("document_id").notNull(),
+    tierTag: smallint("tier_tag").notNull(),
+    payloadKind: smallint("payload_kind").notNull(),
+    originDeviceId: text("origin_device_id").notNull(),
+    // `clock_timestamp()`, not `now()`: `now()` is the transaction-start time,
+    // which under concurrent appends does not track the order the per-workspace
+    // cursor lock is acquired. `clock_timestamp()` is evaluated at insert time,
+    // after the `SELECT ... FOR UPDATE`, so committed_at order tracks cursor
+    // order (A003-T39).
+    committedAt: timestamp("committed_at", { withTimezone: true })
+      .default(sql`clock_timestamp()`)
+      .notNull(),
+    payload: bytea("payload").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.cursor] }),
+    index("sync_delta_workspace_document_cursor_idx").on(
+      table.workspaceId,
+      table.documentId,
+      table.cursor,
+    ),
+    check("sync_delta_cursor_positive", sql`${table.cursor} > 0`),
+    check("sync_delta_tier_tag_check", sql`${table.tierTag} in (0, 1)`),
+    check("sync_delta_payload_kind_check", sql`${table.payloadKind} in (0, 1)`),
+  ],
+);
+
+export const syncDeviceAck = pgTable(
+  "sync_device_ack",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    ackedCursor: bigint("acked_cursor", { mode: "bigint" })
+      .default(sql`0`)
+      .notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.deviceId] }),
+    check("sync_device_ack_acked_cursor_non_negative", sql`${table.ackedCursor} >= 0`),
+  ],
+);

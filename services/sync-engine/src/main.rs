@@ -1,29 +1,29 @@
 //! The Vulto sync engine relay server — FDN-51 Stage 2.
 //!
 //! A thin entry point. Everything is in `vulto_sync_engine::relay`; this file
-//! reads the environment, chooses the backends, and runs the server.
+//! reads the environment, connects PostgreSQL, and runs the server.
 //!
-//! # Stage 2a
+//! # Backends (Stage 2b)
 //!
-//! The relay runs against an **in-memory** delta log ([`MemoryDeltaStore`]) and
-//! a **static, empty** session authorizer ([`StaticSessionAuthorizer`]). It is a
-//! functional relay for local protocol exercise and the `tests/relay_ws.rs`
-//! proof — `/health` responds, `/sync` upgrades and speaks the full protocol —
-//! but it rejects every real connection with `Error { unauthenticated }` until
-//! Stage 2b wires `PgSessionAuthorizer` and `PgDeltaStore` against PostgreSQL.
+//! `PgDeltaStore` (durable delta log, per-workspace locked-counter cursor at
+//! commit — A003-T39) and `PgSessionAuthorizer` (the admission query against the
+//! live Better Auth / membership tables plus a device-revocation check).
+//! `DATABASE_URL` is **required** — the relay refuses to start without it. The
+//! schema is owned by Drizzle (`services/api/src/auth/schema.ts`); run
+//! `pnpm --filter @vulto/api db:migrate` before first start.
 //!
 //! `A007-T17` still holds: the Dockerfile builds this in a discarded builder
 //! stage and ships only the binary.
 
+use std::process::ExitCode;
 use std::sync::Arc;
 
-use vulto_sync_engine::relay::Hubs;
 use vulto_sync_engine::relay::{
-    serve, MemoryDeltaStore, RelayConfig, RelayState, StaticSessionAuthorizer,
+    connect_pool, serve, Hubs, PgDeltaStore, PgSessionAuthorizer, RelayConfig, RelayState,
 };
 
 #[tokio::main]
-async fn main() {
+async fn main() -> ExitCode {
     tracing_subscriber::fmt()
         .json()
         .with_env_filter(
@@ -34,21 +34,32 @@ async fn main() {
 
     let config = RelayConfig::from_env();
 
-    if config.database_url.is_none() {
-        tracing::warn!(
-            "DATABASE_URL is not set — running with the in-memory Stage 2a backend; \
-             connections will be rejected as unauthenticated until Stage 2b"
+    let Some(database_url) = config.database_url.clone() else {
+        tracing::error!(
+            "DATABASE_URL is not set. The relay needs PostgreSQL for its durable delta \
+             log and session authorization. In the compose stack it comes from the \
+             service environment; locally, set it in .env at the repository root."
         );
-    }
+        return ExitCode::FAILURE;
+    };
+
+    let pool = match connect_pool(&database_url).await {
+        Ok(pool) => pool,
+        Err(error) => {
+            tracing::error!(%error, "could not connect to PostgreSQL");
+            return ExitCode::FAILURE;
+        }
+    };
 
     let state = RelayState {
-        store: Arc::new(MemoryDeltaStore::default()),
-        authorizer: Arc::new(StaticSessionAuthorizer::new()),
+        store: Arc::new(PgDeltaStore::new(pool.clone())),
+        authorizer: Arc::new(PgSessionAuthorizer::new(pool)),
         hubs: Hubs::default(),
     };
 
     if let Err(error) = serve(&config, state).await {
         tracing::error!(%error, "relay server exited with error");
-        std::process::exit(1);
+        return ExitCode::FAILURE;
     }
+    ExitCode::SUCCESS
 }
