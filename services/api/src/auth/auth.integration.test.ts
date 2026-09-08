@@ -8,6 +8,7 @@ import { buildServer } from "../server.js";
 import {
   account,
   device,
+  deviceTrustEvent,
   deviceUnlockSecret,
   member,
   session,
@@ -119,9 +120,9 @@ beforeEach(async () => {
   await db.execute(
     sql.raw(`
     TRUNCATE TABLE
-      "device", "passkey_registration_context", "passkey", "invitation",
-      "member", "organization", "session", "account", "verification", "user",
-      "rate_limit"
+      "device_trust_event", "device", "passkey_registration_context", "passkey",
+      "invitation", "member", "organization", "session", "account",
+      "verification", "user", "rate_limit"
     RESTART IDENTITY CASCADE
   `),
   );
@@ -639,6 +640,25 @@ describe("FDN-63 — device registration and per-workspace listing", () => {
     });
     expect(row?.registeredAt).toBeInstanceOf(Date);
     expect(row?.lastActiveAt).toBeInstanceOf(Date);
+  });
+
+  it("writes an append-only 'registered' trust event on first registration only", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const id = deviceId();
+    await register(cookie, { deviceId: id, deviceName: "Device", platform: "web" });
+    await register(cookie, { deviceId: id, deviceName: "Renamed", platform: "web" });
+
+    const events = await db
+      .select()
+      .from(deviceTrustEvent)
+      .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      eventType: "registered",
+      userId,
+      actorUserId: userId,
+      workspaceId: null,
+    });
   });
 
   it("mints a device id when the client supplies none", async () => {

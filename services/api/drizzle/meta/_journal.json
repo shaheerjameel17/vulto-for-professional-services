@@ -36,6 +36,13 @@
       "when": 1788874165102,
       "tag": "0004_curvy_raider",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1788874424141,
+      "tag": "0005_outstanding_lilith",
+      "breakpoints": true
     }
   ]
 }

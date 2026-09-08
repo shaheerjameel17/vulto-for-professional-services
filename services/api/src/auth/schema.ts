@@ -319,8 +319,54 @@ export const device = pgTable(
   ],
 );
 
-export const deviceRelations = relations(device, ({ one }) => ({
+/**
+ * FDN-63 Stage 2 — the append-only device/trust audit log. Every registration,
+ * trust decision and revocation event lands here. No `UPDATE`/`DELETE` path
+ * exists in application code. `workspaceId` is nullable because registration is
+ * workspace-agnostic; `actorUserId` is nullable for system/cascade events.
+ */
+export const deviceTrustEvent = pgTable(
+  "device_trust_event",
+  {
+    id: uuid("id")
+      .default(sql`pg_catalog.gen_random_uuid()`)
+      .primaryKey(),
+    deviceId: text("device_id")
+      .notNull()
+      .references(() => device.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    workspaceId: uuid("workspace_id").references(() => organization.id, {
+      onDelete: "cascade",
+    }),
+    eventType: text("event_type").notNull(),
+    actorUserId: uuid("actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    reason: text("reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("device_trust_event_device_created_idx").on(table.deviceId, table.createdAt),
+    check(
+      "device_trust_event_type_check",
+      sql`${table.eventType} in ('registered', 'activity-refreshed', 'revoked-explicit', 'revoked-membership', 'stale-flagged', 're-approved')`,
+    ),
+  ],
+);
+
+export const deviceRelations = relations(device, ({ one, many }) => ({
   user: one(user, { fields: [device.userId], references: [user.id] }),
+  trustEvents: many(deviceTrustEvent),
+}));
+
+export const deviceTrustEventRelations = relations(deviceTrustEvent, ({ one }) => ({
+  device: one(device, {
+    fields: [deviceTrustEvent.deviceId],
+    references: [device.id],
+  }),
+  user: one(user, { fields: [deviceTrustEvent.userId], references: [user.id] }),
 }));
 
 export const deviceUnlockSecretRelations = relations(deviceUnlockSecret, ({ one }) => ({
