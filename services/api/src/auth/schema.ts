@@ -276,6 +276,53 @@ export const deviceUnlockSecret = pgTable(
   ],
 );
 
+/**
+ * FDN-63 / `VPS-F001` — the canonical Device identity record.
+ *
+ * Distinct from `deviceUnlockSecret` above: that is `VPS-A003`'s per-workspace
+ * unlock half (one row per `(workspace, device)`), this is the device's own
+ * identity (one row per `(user, application)`, `id` shared across every
+ * workspace that device unlocks). It is a Better Auth control-plane row, not a
+ * graph node — the `Device` node projection is deferred alongside
+ * Workspace/WorkspaceMembership per F189. Carries exactly `VPS-F001`'s nine
+ * fields; revocation *time* and *actor* live on `deviceTrustEvent`, not here.
+ *
+ * `id` is the device-generated identifier (`SealedStore.deviceId()`), the same
+ * value `deviceUnlockSecret.deviceId` carries — not a UUID.
+ */
+export const device = pgTable(
+  "device",
+  {
+    id: text("id").primaryKey(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    deviceName: text("device_name").notNull(),
+    platform: text("platform").notNull(),
+    application: text("application").default("VultoRoster").notNull(),
+    pushToken: text("push_token"),
+    registeredAt: timestamp("registered_at").defaultNow().notNull(),
+    lastActiveAt: timestamp("last_active_at").defaultNow().notNull(),
+    isRevoked: boolean("is_revoked").default(false).notNull(),
+  },
+  (table) => [
+    index("device_userId_idx").on(table.userId),
+    check("device_id_format_check", sql`${table.id} ~ '^[A-Za-z0-9_-]{16,128}$'`),
+    check(
+      "device_platform_check",
+      sql`${table.platform} in ('web', 'ios', 'android', 'macos', 'windows')`,
+    ),
+    check(
+      "device_application_check",
+      sql`${table.application} in ('VultoRoster', 'VultoAccounts', 'VultoProjects', 'VultoLegal')`,
+    ),
+  ],
+);
+
+export const deviceRelations = relations(device, ({ one }) => ({
+  user: one(user, { fields: [device.userId], references: [user.id] }),
+}));
+
 export const deviceUnlockSecretRelations = relations(deviceUnlockSecret, ({ one }) => ({
   organization: one(organization, {
     fields: [deviceUnlockSecret.workspaceId],

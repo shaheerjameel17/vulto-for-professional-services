@@ -13,6 +13,14 @@ import {
   revokeDevice,
 } from "./device-unlock.js";
 import {
+  DeviceListDeniedError,
+  DeviceRegistrationDeniedError,
+  listDevicesForWorkspace,
+  parseDeviceListRequest,
+  parseDeviceRegistrationRequest,
+  registerDevice,
+} from "./device-registry.js";
+import {
   enforcePasskeyRegistrationRateLimit,
   issuePasskeyRegistrationContext,
   PasskeyRegistrationRateLimitError,
@@ -80,6 +88,54 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
         return reply.code(429).send({ error: "Registration could not be started" });
       }
       return reply.code(400).send({ error: "Registration could not be started" });
+    }
+  });
+
+  app.post("/devices/register", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed;
+    try {
+      parsed = parseDeviceRegistrationRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "The device could not be registered" });
+    }
+    try {
+      return await registerDevice(requestHeaders(request), parsed);
+    } catch (error) {
+      if (error instanceof DeviceRegistrationDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The device registration service is temporarily unavailable" });
+    }
+  });
+
+  app.post("/devices/list", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string };
+    try {
+      parsed = parseDeviceListRequest(request.body);
+    } catch {
+      return reply.code(401).send({
+        error: "This session is not authorized to list devices in this workspace",
+      });
+    }
+    try {
+      const devices = await listDevicesForWorkspace(
+        requestHeaders(request),
+        parsed.workspaceId,
+      );
+      return { devices };
+    } catch (error) {
+      if (error instanceof DeviceListDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The device list service is temporarily unavailable" });
     }
   });
 

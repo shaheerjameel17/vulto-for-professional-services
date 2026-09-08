@@ -7,6 +7,7 @@ import { db, closeDatabase } from "../db.js";
 import { buildServer } from "../server.js";
 import {
   account,
+  device,
   deviceUnlockSecret,
   member,
   session,
@@ -90,7 +91,12 @@ async function createSignedInAccount(email = `${randomUUID()}@example.com`) {
   return { cookie, email, userId: createdUser.id, response };
 }
 
-async function addWorkspace(userId: string, slug: string, confirmed = true) {
+async function addWorkspace(
+  userId: string,
+  slug: string,
+  confirmed = true,
+  roles: ("owner" | "hr-admin" | "finance-admin" | "team-member")[] = ["team-member"],
+) {
   const workspaceId = randomUUID();
   const membershipId = randomUUID();
   await createPendingWorkspaceAdmission({
@@ -99,7 +105,7 @@ async function addWorkspace(userId: string, slug: string, confirmed = true) {
     workspaceSlug: slug,
     membershipId,
     userId,
-    roles: ["team-member"],
+    roles,
   });
   if (confirmed) await confirmWorkspaceAdmission(membershipId);
   return { workspaceId, membershipId };
@@ -113,8 +119,8 @@ beforeEach(async () => {
   await db.execute(
     sql.raw(`
     TRUNCATE TABLE
-      "passkey_registration_context", "passkey", "invitation", "member",
-      "organization", "session", "account", "verification", "user",
+      "device", "passkey_registration_context", "passkey", "invitation",
+      "member", "organization", "session", "account", "verification", "user",
       "rate_limit"
     RESTART IDENTITY CASCADE
   `),
@@ -584,6 +590,211 @@ describe("F151 — the real revocation cascade classifies as membership-revoked"
       body.revocation?.kind,
       `must be classified membership-revoked against the real cascade: ${rolesResponse.body}`,
     ).toBe("membership-revoked");
+  });
+});
+
+/**
+ * FDN-63 Stage 1 — the canonical Device identity record. `VPS-F001`'s
+ * `device.register` / `device.listForWorkspace` contract, over real Postgres.
+ */
+describe("FDN-63 — device registration and per-workspace listing", () => {
+  const deviceId = () => `fdn63-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+  async function register(
+    cookie: string,
+    body: Record<string, unknown>,
+  ): Promise<LightMyRequestResponse> {
+    return app.inject({
+      method: "POST",
+      url: "/devices/register",
+      headers: { origin: ORIGIN, cookie },
+      payload: body,
+    });
+  }
+
+  it("registers a device carrying VPS-F001's nine fields and echoes its id", async () => {
+    const { cookie, userId } = await createSignedInAccount();
+    const id = deviceId();
+    const response = await register(cookie, {
+      deviceId: id,
+      deviceName: "Avery's MacBook",
+      platform: "macos",
+      pushToken: null,
+    });
+    expect(response.statusCode).toBe(200);
+    expect(json(response).deviceId).toBe(id);
+
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(row).toMatchObject({
+      id,
+      userId,
+      deviceName: "Avery's MacBook",
+      platform: "macos",
+      application: "VultoRoster",
+      pushToken: null,
+      isRevoked: false,
+    });
+    expect(row?.registeredAt).toBeInstanceOf(Date);
+    expect(row?.lastActiveAt).toBeInstanceOf(Date);
+  });
+
+  it("mints a device id when the client supplies none", async () => {
+    const { cookie } = await createSignedInAccount();
+    const response = await register(cookie, {
+      deviceName: "First device",
+      platform: "web",
+    });
+    expect(response.statusCode).toBe(200);
+    const minted = json(response).deviceId as string;
+    expect(minted).toMatch(/^[A-Za-z0-9_-]{16,128}$/);
+  });
+
+  it("is idempotent: re-registering updates mutable fields and keeps one row", async () => {
+    const { cookie } = await createSignedInAccount();
+    const id = deviceId();
+    await register(cookie, { deviceId: id, deviceName: "Old name", platform: "web" });
+    const second = await register(cookie, {
+      deviceId: id,
+      deviceName: "New name",
+      platform: "web",
+      pushToken: "apns-token",
+    });
+    expect(second.statusCode).toBe(200);
+
+    const rows = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.deviceName).toBe("New name");
+    expect(rows[0]?.pushToken).toBe("apns-token");
+  });
+
+  it("re-registering does NOT clear is_revoked", async () => {
+    const { cookie } = await createSignedInAccount();
+    const id = deviceId();
+    await register(cookie, { deviceId: id, deviceName: "Device", platform: "web" });
+    await db
+      .update(device)
+      .set({ isRevoked: true })
+      .where(sql`${device.id} = ${id}`);
+    await register(cookie, {
+      deviceId: id,
+      deviceName: "Device renamed",
+      platform: "web",
+    });
+    const [row] = await db
+      .select()
+      .from(device)
+      .where(sql`${device.id} = ${id}`);
+    expect(row?.isRevoked).toBe(true);
+  });
+
+  it("rejects an unauthenticated registration", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/devices/register",
+      headers: { origin: ORIGIN },
+      payload: { deviceName: "No session", platform: "web" },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("rejects registering a device id that belongs to another user", async () => {
+    const first = await createSignedInAccount();
+    const id = deviceId();
+    await register(first.cookie, { deviceId: id, deviceName: "Mine", platform: "web" });
+
+    const second = await createSignedInAccount();
+    const response = await register(second.cookie, {
+      deviceId: id,
+      deviceName: "Not yours",
+      platform: "web",
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("rejects an invalid platform", async () => {
+    const { cookie } = await createSignedInAccount();
+    const response = await register(cookie, {
+      deviceName: "Bad platform",
+      platform: "toaster",
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  it("an Owner lists every device with an unlock secret in the workspace; a non-Owner sees only their own", async () => {
+    const owner = await createSignedInAccount();
+    const workspace = await addWorkspace(
+      owner.userId,
+      `fdn63-list-${randomUUID()}`,
+      true,
+      ["owner"],
+    );
+
+    const member2 = await createSignedInAccount();
+    await db.insert(member).values({
+      id: randomUUID(),
+      organizationId: workspace.workspaceId,
+      userId: member2.userId,
+      role: "team-member",
+      createdAt: new Date(),
+      status: "active",
+      projectionState: "confirmed",
+    });
+
+    const ownerDevice = deviceId();
+    const memberDevice = deviceId();
+    await register(owner.cookie, {
+      deviceId: ownerDevice,
+      deviceName: "Owner laptop",
+      platform: "macos",
+    });
+    await register(member2.cookie, {
+      deviceId: memberDevice,
+      deviceName: "Member laptop",
+      platform: "windows",
+    });
+    // Both devices "enter" the workspace by unlocking it.
+    for (const [cookie, id] of [
+      [owner.cookie, ownerDevice],
+      [member2.cookie, memberDevice],
+    ] as const) {
+      const unlock = await app.inject({
+        method: "POST",
+        url: "/device-store/unlock",
+        headers: { origin: ORIGIN, cookie },
+        payload: { workspaceId: workspace.workspaceId, deviceId: id },
+      });
+      expect(unlock.statusCode).toBe(200);
+    }
+
+    const ownerList = await app.inject({
+      method: "POST",
+      url: "/devices/list",
+      headers: { origin: ORIGIN, cookie: owner.cookie },
+      payload: { workspaceId: workspace.workspaceId },
+    });
+    expect(ownerList.statusCode).toBe(200);
+    const ownerSeen = (json(ownerList).devices as { deviceId: string }[]).map(
+      (d) => d.deviceId,
+    );
+    expect(ownerSeen.sort()).toEqual([ownerDevice, memberDevice].sort());
+
+    const memberList = await app.inject({
+      method: "POST",
+      url: "/devices/list",
+      headers: { origin: ORIGIN, cookie: member2.cookie },
+      payload: { workspaceId: workspace.workspaceId },
+    });
+    expect(memberList.statusCode).toBe(200);
+    const memberSeen = (json(memberList).devices as { deviceId: string }[]).map(
+      (d) => d.deviceId,
+    );
+    expect(memberSeen).toEqual([memberDevice]);
   });
 });
 

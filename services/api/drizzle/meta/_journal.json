@@ -29,6 +29,13 @@
       "when": 1788845445644,
       "tag": "0003_nappy_kid_colt",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1788874165102,
+      "tag": "0004_curvy_raider",
+      "breakpoints": true
     }
   ]
 }
