@@ -567,3 +567,46 @@ export const syncTicket = pgTable(
     index("sync_ticket_expires_at_idx").on(table.expiresAt),
   ],
 );
+
+/**
+ * FDN-85 — the single-use, server-signed grant that authorizes the graph
+ * Worker's privileged workspace-admission projection command, and nothing
+ * else.
+ *
+ * A brand-new workspace's membership is `pending`, so `requireCurrentWorkspaceSession`
+ * refuses it and the graph Worker cannot run an ordinary `mutate`. This
+ * grant is the one narrow way in: minted by a cookie-authenticated route
+ * only after `createPendingWorkspaceAdmission` has recorded the pending row,
+ * bound to exactly one `(workspace, device, membership)`, hash-stored, and
+ * consumed on first use. It carries the server half of the device's
+ * unlock secret (provisioned here for the founding workspace) so the Worker
+ * can open the sealed store for the projection write. It authorizes no other
+ * write shape — the projection command it unlocks constructs the five
+ * reserved-type records itself and accepts no arbitrary fragment input.
+ *
+ * The raw grant string is returned to the caller once and never stored;
+ * only its SHA-256 hash lands here.
+ */
+export const workspaceProjectionGrant = pgTable(
+  "workspace_projection_grant",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    membershipId: uuid("membership_id")
+      .notNull()
+      .references(() => member.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("workspace_projection_grant_membership_idx").on(table.membershipId),
+    index("workspace_projection_grant_expires_at_idx").on(table.expiresAt),
+  ],
+);

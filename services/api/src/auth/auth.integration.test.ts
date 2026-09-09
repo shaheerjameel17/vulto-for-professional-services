@@ -11,10 +11,18 @@ import {
   deviceTrustEvent,
   deviceUnlockSecret,
   member,
+  organization,
   session,
   syncTicket,
   user,
+  workspaceProjectionGrant,
 } from "./schema.js";
+import {
+  consumeWorkspaceProjectionGrant,
+  PROJECTION_GRANT_PREFIX,
+  membershipInEdgeId,
+  membershipOfEdgeId,
+} from "./workspace-projection.js";
 import { SYNC_TICKET_PREFIX, SYNC_TICKET_TTL_SECONDS } from "./sync-ticket.js";
 import {
   confirmWorkspaceAdmission,
@@ -1514,6 +1522,184 @@ describe("FDN-51 Stage 4a — POST /sync/ticket", () => {
       headers: { origin: ORIGIN },
       payload: { workspaceId, deviceId: device },
     });
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+describe("FDN-85 Stage 2 — the founding workspace-admission projection", () => {
+  const deviceId = () => `fdn85-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+  async function createWorkspace(cookie: string, device: string, name = "Northwind") {
+    return app.inject({
+      method: "POST",
+      url: "/workspace/create",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceName: name, deviceId: device },
+    });
+  }
+
+  it("records a pending owner admission and returns a single-use grant with the server half and deterministic edge ids", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+
+    const response = await createWorkspace(cookie, device);
+    expect(response.statusCode, response.body).toBe(200);
+    const grant = json(response) as Record<string, unknown>;
+
+    expect(String(grant.grant).startsWith(PROJECTION_GRANT_PREFIX)).toBe(true);
+    expect(typeof grant.serverHalf).toBe("string");
+    expect(grant.roles).toEqual(["owner"]);
+    expect(grant.membershipOfEdgeId).toBe(
+      membershipOfEdgeId(String(grant.membershipId)),
+    );
+    expect(grant.membershipInEdgeId).toBe(
+      membershipInEdgeId(String(grant.membershipId)),
+    );
+    expect(sensitiveKeys(grant)).toEqual([]);
+    expect(response.headers["cache-control"]).toBe("no-store");
+
+    // The membership is pending/pending — not yet admitting.
+    const [row] = await db
+      .select({ status: member.status, projectionState: member.projectionState })
+      .from(member)
+      .where(sql`${member.id} = ${String(grant.membershipId)}`);
+    expect(row).toMatchObject({ status: "pending", projectionState: "pending" });
+
+    const [org] = await db
+      .select({ status: organization.status })
+      .from(organization)
+      .where(sql`${organization.id} = ${String(grant.workspaceId)}`);
+    expect(org?.status).toBe("active");
+
+    // Only the grant's hash is stored, and it is unconsumed.
+    const [stored] = await db
+      .select({
+        tokenHash: workspaceProjectionGrant.tokenHash,
+        consumedAt: workspaceProjectionGrant.consumedAt,
+      })
+      .from(workspaceProjectionGrant)
+      .where(
+        sql`${workspaceProjectionGrant.membershipId} = ${String(grant.membershipId)}`,
+      );
+    expect(stored?.tokenHash).toBe(
+      createHash("sha256").update(String(grant.grant), "utf8").digest("hex"),
+    );
+    expect(stored?.consumedAt).toBeNull();
+  });
+
+  it("requireCurrentWorkspaceSession refuses the pending membership until the projection is confirmed, then admits it", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const grant = json(await createWorkspace(cookie, device)) as Record<
+      string,
+      unknown
+    >;
+    const workspaceId = String(grant.workspaceId);
+    const membershipId = String(grant.membershipId);
+
+    await expect(
+      requireCurrentWorkspaceSession(headers(cookie), workspaceId),
+    ).rejects.toBeInstanceOf(UnauthorizedWorkspaceSessionError);
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: "/workspace/confirm-projection",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, membershipId },
+    });
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+
+    const admitted = await requireCurrentWorkspaceSession(headers(cookie), workspaceId);
+    expect(admitted.roles).toEqual(["owner"]);
+    expect(admitted.membershipId).toBe(membershipId);
+  });
+
+  it("the projection grant is single-use — a second consume is denied", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const grant = json(await createWorkspace(cookie, device)) as Record<
+      string,
+      unknown
+    >;
+    const bound = {
+      workspaceId: String(grant.workspaceId),
+      membershipId: String(grant.membershipId),
+      deviceId: device,
+    };
+
+    const first = await consumeWorkspaceProjectionGrant(String(grant.grant), bound);
+    expect(first.userId).toBeTruthy();
+    expect(first.roles).toEqual(["owner"]);
+
+    await expect(
+      consumeWorkspaceProjectionGrant(String(grant.grant), bound),
+    ).rejects.toThrow();
+  });
+
+  it("a grant bound to a different device cannot be consumed", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const grant = json(await createWorkspace(cookie, device)) as Record<
+      string,
+      unknown
+    >;
+
+    await expect(
+      consumeWorkspaceProjectionGrant(String(grant.grant), {
+        workspaceId: String(grant.workspaceId),
+        membershipId: String(grant.membershipId),
+        deviceId: `${device}-other`,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("a membership revoked between mint and confirm cannot be projected — confirm and consume both fail closed", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const grant = json(await createWorkspace(cookie, device)) as Record<
+      string,
+      unknown
+    >;
+    const workspaceId = String(grant.workspaceId);
+    const membershipId = String(grant.membershipId);
+
+    await revokeWorkspaceAdmission(membershipId);
+
+    await expect(
+      consumeWorkspaceProjectionGrant(String(grant.grant), {
+        workspaceId,
+        membershipId,
+        deviceId: device,
+      }),
+    ).rejects.toThrow();
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: "/workspace/confirm-projection",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, membershipId },
+    });
+    expect(confirmed.statusCode).toBe(401);
+  });
+
+  it("denies an unauthenticated workspace.create", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/workspace/create",
+      headers: { origin: ORIGIN },
+      payload: { workspaceName: "Nope", deviceId: deviceId() },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("denies workspace.create for a device with no registration row", async () => {
+    const { cookie } = await createSignedInAccount();
+    const response = await createWorkspace(cookie, deviceId());
     expect(response.statusCode).toBe(401);
   });
 });

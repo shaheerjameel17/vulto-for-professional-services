@@ -37,6 +37,13 @@ import {
   parseSyncTicketRequest,
   SyncTicketDeniedError,
 } from "./sync-ticket.js";
+import {
+  confirmWorkspaceProjection,
+  createWorkspaceWithPendingOwner,
+  parseConfirmProjectionRequest,
+  parseCreateWorkspaceRequest,
+  WorkspaceProjectionDeniedError,
+} from "./workspace-projection.js";
 
 const SENSITIVE_RESPONSE_KEYS = new Set([
   "token",
@@ -340,6 +347,55 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return reply
         .code(503)
         .send({ error: "The sync ticket service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-85 — the server half of the `workspace.create` matched pair. Records
+  // the pending owner admission and returns a single-use projection grant the
+  // caller's graph Worker consumes to write the five reserved-type records.
+  app.post("/workspace/create", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceName: string; deviceId: string };
+    try {
+      parsed = parseCreateWorkspaceRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid workspace creation request" });
+    }
+    try {
+      return await createWorkspaceWithPendingOwner(requestHeaders(request), parsed);
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The workspace creation service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-85 — the reconciler's confirmation call. The graph Worker invokes this
+  // once the projection delta is durably flushed locally; it flips the
+  // membership to active/confirmed via FDN-60's CAS.
+  app.post("/workspace/confirm-projection", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string; membershipId: string };
+    try {
+      parsed = parseConfirmProjectionRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid confirmation request" });
+    }
+    try {
+      await confirmWorkspaceProjection(requestHeaders(request), parsed);
+      return reply.code(200).send({ confirmed: true });
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply.code(503).send({
+        error: "The projection confirmation service is temporarily unavailable",
+      });
     }
   });
 
