@@ -35,6 +35,16 @@ export function syncMarkerStoreKey(workspaceId: string, marker: string): string 
   return `sync-marker:${workspaceId}:${marker}`;
 }
 
+/**
+ * FDN-85 — the durable outbox of workspace-projection commits (admission,
+ * revocation, role change) that are flushed locally but not yet confirmed
+ * against the server. A kill-and-restart reconciliation reads this to finish
+ * a projection whose `confirm` never landed. Namespaced like the others.
+ */
+export function workspaceProjectionOutboxStoreKey(workspaceId: string): string {
+  return `workspace-projection-outbox:${workspaceId}`;
+}
+
 /** FDN-52's wrapped Tier 1 identity record, one generation per workspace/person. */
 export function tier1IdentityStoreKey(
   workspaceId: string,

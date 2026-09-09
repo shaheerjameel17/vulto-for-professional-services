@@ -42,6 +42,8 @@ import {
   confirmRevocationProjectionForActor,
   confirmRoleChangeProjection,
   confirmWorkspaceProjection,
+  consumeMembershipTransitionGrant,
+  consumeWorkspaceProjectionGrant,
   createWorkspaceWithPendingOwner,
   mintMembershipTransitionGrant,
   parseChangeRoleRequest,
@@ -380,6 +382,59 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return reply
         .code(503)
         .send({ error: "The workspace creation service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-85 — mark a projection grant consumed and return its validated
+  // context. The client calls this immediately before running the projection
+  // command; the single-use CAS lives here.
+  app.post("/workspace/consume-projection-grant", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    try {
+      const consumed = await consumeWorkspaceProjectionGrant(String(body.grant), {
+        workspaceId: String(body.workspaceId),
+        membershipId: String(body.membershipId),
+        deviceId: String(body.deviceId),
+      });
+      return consumed;
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError || error instanceof Error) {
+        return reply
+          .code(401)
+          .send({ error: "This projection grant is not valid for this write" });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The projection-grant service is temporarily unavailable" });
+    }
+  });
+
+  app.post("/workspace/consume-transition-grant", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    if (body.kind !== "revocation" && body.kind !== "role-change") {
+      return reply.code(400).send({ error: "Invalid transition kind" });
+    }
+    try {
+      const consumed = await consumeMembershipTransitionGrant(String(body.grant), {
+        workspaceId: String(body.workspaceId),
+        membershipId: String(body.membershipId),
+        deviceId: String(body.deviceId),
+        kind: body.kind,
+      });
+      return consumed;
+    } catch (error) {
+      if (error instanceof Error) {
+        return reply
+          .code(401)
+          .send({ error: "This transition grant is not valid for this write" });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The transition-grant service is temporarily unavailable" });
     }
   });
 

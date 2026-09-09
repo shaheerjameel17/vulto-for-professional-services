@@ -9,6 +9,7 @@ import {
 } from "./document-schema-gate";
 import { readEdgeFragments } from "./document-edge-fragments";
 import { readNodeFragments } from "./document-node-fragments";
+import type { WorkspaceProjectionOutboxEntry } from "./workspace-projection";
 import { materializeManagedByEdges } from "./managed-by-materialization";
 import { deriveEffectiveRoles } from "./permission/effective-roles";
 import { executeWithPermissions } from "./permission/interceptor";
@@ -29,6 +30,7 @@ import {
 import { SQLiteGraphIndex, type GraphQueryResult } from "./storage/sqlite-graph-index";
 import {
   graphSnapshotStoreKey,
+  workspaceProjectionOutboxStoreKey,
   protectedPartitionManifestStoreKey,
   syncMarkerStoreKey,
   tier1IdentityStoreKey,
@@ -280,6 +282,26 @@ export class LocalGraphWorkerRuntime {
    * plain tab reload always requires unlockSealedStore() again.
    */
   #sealedStore = new SealedStore();
+  /**
+   * FDN-85. Set when this instance was opened via a workspace-projection
+   * grant's unlock half rather than an ordinary `requireCurrentWorkspaceSession`
+   * unlock. Such an instance may run EXACTLY ONE `commitPrivilegedProjection`
+   * and nothing else — `mutate` and `applyDeltaBatch` refuse for its whole
+   * lifetime. Combined with `workspace-projection-runner.ts` never returning
+   * the instance to a caller, this is what bounds the projection session to a
+   * single command: the pending membership it opened for can never be used
+   * for an ordinary write through the handle that opened it.
+   */
+  #projectionOnly = false;
+  #projectionCommitted = false;
+  /**
+   * FDN-85. Fired once a session is established (`initialize`) and after every
+   * live role refresh (`refreshRoleOnline`) — the "unlock/startup" and
+   * "F127 poll" reconciliation triggers. The client sets it; the runtime only
+   * pulls the trigger. Never fired on a projection-only instance (that is one
+   * command, not a session).
+   */
+  #projectionReconciler: (() => Promise<void>) | null = null;
   #flushTimer: ReturnType<typeof setTimeout> | null = null;
   #flushInFlight: Promise<void> | null = null;
   /**
@@ -995,6 +1017,124 @@ export class LocalGraphWorkerRuntime {
     this.#startRolePolling(workspaceId);
   }
 
+  /**
+   * FDN-85. Opens the sealed store for a SINGLE privileged projection write,
+   * using a workspace-projection grant's server unlock-secret half instead of
+   * an ordinary `requireCurrentWorkspaceSession` unlock. The grant already
+   * authorized the write server-side (`consumeWorkspaceProjectionGrant`); this
+   * only combines its `serverHalf` with the device's own half to derive the
+   * key, exactly as `SealedStore.unlock` does for the ordinary grant.
+   *
+   * The instance is marked projection-only: it will run `commitPrivilegedProjection`
+   * once and refuse every other write for its lifetime. It is never returned
+   * to a caller — `workspace-projection-runner.ts` disposes it in a `finally`
+   * — so a still-`pending` membership can never be used for an ordinary
+   * `mutate` through this handle.
+   *
+   * No role polling is started: this instance is not a session, it is one
+   * command.
+   */
+  async unlockSealedStoreForProjection(grant: {
+    workspaceId: string;
+    deviceId: string;
+    serverHalf: string;
+    keyEpoch: number;
+    membershipId: string;
+    roles: readonly WorkspaceRole[];
+  }): Promise<void> {
+    if (this.#workspaceId !== null) {
+      throw new Error("The Worker is already bound to a workspace");
+    }
+    await this.#sealedStore.unlock({
+      serverHalf: grant.serverHalf,
+      envelope: {
+        workspaceId: grant.workspaceId,
+        deviceId: grant.deviceId,
+        keyEpoch: grant.keyEpoch,
+        algorithm: "AES-GCM-256",
+        createdAt: new Date().toISOString(),
+      },
+      roles: [...grant.roles],
+      membershipId: grant.membershipId,
+    });
+    this.#projectionOnly = true;
+  }
+
+  /**
+   * FDN-85. The privileged projection write. `delta` is the trusted output of
+   * `projectWorkspaceAdmission` / `projectMembership*` — it is NOT run through
+   * `authorizeMutationBatch` (the grant was the authorization, and the delta
+   * is structurally incapable of carrying anything but the reserved-type
+   * records the generic gate reserves). It IS run through `#commitDeltaBatch`'s
+   * F138 materialization validation, so an incoherent projection still cannot
+   * land.
+   *
+   * On a projection-only instance (the founding-admission runner) it is
+   * callable exactly once, after which nothing else may write. On an ordinary
+   * confirmed session (the Owner projecting a revocation or role change into
+   * their own workspace graph) it may be called per transition.
+   */
+  async commitPrivilegedProjection(
+    delta: ArrayBuffer,
+  ): Promise<RuntimeDeltaBatchResult> {
+    if (this.#projectionOnly && this.#projectionCommitted) {
+      throw new Error(
+        "This projection-only instance has already committed its one write",
+      );
+    }
+    this.#throwPendingFlushError();
+    this.#requireDocument();
+    this.#requireIndex();
+    this.#projectionCommitted = true;
+    const committed = await this.#commitDeltaBatch([delta]);
+    this.#enqueueLocalDeltasForSync([delta]);
+    return committed;
+  }
+
+  /** FDN-85. The client installs its projection reconciler here. */
+  setProjectionReconciler(reconciler: (() => Promise<void>) | null): void {
+    this.#projectionReconciler = reconciler;
+  }
+
+  async #fireProjectionReconciler(): Promise<void> {
+    if (this.#projectionOnly || this.#projectionReconciler === null) return;
+    try {
+      await this.#projectionReconciler();
+    } catch {
+      // A reconciliation failure is retried on the next trigger; it must never
+      // fail an unlock or a role refresh.
+    }
+  }
+
+  /**
+   * FDN-85. The durable projection outbox, read on startup so a
+   * kill-and-restart can finish a projection whose confirm never landed, and
+   * updated as entries are confirmed. Plain JSON in the sealed store.
+   */
+  async readProjectionOutbox(): Promise<WorkspaceProjectionOutboxEntry[]> {
+    const workspaceId = this.#requireWorkspaceId();
+    const bytes = await this.#sealedStore.get(
+      workspaceProjectionOutboxStoreKey(workspaceId),
+    );
+    if (bytes === null) return [];
+    try {
+      const parsed = JSON.parse(new TextDecoder().decode(bytes)) as unknown;
+      return Array.isArray(parsed) ? (parsed as WorkspaceProjectionOutboxEntry[]) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  async persistProjectionOutbox(
+    entries: readonly WorkspaceProjectionOutboxEntry[],
+  ): Promise<void> {
+    const workspaceId = this.#requireWorkspaceId();
+    await this.#sealedStore.put(
+      workspaceProjectionOutboxStoreKey(workspaceId),
+      new TextEncoder().encode(JSON.stringify(entries)),
+    );
+  }
+
   lockSealedStore(): void {
     this.#stopRolePolling();
     this.#stopSyncInternal();
@@ -1023,6 +1163,10 @@ export class LocalGraphWorkerRuntime {
       const deviceId = await this.#sealedStore.deviceId();
       const result = await fetchCurrentRoles(apiOrigin, workspaceId, deviceId);
       this.#sealedStore.refreshRoles(result.roles);
+      // FDN-85. The F127-poll reconciliation trigger: a role that just
+      // narrowed or widened may have left the materialized WorkspaceMembership
+      // node's recorded role behind.
+      await this.#fireProjectionReconciler();
     } catch (error) {
       // F148: only an authoritative denial ends the session. A checkpoint
       // that could not answer (`RoleRefreshUnavailableError`) changes
@@ -1369,6 +1513,11 @@ export class LocalGraphWorkerRuntime {
     // the old revocation on a later `not-initialized` (e.g. after a
     // `switchWorkspace` away).
     this.#lastSessionEnd = null;
+
+    // FDN-85. Startup reconciliation trigger — finish any projection whose
+    // confirm never landed, and re-project if the server grant and the
+    // materialized WorkspaceMembership node have drifted.
+    await this.#fireProjectionReconciler();
   }
 
   /**
@@ -1527,6 +1676,11 @@ export class LocalGraphWorkerRuntime {
   async applyDeltaBatch(
     deltas: readonly ArrayBuffer[],
   ): Promise<RuntimeDeltaBatchResult> {
+    if (this.#projectionOnly) {
+      throw new Error(
+        "This runtime was opened for a workspace-projection command only and cannot apply an ordinary delta batch",
+      );
+    }
     this.#throwPendingFlushError();
     this.#requireDocument();
     this.#requireIndex();
@@ -1590,6 +1744,17 @@ export class LocalGraphWorkerRuntime {
    * `interceptor.test.ts`'s doc comment).
    */
   async mutate(deltas: readonly ArrayBuffer[]): Promise<RuntimeMutationOutcome> {
+    if (this.#projectionOnly) {
+      // FDN-85. A projection-only instance is one command, not a session. An
+      // ordinary mutate through it is denied exactly as it would be for a
+      // caller with no grant — the pending membership it opened for cannot be
+      // used for anything but the projection.
+      return {
+        status: "denied",
+        reason:
+          "This runtime was opened for a workspace-projection command only; ordinary mutations are not permitted",
+      };
+    }
     this.#throwPendingFlushError();
     const document = this.#requireDocument();
     this.#requireIndex();
