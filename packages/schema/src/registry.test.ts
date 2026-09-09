@@ -18,7 +18,10 @@ import {
   resolvePrivacyClassDefaultTier,
   resolveRegisteredProtectionTier,
 } from "./index";
-import { validateRegistryDefinition } from "./registry/validate";
+import {
+  assertGoverningPartitions,
+  validateRegistryDefinition,
+} from "./registry/validate";
 import {
   featureOwnedLifecycle,
   fixedProtection,
@@ -408,5 +411,47 @@ describe("malformed registry fixtures", () => {
         edges: [edge, edge],
       }),
     ).toThrow(/Duplicate edge triple/);
+  });
+});
+
+describe("assertGoverningPartitions (F136 / FDN-92)", () => {
+  it("accepts the real registry — the four declared governing partitions are valid", () => {
+    expect(() => assertGoverningPartitions()).not.toThrow();
+  });
+
+  it("rejects a governing partition for a node type that is not split", () => {
+    expect(() =>
+      assertGoverningPartitions([
+        {
+          edgeType: "has_skill",
+          pairs: [["Employee", "Skill"]],
+          governingPartitions: { Skill: "record" },
+        },
+      ]),
+    ).toThrow(/Skill, which is not split/);
+  });
+
+  it("rejects an unknown partition key for a split node type", () => {
+    expect(() =>
+      assertGoverningPartitions([
+        {
+          edgeType: "has_skill",
+          pairs: [["Employee", "Skill"]],
+          governingPartitions: { Employee: "operatoinal" },
+        },
+      ]),
+    ).toThrow(/names partition "operatoinal" for Employee/);
+  });
+
+  it("rejects a governing partition for a node type that is not a direct endpoint", () => {
+    expect(() =>
+      assertGoverningPartitions([
+        {
+          edgeType: "has_skill",
+          pairs: [["Employee", "Skill"]],
+          governingPartitions: { Workspace: "display" },
+        },
+      ]),
+    ).toThrow(/Workspace, which is not a direct endpoint/);
   });
 });

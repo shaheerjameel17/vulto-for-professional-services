@@ -10,7 +10,7 @@ import { assertAnonymityRegistry } from "./anonymity";
 import { CONVERSION_REGISTRY } from "./conversions";
 import { NODE_REGISTRY, type NodeType } from "./nodes";
 import { OWNERSHIP_REGISTRY } from "./ownership";
-import { DEFAULT_PRIVACY_CLASS_TIERS } from "./protection";
+import { DEFAULT_PRIVACY_CLASS_TIERS, getProtectionPartitions } from "./protection";
 import {
   PRIVACY_CLASSES,
   type DataTier,
@@ -148,6 +148,49 @@ export const validateRegistryDefinition = (definition: RegistryDefinition): void
   }
 };
 
+/**
+ * F136 / FDN-92. Every `governingPartitions` entry on an edge group must name
+ * a **split** endpoint node type of that group and one of that type's real
+ * partition keys. A declaration for a single-partition type, an unknown
+ * partition key, or a node type that is not a direct endpoint of the group
+ * fails the registry at import — the same fail-loud discipline the rest of
+ * this file uses. (Endpoint-set positions resolving to a split concrete type
+ * are a future extension, added with the first feature that needs one.)
+ */
+export interface GoverningPartitionGroup {
+  readonly edgeType: string;
+  readonly pairs: readonly (readonly [RegistryEndpoint, RegistryEndpoint])[];
+  readonly governingPartitions?: Readonly<Partial<Record<NodeType, string>>>;
+}
+
+export const assertGoverningPartitions = (
+  groups: readonly GoverningPartitionGroup[] = EDGE_GROUPS,
+): void => {
+  for (const group of groups) {
+    if (group.governingPartitions === undefined) continue;
+    const directEndpoints = new Set(group.pairs.flatMap(([from, to]) => [from, to]));
+    for (const [nodeType, partitionKey] of Object.entries(group.governingPartitions)) {
+      if (partitionKey === undefined) continue;
+      if (!directEndpoints.has(nodeType as NodeType)) {
+        throw new Error(
+          `governingPartitions on ${group.edgeType} names ${nodeType}, which is not a direct endpoint of it`,
+        );
+      }
+      const partitions = getProtectionPartitions(nodeType as NodeType);
+      if (partitions.length <= 1) {
+        throw new Error(
+          `governingPartitions on ${group.edgeType} names ${nodeType}, which is not split (${partitions.length} partition${partitions.length === 1 ? "" : "s"})`,
+        );
+      }
+      if (!partitions.some((partition) => partition.key === partitionKey)) {
+        throw new Error(
+          `governingPartitions on ${group.edgeType} names partition "${partitionKey}" for ${nodeType}, whose partitions are: ${partitions.map(({ key }) => key).join(", ")}`,
+        );
+      }
+    }
+  }
+};
+
 const assertUniversalFieldPolicies = (): void => {
   const expected = new Map<NodeType, NodeRegistrationShape["universalFields"]>([
     ["AuditEntry", "immutable-audit"],
@@ -216,6 +259,7 @@ export const assertCanonicalRegistry = (): void => {
   }
 
   assertUniversalFieldPolicies();
+  assertGoverningPartitions();
   assertAnonymityRegistry();
 
   const ownershipClaims = OWNERSHIP_REGISTRY.flatMap(({ nodeTypes }) => nodeTypes);

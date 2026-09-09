@@ -129,6 +129,35 @@ Assignment and WorkspaceMembership are nodes: the first is Active, Completed or 
 
 ---
 
+### The generic edge on-disk contract
+
+Every edge type other than the Tree-materialized `managed_by` is **stored**, in a reserved root Loro `LoroMap` named `__vulto_edge_fragments` — a sibling of the node-fragment container. The key is the edge's own `edge_id` verbatim, nothing composite, and each edge's value is its own nested `LoroMap`, one map per edge. The container name and key scheme are durable on-disk contract, frozen in the same sense as the node-fragment container: a rename makes every persisted document read as "this workspace has no edges," which materializes as an empty edge set rather than an error. Recorded as F132, closed by FDN-92.
+
+The registry key — the triple of `edge_type`, from-node type, to-node type — is **not** in the storage key. It is recovered per edge instance at materialization, from `edge_type` plus the materialized types of the two endpoint nodes, and validated against the registry there, exactly as `managed_by` already is. Folding any of the triple into the storage key would collapse distinct relationships: `edge_type` alone merges `governed_by`'s four registrations; `(edge_type, from_node_id)` merges the two `governed_by` edges one PayRun legitimately holds; even `(edge_type, from_node_id, to_node_id)` merges two edges with the same endpoints but different ids and intervals — a re-opened `scoped_to_entity`, a re-added `has_skill`.
+
+**Default conflict semantics are last-write-wins per field**, via the nested per-edge `LoroMap` — the same shape and the same justification as a node fragment. Two devices writing different fields of one edge merge field by field; two devices writing the same field resolve by Loro's register order, which is acceptable for edge metadata. This is sufficient for every edge type that carries only metadata, which is all of them except the single-active-outgoing pair above.
+
+**`scoped_to_entity` is the one exception among stored edges.** It is single-active-outgoing but not Tree-backed. Storage is identical (a nested `LoroMap` per `edge_id`); the extra rule is a **writer obligation**, not a storage-layer mechanism — the writer that changes an Employee's employing entity must, in the same delta batch, set `effective_to` on the prior edge and `effective_from` on the new one. `validateSingleActiveOutgoing` (which rejects any interval overlap for a single-active-outgoing registration) and the SQLite `graph_edges_one_open_outgoing` unique index are the backstops. All three mechanisms exist today and are exercised by existing materialization and index tests; the `scoped_to_entity` write path is therefore proven **by construction** rather than by a dedicated end-to-end test, because no feature writes `scoped_to_entity` yet. When [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] builds that write, it owns the end-to-end proof.
+
+**Interval fields on a stored edge are caller-supplied.** Unlike a Tree-materialized `managed_by` edge, whose `effective_to` is derived from the next move's `effective_from` because moves form a per-employee chain, a stored edge is independent — there is nothing to derive. The `effective_from` and `effective_to` in the delta are written verbatim. The Worker never defaults `effective_from` to a wall-clock "now": that value would be non-replicated and non-deterministic across devices, the exact mistake F124 documents for `managed_by`. An omitted `effective_from` is `null` — the caller's explicit "unbounded," not a silent clock read.
+
+**A split-protection endpoint's edge write is governed by a partition the registry names, never by the write.** [[VPS-A004_Graph_Permission_Layer|VPS-A004]] assigns write-permission columns to node types and node-type partitions, never to an edge type. An edge write requires Full write on both endpoints (F136); where an endpoint node type has more than one privacy partition, the governing partition is a static, reviewed field on the [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] / FDN-45 / FDN-75 edge-type registry — `governingPartitions`, keyed by node type — looked up independently by the authorization gate. The write delta never supplies it: a self-declared governing partition would be a bypass, since a caller could always name the innocuous partition. A split endpoint with no `governingPartitions` entry stays at the conservative `none` — denied for every role — which is the fallback for anything the registry has not reviewed. Recorded as F136, refined by FDN-92.
+
+Current `governingPartitions` entries:
+
+| Edge type | Split endpoint | Governing partition | Rationale |
+|---|---|---|---|
+| `has_skill` | Employee (from) | `operational` | A skill holding is operational HR data; requiring compensation-level (finance) permission to record one is wrong for the product |
+| `holds_certification` | Employee (from) | `operational` | Certifications are operational, not compensation |
+| `assignment_of` | Employee (to) | `operational` | Which person an assignment is for is staffing/operational data |
+| `membership_in` | Workspace (to) | `display` | Membership is a display/identity fact about the workspace; the `billing` partition governs financial configuration, not who belongs |
+| `assigned_to` | — (Assignment → Project, both single-partition) | none | No declaration, no change |
+| `membership_of` | — (WorkspaceMembership → User, both single-partition) | none | No declaration, no change |
+
+A polymorphic edge type whose split `from` types differ (for example `has_document`, once [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] is built) names a partition per concrete split type it connects; the `Record<node type, partition>` shape already expresses that, and A002-T09's registration-before-implementation order means each entry is added with the feature that needs it, not guessed now.
+
+---
+
 ## Privacy classes and tiers
 
 Two orthogonal properties govern every node. **Privacy Class** determines who may read it, evaluated by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]. **Tier** determines how it is synced and encrypted, governed by [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
