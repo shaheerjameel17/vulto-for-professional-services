@@ -13,6 +13,7 @@
     "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
+    "build": "node build.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint src",
     "test": "node ../../scripts/db-preflight.mjs && vitest run --passWithNoTests"
@@ -31,6 +32,7 @@
     "@types/node": "24.13.3",
     "auth": "1.6.29",
     "drizzle-kit": "0.31.10",
+    "esbuild": "0.28.2",
     "tsx": "4.23.12",
     "typescript": "5.9.3"
   }
