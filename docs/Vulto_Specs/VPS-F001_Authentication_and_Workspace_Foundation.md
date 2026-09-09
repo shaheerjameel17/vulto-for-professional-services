@@ -43,7 +43,9 @@ A person creates an account by email and password, by Google, or by passkey. On 
 
 ### Workspace creation
 
-The founding user names their workspace. This single action atomically creates the Workspace node, a WorkspaceMembership node assigning that user the Owner role, and its `membership_of` and `membership_in` endpoint edges. This is the only WorkspaceMembership that can never be deleted.
+The founding user names their workspace. This single action atomically creates five graph records: the Workspace node, the founding Owner's User node projected into this workspace's graph, the WorkspaceMembership node assigning the Owner role, and its `membership_of` and `membership_in` endpoint edges. The User node is part of the atomic set, not a precondition: the per-workspace graph is empty at creation and `membership_of`'s User endpoint must itself be materialized for the edge to materialize (FDN-85, recorded as F195). This is the only WorkspaceMembership that can never be deleted.
+
+Because the membership is `pending` until its projection confirms, and [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s exact-workspace session guard refuses to unlock a `pending` membership's sealed store, the projection is written not through an ordinary graph mutation but through a single-use, server-signed **projection grant** — minted after the central pending row is recorded, bound to one `(workspace, device, membership)`, consumed on first use, and carrying the sealed-store unlock half so the graph Worker can open the store for exactly that one privileged write. The five records are the only shape it can write; the runtime instance it opens is discarded after the one command. Recorded as F196.
 
 Workspace creation hands off directly to [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s setup wizard, which collects the four configuration questions and offers data import. This feature ends at the point a workspace exists with one Owner in it.
 
@@ -162,14 +164,23 @@ auth.requireCurrentWorkspaceSession(requestHeaders, workspaceId)
                                                 -> { sessionId, userId, workspaceId, membershipId }
   // Server-only. The browser cookie supplies the credential; session output is public metadata only.
 
-workspace.create(name)                          -> { workspaceId }
-  // Atomic: Workspace node + WorkspaceMembership node + membership_of + membership_in
+workspace.create(name)                          -> { workspaceId, membershipId, projectionGrant }
+  // Records the central pending owner admission, returns a single-use
+  // projection grant. Atomic graph set: Workspace node + User node +
+  // WorkspaceMembership node + membership_of + membership_in, committed
+  // through the grant, then confirmed (FDN-85). Never an ordinary graph write.
 
 workspace.inviteMember(workspaceId, email, role) -> { invitationId }
   // Rejects if role=Owner and the workspace already holds 3
 
 workspace.acceptInvitation(invitationId)        -> { user, workspaceId, session }
-workspace.changeMemberRole(membershipId, role)  -> { success }
+workspace.changeMemberRole(membershipId, role)  -> { direction, projectionGrant }
+  // One path, one direction flag (FDN-85). Narrowing updates the central
+  // role first — the live role-refresh channel narrows active sessions
+  // within its bound — then projects the new role onto the WorkspaceMembership
+  // node as history. Widening projects the graph first; the central role
+  // advances only when that projection confirms. Owner is capped at 3,
+  // enforced here on promotion.
 
 tier1Keys.initialize()                          -> { recoveryArtifact }
 tier1Keys.verifyArtifact(entered)               -> { verified }
@@ -209,7 +220,7 @@ device.listForWorkspace(workspaceId)
 | G02 | A lifecycle-bearing WorkspaceMembership node carries the role property and connects to User through `membership_of` and Workspace through `membership_in`. This is the activation structure for [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s matrix |
 | G03 | A Device node is created when a new device authenticates, carrying the fields above. `application` distinguishes registrations for different suite applications on the same physical device |
 | G04 | The local store is encrypted with AES-256 per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. After every cold restart it remains locked until the server validates a current authenticated session and releases or derives volatile unwrap material. The raw session token, plaintext storage key and unwrap material are never persisted alongside the data or exposed to application code. Revocation wipes the store entirely within 60 seconds of signal receipt; after a cold restart, a revoked session cannot reopen it even before a wipe signal arrives |
-| G05 | Workspace creation atomically generates the Workspace node, the founding Owner's WorkspaceMembership node and its `membership_of` and `membership_in` edges. This membership cannot be deleted |
+| G05 | Workspace creation atomically generates five graph records — the Workspace node, the founding Owner's User node in this workspace's graph, the Owner's WorkspaceMembership node, and its `membership_of` and `membership_in` edges — or none, committed through a single-use server-signed projection grant and then confirmed (FDN-85). This membership cannot be deleted |
 | G06 | Manager is derived, not stored. Any Employee targeted by at least one active `managed_by` edge holds Manager permissions over those reports, evaluated at query time by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]. Manager is absent from the stored membership-role enum |
 
 ---

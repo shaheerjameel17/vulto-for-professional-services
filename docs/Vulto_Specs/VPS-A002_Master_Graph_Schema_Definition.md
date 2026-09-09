@@ -156,6 +156,8 @@ Current `governingPartitions` entries:
 
 A polymorphic edge type whose split `from` types differ (for example `has_document`, once [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] is built) names a partition per concrete split type it connects; the `Record<node type, partition>` shape already expresses that, and A002-T09's registration-before-implementation order means each entry is added with the feature that needs it, not guessed now.
 
+**The Workspace and WorkspaceMembership nodes and the `membership_of` / `membership_in` edges are a one-way projection of the Better Auth control plane, and the generic write path refuses them.** FDN-85 projects them — plus the member's User node in that workspace's graph — through a single-use, server-signed projection command; the generic `mutate` gate refuses a batch that adds, changes, or removes any of them (`unsupported`, the same treatment a Movable Tree move gets), so there is exactly one writer. The `membership_in` `governingPartitions` entry above (`{ Workspace: display }`) is exercised there: a founding Owner holds Full write on `Workspace/display` and the projection is authorized against that partition, not `billing`. Recorded as F196.
+
 ---
 
 ## Privacy classes and tiers
@@ -217,7 +219,7 @@ Nodes marked **A002-owned** have their lifecycle statuses, privacy class and tie
 | **Device** | Active, Revoked | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | Standard | 0 |
 | **Entity** | Active, Dissolved | [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] | Standard | 0 |
 
-**Device, Workspace and WorkspaceMembership are registered here but not yet projected as local graph nodes.** Their online records are Better Auth control-plane rows, and the mechanisms that consume them — session admission, `deriveEffectiveRoles` reading `SealedStore.roles`, device trust and the revocation signal — read the server grant, never a local node. FDN-63 implements `Device` as a Postgres control-plane row (`VPS-F001`'s nine fields); the node projection is deferred alongside Workspace/WorkspaceMembership to FDN-85. Registration precedes implementation per A002-T09, so the rows stay. Recorded as F189.
+**Device, Workspace and WorkspaceMembership are registered here; Workspace and WorkspaceMembership are now projected as local graph nodes by FDN-85, Device is not yet.** Their online records are Better Auth control-plane rows, and the mechanisms that decide access — session admission, `deriveEffectiveRoles` reading `SealedStore.roles` (still the sole live role input), device trust and the revocation signal — read the server grant, never a local node. FDN-85 projects the Workspace and WorkspaceMembership nodes (and the member's User node) as **deterministic offline history and audit**: the WorkspaceMembership node carries the role, but no permission decision reads it. FDN-63 implements `Device` as a Postgres control-plane row (`VPS-F001`'s nine fields); its node projection stays deferred. Registration precedes implementation per A002-T09. Recorded as F189, updated by FDN-85.
 
 Entity is permanently Roster-owned and scoped specifically to employment jurisdiction: which entity's employment law, leave policy and payroll applies to a person. Consolidated financial reporting remains [[Vulto Accounts]]' territory; intercompany contract structuring remains [[Vulto Legal]]'s.
 
