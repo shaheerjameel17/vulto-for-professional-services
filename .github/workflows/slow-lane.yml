@@ -72,20 +72,18 @@ jobs:
           --health-cmd "pg_isready -U vulto -d vulto"
           --health-interval 5s --health-timeout 5s --health-retries 20
     env:
-      DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto_fdn60_test
+      # The service container already creates this database (POSTGRES_DB); the
+      # CI image carries no psql, and a fresh container per run means the name
+      # need not be the local `vulto_fdn60_test`.
+      DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto
     steps:
       - uses: actions/checkout@v4
       - run: pnpm install --frozen-lockfile
         shell: bash
 
-      - name: Create and migrate the test database
+      - name: Migrate the database
         shell: bash
-        run: |
-          set -euo pipefail
-          psql "${PG_ADMIN_URL}" -v ON_ERROR_STOP=1 \
-            -c 'CREATE DATABASE "vulto_fdn60_test"' \
-            || echo "database already exists"
-          pnpm --dir services/api exec drizzle-kit migrate --config drizzle.config.ts
+        run: pnpm --dir services/api exec drizzle-kit migrate --config drizzle.config.ts
 
       - name: api integration suite (real Postgres)
         shell: bash

@@ -46,11 +46,17 @@ export default defineConfig({
       // FDN-51 Stage 4a: the real relay, against the same test database. A
       // browser page over HTTPS may still open `ws://localhost` — loopback is
       // a potentially-trustworthy origin, so this is not mixed content.
-      command: "cargo run --quiet --manifest-path services/sync-engine/Cargo.toml",
+      //
+      // `--release`: the backlog-replay stress cases push hundreds of deltas
+      // through the relay's per-delta verification, and a debug build of that
+      // path is slow enough to time out on a constrained CI runner (~2 of 520
+      // deltas in 90s). Release costs one extra compile, then caches.
+      command:
+        "cargo run --release --quiet --manifest-path services/sync-engine/Cargo.toml",
       cwd: repositoryRoot,
       url: "http://localhost:3112/health",
       reuseExistingServer: false,
-      timeout: 300_000,
+      timeout: 420_000,
       env: {
         DATABASE_URL: databaseUrl,
         SYNC_ENGINE_HOST: "127.0.0.1",
