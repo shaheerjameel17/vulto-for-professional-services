@@ -239,3 +239,162 @@ jobs:
       - name: artifact check (FDN-91)
         shell: bash
         run: node scripts/artifact-check.mjs
+
+      # FDN-55 Stage 4b — hand the exact build the gate just verified to the
+      # publish job. It is never rebuilt downstream (a `next build` is not
+      # reproducible); the publish job re-checks this content digest and
+      # refuses to publish anything that does not match.
+      - name: Package the verified roster-web build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/roster-web
+          digest=$(find .next -type f -not -path '*/cache/*' -print0 \
+            | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          tar --exclude='.next/cache' -czf /tmp/roster-web-next.tar.gz .next
+          printf '%s\n' "$digest" > /tmp/roster-web.sha256
+          echo "roster-web build content digest: ${digest}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the roster-web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: roster-web-build
+          path: |
+            /tmp/roster-web-next.tar.gz
+            /tmp/roster-web.sha256
+          retention-days: 14
+          if-no-files-found: error
+
+  # FDN-55 Stage 4b — publish the promotable artifacts. Runs after the whole
+  # matrix is green, on a push to `main` (real) or to this stage's branch
+  # (proof, `proof-<sha>` tags). `continue-on-error` — a publish failure is
+  # visible but gates nothing; nothing consumes these until FDN-58 exists.
+  # A007-T12's "promote, never rebuild" starts here: this job stores the
+  # artifacts and records their digests; it does not deploy them.
+  publish-artifacts:
+    needs:
+      - resolve-image
+      - api-integration
+      - browser-suites
+      - rust-multitarget
+      - production-build
+    if: >-
+      github.event_name == 'push'
+      && (github.ref == 'refs/heads/main'
+          || github.ref == 'refs/heads/fdn-55-stage-4a-api-service-image')
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io/${{ github.repository }}
+      SHA: ${{ github.sha }}
+      TAG_PREFIX: ${{ github.ref != 'refs/heads/main' && 'proof-' || '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reuse the verified roster-web build (never rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: roster-web-build
+          path: roster-web-build
+
+      - name: Re-verify the build against its recorded digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd roster-web-build
+          recorded=$(cat roster-web.sha256)
+          mkdir _x && tar -xzf roster-web-next.tar.gz -C _x
+          actual=$(cd _x && find .next -type f -not -path '*/cache/*' -print0 \
+            | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          if [ "$recorded" != "$actual" ]; then
+            echo "::error title=roster-web build digest mismatch::recorded ${recorded}, got ${actual} — refusing to publish a build the slow lane did not verify"
+            exit 1
+          fi
+          echo "ROSTER_WEB_SHA256=${recorded}" >> "$GITHUB_ENV"
+          echo "roster-web build re-verified: ${recorded}"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the API image
+        id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/api/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/api:${{ env.TAG_PREFIX }}${{ env.SHA }}
+          provenance: false
+
+      - name: Build and push the sync-engine image
+        id: sync
+        uses: docker/build-push-action@v6
+        with:
+          context: services/sync-engine
+          file: services/sync-engine/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/sync-engine:${{ env.TAG_PREFIX }}${{ env.SHA }}
+          provenance: false
+
+      - name: Emit the deploy manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_migration=$(ls services/api/drizzle/*.sql | sort | tail -1 \
+            | xargs basename | sed 's/\.sql$//')
+          schema_sha=$(find packages/schema/src -type f -print0 \
+            | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          cat > deploy-manifest.json <<JSON
+          {
+            "commit": "${SHA}",
+            "ref": "${{ github.ref_name }}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "slow_lane_run": "${{ github.run_id }}",
+            "schema": {
+              "latest_migration": "${latest_migration}",
+              "schema_src_sha256": "${schema_sha}"
+            },
+            "artifacts": {
+              "api": {
+                "image": "${REGISTRY}/api",
+                "tag": "${TAG_PREFIX}${SHA}",
+                "digest": "${{ steps.api.outputs.digest }}"
+              },
+              "sync_engine": {
+                "image": "${REGISTRY}/sync-engine",
+                "tag": "${TAG_PREFIX}${SHA}",
+                "digest": "${{ steps.sync.outputs.digest }}"
+              },
+              "roster_web": {
+                "form": "next-build",
+                "content_sha256": "${ROSTER_WEB_SHA256}",
+                "artifact": "roster-web-build (this run)"
+              }
+            }
+          }
+          JSON
+          cat deploy-manifest.json
+          {
+            echo '### Deploy manifest'
+            echo '```json'
+            cat deploy-manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the deploy manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-manifest-${{ env.TAG_PREFIX }}${{ env.SHA }}
+          path: deploy-manifest.json
+          retention-days: 90
+          if-no-files-found: error
