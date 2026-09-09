@@ -1,0 +1,2 @@
+ALTER TABLE "workspace_projection_grant" ADD COLUMN "grant_kind" text DEFAULT 'admission' NOT NULL;--> statement-breakpoint
+ALTER TABLE "workspace_projection_grant" ADD CONSTRAINT "workspace_projection_grant_kind_check" CHECK ("workspace_projection_grant"."grant_kind" in ('admission', 'revocation', 'role-change'));

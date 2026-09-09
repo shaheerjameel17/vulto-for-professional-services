@@ -1,6 +1,12 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { parseWorkspaceRoles, uuidV4Schema, type WorkspaceRole } from "@vulto/schema";
-import { and, eq, gt, isNull, lt, or } from "drizzle-orm";
+import {
+  parseWorkspaceRoles,
+  serializeWorkspaceRoles,
+  workspaceRoleSchema,
+  uuidV4Schema,
+  type WorkspaceRole,
+} from "@vulto/schema";
+import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { parseDeviceId } from "./device-unlock.js";
@@ -14,7 +20,9 @@ import {
 } from "./schema.js";
 import {
   confirmWorkspaceAdmission,
+  confirmWorkspaceRevocationProjection,
   createPendingWorkspaceAdmission,
+  revokeWorkspaceAdmission,
 } from "./workspace-session.js";
 
 /**
@@ -229,6 +237,7 @@ export async function mintWorkspaceProjectionGrant(
       );
     await tx.insert(workspaceProjectionGrant).values({
       tokenHash: hashGrant(grant),
+      grantKind: "admission",
       workspaceId,
       userId,
       membershipId,
@@ -428,4 +437,499 @@ export async function confirmWorkspaceProjection(
   if (!owned) throw new WorkspaceProjectionDeniedError();
 
   await confirmWorkspaceAdmission(membershipId);
+}
+
+// ── FDN-85 Stage 3 — removal and role-change projection ──────────────────────
+
+export type MembershipTransitionKind = "revocation" | "role-change";
+
+export interface WorkspaceTransitionGrant {
+  grant: string;
+  kind: MembershipTransitionKind;
+  workspaceId: string;
+  membershipId: string;
+  /** The target's current role set — history the projection records. */
+  roles: WorkspaceRole[];
+  serverHalf: string;
+  keyEpoch: number;
+  expiresAt: string;
+  ttlSeconds: number;
+}
+
+/**
+ * The actor must be a confirmed Owner of the workspace. Owner-gated for both
+ * kinds: `VPS-F001` puts role and membership changes under the workspace's
+ * highest role, and a revocation "wipes a colleague's local data".
+ */
+async function requireConfirmedOwner(
+  headers: Headers,
+  workspaceId: string,
+): Promise<{ actorUserId: string }> {
+  const actorUserId = await sessionUserId(headers);
+  const [owner] = await db
+    .select({ roles: member.role })
+    .from(member)
+    .innerJoin(user, eq(user.id, member.userId))
+    .innerJoin(organization, eq(organization.id, member.organizationId))
+    .where(
+      and(
+        eq(member.userId, actorUserId),
+        eq(member.organizationId, workspaceId),
+        eq(member.status, "active"),
+        eq(member.projectionState, "confirmed"),
+        eq(user.status, "active"),
+        eq(organization.status, "active"),
+      ),
+    )
+    .limit(1);
+  if (!owner) throw new WorkspaceProjectionDeniedError();
+  let roles: WorkspaceRole[];
+  try {
+    roles = parseWorkspaceRoles(owner.roles);
+  } catch {
+    throw new WorkspaceProjectionDeniedError();
+  }
+  if (!roles.includes("owner")) throw new WorkspaceProjectionDeniedError();
+  return { actorUserId };
+}
+
+/** The control-plane state a transition grant of each kind is valid against. */
+function transitionMemberState(kind: MembershipTransitionKind): {
+  status: "revoked" | "active";
+  projectionState: "revocation-pending" | "confirmed";
+} {
+  return kind === "revocation"
+    ? { status: "revoked", projectionState: "revocation-pending" }
+    : { status: "active", projectionState: "confirmed" };
+}
+
+/**
+ * Mints a single-use grant for the actor's device that authorizes projecting
+ * ONE membership transition (a revocation or a role change) into graph
+ * history. The target membership must already be in the control-plane state
+ * that transition follows — the projection only ever records what the server
+ * has already decided.
+ */
+export async function mintMembershipTransitionGrant(
+  headers: Headers,
+  input: {
+    workspaceId: string;
+    membershipId: string;
+    deviceId: string;
+    kind: MembershipTransitionKind;
+  },
+): Promise<WorkspaceTransitionGrant> {
+  const workspaceId = uuidV4Schema.parse(input.workspaceId);
+  const membershipId = uuidV4Schema.parse(input.membershipId);
+  const deviceId = parseDeviceId(input.deviceId);
+  const { actorUserId } = await requireConfirmedOwner(headers, workspaceId);
+
+  const [identity] = await db
+    .select({ isRevoked: device.isRevoked })
+    .from(device)
+    .where(and(eq(device.id, deviceId), eq(device.userId, actorUserId)))
+    .limit(1);
+  if (!identity || identity.isRevoked) throw new WorkspaceProjectionDeniedError();
+
+  const wanted = transitionMemberState(input.kind);
+  const [target] = await db
+    .select({ roles: member.role })
+    .from(member)
+    .where(
+      and(
+        eq(member.id, membershipId),
+        eq(member.organizationId, workspaceId),
+        eq(member.status, wanted.status),
+        eq(member.projectionState, wanted.projectionState),
+      ),
+    )
+    .limit(1);
+  if (!target) throw new WorkspaceProjectionDeniedError();
+
+  const { serverHalf, keyEpoch } = await provisionServerHalf(
+    workspaceId,
+    actorUserId,
+    deviceId,
+  );
+  const grant = PROJECTION_GRANT_PREFIX + randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + PROJECTION_GRANT_TTL_SECONDS * 1000);
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(workspaceProjectionGrant)
+      .where(
+        or(
+          and(
+            eq(workspaceProjectionGrant.membershipId, membershipId),
+            eq(workspaceProjectionGrant.deviceId, deviceId),
+            eq(workspaceProjectionGrant.grantKind, input.kind),
+          ),
+          lt(workspaceProjectionGrant.expiresAt, new Date()),
+        ),
+      );
+    await tx.insert(workspaceProjectionGrant).values({
+      tokenHash: hashGrant(grant),
+      grantKind: input.kind,
+      workspaceId,
+      userId: actorUserId,
+      membershipId,
+      deviceId,
+      expiresAt,
+    });
+  });
+
+  return {
+    grant,
+    kind: input.kind,
+    workspaceId,
+    membershipId,
+    roles: parseWorkspaceRoles(target.roles),
+    serverHalf,
+    keyEpoch,
+    expiresAt: expiresAt.toISOString(),
+    ttlSeconds: PROJECTION_GRANT_TTL_SECONDS,
+  };
+}
+
+export interface TransitionGrantRequest {
+  workspaceId: string;
+  membershipId: string;
+  deviceId: string;
+  kind: MembershipTransitionKind;
+}
+
+export function parseTransitionGrantRequest(value: unknown): TransitionGrantRequest {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Invalid request body");
+  }
+  const record = value as Record<string, unknown>;
+  if (record.kind !== "revocation" && record.kind !== "role-change") {
+    throw new Error("Invalid transition kind");
+  }
+  return {
+    workspaceId: uuidV4Schema.parse(record.workspaceId),
+    membershipId: uuidV4Schema.parse(record.membershipId),
+    deviceId: parseDeviceId(record.deviceId),
+    kind: record.kind,
+  };
+}
+
+export interface ConsumedTransitionGrant {
+  kind: MembershipTransitionKind;
+  workspaceId: string;
+  membershipId: string;
+  deviceId: string;
+  roles: WorkspaceRole[];
+}
+
+/** Single-use, same CAS shape as the admission grant. Re-checks the target is
+ * still in the state the transition follows — a grant minted before a race
+ * cannot project a stale transition. */
+export async function consumeMembershipTransitionGrant(
+  rawGrant: string,
+  bound: {
+    workspaceId: string;
+    membershipId: string;
+    deviceId: string;
+    kind: MembershipTransitionKind;
+  },
+): Promise<ConsumedTransitionGrant> {
+  if (typeof rawGrant !== "string" || !rawGrant.startsWith(PROJECTION_GRANT_PREFIX)) {
+    throw new WorkspaceProjectionDeniedError();
+  }
+  const workspaceId = uuidV4Schema.parse(bound.workspaceId);
+  const membershipId = uuidV4Schema.parse(bound.membershipId);
+  const deviceId = parseDeviceId(bound.deviceId);
+
+  const [consumed] = await db
+    .update(workspaceProjectionGrant)
+    .set({ consumedAt: new Date() })
+    .where(
+      and(
+        eq(workspaceProjectionGrant.tokenHash, hashGrant(rawGrant)),
+        eq(workspaceProjectionGrant.workspaceId, workspaceId),
+        eq(workspaceProjectionGrant.membershipId, membershipId),
+        eq(workspaceProjectionGrant.deviceId, deviceId),
+        eq(workspaceProjectionGrant.grantKind, bound.kind),
+        isNull(workspaceProjectionGrant.consumedAt),
+        gt(workspaceProjectionGrant.expiresAt, new Date()),
+      ),
+    )
+    .returning({ id: workspaceProjectionGrant.tokenHash });
+  if (!consumed) throw new WorkspaceProjectionDeniedError();
+
+  const wanted = transitionMemberState(bound.kind);
+  const [target] = await db
+    .select({ roles: member.role })
+    .from(member)
+    .where(
+      and(
+        eq(member.id, membershipId),
+        eq(member.organizationId, workspaceId),
+        eq(member.status, wanted.status),
+        eq(member.projectionState, wanted.projectionState),
+      ),
+    )
+    .limit(1);
+  if (!target) throw new WorkspaceProjectionDeniedError();
+
+  return {
+    kind: bound.kind,
+    workspaceId,
+    membershipId,
+    deviceId,
+    roles: parseWorkspaceRoles(target.roles),
+  };
+}
+
+// ── Role change: one path, direction determines ordering ─────────────────────
+
+export type RoleChangeDirection = "widen" | "narrow";
+
+/** `widen` iff every current role is retained and at least one is added;
+ * anything else (a removal, or a swap) is `narrow` — the fail-closed default,
+ * because the more-restrictive interpretation of a mixed change is the safe
+ * one. */
+export function roleChangeDirection(
+  before: readonly WorkspaceRole[],
+  after: readonly WorkspaceRole[],
+): RoleChangeDirection {
+  const beforeSet = new Set(before);
+  const afterSet = new Set(after);
+  const retainedAll = [...beforeSet].every((role) => afterSet.has(role));
+  const added = [...afterSet].some((role) => !beforeSet.has(role));
+  return retainedAll && added ? "widen" : "narrow";
+}
+
+const OWNER_CAP = 3;
+
+export interface ChangeRoleRequest {
+  workspaceId: string;
+  membershipId: string;
+  deviceId: string;
+  roles: WorkspaceRole[];
+}
+
+export function parseChangeRoleRequest(value: unknown): ChangeRoleRequest {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Invalid request body");
+  }
+  const record = value as Record<string, unknown>;
+  const roles = Array.isArray(record.roles)
+    ? record.roles.map((role) => workspaceRoleSchema.parse(role))
+    : [];
+  if (roles.length === 0) throw new Error("A role change must name at least one role");
+  return {
+    workspaceId: uuidV4Schema.parse(record.workspaceId),
+    membershipId: uuidV4Schema.parse(record.membershipId),
+    deviceId: parseDeviceId(record.deviceId),
+    roles,
+  };
+}
+
+export interface RoleChangeResult {
+  direction: RoleChangeDirection;
+  before: WorkspaceRole[];
+  after: WorkspaceRole[];
+  grant: WorkspaceTransitionGrant;
+}
+
+/**
+ * The founder ruling Q2 ordering, made concrete:
+ *
+ *  - **narrow** — update `member.role` centrally FIRST (the F127 poll then
+ *    narrows every live session within its window), then hand back a
+ *    role-change grant so the graph records the new role as history. A
+ *    window where the graph still says the wider role is harmless — the
+ *    graph is not the access decision — and the central plane is already
+ *    strict.
+ *  - **widen** — mint the grant FIRST, against the still-current role. The
+ *    central `member.role` update is deferred to `confirmRoleChangeProjection`,
+ *    after the graph has recorded the wider role. A window where the graph
+ *    says more than the central grant is the safe direction for a widen.
+ */
+export async function changeWorkspaceRole(
+  headers: Headers,
+  request: ChangeRoleRequest,
+): Promise<RoleChangeResult> {
+  const workspaceId = uuidV4Schema.parse(request.workspaceId);
+  const membershipId = uuidV4Schema.parse(request.membershipId);
+  await requireConfirmedOwner(headers, workspaceId);
+
+  const [target] = await db
+    .select({ roles: member.role })
+    .from(member)
+    .where(
+      and(
+        eq(member.id, membershipId),
+        eq(member.organizationId, workspaceId),
+        eq(member.status, "active"),
+        eq(member.projectionState, "confirmed"),
+      ),
+    )
+    .limit(1);
+  if (!target) throw new WorkspaceProjectionDeniedError();
+
+  const before = parseWorkspaceRoles(target.roles);
+  const after = [...new Set(request.roles)];
+  const direction = roleChangeDirection(before, after);
+
+  if (after.includes("owner") && !before.includes("owner")) {
+    const owners = await db
+      .select({ id: member.id })
+      .from(member)
+      .where(
+        and(
+          eq(member.organizationId, workspaceId),
+          eq(member.status, "active"),
+          sql`${member.role} ~ '(^|,)owner($|,)'`,
+        ),
+      );
+    if (owners.length >= OWNER_CAP) throw new WorkspaceProjectionDeniedError();
+  }
+
+  if (direction === "narrow") {
+    await db
+      .update(member)
+      .set({ role: serializeWorkspaceRoles(after) })
+      .where(
+        and(
+          eq(member.id, membershipId),
+          eq(member.status, "active"),
+          eq(member.projectionState, "confirmed"),
+        ),
+      );
+  }
+
+  const grant = await mintMembershipTransitionGrant(headers, {
+    workspaceId,
+    membershipId,
+    deviceId: request.deviceId,
+    kind: "role-change",
+  });
+  return { direction, before, after, grant: { ...grant, roles: after } };
+}
+
+export interface ConfirmTransitionRequest {
+  workspaceId: string;
+  membershipId: string;
+  /** Only for a role-change confirm: the role set the graph now records. */
+  roles?: WorkspaceRole[];
+}
+
+export function parseConfirmTransitionRequest(
+  value: unknown,
+): ConfirmTransitionRequest {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Invalid request body");
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    workspaceId: uuidV4Schema.parse(record.workspaceId),
+    membershipId: uuidV4Schema.parse(record.membershipId),
+    roles: Array.isArray(record.roles)
+      ? record.roles.map((role) => workspaceRoleSchema.parse(role))
+      : undefined,
+  };
+}
+
+/** Actor-owner-gated wrapper over FDN-60's `confirmWorkspaceRevocationProjection`
+ * CAS. Fails by construction unless the target is still
+ * `revoked/revocation-pending`. */
+export async function confirmRevocationProjectionForActor(
+  headers: Headers,
+  request: ConfirmTransitionRequest,
+): Promise<void> {
+  const workspaceId = uuidV4Schema.parse(request.workspaceId);
+  const membershipId = uuidV4Schema.parse(request.membershipId);
+  await requireConfirmedOwner(headers, workspaceId);
+
+  const [pendingRevocation] = await db
+    .select({ id: member.id })
+    .from(member)
+    .where(
+      and(
+        eq(member.id, membershipId),
+        eq(member.organizationId, workspaceId),
+        eq(member.status, "revoked"),
+        eq(member.projectionState, "revocation-pending"),
+      ),
+    )
+    .limit(1);
+  if (!pendingRevocation) throw new WorkspaceProjectionDeniedError();
+
+  await confirmWorkspaceRevocationProjection(membershipId);
+}
+
+/**
+ * Role-change confirm. Idempotent for a narrow (the role is already set);
+ * for a widen this is where `member.role` finally advances — the graph has
+ * recorded the wider role by now. CAS-guarded on `active/confirmed`.
+ */
+export async function confirmRoleChangeProjection(
+  headers: Headers,
+  request: ConfirmTransitionRequest,
+): Promise<void> {
+  const workspaceId = uuidV4Schema.parse(request.workspaceId);
+  const membershipId = uuidV4Schema.parse(request.membershipId);
+  await requireConfirmedOwner(headers, workspaceId);
+  if (!request.roles || request.roles.length === 0) {
+    throw new WorkspaceProjectionDeniedError();
+  }
+  const [updated] = await db
+    .update(member)
+    .set({ role: serializeWorkspaceRoles([...new Set(request.roles)]) })
+    .where(
+      and(
+        eq(member.id, membershipId),
+        eq(member.organizationId, workspaceId),
+        eq(member.status, "active"),
+        eq(member.projectionState, "confirmed"),
+      ),
+    )
+    .returning({ id: member.id });
+  if (!updated) throw new WorkspaceProjectionDeniedError();
+}
+
+export interface RevokeMemberRequest {
+  workspaceId: string;
+  membershipId: string;
+}
+
+export function parseRevokeMemberRequest(value: unknown): RevokeMemberRequest {
+  if (typeof value !== "object" || value === null) {
+    throw new Error("Invalid request body");
+  }
+  const record = value as Record<string, unknown>;
+  return {
+    workspaceId: uuidV4Schema.parse(record.workspaceId),
+    membershipId: uuidV4Schema.parse(record.membershipId),
+  };
+}
+
+/**
+ * The trigger for a removal: an Owner denies a membership centrally. This is a
+ * thin, owner-gated wrapper over FDN-60's `revokeWorkspaceAdmission` (which
+ * owns the cascade — sessions, unlock secrets, audit); FDN-85 adds only the
+ * caller check and, downstream, the history projection. "Deny centrally
+ * first" — this returns before any graph write.
+ */
+export async function revokeMembershipForActor(
+  headers: Headers,
+  request: RevokeMemberRequest,
+): Promise<void> {
+  const workspaceId = uuidV4Schema.parse(request.workspaceId);
+  const membershipId = uuidV4Schema.parse(request.membershipId);
+  const { actorUserId } = await requireConfirmedOwner(headers, workspaceId);
+
+  const [target] = await db
+    .select({ userId: member.userId })
+    .from(member)
+    .where(and(eq(member.id, membershipId), eq(member.organizationId, workspaceId)))
+    .limit(1);
+  if (!target) throw new WorkspaceProjectionDeniedError();
+  // The founding Owner's own membership can never be revoked (VPS-F001).
+  if (target.userId === actorUserId) throw new WorkspaceProjectionDeniedError();
+
+  await revokeWorkspaceAdmission(membershipId);
 }

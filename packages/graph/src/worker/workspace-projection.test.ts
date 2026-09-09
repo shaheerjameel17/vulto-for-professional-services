@@ -7,8 +7,13 @@ import { materializeManagedByEdges } from "./managed-by-materialization";
 import { authorizeMutationBatch } from "./permission/mutation-interceptor";
 import {
   acceptProjectionGrant,
+  acceptTransitionGrant,
   buildWorkspaceAdmissionDelta,
+  canonicalRoles,
+  planProjectionReconciliation,
   PROJECTION_AUTHORIZATION_PATH,
+  projectMembershipRevocation,
+  projectMembershipRoleChange,
   projectWorkspaceAdmission,
   reconcileWorkspaceProjectionOutbox,
   type WorkspaceProjectionOutboxEntry,
@@ -143,6 +148,7 @@ describe("projectWorkspaceAdmission — the outbox entry and its audit marker", 
 
 describe("reconcileWorkspaceProjectionOutbox", () => {
   const entry: WorkspaceProjectionOutboxEntry = {
+    kind: "admission",
     membershipId: MEMBERSHIP_ID,
     workspaceId: WORKSPACE_ID,
     authorizationPath: PROJECTION_AUTHORIZATION_PATH,
@@ -191,5 +197,160 @@ describe("reconcileWorkspaceProjectionOutbox", () => {
         confirm,
       }),
     ).rejects.toThrow("server said no");
+  });
+});
+
+// ── Stage 3: revocation and role-change projection ──────────────────────────
+
+describe("projectMembershipRevocation / projectMembershipRoleChange — one WM record", () => {
+  const revGrant = acceptTransitionGrant({
+    kind: "revocation",
+    workspaceId: WORKSPACE_ID,
+    membershipId: MEMBERSHIP_ID,
+    roles: ["owner"],
+  });
+  const roleGrant = acceptTransitionGrant({
+    kind: "role-change",
+    workspaceId: WORKSPACE_ID,
+    membershipId: MEMBERSHIP_ID,
+    roles: ["hr-admin", "finance-admin"],
+  });
+
+  it("revocation delta is one WorkspaceMembership fragment with lifecycle_status Revoked", () => {
+    const document = loadDelta(projectMembershipRevocation(revGrant, details).delta);
+    const nodes = readNodeFragments(document);
+    expect(nodes).toHaveLength(1);
+    const record = nodes[0]!.record as Record<string, unknown>;
+    expect(record.node_type).toBe("WorkspaceMembership");
+    expect(record.lifecycle_status).toBe("Revoked");
+    expect(record.workspace_id).toBe(WORKSPACE_ID);
+    expect(readEdgeFragments(document)).toHaveLength(0);
+    document.free();
+  });
+
+  it("role-change delta records the new canonical role set, lifecycle_status Active", () => {
+    const document = loadDelta(projectMembershipRoleChange(roleGrant, details).delta);
+    const record = readNodeFragments(document)[0]!.record as Record<string, unknown>;
+    expect(record.lifecycle_status).toBe("Active");
+    expect(record.role).toBe(canonicalRoles(["hr-admin", "finance-admin"]));
+    document.free();
+  });
+
+  it("both refuse a grant of the wrong kind", () => {
+    expect(() => projectMembershipRevocation(roleGrant, details)).toThrow();
+    expect(() => projectMembershipRoleChange(revGrant, details)).toThrow();
+  });
+
+  it("the generic mutate gate refuses a revocation/role-change delta too", async () => {
+    for (const bytes of [
+      projectMembershipRevocation(revGrant, details).delta,
+      projectMembershipRoleChange(roleGrant, details).delta,
+    ]) {
+      const document = new LoroDoc();
+      const outcome = await authorizeMutationBatch(
+        document,
+        [bytes],
+        ["owner"],
+        WORKSPACE_ID,
+      );
+      expect(outcome.status).toBe("unsupported");
+      document.free();
+    }
+  });
+
+  it("materializes coherently and carries the exception audit marker", async () => {
+    const projection = projectMembershipRevocation(revGrant, details);
+    expect(projection.outboxEntry).toMatchObject({
+      kind: "revocation",
+      authorizationPath: "privileged-projection-exception",
+    });
+    const document = loadDelta(projection.delta);
+    const { edges } = await materializeManagedByEdges(document);
+    const validated = validateGraphSnapshot(
+      { nodeFragments: readNodeFragments(document), edges },
+      WORKSPACE_ID,
+    );
+    expect(validated.nodeFragments).toHaveLength(1);
+    document.free();
+  });
+});
+
+describe("planProjectionReconciliation — the four triggers", () => {
+  const base = {
+    membershipId: MEMBERSHIP_ID,
+    workspaceId: WORKSPACE_ID,
+    outbox: [] as WorkspaceProjectionOutboxEntry[],
+    now: Date.parse("2026-02-01T01:00:00.000Z"),
+    confirmDeadlineMs: 60_000,
+  };
+
+  it("startup/unlock compare: confirmed grant but no projected node -> re-project admission", () => {
+    const actions = planProjectionReconciliation({
+      ...base,
+      grant: { status: "confirmed", roles: ["owner"] },
+      projected: null,
+    });
+    expect(actions).toContainEqual({
+      type: "re-project",
+      kind: "admission",
+      reason: "startup-missing-projection",
+    });
+  });
+
+  it("F127 poll drift: grant role set differs from the projected node's role -> re-project role-change", () => {
+    const actions = planProjectionReconciliation({
+      ...base,
+      grant: { status: "confirmed", roles: ["hr-admin"] },
+      projected: { lifecycleStatus: "Active", role: canonicalRoles(["owner"]) },
+    });
+    expect(actions).toContainEqual({
+      type: "re-project",
+      kind: "role-change",
+      reason: "poll-role-drift",
+    });
+  });
+
+  it("no drift when grant and projected role sets match (order-independent)", () => {
+    const actions = planProjectionReconciliation({
+      ...base,
+      grant: { status: "confirmed", roles: ["finance-admin", "hr-admin"] },
+      projected: {
+        lifecycleStatus: "Active",
+        role: canonicalRoles(["hr-admin", "finance-admin"]),
+      },
+    });
+    expect(actions).toEqual([]);
+  });
+
+  it("server-initiated: grant revoked but projected node still Active -> re-project revocation", () => {
+    const actions = planProjectionReconciliation({
+      ...base,
+      grant: { status: "revoked" },
+      projected: { lifecycleStatus: "Active", role: canonicalRoles(["owner"]) },
+    });
+    expect(actions).toContainEqual({
+      type: "re-project",
+      kind: "revocation",
+      reason: "revocation-not-projected",
+    });
+  });
+
+  it("outbox deadline: an unconfirmed entry older than the deadline -> retry-confirm", () => {
+    const stale: WorkspaceProjectionOutboxEntry = {
+      kind: "admission",
+      membershipId: MEMBERSHIP_ID,
+      workspaceId: WORKSPACE_ID,
+      authorizationPath: PROJECTION_AUTHORIZATION_PATH,
+      createdAt: "2026-02-01T00:00:00.000Z",
+      committedLocally: true,
+      confirmed: false,
+    };
+    const actions = planProjectionReconciliation({
+      ...base,
+      grant: { status: "confirmed", roles: ["owner"] },
+      projected: { lifecycleStatus: "Active", role: canonicalRoles(["owner"]) },
+      outbox: [stale],
+    });
+    expect(actions).toContainEqual({ type: "retry-confirm", entry: stale });
   });
 });

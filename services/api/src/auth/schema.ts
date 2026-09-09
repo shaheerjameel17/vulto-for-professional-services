@@ -569,20 +569,26 @@ export const syncTicket = pgTable(
 );
 
 /**
- * FDN-85 — the single-use, server-signed grant that authorizes the graph
- * Worker's privileged workspace-admission projection command, and nothing
- * else.
+ * FDN-85 — the single-use, server-signed grant that authorizes one run of the
+ * graph Worker's privileged workspace-projection command, and nothing else.
  *
- * A brand-new workspace's membership is `pending`, so `requireCurrentWorkspaceSession`
- * refuses it and the graph Worker cannot run an ordinary `mutate`. This
- * grant is the one narrow way in: minted by a cookie-authenticated route
- * only after `createPendingWorkspaceAdmission` has recorded the pending row,
- * bound to exactly one `(workspace, device, membership)`, hash-stored, and
- * consumed on first use. It carries the server half of the device's
- * unlock secret (provisioned here for the founding workspace) so the Worker
- * can open the sealed store for the projection write. It authorizes no other
- * write shape — the projection command it unlocks constructs the five
- * reserved-type records itself and accepts no arbitrary fragment input.
+ * The graph Worker cannot run an ordinary `mutate` against a membership whose
+ * server row it must mirror: a brand-new membership is `pending` (refused by
+ * `requireCurrentWorkspaceSession`), and a revoked one is refused too. This
+ * grant is the one narrow way in — minted by a cookie-authenticated route
+ * against a specific control-plane state, bound to exactly one
+ * `(workspace, device, membership)`, hash-stored, consumed on first use.
+ *
+ * `grant_kind` says which state transition it projects and which membership
+ * state it is valid against:
+ *   - `admission`  — membership is `pending/pending`; carries the server
+ *     unlock-secret half so the Worker can open a brand-new sealed store.
+ *   - `revocation` — membership is `revoked/revocation-pending`.
+ *   - `role-change` — membership is `active/confirmed`.
+ *
+ * It authorizes no other write shape: the command it unlocks constructs the
+ * reserved-type records itself and accepts no arbitrary fragment input, and
+ * the session opened with its unlock half is torn down after that one call.
  *
  * The raw grant string is returned to the caller once and never stored;
  * only its SHA-256 hash lands here.
@@ -591,6 +597,7 @@ export const workspaceProjectionGrant = pgTable(
   "workspace_projection_grant",
   {
     tokenHash: text("token_hash").primaryKey(),
+    grantKind: text("grant_kind").notNull().default("admission"),
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
@@ -606,6 +613,10 @@ export const workspaceProjectionGrant = pgTable(
     consumedAt: timestamp("consumed_at", { withTimezone: true }),
   },
   (table) => [
+    check(
+      "workspace_projection_grant_kind_check",
+      sql`${table.grantKind} in ('admission', 'revocation', 'role-change')`,
+    ),
     index("workspace_projection_grant_membership_idx").on(table.membershipId),
     index("workspace_projection_grant_expires_at_idx").on(table.expiresAt),
   ],
