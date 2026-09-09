@@ -22,6 +22,14 @@ import {
 } from "@vulto/graph/testing";
 import { buildProofEmployeeFragmentsSnapshot } from "@vulto/graph/testing/chain";
 import {
+  EDGE_PROOF_CERTIFICATION,
+  EDGE_PROOF_EMPLOYEE,
+  EDGE_PROOF_PAYROLL_POLICY,
+  EDGE_PROOF_PAYRUN,
+  EDGE_PROOF_SKILL,
+  EDGE_PROOF_TAX_CONFIG,
+} from "@vulto/graph/testing/edges";
+import {
   buildPermissionProofEmployeeSnapshot,
   buildPermissionProofOrgScenarioSnapshot,
   PERMISSION_PROOF_EMPLOYEE,
@@ -221,6 +229,69 @@ interface GraphPersistenceDiagnosticsApi {
     buildEmployeeFragments(workspaceId: string): string;
     buildOrgScenario(workspaceId: string, nodeId: string): string;
   };
+  /**
+   * FDN-92 Stage 3. The generic-edge write path, driven through the real
+   * `mutate` gate inside a test-only Worker (see
+   * `packages/graph/src/worker/testing/runtime-edge-write-proof.worker.ts`),
+   * for the same F105 reason `runChainProof` uses one.
+   */
+  edgeWrite: {
+    runUnion(
+      workspaceIdAB: string,
+      workspaceIdBA: string,
+    ): Promise<EdgeUnionProofResult>;
+    runFieldByField(workspaceId: string): Promise<EdgeFieldByFieldProofResult>;
+    runReopen(workspaceId: string): Promise<EdgeReopenProofResult>;
+    runGovernedBy(workspaceId: string): Promise<EdgeGovernedByProofResult>;
+    runDenied(workspaceId: string): Promise<{ status: string; reason: string }>;
+    createOfflineProof(): EdgeOfflineProofHandle;
+    employeeId: string;
+    skillId: string;
+    certificationId: string;
+    payRunId: string;
+    payrollPolicyId: string;
+    taxConfigId: string;
+  };
+}
+
+interface EdgeConvergedSide {
+  statuses: string[];
+  skillToNodeIds: string[];
+  certToNodeIds: string[];
+  edgeCanonical: string;
+}
+interface EdgeUnionProofResult {
+  ab: EdgeConvergedSide;
+  ba: EdgeConvergedSide;
+}
+interface EdgeFieldByFieldProofResult {
+  statuses: string[];
+  edgeCount: number;
+  effectiveTo: string | null;
+  metadata: unknown;
+}
+interface EdgeReopenProofResult {
+  generationAfterWrite: number;
+  generationAfterReapply: number;
+  canonicalBeforeReopen: string;
+  canonicalAfterReopen: string;
+  toNodeIdsBeforeReopen: string[];
+  toNodeIdsAfterReopen: string[];
+}
+interface EdgeGovernedByProofResult {
+  statuses: string[];
+  governorNodeIds: string[];
+}
+interface EdgeOfflineProofHandle {
+  open(): Promise<{ opened: boolean }>;
+  prove(): Promise<{
+    status: string;
+    generationBefore: number;
+    generationAfter: number;
+    toNodeIds: string[];
+    canonical: string;
+  }>;
+  dispose(): void;
 }
 
 interface OfflineProofHandle {
@@ -431,6 +502,79 @@ function createOfflineProofHandle(workspaceId: string): OfflineProofHandle {
   };
 }
 
+/**
+ * FDN-92 Stage 3: spawns the edge-write proof Worker for a single one-shot
+ * request and resolves its one result message. The Worker is reachable only
+ * from this opt-in diagnostics route, the same test-seam status as the
+ * FDN-50 chain-proof Worker.
+ */
+function runEdgeWriteProof<T>(message: Record<string, unknown>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL(
+        "../../../../../packages/graph/src/worker/testing/runtime-edge-write-proof.worker.ts",
+        import.meta.url,
+      ),
+      { type: "module", name: "vulto-fdn92-edge-write-proof" },
+    );
+    worker.onmessage = (event: MessageEvent<unknown>) => {
+      worker.terminate();
+      const response = event.data as
+        { ok: true; result: T } | { ok: false; error: string };
+      if (response.ok) resolve(response.result);
+      else reject(new Error(response.error));
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "Edge write proof Worker failed"));
+    };
+    worker.postMessage({ ...message, apiOrigin });
+  });
+}
+
+/**
+ * FDN-92 Stage 3: the offline half needs a long-lived Worker (open online,
+ * prove after the network is cut), so it gets its own handle rather than a
+ * one-shot spawn.
+ */
+function createEdgeOfflineProofHandle(workspaceId: string): EdgeOfflineProofHandle {
+  const worker = new Worker(
+    new URL(
+      "../../../../../packages/graph/src/worker/testing/runtime-edge-write-proof.worker.ts",
+      import.meta.url,
+    ),
+    { type: "module", name: "vulto-fdn92-edge-offline-proof" },
+  );
+
+  function send<T>(message: unknown): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<unknown>) => {
+        const response = event.data as
+          { ok: true; result: T } | { ok: false; error: string };
+        if (response.ok) resolve(response.result);
+        else reject(new Error(response.error));
+      };
+      worker.onerror = (event) =>
+        reject(new Error(event.message || "Edge offline proof Worker failed"));
+      worker.postMessage(message);
+    });
+  }
+
+  return {
+    open: () =>
+      send<{ opened: boolean }>({ kind: "offline-open", workspaceId, apiOrigin }),
+    prove: () =>
+      send<{
+        status: string;
+        generationBefore: number;
+        generationAfter: number;
+        toNodeIds: string[];
+        canonical: string;
+      }>({ kind: "offline-prove" }),
+    dispose: () => worker.terminate(),
+  };
+}
+
 export function GraphPersistenceDiagnosticsClient() {
   const params = useSearchParams();
   const workspaceId = params.get("workspaceId") ?? "fdn-50-browser-proof";
@@ -529,6 +673,28 @@ export function GraphPersistenceDiagnosticsClient() {
           employeeId: PERMISSION_PROOF_EMPLOYEE,
           buildEmployeeFragments: buildPermissionProofEmployeeSnapshot,
           buildOrgScenario: buildPermissionProofOrgScenarioSnapshot,
+        },
+        edgeWrite: {
+          runUnion: (workspaceIdAB, workspaceIdBA) =>
+            runEdgeWriteProof({ kind: "union", workspaceIdAB, workspaceIdBA }),
+          runFieldByField: (targetWorkspaceId) =>
+            runEdgeWriteProof({
+              kind: "field-by-field",
+              workspaceId: targetWorkspaceId,
+            }),
+          runReopen: (targetWorkspaceId) =>
+            runEdgeWriteProof({ kind: "reopen", workspaceId: targetWorkspaceId }),
+          runGovernedBy: (targetWorkspaceId) =>
+            runEdgeWriteProof({ kind: "governed-by", workspaceId: targetWorkspaceId }),
+          runDenied: (targetWorkspaceId) =>
+            runEdgeWriteProof({ kind: "denied", workspaceId: targetWorkspaceId }),
+          createOfflineProof: () => createEdgeOfflineProofHandle(workspaceId),
+          employeeId: EDGE_PROOF_EMPLOYEE,
+          skillId: EDGE_PROOF_SKILL,
+          certificationId: EDGE_PROOF_CERTIFICATION,
+          payRunId: EDGE_PROOF_PAYRUN,
+          payrollPolicyId: EDGE_PROOF_PAYROLL_POLICY,
+          taxConfigId: EDGE_PROOF_TAX_CONFIG,
         },
       };
     });
