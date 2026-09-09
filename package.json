@@ -22,6 +22,7 @@
     "test:sync-engine": "services/sync-engine/scripts/pg-tests.sh",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "artifact:check": "node scripts/artifact-check.mjs",
     "stack:up": "docker compose up -d --wait",
     "stack:down": "docker compose down",
     "stack:logs": "docker compose logs -f",
