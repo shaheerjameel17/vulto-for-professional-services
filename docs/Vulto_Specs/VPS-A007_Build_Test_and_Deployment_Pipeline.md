@@ -119,6 +119,8 @@ Per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]], with the pipelin
 
 **Production is promoted, never built.** The artifact that reaches production is byte-identical to the one tested in staging. A separate production build is a build nobody tested.
 
+**As built (F194): "merge to `main`" publishes the promotable artifacts; it does not deploy them.** There is no Preview, Staging or Production environment provisioned — `A001-T12`'s stack choice (DigitalOcean, Vercel) is recorded, nothing is stood up. FDN-55's Stage 4 delivers the *publish* half: on every push to `main`, once the full verification matrix is green, `slow-lane.yml`'s `publish-artifacts` job builds and pushes the API and sync-engine images to the registry (`ghcr.io/<repo>/api` and `ghcr.io/<repo>/sync-engine`, tagged by commit SHA and recorded by digest), re-uses — never rebuilds — the exact `roster-web` build the gate verified, and emits a `deploy-manifest.json` (commit, latest migration, `packages/schema/src` digest, each artifact's digest) as the seed of the promotion record. **FDN-58 owns everything past that line**: provisioning the environments and the approved topology, environment isolation, all secrets and configuration, the deploy itself (Vercel promotion, DigitalOcean rolling deploy in dependency order), rollback, backup-restore rehearsal, promotion approvals, and pre-promotion migration validation. Until FDN-58 lands there is nothing to promote *to*; the artifacts and their manifest simply accumulate. Artifact publishing has no dependency on the synthetic fixture generator (F71) — pushing an image to a registry and seeding a staging database are unrelated concerns.
+
 ---
 
 ## The gates, in order
@@ -206,6 +208,8 @@ Each of those is a case this specification set corrected a defect in. **A fixtur
 ---
 
 ## Deployment
+
+This section is the target topology. **As built, none of it is provisioned and nothing deploys** — see the Environments note above (F194). FDN-55 Stage 4 publishes the artifacts this section would deploy; FDN-58 builds the deployment.
 
 **Frontend** to Vercel, one deployment per application in `apps/` — preview per pull request, staging on merge, production on promotion. **Applications deploy independently**, since a Projects release should not require a Roster release.
 
