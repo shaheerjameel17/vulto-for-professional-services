@@ -27,6 +27,22 @@ interface EdgeGroupShape {
   readonly pairs: readonly EndpointPair[];
   readonly sourceRows?: number;
   readonly historyPolicy?: "single-active-outgoing";
+  /**
+   * F136 / FDN-92. For an endpoint node type that has more than one privacy
+   * partition (`getProtectionPartitions(nodeType).length > 1`), the partition
+   * whose write-permission column governs an edge write on this edge type.
+   *
+   * Keyed by node type, not by from/to position, so a polymorphic edge — or
+   * an endpoint-set position that resolves to several concrete types — can
+   * name a partition per split type it connects. Consulted ONLY for a split
+   * endpoint; a single-partition endpoint ignores it entirely. A split
+   * endpoint with no entry here resolves to `none` in `authorizeEdgeWrite`
+   * (the conservative F136 default is the fallback for anything the registry
+   * has not reviewed). It is NEVER supplied by a write delta — a
+   * self-declared scope would be a bypass; `authorizeEdgeWrite` looks this up
+   * independently.
+   */
+  readonly governingPartitions?: Readonly<Partial<Record<NodeType, string>>>;
 }
 
 const edgeGroup = <const T extends EdgeGroupShape>(group: T): T => group;
@@ -47,6 +63,10 @@ export const EDGE_GROUPS = [
     edgeType: "membership_in",
     owner: "VPS-A002",
     pairs: [["WorkspaceMembership", "Workspace"]],
+    // Membership is a display/identity fact about the workspace; the split
+    // Workspace endpoint's `billing` partition (Tier 2) governs financial
+    // configuration, not who belongs. F136 / FDN-92, founder-approved.
+    governingPartitions: { Workspace: "display" },
   }),
   edgeGroup({
     edgeType: "registered_on",
@@ -91,6 +111,9 @@ export const EDGE_GROUPS = [
     edgeType: "assignment_of",
     owner: "VRS-F005",
     pairs: [["Assignment", "Employee"]],
+    // Which person an assignment is for is staffing/operational data. F136 /
+    // FDN-92, founder-approved.
+    governingPartitions: { Employee: "operational" },
   }),
   edgeGroup({
     edgeType: "assigned_to",
@@ -144,6 +167,10 @@ export const EDGE_GROUPS = [
     edgeType: "has_skill",
     owner: "VPS-A002",
     pairs: [["Employee", "Skill"]],
+    // A skill holding is operational HR data; requiring compensation-level
+    // (finance) permission to record one is wrong for the product. F136 /
+    // FDN-92, founder-approved.
+    governingPartitions: { Employee: "operational" },
   }),
   edgeGroup({
     edgeType: "requires_skill",
@@ -160,6 +187,9 @@ export const EDGE_GROUPS = [
     edgeType: "holds_certification",
     owner: "VRS-F041",
     pairs: [["Employee", "Certification"]],
+    // Certifications are operational, not compensation. F136 / FDN-92,
+    // founder-approved.
+    governingPartitions: { Employee: "operational" },
   }),
   edgeGroup({
     edgeType: "resulted_in",
@@ -518,6 +548,8 @@ export interface EdgeRegistration {
   readonly toNodeType: RegistryEndpoint;
   readonly owner: string;
   readonly historyPolicy: "single-active-outgoing" | "none-specified";
+  /** `{}` when the edge group declares none. See `EdgeGroupShape`. */
+  readonly governingPartitions: Readonly<Partial<Record<NodeType, string>>>;
 }
 
 export const EDGE_TYPES = EDGE_GROUPS.map(
@@ -536,6 +568,8 @@ export const EDGE_REGISTRY: readonly EdgeRegistration[] = EDGE_GROUPS.flatMap((g
     toNodeType,
     owner: group.owner,
     historyPolicy: "historyPolicy" in group ? group.historyPolicy : "none-specified",
+    governingPartitions:
+      "governingPartitions" in group ? group.governingPartitions : {},
   })),
 );
 

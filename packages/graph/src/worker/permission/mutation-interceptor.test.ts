@@ -122,29 +122,115 @@ describe("authorizeEdgeWrite — Gate 1 endpoint approximation, exhaustive over 
     expect(concreteRegistrations.length).toBeGreaterThan(0);
   });
 
-  it("grants only when both endpoints have exactly one privacy partition and both resolve to full for the role", () => {
+  /**
+   * FDN-92. The governing partition for a split endpoint is the
+   * registry-declared `governingPartitions[nodeType]` — never a value the
+   * caller supplies. This computes the same key independently and asserts
+   * `authorizeEdgeWrite` grants iff both endpoints' governing partitions
+   * resolve to Full for the role.
+   */
+  const governingPartitionKey = (
+    registration: (typeof concreteRegistrations)[number],
+    nodeType: NodeType,
+  ): string | null => {
+    const partitions = getProtectionPartitions(nodeType);
+    if (partitions.length === 1) return partitions[0]!.key;
+    if (partitions.length === 0) return null;
+    const declared = registration.governingPartitions[nodeType];
+    return declared !== undefined && partitions.some(({ key }) => key === declared)
+      ? declared
+      : null;
+  };
+
+  it("grants iff both endpoints' governing partitions resolve to Full for the role", () => {
     let checked = 0;
-    for (const { edgeType, fromNodeType, toNodeType } of concreteRegistrations) {
+    let grantedAtLeastOnce = false;
+    for (const registration of concreteRegistrations) {
+      const { edgeType, fromNodeType, toNodeType } = registration;
       for (const role of ALL_ROLES) {
         const authorization = authorizeEdgeWrite(edgeType, fromNodeType, toNodeType, [
           role,
         ]);
-        const fromPartitions = getProtectionPartitions(fromNodeType);
-        const toPartitions = getProtectionPartitions(toNodeType);
+        const fromKey = governingPartitionKey(registration, fromNodeType);
+        const toKey = governingPartitionKey(registration, toNodeType);
         const expectedAllowed =
-          fromPartitions.length === 1 &&
-          toPartitions.length === 1 &&
-          resolvePermission(role, fromNodeType, fromPartitions[0]!.key).outcome ===
-            "full" &&
-          resolvePermission(role, toNodeType, toPartitions[0]!.key).outcome === "full";
+          fromKey !== null &&
+          toKey !== null &&
+          resolvePermission(role, fromNodeType, fromKey).outcome === "full" &&
+          resolvePermission(role, toNodeType, toKey).outcome === "full";
         expect(authorization.allowed).toBe(expectedAllowed);
+        grantedAtLeastOnce ||= authorization.allowed;
         checked += 1;
       }
     }
     expect(checked).toBeGreaterThan(20);
+    // The registry-declared governing partitions make some split-endpoint
+    // edges writable — the whole point of the F136 ruling.
+    expect(grantedAtLeastOnce).toBe(true);
   });
 
-  it("managed_by (Employee -> Employee): denied for every role, since Employee has split protection and F136 resolves that conservatively to none", () => {
+  it("has_skill / holds_certification / assignment_of: the Employee endpoint is governed by `operational`, not any partition the role happens to hold Full on", () => {
+    // The registry declares `{ Employee: "operational" }` for these. A role
+    // with Full ONLY on Employee/compensation (finance-admin) and NOT on
+    // operational must still be DENIED — this is the proof the lookup is
+    // real and not accidentally permissive in the direction opposite the
+    // one the denial cases test.
+    for (const edgeType of ["has_skill", "holds_certification"] as const) {
+      const toNodeType = edgeType === "has_skill" ? "Skill" : "Certification";
+      // finance-admin: Full on Employee/compensation, not operational.
+      expect(
+        resolvePermission("finance-admin", "Employee", "compensation").outcome,
+      ).toBe("full");
+      expect(
+        resolvePermission("finance-admin", "Employee", "operational").outcome,
+      ).not.toBe("full");
+      const financeOnly = authorizeEdgeWrite(edgeType, "Employee", toNodeType, [
+        "finance-admin",
+      ]);
+      expect(financeOnly.allowed).toBe(false);
+
+      // A role with Full on Employee/operational AND Full on the other
+      // endpoint is granted.
+      const operationalRole = ALL_ROLES.find(
+        (role) =>
+          resolvePermission(role, "Employee", "operational").outcome === "full" &&
+          resolvePermission(role, toNodeType, "record").outcome === "full",
+      );
+      expect(operationalRole).toBeDefined();
+      const granted = authorizeEdgeWrite(edgeType, "Employee", toNodeType, [
+        operationalRole!,
+      ]);
+      expect(granted.allowed).toBe(true);
+    }
+
+    // assignment_of: Employee is the `to` endpoint, same declaration.
+    const assignmentFinanceOnly = authorizeEdgeWrite(
+      "assignment_of",
+      "Assignment",
+      "Employee",
+      ["finance-admin"],
+    );
+    expect(assignmentFinanceOnly.allowed).toBe(false);
+  });
+
+  it("membership_in: the split Workspace endpoint is governed by `display`, not `billing`", () => {
+    // Registry declares `{ Workspace: "display" }`. A role with Full only on
+    // Workspace/billing must be denied.
+    const billingOnlyRole = ALL_ROLES.find(
+      (role) =>
+        resolvePermission(role, "Workspace", "billing").outcome === "full" &&
+        resolvePermission(role, "Workspace", "display").outcome !== "full",
+    );
+    if (billingOnlyRole !== undefined) {
+      expect(
+        authorizeEdgeWrite("membership_in", "WorkspaceMembership", "Workspace", [
+          billingOnlyRole,
+        ]).allowed,
+      ).toBe(false);
+    }
+  });
+
+  it("managed_by (Employee -> Employee): denied for every role — Employee is split and the registry declares no governing partition for it (F136 default)", () => {
     for (const role of ALL_ROLES) {
       const authorization = authorizeEdgeWrite("managed_by", "Employee", "Employee", [
         role,
@@ -156,15 +242,17 @@ describe("authorizeEdgeWrite — Gate 1 endpoint approximation, exhaustive over 
     }
   });
 
-  it("an edge type absent from EDGE_TYPES entirely still resolves rather than throwing, when both endpoints are real node types", () => {
-    // authorizeEdgeWrite takes a bare string edgeType — it never validates
-    // registration, only endpoint permission, since VPS-A004 assigns no
-    // write-permission column to the edge type itself.
-    expect(() =>
-      authorizeEdgeWrite("not_a_registered_edge_type" as EdgeType, "User", "User", [
-        "owner",
-      ]),
-    ).not.toThrow();
+  it("an unregistered (edge_type, from, to) is a denial, not a throw", () => {
+    let result;
+    expect(() => {
+      result = authorizeEdgeWrite(
+        "not_a_registered_edge_type" as EdgeType,
+        "User",
+        "User",
+        ["owner"],
+      );
+    }).not.toThrow();
+    expect(result!.allowed).toBe(false);
   });
 });
 
@@ -498,6 +586,136 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
       FIXTURE_WORKSPACE,
     );
     expect(outcome).toEqual({ status: "authorized" });
+    document.free();
+  });
+
+  // ── FDN-92: the edge-fragment commit path ──────────────────────────────
+  const EDGE_CONTAINER = "__vulto_edge_fragments";
+  const EMPLOYEE_ID = "66666666-6666-4666-8666-666666666666";
+  const SKILL_ID = "77777777-7777-4777-8777-777777777777";
+  const EDGE_ID = "88888888-8888-4888-8888-888888888888";
+
+  function edgeRecord(
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      edge_id: EDGE_ID,
+      edge_type: "has_skill",
+      from_node_id: EMPLOYEE_ID,
+      to_node_id: SKILL_ID,
+      effective_from: "2026-01-01T00:00:00.000Z",
+      effective_to: null,
+      created_at: "2025-12-20T08:00:00.000Z",
+      created_by: "33333333-3333-4333-8333-333333333333",
+      metadata: {},
+      is_soft_deleted: false,
+      soft_deleted_at: null,
+      soft_deleted_by: null,
+      ...overrides,
+    };
+  }
+
+  function writeEdge(document: LoroDoc, record: Record<string, unknown>): void {
+    const fragment = document
+      .getMap(EDGE_CONTAINER)
+      .setContainer(record["edge_id"] as string, new LoroMap());
+    for (const [field, value] of Object.entries(record)) fragment.set(field, value);
+  }
+
+  /** Snapshot bytes holding an edge-fragment write, optionally with its endpoints. */
+  function edgeBatch(withEndpoints: boolean): Uint8Array {
+    const scratch = new LoroDoc();
+    if (withEndpoints) {
+      writeFragment(scratch, EMPLOYEE_ID, "Employee", "operational");
+      writeFragment(scratch, SKILL_ID, "Skill", "record");
+    }
+    writeEdge(scratch, edgeRecord());
+    scratch.commit();
+    const bytes = scratch.export({ mode: "snapshot" });
+    scratch.free();
+    return bytes;
+  }
+
+  function documentWithEndpoints(): LoroDoc {
+    const document = new LoroDoc();
+    writeFragment(document, EMPLOYEE_ID, "Employee", "operational");
+    writeFragment(document, SKILL_ID, "Skill", "record");
+    document.commit();
+    return document;
+  }
+
+  it("authorizes a has_skill edge write when the role has Full on Employee/operational and Skill", async () => {
+    const document = documentWithEndpoints();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [edgeBatch(false)],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
+    expect(outcome).toEqual({ status: "authorized" });
+    document.free();
+  });
+
+  it("denies a has_skill edge write for a role with Full only on Employee/compensation (governing partition is operational)", async () => {
+    const document = documentWithEndpoints();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [edgeBatch(false)],
+      ["finance-admin"],
+      FIXTURE_WORKSPACE,
+    );
+    expect(outcome.status).toBe("denied");
+    if (outcome.status === "denied") {
+      expect(outcome.reason).toContain("Employee/operational");
+    }
+    document.free();
+  });
+
+  it("authorizes an edge and its endpoint node fragments created in one batch", async () => {
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [edgeBatch(true)],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
+    expect(outcome).toEqual({ status: "authorized" });
+    document.free();
+  });
+
+  it("refuses an edge whose endpoint is not materialized as invalid, not denied", async () => {
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [edgeBatch(false)],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
+    expect(outcome.status).toBe("invalid");
+    document.free();
+  });
+
+  it("still refuses as unsupported when an edge write rides alongside a Movable Tree change", async () => {
+    const scratch = new LoroDoc();
+    writeFragment(scratch, EMPLOYEE_ID, "Employee", "operational");
+    writeFragment(scratch, SKILL_ID, "Skill", "record");
+    writeEdge(scratch, edgeRecord());
+    scratch.getTree("org_hierarchy").createNode();
+    scratch.commit();
+    const batch = scratch.export({ mode: "snapshot" });
+    scratch.free();
+
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      FIXTURE_WORKSPACE,
+    );
+    expect(outcome.status).toBe("unsupported");
+    if (outcome.status === "unsupported") {
+      expect(outcome.reason).toContain("org_hierarchy");
+    }
     document.free();
   });
 });

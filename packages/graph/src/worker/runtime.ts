@@ -7,6 +7,7 @@ import {
   assertDocumentSchemaGenerationReadable,
   stampDocumentSchemaGeneration,
 } from "./document-schema-gate";
+import { readEdgeFragments } from "./document-edge-fragments";
 import { readNodeFragments } from "./document-node-fragments";
 import { materializeManagedByEdges } from "./managed-by-materialization";
 import { deriveEffectiveRoles } from "./permission/effective-roles";
@@ -93,15 +94,17 @@ export interface RuntimeDeltaBatchResult {
 }
 
 /**
- * FDN-53 stage 2. `mutate`'s three possible outcomes: authorized and
- * committed, refused by Gate 1 (`denied`), or refused because the batch
- * touches state the gate cannot yet evaluate at all (`unsupported` — an
- * edge type, the Movable Tree, or any container other than the node
- * fragments themselves; see F132/F134/F136). `denied` and `unsupported` are
- * kept as distinct statuses rather than collapsed into one generic refusal:
- * a denial is an answer about who the caller is, an unsupported result is a
- * statement about what this stage can commit at all, and a caller (or a
- * future finding) should be able to tell them apart without parsing prose.
+ * FDN-53 stage 2, extended by FDN-92. `mutate`'s outcomes: authorized and
+ * committed (`applied`), refused by Gate 1 (`denied`), refused as incoherent
+ * (`invalid`, F138), or refused because the batch touches state with no
+ * committable convention (`unsupported` — the Movable Tree, the reserved
+ * document-meta container, or anything other than the node-fragment and
+ * edge-fragment containers; see F132/F134). Node fragments (FDN-53 stage 2)
+ * and generic edge fragments (FDN-92) are both committable; `managed_by`
+ * moves are still `unsupported` here — they go through the Tree, not `mutate`
+ * (F104). `denied` and `unsupported` stay distinct: a denial is an answer
+ * about who the caller is, an unsupported result is about what can be
+ * committed at all.
  */
 export type RuntimeMutationOutcome =
   | ({ readonly status: "applied" } & RuntimeDeltaBatchResult)
@@ -1407,14 +1410,18 @@ export class LocalGraphWorkerRuntime {
   ): Promise<number> {
     const document = this.#requireDocument();
     const index = this.#requireIndex();
-    const { edges } = await materializeManagedByEdges(document);
+    // FDN-92. `managed_by` is derived one-way from the Movable Tree (F104);
+    // every other edge type is stored in `__vulto_edge_fragments` and read
+    // back here. Both feed one snapshot — `validateGraphSnapshot` inside
+    // `rebuild` treats a generic edge exactly as a Tree-derived one.
+    const { edges: managedByEdges } = await materializeManagedByEdges(document);
     return index.rebuild({
       nodeFragments: [
         ...readNodeFragments(document),
         ...protectedPartitions.nodeFragments(),
         ...tier3Partitions.nodeFragments(),
       ],
-      edges,
+      edges: [...managedByEdges, ...readEdgeFragments(document)],
     });
   }
 
@@ -1550,22 +1557,25 @@ export class LocalGraphWorkerRuntime {
    * state is compared against the canonical document's CURRENT state
    * container by container:
    *
-   *   1. Any container other than the node-fragment container that differs
-   *      between before and after — the Movable Tree, the reserved
-   *      document-meta container, or anything else a delta batch could in
-   *      principle touch — refuses the WHOLE batch as `unsupported`. This
-   *      is deliberately exhaustive rather than allow-listed to "the Tree":
-   *      nothing this function does not explicitly recognize is permitted
-   *      to slip through uninspected, which is the exact failure shape
-   *      F131 exists to close. Edge-shaped state specifically has no
-   *      committable storage convention this stage (F132, F134) — see
-   *      `authorizeEdgeWrite` for the write-permission logic proven correct
-   *      in isolation but never reached from here.
+   *   1. Any container other than the node-fragment and edge-fragment
+   *      containers that differs between before and after — the Movable
+   *      Tree, the reserved document-meta container, or anything else a
+   *      delta batch could in principle touch — refuses the WHOLE batch as
+   *      `unsupported`. Deliberately exhaustive rather than allow-listed to
+   *      "the Tree": nothing this function does not explicitly recognize is
+   *      permitted to slip through uninspected, the exact failure shape
+   *      F131 exists to close. A `managed_by` change is a Tree move and
+   *      lands here — it goes through the Tree, not `mutate` (F104).
    *   2. Within the node-fragment container, only the fragments this batch
-   *      actually adds, changes, or removes are gated — never the whole
-   *      document's fragments — each against Gate 1 (`authorizeNodeWrite`).
-   *      A single denial refuses the whole batch; there is no partial
-   *      commit.
+   *      adds, changes, or removes are gated against Gate 1
+   *      (`authorizeNodeWrite`).
+   *   3. Within the edge-fragment container (FDN-92), only the edges this
+   *      batch adds, changes, or removes are gated against
+   *      `authorizeEdgeWrite` — the registry-declared governing partition
+   *      (never a delta-supplied value) picks which partition of a split
+   *      endpoint governs.
+   *   A single denial at 2 or 3 refuses the whole batch; there is no
+   *   partial commit.
    *
    * Only once every changed fragment is authorized does this re-import the
    * SAME deltas into the real document and run the ordinary commit path
