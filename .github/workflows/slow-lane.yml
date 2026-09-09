@@ -4,8 +4,8 @@
 # integration suite, the three browser suites, the multi-target Rust build, the
 # accessibility smoke pass, and the production build + artifact check.
 #
-# Runs on every push to a PR branch and on the PR itself (ruling 6 — not only
-# once before merge). Required for merge.
+# Runs on every push (any branch, `main` included) and on every PR (ruling 6 —
+# not only once before merge). Required for merge.
 #
 # Sharding (ruling 7): the browser suites are expressed as an `include:` matrix
 # so a suite that crosses ~8 minutes of wall-clock gets split by raising its
@@ -20,8 +20,9 @@ name: slow-lane
 
 on:
   pull_request:
+  # Every push, `main` included — the branch it protects gets the full matrix
+  # on every commit, not only through PRs (ruling 6, and "green on main").
   push:
-    branches-ignore: [main]
 
 permissions:
   contents: read
