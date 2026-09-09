@@ -1,0 +1,14 @@
+# Keep build contexts small and host-platform artifacts out of any image.
+# The sync-engine service image and the CI image both build from repo root or
+# a subdir; neither wants these.
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/target
+**/.git
+**/test-results
+**/playwright-report
+**/*.tsbuildinfo
+**/.DS_Store
+.claude/worktrees
