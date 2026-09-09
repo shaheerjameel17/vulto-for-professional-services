@@ -1,0 +1,66 @@
+# FDN-55 Stage 3 — the fast lane.
+#
+# `pnpm verify` (Stage 1's fast hermetic gate: format, lint, schema conformance,
+# the architecture check, typecheck, and every unit suite except @vulto/api's
+# Postgres-backed integration tests) run inside the digest-pinned CI image.
+#
+# Runs on EVERY push and every PR. Required for merge. Target: a few minutes.
+# Nothing here needs a service container — that is the whole point of the split.
+# The api integration suite, the browser suites, the multi-target Rust build and
+# the production build all live in slow-lane.yml.
+
+name: fast-lane
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: fast-lane-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  resolve-image:
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.read.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/workflows/ci-image-ref.env
+          sparse-checkout-cone-mode: false
+      - id: read
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/workflows/ci-image-ref.env
+          echo "image=${CI_IMAGE}" >> "$GITHUB_OUTPUT"
+          if [[ "${CI_IMAGE}" != *"@sha256:"* ]]; then
+            echo "::warning title=CI image is not digest-pinned::${CI_IMAGE} — A007-T16 requires a digest. Bump .github/workflows/ci-image-ref.env once ci-image.yml has published the image."
+          fi
+
+  verify:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      # GitHub's runner creates the workspace mount (/__w) owned by root; the
+      # image's non-root `ci` default is for local bind-mounts. Run as root here.
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        shell: bash
+        run: pnpm install --frozen-lockfile
+
+      - name: pnpm verify
+        shell: bash
+        run: pnpm verify

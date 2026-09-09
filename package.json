@@ -11,6 +11,10 @@
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
     "test": "turbo run test",
+    "test:fast": "turbo run test --filter=!@vulto/api",
+    "conformance": "pnpm --filter @vulto/schema exec vitest run src/conformance.gate.test.ts",
+    "arch:check": "node scripts/arch-check.mjs",
+    "verify:preflight": "node scripts/db-preflight.mjs",
     "pretest:auth-browser": "pnpm --dir services/api exec tsx src/test/browser-setup.ts",
     "test:auth-browser": "playwright test --config services/api/playwright.config.ts",
     "pretest:worker-browser": "pnpm --dir services/api exec tsx src/test/browser-setup-worker.ts",
@@ -26,9 +30,11 @@
     "stack:up": "docker compose up -d --wait",
     "stack:down": "docker compose down",
     "stack:logs": "docker compose logs -f",
-    "verify": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+    "verify": "pnpm format:check && pnpm lint && pnpm conformance && pnpm arch:check && pnpm typecheck && pnpm test:fast",
+    "verify:full": "pnpm verify && pnpm verify:preflight && pnpm --filter @vulto/api test"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@eslint/js": "9.39.5",
     "@playwright/test": "1.62.1",
     "eslint": "9.39.5",

@@ -569,7 +569,12 @@ test.describe("FDN-51 Stage 4b — two-device convergence on the real stack", ()
     }
   });
 
-  test("a device applies a peer's live pushes while replaying its own backlog larger than one page", async ({
+  // Tagged @large-backlog-replay: one device flushes a local-write backlog
+  // larger than one relay page (MAX_DELTA_PAGE = 500). That shape exceeds the
+  // free 2-vCPU CI runner's throughput, so the FDN-55 CI device-store gate
+  // excludes @large-backlog-replay (FDN-93). It still runs in a local `pnpm
+  // test:device-store-browser`. Add the tag to any new test with this shape.
+  test("a device applies a peer's live pushes while replaying its own backlog larger than one page @large-backlog-replay", async ({
     browser,
   }) => {
     test.setTimeout(180_000);
@@ -650,7 +655,10 @@ test.describe("FDN-51 Stage 4b — two-device convergence on the real stack", ()
     }
   });
 
-  test("a device offline across an extended multi-page gap catches up fully on return", async ({
+  // Tagged @large-backlog-replay — see the note above; > one relay page of
+  // local writes flushed from one device. Excluded from the FDN-55 CI gate
+  // (FDN-93), still run locally.
+  test("a device offline across an extended multi-page gap catches up fully on return @large-backlog-replay", async ({
     browser,
   }) => {
     test.setTimeout(180_000);

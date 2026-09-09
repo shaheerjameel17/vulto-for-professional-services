@@ -1,0 +1,241 @@
+# FDN-55 Stage 3 — the slow lane.
+#
+# Everything the fast lane deliberately leaves out: the Postgres-backed api
+# integration suite, the three browser suites, the multi-target Rust build, the
+# accessibility smoke pass, and the production build + artifact check.
+#
+# Runs on every push (any branch, `main` included) and on every PR (ruling 6 —
+# not only once before merge). Required for merge.
+#
+# Sharding (ruling 7): the browser suites are expressed as an `include:` matrix
+# so a suite that crosses ~8 minutes of wall-clock gets split by raising its
+# `shardTotal` here — no structural change. On the CI runner device-store is
+# ~14 min (worker ~2, auth ~2); it is a candidate to shard, but the cost is
+# one relay/next-dev/api start-up per shard, so it stays single until the
+# per-shard time is the bigger problem. The `@large-backlog-replay` device-store
+# tests are excluded from the CI gate — see the `grep_invert` note below and
+# FDN-93 (the real fix: a sidecar-container split).
+
+name: slow-lane
+
+on:
+  pull_request:
+  # Every push, `main` included — the branch it protects gets the full matrix
+  # on every commit, not only through PRs (ruling 6, and "green on main").
+  push:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: slow-lane-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Every job that needs Postgres points its clients here. The browser-setup
+  # scripts create + migrate + truncate their own database off the admin URL.
+  PG_ADMIN_URL: postgres://vulto:vulto@postgres:5432/postgres
+
+jobs:
+  resolve-image:
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.read.outputs.image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/workflows/ci-image-ref.env
+          sparse-checkout-cone-mode: false
+      - id: read
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/workflows/ci-image-ref.env
+          echo "image=${CI_IMAGE}" >> "$GITHUB_OUTPUT"
+          if [[ "${CI_IMAGE}" != *"@sha256:"* ]]; then
+            echo "::warning title=CI image is not digest-pinned::${CI_IMAGE} — A007-T16 requires a digest. Bump .github/workflows/ci-image-ref.env once ci-image.yml has published the image."
+          fi
+
+  api-integration:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # The service container already creates this database (POSTGRES_DB); the
+      # CI image carries no psql, and a fresh container per run means the name
+      # need not be the local `vulto_fdn60_test`.
+      DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+
+      - name: Migrate the database
+        shell: bash
+        run: pnpm --dir services/api exec drizzle-kit migrate --config drizzle.config.ts
+
+      - name: api integration suite (real Postgres)
+        shell: bash
+        run: pnpm --filter @vulto/api test
+
+  browser-suites:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # suite       — the pnpm script (its pretest: hook migrates + seeds)
+          # fdn         — the FDN{NN}_{ADMIN,BROWSER}_DATABASE_URL prefix the suite reads
+          # db          — that suite's database name
+          # shard/total — raise `total` (and add rows) when a suite passes ~8 min
+          - suite: auth-browser
+            fdn: FDN60
+            db: vulto_fdn60_browser
+            shard: 1
+            total: 1
+          - suite: worker-browser
+            fdn: FDN77
+            db: vulto_fdn77_browser
+            shard: 1
+            total: 1
+          # device-store also carries the a11y smoke pass (a11y-smoke.spec.ts,
+          # ruling 9a) — same 3-server harness, no separate job.
+          #
+          # grep_invert matches the Playwright tag `@large-backlog-replay`, NOT
+          # a test title — the excluded shape is "one device flushes a
+          # local-write backlog larger than one relay page (MAX_DELTA_PAGE =
+          # 500)", which exceeds the free 2-vCPU runner's throughput. Two tests
+          # carry the tag today (graph-sync.spec.ts, FDN-51 Stage 4b); a new
+          # test with the same shape is excluded by adding the tag, not by
+          # editing this line. They all still run in a local
+          # `pnpm test:device-store-browser`. Real fix: FDN-93 (sidecar split).
+          - suite: device-store-browser
+            fdn: FDN84
+            db: vulto_fdn84_browser
+            shard: 1
+            total: 1
+            grep_invert: "@large-backlog-replay"
+    name: browser-suites (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+
+      - name: Run ${{ matrix.suite }}
+        shell: bash
+        env:
+          PLAYWRIGHT_SHARD: ${{ matrix.shard }}/${{ matrix.total }}
+          GREP_INVERT: ${{ matrix.grep_invert }}
+        run: |
+          set -euo pipefail
+          export ${{ matrix.fdn }}_ADMIN_DATABASE_URL="${PG_ADMIN_URL}"
+          export ${{ matrix.fdn }}_BROWSER_DATABASE_URL="postgres://vulto:vulto@postgres:5432/${{ matrix.db }}"
+
+          invert=()
+          if [ -n "${GREP_INVERT:-}" ]; then
+            invert=(--grep-invert "${GREP_INVERT}")
+            excluded=$(pnpm exec playwright test --config services/api/playwright.device-store.config.ts --grep "${GREP_INVERT}" --list 2>/dev/null | grep -c '›' || true)
+            total=$(pnpm exec playwright test --config services/api/playwright.device-store.config.ts --list 2>/dev/null | grep -c '›' || true)
+            {
+              echo "### ${{ matrix.suite }} — ${excluded} test(s) excluded from the CI gate"
+              echo
+              echo "Not run here: tests tagged \`${GREP_INVERT}\` — one device flushing a"
+              echo "local-write backlog larger than one relay page (see FDN-93). They still"
+              echo "run in a local \`pnpm test:device-store-browser\`."
+              echo
+              echo "**$((total - excluded)) of ${total} device-store tests gate merge; ${excluded} excluded — see FDN-93.**"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=${excluded} device-store test(s) excluded from the CI gate (FDN-93)::tag ${GREP_INVERT} — runs locally via pnpm test:device-store-browser, not on the shared CI runner"
+          fi
+
+          # Playwright's own --shard / --grep-invert, passed through the pnpm script.
+          pnpm test:${{ matrix.suite }} --shard="${PLAYWRIGHT_SHARD}" "${invert[@]}"
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ matrix.suite }}
+          path: |
+            services/api/test-results/**
+            packages/graph/test-results/**
+          if-no-files-found: ignore
+
+  rust-multitarget:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - name: native + wasm32 build, cargo test (A007-T03 as corrected by F193)
+        shell: bash
+        run: bash scripts/rust-multitarget.sh
+
+  production-build:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+
+      - name: Blackhole the font CDNs (the build must be hermetic)
+        shell: bash
+        run: |
+          # A production build must not reach the internet. FDN-91 moved the
+          # Inter font to `next/font/local` against a committed woff2, so this
+          # is now a standing guard against a `next/font/google` regression —
+          # not a known failure.
+          printf '0.0.0.0 fonts.googleapis.com\n0.0.0.0 fonts.gstatic.com\n' >> /etc/hosts
+
+      - name: next build
+        shell: bash
+        run: pnpm --filter roster-web build
+
+      - name: artifact check (FDN-91)
+        shell: bash
+        run: node scripts/artifact-check.mjs
