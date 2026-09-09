@@ -7,32 +7,24 @@ const nextConfig: NextConfig = {
 
   webpack(config, { dev }) {
     if (!dev) {
+      // Each browser-only diagnostics harness imports its client from a
+      // sibling `./<route>-diagnostics-client` module; in the optimized build
+      // that import resolves to nothing, so the client — and the ~50 kB of
+      // Worker/relay code it pulls — never enters a production chunk. The page
+      // itself still compiles and still 404s behind its env gate.
+      //
+      // This list is enforced, not trusted: `scripts/artifact-check.mjs`
+      // derives the expected set from the routes that exist and fails the
+      // build if any diagnostics client reaches a shipped chunk (FDN-91).
       config.resolve.alias = {
         ...config.resolve.alias,
         "./device-store-diagnostics-client$": false,
         "./graph-persistence-diagnostics-client$": false,
+        "./graph-sync-diagnostics-client$": false,
         "./worker-diagnostics-client$": false,
       };
     }
     return config;
-  },
-
-  async rewrites() {
-    /*
-     * /diagnostics is development scaffolding: it reaches Postgres with no
-     * permission context, because authentication is FDN-60's and does not
-     * exist yet. Shipping an unauthenticated database probe to production
-     * would be exactly the precedent its own source disclaims.
-     *
-     * Off unless explicitly asked for. `pnpm dev` sets it; a production build
-     * does not, and the route 404s there.
-     */
-    if (process.env.VULTO_DIAGNOSTICS === "1") return [];
-    return {
-      beforeFiles: [{ source: "/diagnostics", destination: "/404" }],
-      afterFiles: [],
-      fallback: [],
-    };
   },
 };
 

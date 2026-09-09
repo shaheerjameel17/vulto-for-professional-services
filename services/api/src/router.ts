@@ -42,8 +42,12 @@ function toIsoOrRaw(value: unknown): string | null {
  * to end. It is the "minimal end-to-end application path" in FDN-47's done
  * criteria and it is the whole of it.
  *
- * It reads no workspace data and touches no graph node. See the note in
- * apps/roster-web/src/app/diagnostics/page.tsx for why that matters.
+ * It reads no workspace data and touches no graph node: `SELECT now()` runs
+ * against a database with no permission context, and that is only acceptable
+ * because there is nothing here for a permission layer to protect. It must not
+ * be cited as a precedent for unauthenticated data paths — `VPS-A004`'s
+ * interceptor is the only place access is decided, and every route that reads
+ * workspace data goes through it.
  */
 export const appRouter = t.router({
   system: t.router({
