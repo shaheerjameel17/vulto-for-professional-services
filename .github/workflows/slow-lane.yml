@@ -12,8 +12,9 @@
 # `shardTotal` here — no structural change. On the CI runner device-store is
 # ~14 min (worker ~2, auth ~2); it is a candidate to shard, but the cost is
 # one relay/next-dev/api start-up per shard, so it stays single until the
-# per-shard time is the bigger problem. One device-store test is excluded from
-# the CI gate — see the `grep_invert` note below and FDN-93.
+# per-shard time is the bigger problem. The `@large-backlog-replay` device-store
+# tests are excluded from the CI gate — see the `grep_invert` note below and
+# FDN-93 (the real fix: a sidecar-container split).
 
 name: slow-lane
 
@@ -132,17 +133,20 @@ jobs:
           # device-store also carries the a11y smoke pass (a11y-smoke.spec.ts,
           # ruling 9a) — same 3-server harness, no separate job.
           #
-          # grep_invert: one test is excluded from the CI gate only — it still
-          # runs in a local `pnpm test:device-store-browser`. A 520-delta
-          # backlog replay with the full 5-service harness in one container
-          # exceeds the free 2-vCPU runner's throughput. See FDN-93; do not
-          # extend this list without a ruling.
+          # grep_invert matches the Playwright tag `@large-backlog-replay`, NOT
+          # a test title — the excluded shape is "one device flushes a
+          # local-write backlog larger than one relay page (MAX_DELTA_PAGE =
+          # 500)", which exceeds the free 2-vCPU runner's throughput. Two tests
+          # carry the tag today (graph-sync.spec.ts, FDN-51 Stage 4b); a new
+          # test with the same shape is excluded by adding the tag, not by
+          # editing this line. They all still run in a local
+          # `pnpm test:device-store-browser`. Real fix: FDN-93 (sidecar split).
           - suite: device-store-browser
             fdn: FDN84
             db: vulto_fdn84_browser
             shard: 1
             total: 1
-            grep_invert: "replaying its own backlog larger than one page"
+            grep_invert: "@large-backlog-replay"
     name: browser-suites (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
     steps:
       - uses: actions/checkout@v4
@@ -162,15 +166,18 @@ jobs:
           invert=()
           if [ -n "${GREP_INVERT:-}" ]; then
             invert=(--grep-invert "${GREP_INVERT}")
+            excluded=$(pnpm exec playwright test --config services/api/playwright.device-store.config.ts --grep "${GREP_INVERT}" --list 2>/dev/null | grep -c '›' || true)
+            total=$(pnpm exec playwright test --config services/api/playwright.device-store.config.ts --list 2>/dev/null | grep -c '›' || true)
             {
-              echo "### ${{ matrix.suite }} — one test excluded from the CI gate"
+              echo "### ${{ matrix.suite }} — ${excluded} test(s) excluded from the CI gate"
               echo
-              echo "Not run here: tests matching \`${GREP_INVERT}\`"
-              echo "(\`services/api/browser-tests-device-store/graph-sync.spec.ts:572\`,"
-              echo "FDN-51 Stage 4b). It still runs in a local \`pnpm test:device-store-browser\`."
-              echo "**69 of 70 device-store tests gate merge; 1 is excluded — see FDN-93.**"
+              echo "Not run here: tests tagged \`${GREP_INVERT}\` — one device flushing a"
+              echo "local-write backlog larger than one relay page (see FDN-93). They still"
+              echo "run in a local \`pnpm test:device-store-browser\`."
+              echo
+              echo "**$((total - excluded)) of ${total} device-store tests gate merge; ${excluded} excluded — see FDN-93.**"
             } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning title=1 device-store test excluded from the CI gate (FDN-93)::${GREP_INVERT} — runs locally via pnpm test:device-store-browser, not on the shared CI runner"
+            echo "::warning title=${excluded} device-store test(s) excluded from the CI gate (FDN-93)::tag ${GREP_INVERT} — runs locally via pnpm test:device-store-browser, not on the shared CI runner"
           fi
 
           # Playwright's own --shard / --grep-invert, passed through the pnpm script.
