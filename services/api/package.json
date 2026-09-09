@@ -15,7 +15,7 @@
     "start": "tsx src/server.ts",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint src",
-    "test": "vitest run --passWithNoTests"
+    "test": "node ../../scripts/db-preflight.mjs && vitest run --passWithNoTests"
   },
   "dependencies": {
     "@better-auth/passkey": "1.6.29",
