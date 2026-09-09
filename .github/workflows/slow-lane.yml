@@ -265,12 +265,14 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-  # FDN-55 Stage 4b — publish the promotable artifacts. Runs after the whole
-  # matrix is green, on a push to `main` (real) or to this stage's branch
-  # (proof, `proof-<sha>` tags). `continue-on-error` — a publish failure is
+  # FDN-55 Stage 4b — publish the promotable artifacts on every push to `main`,
+  # after the whole matrix is green. `continue-on-error` — a publish failure is
   # visible but gates nothing; nothing consumes these until FDN-58 exists.
   # A007-T12's "promote, never rebuild" starts here: this job stores the
   # artifacts and records their digests; it does not deploy them.
+  #
+  # Proven end to end on branch fdn-55-stage-4a-api-service-image (slow-lane run
+  # 34346328411) with `proof-<sha>` tags before this was narrowed to `main`.
   publish-artifacts:
     needs:
       - resolve-image
@@ -278,10 +280,7 @@ jobs:
       - browser-suites
       - rust-multitarget
       - production-build
-    if: >-
-      github.event_name == 'push'
-      && (github.ref == 'refs/heads/main'
-          || github.ref == 'refs/heads/fdn-55-stage-4a-api-service-image')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     continue-on-error: true
     permissions:
@@ -290,7 +289,6 @@ jobs:
     env:
       REGISTRY: ghcr.io/${{ github.repository }}
       SHA: ${{ github.sha }}
-      TAG_PREFIX: ${{ github.ref != 'refs/heads/main' && 'proof-' || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -333,7 +331,7 @@ jobs:
           context: .
           file: services/api/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/api:${{ env.TAG_PREFIX }}${{ env.SHA }}
+          tags: ${{ env.REGISTRY }}/api:${{ env.SHA }}
           provenance: false
 
       - name: Build and push the sync-engine image
@@ -343,7 +341,7 @@ jobs:
           context: services/sync-engine
           file: services/sync-engine/Dockerfile
           push: true
-          tags: ${{ env.REGISTRY }}/sync-engine:${{ env.TAG_PREFIX }}${{ env.SHA }}
+          tags: ${{ env.REGISTRY }}/sync-engine:${{ env.SHA }}
           provenance: false
 
       - name: Emit the deploy manifest
@@ -367,12 +365,12 @@ jobs:
             "artifacts": {
               "api": {
                 "image": "${REGISTRY}/api",
-                "tag": "${TAG_PREFIX}${SHA}",
+                "tag": "${SHA}",
                 "digest": "${{ steps.api.outputs.digest }}"
               },
               "sync_engine": {
                 "image": "${REGISTRY}/sync-engine",
-                "tag": "${TAG_PREFIX}${SHA}",
+                "tag": "${SHA}",
                 "digest": "${{ steps.sync.outputs.digest }}"
               },
               "roster_web": {
@@ -394,7 +392,7 @@ jobs:
       - name: Upload the deploy manifest
         uses: actions/upload-artifact@v4
         with:
-          name: deploy-manifest-${{ env.TAG_PREFIX }}${{ env.SHA }}
+          name: deploy-manifest-${{ env.SHA }}
           path: deploy-manifest.json
           retention-days: 90
           if-no-files-found: error
