@@ -102,7 +102,9 @@ export interface RuntimeDeltaBatchResult {
  * edge-fragment containers; see F132/F134). Node fragments (FDN-53 stage 2)
  * and generic edge fragments (FDN-92) are both committable; `managed_by`
  * moves are still `unsupported` here — they go through the Tree, not `mutate`
- * (F104). `denied` and `unsupported` stay distinct: a denial is an answer
+ * (F104) — and so are Workspace / WorkspaceMembership node fragments and
+ * `membership_of` / `membership_in` edges, which are written only by FDN-85's
+ * privileged projection command. `denied` and `unsupported` stay distinct: a denial is an answer
  * about who the caller is, an unsupported result is about what can be
  * committed at all.
  */
