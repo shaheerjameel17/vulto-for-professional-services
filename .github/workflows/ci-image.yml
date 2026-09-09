@@ -21,13 +21,7 @@ name: ci-image
 
 on:
   push:
-    branches:
-      - main
-      # Bootstrap only: lets this branch publish the first image so
-      # `ci-image-ref.env` can be pinned to a real digest before FDN-55 merges,
-      # rather than merging a required gate that points at a moving `:main` tag.
-      # Remove this line in the same branch once the digest is pinned.
-      - fdn-55-reproducible-ci-and-verification-matrix
+    branches: [main]
     paths:
       - ".docker/ci/**"
       - ".github/workflows/ci-image.yml"
@@ -35,6 +29,8 @@ on:
     paths:
       - ".docker/ci/**"
       - ".github/workflows/ci-image.yml"
+  # Manual rebuild/repin path — run it, then paste the digest from the job
+  # summary into .github/workflows/ci-image-ref.env.
   workflow_dispatch: {}
 
 permissions:

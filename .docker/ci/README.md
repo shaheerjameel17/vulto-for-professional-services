@@ -26,16 +26,13 @@ not `bash -l`.
 ## Building and pinning it
 
 The image is built and pushed to GHCR by `.github/workflows/ci-image.yml`
-whenever `.docker/ci/**` changes on `main`. The workflows that consume it —
-`fast-lane.yml` and `slow-lane.yml` — reference it **by digest**, held in one
-place (`.github/workflows/ci-image-ref.env`, read by each lane's
-`resolve-image` job), and bumping that digest is a deliberate reviewed PR — the
-same treatment the Loro pin and the `docker-compose.yml` base images get.
-
-Until `ci-image.yml` has published the image once, `ci-image-ref.env` points at
-the `:main` tag rather than a digest, and each lane emits a loud warning that
-A007-T16 is not yet satisfied for the CI image. The first follow-up PR after
-the image publishes replaces that line with the digest.
+whenever `.docker/ci/**` changes on `main` (or on a `workflow_dispatch`). The
+workflows that consume it — `fast-lane.yml` and `slow-lane.yml` — reference it
+**by digest**, held in one place (`.github/workflows/ci-image-ref.env`, read by
+each lane's `resolve-image` job, which fails loudly if it is ever not a
+digest). Bumping that digest is a deliberate reviewed PR — the same treatment
+the Loro pin and the `docker-compose.yml` base images get: run `ci-image.yml`,
+then paste the digest from its job summary into `ci-image-ref.env`.
 
 Locally:
 
@@ -72,9 +69,8 @@ digest pin makes that reproducible.
 The device-store browser matrix entry also carries the accessibility smoke pass
 (`a11y-smoke.spec.ts`) — same 3-server harness, so no separate job.
 
-`slow-lane.yml`'s **production-build** job is RED until FDN-91 lands on `main`:
-the job blocks `fonts.googleapis.com` / `fonts.gstatic.com` at `/etc/hosts` and
-`next/font/google` fails to fetch Inter at build time, and the artifact check
-separately finds `__vultoGraphSyncDiagnostics` in a shipped chunk (F192). Both
-are FDN-91's scope. The job fails **loudly and by name** rather than skipping
-the check.
+`slow-lane.yml`'s **production-build** job blocks `fonts.googleapis.com` /
+`fonts.gstatic.com` at `/etc/hosts` before `next build`, so a `next/font/google`
+regression fails the build; then `scripts/artifact-check.mjs` fails it if any
+diagnostics client reached a shipped chunk. Both were green once FDN-91 landed
+the `next/font/local` fix and the `graph-sync-diagnostics` exclusion on `main`.

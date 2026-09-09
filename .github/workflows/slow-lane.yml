@@ -191,48 +191,19 @@ jobs:
       - run: pnpm install --frozen-lockfile
         shell: bash
 
-      - name: Blackhole the Google Fonts hosts (hermetic build)
+      - name: Blackhole the font CDNs (the build must be hermetic)
         shell: bash
         run: |
-          # A production build must not reach the internet. FDN-91 owns the
-          # `next/font/local` fix that removes the build-time Inter fetch; until
-          # it lands on main this build FAILS here — loudly, by design, never
-          # silently skipped (Message 4 / ruling on the slow lane).
+          # A production build must not reach the internet. FDN-91 moved the
+          # Inter font to `next/font/local` against a committed woff2, so this
+          # is now a standing guard against a `next/font/google` regression —
+          # not a known failure.
           printf '0.0.0.0 fonts.googleapis.com\n0.0.0.0 fonts.gstatic.com\n' >> /etc/hosts
 
-      - name: next build + artifact check
+      - name: next build
         shell: bash
-        run: |
-          set -uo pipefail
-          set +e
-          pnpm --filter roster-web build 2>&1 | tee /tmp/build.log
-          status=${PIPESTATUS[0]}
-          set -e
+        run: pnpm --filter roster-web build
 
-          if [ "$status" -eq 0 ]; then
-            echo "Production build succeeded — running the artifact check."
-            node scripts/artifact-check.mjs
-            {
-              echo "### Production build"
-              echo "Build succeeded with fonts blocked — FDN-91's \`next/font/local\`"
-              echo "fix has landed. Artifact check ran."
-            } >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-
-          if grep -qiE 'fonts\.(googleapis|gstatic)\.com|next/font/google|Failed to fetch .*Inter' /tmp/build.log; then
-            {
-              echo "### Production build — EXPECTED failure (FDN-91)"
-              echo
-              echo "\`next/font/google\` fetched Inter from the network at build time"
-              echo "and the fetch was blocked. This job stays RED until FDN-91 lands"
-              echo "the \`next/font/local\` fix on main. It is **not** silently skipped."
-              echo
-              echo "See \`docs/Foundations_Findings.md\` (font self-hosting) and FDN-91."
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error title=Production build blocked on FDN-91::next/font/google fetches Inter at build time; fetch blocked. Expected until FDN-91 merges."
-            exit 1
-          fi
-
-          echo "::error title=Production build failed for an unexpected reason::see /tmp/build.log in the run"
-          exit 1
+      - name: artifact check (FDN-91)
+        shell: bash
+        run: node scripts/artifact-check.mjs
