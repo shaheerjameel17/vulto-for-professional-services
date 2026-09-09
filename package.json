@@ -34,6 +34,7 @@
     "verify:full": "pnpm verify && pnpm verify:preflight && pnpm --filter @vulto/api test"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
     "@eslint/js": "9.39.5",
     "@playwright/test": "1.62.1",
     "eslint": "9.39.5",

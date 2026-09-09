@@ -40,7 +40,7 @@ can be, are enforced by `pnpm verify`:
   arithmetic. `VRS-F004` owns it.
 - **Never write a permission check in a feature** — `VPS-A004`'s interceptor is
   the only place access is decided.
-- **Design tokens are the only source of values** — every colour, size, space
+- **Design tokens are the only source of values** — every color, size, space
   and radius comes from `packages/tokens`. Arbitrary Tailwind values fail lint.
 - **No `localStorage` or `sessionStorage`, anywhere.** The local graph is the
   store.

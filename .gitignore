@@ -9,6 +9,11 @@ target/
 .obsidian/
 *.tsbuildinfo
 test-results/
+playwright-report/
+
+# pnpm writes a store here when it runs against a bind mount whose filesystem
+# differs from its home store — e.g. the CI image mounted over the host repo.
+.pnpm-store/
 
 # Local secrets. .env.example is committed deliberately — it is the documented
 # shape of the environment, and a bootstrap nobody can reproduce is not one.

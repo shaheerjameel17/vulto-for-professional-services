@@ -1,0 +1,79 @@
+# Build and publish the Vulto CI image (.docker/ci/Dockerfile).
+#
+# VPS-A007's third image role — "the toolchain each gate needs, pinned"
+# (FDN-55 Stage 2). The base is pinned by digest inside the Dockerfile; this
+# workflow publishes the built image to GHCR and prints the resulting digest.
+#
+# The workflows that CONSUME the image (fast-lane.yml, slow-lane.yml) pin it by
+# digest through the shared `CI_IMAGE` value in .github/workflows/ci-image-ref.env.
+# Bumping that digest is a deliberate, reviewed PR — the same treatment the Loro
+# pin and the docker-compose base images get (A007-T16).
+#
+#   1. Change .docker/ci/** on a branch, open a PR.
+#   2. This workflow builds the image for the PR (does not push) and comments
+#      the digest it would publish.
+#   3. Merge to main -> this workflow pushes `:main` and prints the digest in
+#      the job summary.
+#   4. Open a follow-up PR updating CI_IMAGE in ci-image-ref.env to that digest.
+#      The consumers only move once that PR is reviewed and merged.
+
+name: ci-image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".docker/ci/**"
+      - ".github/workflows/ci-image.yml"
+  pull_request:
+    paths:
+      - ".docker/ci/**"
+      - ".github/workflows/ci-image.yml"
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: ci-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}/ci
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        if: github.event_name == 'push'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (and push on main)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .docker/ci/Dockerfile
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ env.IMAGE }}:main
+          provenance: false
+
+      - name: Report digest
+        run: |
+          {
+            echo "### Vulto CI image"
+            echo
+            echo '```'
+            echo "${IMAGE}@${{ steps.build.outputs.digest }}"
+            echo '```'
+            echo
+            echo "Update \`CI_IMAGE\` in \`.github/workflows/ci-image-ref.env\` to this"
+            echo "value in a follow-up PR. The fast and slow lanes move only once that"
+            echo "PR is reviewed and merged."
+          } >> "$GITHUB_STEP_SUMMARY"
