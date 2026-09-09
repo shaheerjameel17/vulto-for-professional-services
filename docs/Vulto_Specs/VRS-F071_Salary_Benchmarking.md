@@ -134,6 +134,12 @@ The percentile scale becomes a vertical list below 1024px.
 
 `services/cross-tenant-aggregation`, registered in [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], runs **entirely outside the sync engine's per-workspace trust boundary.** It has no access to any workspace's graph, encrypted or otherwise. It receives only already-anonymized, already-bucketed contributions.
 
+> **Isolation is a hard architectural requirement, quoted here verbatim because this feature is where it gets built.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] A001-T08:
+>
+> > `services/cross-tenant-aggregation` MUST NOT share a database, connection pool or process boundary with per-workspace data paths, and MUST receive only anonymized, pre-bucketed contributions.
+>
+> The service does not exist in the repository yet, and no implementation issue owns building it — deliberately. It is unscheduled until this feature (VRS-F071), the first thing that needs it, and its later sibling [[VRS-F072_Agency_Benchmarking|VRS-F072]]. Whoever implements VRS-F071 builds it, and must build it as a genuinely separate process against a genuinely separate database — **not** by reaching for the existing `services/api` database module because it is there. The isolation is "satisfied by accident" today only because the service is absent; it stays satisfied only if the person who builds it treats A001-T08 as a requirement rather than an implementation detail. The open question — whether to stand the service up early as an empty isolated shell or leave it to this feature — is carried by **FDN-82** (`docs/Foundations_Findings.md` F73).
+
 ### The contribution payload, stated exhaustively
 
 ```

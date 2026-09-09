@@ -274,6 +274,8 @@ Every item previously carried as unresolved is now decided. Full reasoning lives
 
 **Loro's version is pinned in [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]** at the version current at implementation start, recorded explicitly rather than left as an instruction to a future reader.
 
+**`services/cross-tenant-aggregation` is deliberately unscheduled until [[VRS-F071_Salary_Benchmarking|VRS-F071]].** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] names it as the one deliberate exception to the per-workspace model and gives it the hardest isolation constraint in the document — A001-T08, quoted verbatim in VRS-F071's Technical Architecture section: *"`services/cross-tenant-aggregation` MUST NOT share a database, connection pool or process boundary with per-workspace data paths, and MUST receive only anonymized, pre-bucketed contributions."* No implementation issue owns building the service; it is built by whoever implements VRS-F071 (Scale phase), the first feature that needs it, and reused by [[VRS-F072_Agency_Benchmarking|VRS-F072]]. **FDN-82** (`docs/Foundations_Findings.md` F73) carries the standing question of whether to stand it up early as an empty isolated shell instead — recorded here so the isolation requirement has a visible home rather than surviving only in a spec section a Scale-phase implementer may not read first.
+
 ---
 
 ## Retired documents
