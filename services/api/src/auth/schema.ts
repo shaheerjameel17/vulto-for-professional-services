@@ -567,3 +567,57 @@ export const syncTicket = pgTable(
     index("sync_ticket_expires_at_idx").on(table.expiresAt),
   ],
 );
+
+/**
+ * FDN-85 — the single-use, server-signed grant that authorizes one run of the
+ * graph Worker's privileged workspace-projection command, and nothing else.
+ *
+ * The graph Worker cannot run an ordinary `mutate` against a membership whose
+ * server row it must mirror: a brand-new membership is `pending` (refused by
+ * `requireCurrentWorkspaceSession`), and a revoked one is refused too. This
+ * grant is the one narrow way in — minted by a cookie-authenticated route
+ * against a specific control-plane state, bound to exactly one
+ * `(workspace, device, membership)`, hash-stored, consumed on first use.
+ *
+ * `grant_kind` says which state transition it projects and which membership
+ * state it is valid against:
+ *   - `admission`  — membership is `pending/pending`; carries the server
+ *     unlock-secret half so the Worker can open a brand-new sealed store.
+ *   - `revocation` — membership is `revoked/revocation-pending`.
+ *   - `role-change` — membership is `active/confirmed`.
+ *
+ * It authorizes no other write shape: the command it unlocks constructs the
+ * reserved-type records itself and accepts no arbitrary fragment input, and
+ * the session opened with its unlock half is torn down after that one call.
+ *
+ * The raw grant string is returned to the caller once and never stored;
+ * only its SHA-256 hash lands here.
+ */
+export const workspaceProjectionGrant = pgTable(
+  "workspace_projection_grant",
+  {
+    tokenHash: text("token_hash").primaryKey(),
+    grantKind: text("grant_kind").notNull().default("admission"),
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    membershipId: uuid("membership_id")
+      .notNull()
+      .references(() => member.id, { onDelete: "cascade" }),
+    deviceId: text("device_id").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  },
+  (table) => [
+    check(
+      "workspace_projection_grant_kind_check",
+      sql`${table.grantKind} in ('admission', 'revocation', 'role-change')`,
+    ),
+    index("workspace_projection_grant_membership_idx").on(table.membershipId),
+    index("workspace_projection_grant_expires_at_idx").on(table.expiresAt),
+  ],
+);

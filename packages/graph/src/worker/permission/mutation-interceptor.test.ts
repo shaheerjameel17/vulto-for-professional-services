@@ -721,6 +721,142 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
 });
 
 /**
+ * FDN-85 Stage 1 — the generic `mutate` gate refuses the Workspace/membership
+ * projection records. Workspace and WorkspaceMembership nodes and the
+ * `membership_of` / `membership_in` edges are a one-way projection of the
+ * Better Auth control plane, written only by FDN-85's privileged projection
+ * command. A generic batch touching one is refused `unsupported`, the same
+ * treatment a Movable Tree change gets — a committable representation exists,
+ * but not through this entrypoint.
+ */
+describe("authorizeMutationBatch — FDN-85 reserves the Workspace/membership projection records", () => {
+  const OWNER: readonly PolicyRole[] = ["owner"];
+  const WORKSPACE_ID = "22222222-2222-4222-8222-222222222222";
+  const MEMBERSHIP_ID = "a1111111-1111-4111-8111-111111111111";
+  const USER_ID = "a2222222-2222-4222-8222-222222222222";
+  const EDGE_ID = "a3333333-3333-4333-8333-333333333333";
+
+  function writeFragment(
+    document: LoroDoc,
+    nodeId: string,
+    nodeType: NodeType,
+    partitionKey: string,
+  ): void {
+    const fragment = document
+      .getMap(NODE_FRAGMENT_CONTAINER)
+      .setContainer(`${nodeId}:${partitionKey}`, new LoroMap());
+    const record = baseRecord(nodeId, nodeType);
+    // User and Workspace are unscoped node types — they carry no workspace_id.
+    if (nodeType === "User" || nodeType === "Workspace") delete record.workspace_id;
+    for (const [field, value] of Object.entries(record)) {
+      fragment.set(field, value);
+    }
+  }
+
+  function writeEdge(
+    document: LoroDoc,
+    edgeType: EdgeType,
+    fromNodeId: string,
+    toNodeId: string,
+  ): void {
+    const fragment = document
+      .getMap("__vulto_edge_fragments")
+      .setContainer(EDGE_ID, new LoroMap());
+    const record: Record<string, unknown> = {
+      edge_id: EDGE_ID,
+      edge_type: edgeType,
+      from_node_id: fromNodeId,
+      to_node_id: toNodeId,
+      effective_from: "2026-01-01T00:00:00.000Z",
+      effective_to: null,
+      created_at: "2026-01-01T00:00:00.000Z",
+      created_by: "33333333-3333-4333-8333-333333333333",
+      metadata: {},
+      is_soft_deleted: false,
+      soft_deleted_at: null,
+      soft_deleted_by: null,
+    };
+    for (const [field, value] of Object.entries(record)) fragment.set(field, value);
+  }
+
+  async function refuse(build: (scratch: LoroDoc) => void): Promise<string> {
+    const scratch = new LoroDoc();
+    build(scratch);
+    scratch.commit();
+    const batch = scratch.export({ mode: "snapshot" });
+    scratch.free();
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      WORKSPACE_ID,
+    );
+    document.free();
+    expect(outcome.status).toBe("unsupported");
+    return outcome.status === "unsupported" ? outcome.reason : "";
+  }
+
+  it("refuses a Workspace node fragment write, even for an Owner", async () => {
+    const reason = await refuse((s) =>
+      writeFragment(s, WORKSPACE_ID, "Workspace", "display"),
+    );
+    expect(reason).toContain("Workspace");
+  });
+
+  it("refuses a WorkspaceMembership node fragment write", async () => {
+    const reason = await refuse((s) =>
+      writeFragment(s, MEMBERSHIP_ID, "WorkspaceMembership", "record"),
+    );
+    expect(reason).toContain("WorkspaceMembership");
+  });
+
+  it("refuses a membership_of edge write", async () => {
+    const reason = await refuse((s) =>
+      writeEdge(s, "membership_of" as EdgeType, MEMBERSHIP_ID, USER_ID),
+    );
+    expect(reason).toContain("membership_of");
+  });
+
+  it("refuses a membership_in edge write", async () => {
+    const reason = await refuse((s) =>
+      writeEdge(s, "membership_in" as EdgeType, MEMBERSHIP_ID, WORKSPACE_ID),
+    );
+    expect(reason).toContain("membership_in");
+  });
+
+  it("refuses the whole batch when a reserved write rides alongside an otherwise-authorized Employee fragment", async () => {
+    const reason = await refuse((s) => {
+      writeFragment(
+        s,
+        "66666666-6666-4666-8666-666666666666",
+        "Employee",
+        "operational",
+      );
+      writeFragment(s, MEMBERSHIP_ID, "WorkspaceMembership", "record");
+    });
+    expect(reason).toContain("WorkspaceMembership");
+  });
+
+  it("does NOT reserve the User node type — an Owner may write a User fragment through the generic path", async () => {
+    const scratch = new LoroDoc();
+    writeFragment(scratch, USER_ID, "User", "record");
+    scratch.commit();
+    const batch = scratch.export({ mode: "snapshot" });
+    scratch.free();
+    const document = new LoroDoc();
+    const outcome = await authorizeMutationBatch(
+      document,
+      [batch],
+      OWNER,
+      WORKSPACE_ID,
+    );
+    document.free();
+    expect(outcome).toEqual({ status: "authorized" });
+  });
+});
+
+/**
  * F138 — the named unit-level half of the regression proof. The end-to-end
  * half lives in `services/api/browser-tests-device-store/graph-mutation-poisoning.spec.ts`
  * and runs against the real Worker, real SealedStore and real WASM.

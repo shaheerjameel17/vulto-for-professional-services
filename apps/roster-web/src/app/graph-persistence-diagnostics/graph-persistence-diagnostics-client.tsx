@@ -252,6 +252,28 @@ interface GraphPersistenceDiagnosticsApi {
     payrollPolicyId: string;
     taxConfigId: string;
   };
+  /**
+   * FDN-85 Stage 4. The workspace/membership projection, driven through the
+   * real sealed store inside a test-only Worker (see
+   * `runtime-workspace-projection-proof.worker.ts`).
+   */
+  workspaceProjection: {
+    deviceId(): Promise<{ deviceId: string }>;
+    runFounding(message: Record<string, unknown>): Promise<{
+      outboxEntry: { kind: string; authorizationPath: string; confirmed: boolean };
+    }>;
+    foundingThenOrdinaryMutate(message: Record<string, unknown>): Promise<{
+      projectionCommitted: boolean;
+      ordinaryMutateStatus: string;
+    }>;
+    runTransition(message: Record<string, unknown>): Promise<{ committed: boolean }>;
+    queryMembership(workspaceId: string): Promise<{
+      membershipLifecycle: string | null;
+      membershipRole: string | null;
+      membershipOfTo: string | null;
+      membershipInTo: string | null;
+    }>;
+  };
 }
 
 interface EdgeConvergedSide {
@@ -533,6 +555,34 @@ function runEdgeWriteProof<T>(message: Record<string, unknown>): Promise<T> {
 }
 
 /**
+ * FDN-85 Stage 4: spawns the workspace/membership projection proof Worker for
+ * one request. Same opt-in test-seam status as the other proof Workers here.
+ */
+function runWorkspaceProjectionProof<T>(message: Record<string, unknown>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(
+      new URL(
+        "../../../../../packages/graph/src/worker/testing/runtime-workspace-projection-proof.worker.ts",
+        import.meta.url,
+      ),
+      { type: "module", name: "vulto-fdn85-projection-proof" },
+    );
+    worker.onmessage = (event: MessageEvent<unknown>) => {
+      worker.terminate();
+      const response = event.data as
+        { ok: true; result: T } | { ok: false; error: string };
+      if (response.ok) resolve(response.result);
+      else reject(new Error(response.error));
+    };
+    worker.onerror = (event) => {
+      worker.terminate();
+      reject(new Error(event.message || "Projection proof Worker failed"));
+    };
+    worker.postMessage(message);
+  });
+}
+
+/**
  * FDN-92 Stage 3: the offline half needs a long-lived Worker (open online,
  * prove after the network is cut), so it gets its own handle rather than a
  * one-shot spawn.
@@ -695,6 +745,30 @@ export function GraphPersistenceDiagnosticsClient() {
           payRunId: EDGE_PROOF_PAYRUN,
           payrollPolicyId: EDGE_PROOF_PAYROLL_POLICY,
           taxConfigId: EDGE_PROOF_TAX_CONFIG,
+        },
+        workspaceProjection: {
+          deviceId: () =>
+            runWorkspaceProjectionProof<{ deviceId: string }>({ kind: "device-id" }),
+          runFounding: (message: Record<string, unknown>) =>
+            runWorkspaceProjectionProof({ kind: "run-founding", ...message }),
+          foundingThenOrdinaryMutate: (message: Record<string, unknown>) =>
+            runWorkspaceProjectionProof<{
+              projectionCommitted: boolean;
+              ordinaryMutateStatus: string;
+            }>({ kind: "founding-then-ordinary-mutate", ...message }),
+          runTransition: (message: Record<string, unknown>) =>
+            runWorkspaceProjectionProof({
+              kind: "run-transition",
+              apiOrigin,
+              ...message,
+            }),
+          queryMembership: (targetWorkspaceId: string) =>
+            runWorkspaceProjectionProof<{
+              membershipLifecycle: string | null;
+              membershipRole: string | null;
+              membershipOfTo: string | null;
+              membershipInTo: string | null;
+            }>({ kind: "query-membership", workspaceId: targetWorkspaceId, apiOrigin }),
         },
       };
     });

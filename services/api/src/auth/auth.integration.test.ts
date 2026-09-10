@@ -11,13 +11,24 @@ import {
   deviceTrustEvent,
   deviceUnlockSecret,
   member,
+  organization,
   session,
   syncTicket,
   user,
+  workspaceProjectionGrant,
 } from "./schema.js";
+import {
+  consumeMembershipTransitionGrant,
+  consumeWorkspaceProjectionGrant,
+  PROJECTION_GRANT_PREFIX,
+  membershipInEdgeId,
+  membershipOfEdgeId,
+  roleChangeDirection,
+} from "./workspace-projection.js";
 import { SYNC_TICKET_PREFIX, SYNC_TICKET_TTL_SECONDS } from "./sync-ticket.js";
 import {
   confirmWorkspaceAdmission,
+  confirmWorkspaceRevocationProjection,
   createPendingWorkspaceAdmission,
   requireCurrentWorkspaceSession,
   revokeWorkspaceAdmission,
@@ -1515,5 +1526,430 @@ describe("FDN-51 Stage 4a — POST /sync/ticket", () => {
       payload: { workspaceId, deviceId: device },
     });
     expect(response.statusCode).toBe(401);
+  });
+});
+
+describe("FDN-85 Stage 2 — the founding workspace-admission projection", () => {
+  const deviceId = () => `fdn85-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+  async function createWorkspace(cookie: string, device: string, name = "Northwind") {
+    return app.inject({
+      method: "POST",
+      url: "/workspace/create",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceName: name, deviceId: device },
+    });
+  }
+
+  it("records a pending owner admission and returns a single-use grant with the server half and deterministic edge ids", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+
+    const response = await createWorkspace(cookie, device);
+    expect(response.statusCode, response.body).toBe(200);
+    const grant = json(response) as Record<string, unknown>;
+
+    expect(String(grant.grant).startsWith(PROJECTION_GRANT_PREFIX)).toBe(true);
+    expect(typeof grant.serverHalf).toBe("string");
+    expect(grant.roles).toEqual(["owner"]);
+    expect(grant.membershipOfEdgeId).toBe(
+      membershipOfEdgeId(String(grant.membershipId)),
+    );
+    expect(grant.membershipInEdgeId).toBe(
+      membershipInEdgeId(String(grant.membershipId)),
+    );
+    expect(sensitiveKeys(grant)).toEqual([]);
+    expect(response.headers["cache-control"]).toBe("no-store");
+
+    // The membership is pending/pending — not yet admitting.
+    const [row] = await db
+      .select({ status: member.status, projectionState: member.projectionState })
+      .from(member)
+      .where(sql`${member.id} = ${String(grant.membershipId)}`);
+    expect(row).toMatchObject({ status: "pending", projectionState: "pending" });
+
+    const [org] = await db
+      .select({ status: organization.status })
+      .from(organization)
+      .where(sql`${organization.id} = ${String(grant.workspaceId)}`);
+    expect(org?.status).toBe("active");
+
+    // Only the grant's hash is stored, and it is unconsumed.
+    const [stored] = await db
+      .select({
+        tokenHash: workspaceProjectionGrant.tokenHash,
+        consumedAt: workspaceProjectionGrant.consumedAt,
+      })
+      .from(workspaceProjectionGrant)
+      .where(
+        sql`${workspaceProjectionGrant.membershipId} = ${String(grant.membershipId)}`,
+      );
+    expect(stored?.tokenHash).toBe(
+      createHash("sha256").update(String(grant.grant), "utf8").digest("hex"),
+    );
+    expect(stored?.consumedAt).toBeNull();
+  });
+
+  it("requireCurrentWorkspaceSession refuses the pending membership until the projection is confirmed, then admits it", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const grant = json(await createWorkspace(cookie, device)) as Record<
+      string,
+      unknown
+    >;
+    const workspaceId = String(grant.workspaceId);
+    const membershipId = String(grant.membershipId);
+
+    await expect(
+      requireCurrentWorkspaceSession(headers(cookie), workspaceId),
+    ).rejects.toBeInstanceOf(UnauthorizedWorkspaceSessionError);
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: "/workspace/confirm-projection",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, membershipId },
+    });
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+
+    const admitted = await requireCurrentWorkspaceSession(headers(cookie), workspaceId);
+    expect(admitted.roles).toEqual(["owner"]);
+    expect(admitted.membershipId).toBe(membershipId);
+  });
+
+  it("the projection grant is single-use — a second consume is denied", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const grant = json(await createWorkspace(cookie, device)) as Record<
+      string,
+      unknown
+    >;
+    const bound = {
+      workspaceId: String(grant.workspaceId),
+      membershipId: String(grant.membershipId),
+      deviceId: device,
+    };
+
+    const first = await consumeWorkspaceProjectionGrant(String(grant.grant), bound);
+    expect(first.userId).toBeTruthy();
+    expect(first.roles).toEqual(["owner"]);
+
+    await expect(
+      consumeWorkspaceProjectionGrant(String(grant.grant), bound),
+    ).rejects.toThrow();
+  });
+
+  it("a grant bound to a different device cannot be consumed", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const grant = json(await createWorkspace(cookie, device)) as Record<
+      string,
+      unknown
+    >;
+
+    await expect(
+      consumeWorkspaceProjectionGrant(String(grant.grant), {
+        workspaceId: String(grant.workspaceId),
+        membershipId: String(grant.membershipId),
+        deviceId: `${device}-other`,
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("a membership revoked between mint and confirm cannot be projected — confirm and consume both fail closed", async () => {
+    const { cookie } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const grant = json(await createWorkspace(cookie, device)) as Record<
+      string,
+      unknown
+    >;
+    const workspaceId = String(grant.workspaceId);
+    const membershipId = String(grant.membershipId);
+
+    await revokeWorkspaceAdmission(membershipId);
+
+    await expect(
+      consumeWorkspaceProjectionGrant(String(grant.grant), {
+        workspaceId,
+        membershipId,
+        deviceId: device,
+      }),
+    ).rejects.toThrow();
+
+    const confirmed = await app.inject({
+      method: "POST",
+      url: "/workspace/confirm-projection",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, membershipId },
+    });
+    expect(confirmed.statusCode).toBe(401);
+  });
+
+  it("denies an unauthenticated workspace.create", async () => {
+    const response = await app.inject({
+      method: "POST",
+      url: "/workspace/create",
+      headers: { origin: ORIGIN },
+      payload: { workspaceName: "Nope", deviceId: deviceId() },
+    });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it("denies workspace.create for a device with no registration row", async () => {
+    const { cookie } = await createSignedInAccount();
+    const response = await createWorkspace(cookie, deviceId());
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+describe("FDN-85 Stage 3 — removal and role-change projection", () => {
+  const deviceId = () =>
+    `fdn85s3-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+
+  /** A confirmed Owner of a fresh workspace, plus their device. */
+  async function ownerWithWorkspace() {
+    const { cookie, userId } = await createSignedInAccount();
+    const device = deviceId();
+    await injectRegisterDevice(cookie, device);
+    const created = json(
+      await app.inject({
+        method: "POST",
+        url: "/workspace/create",
+        headers: { origin: ORIGIN, cookie },
+        payload: { workspaceName: "Northwind", deviceId: device },
+      }),
+    ) as Record<string, unknown>;
+    const workspaceId = String(created.workspaceId);
+    const membershipId = String(created.membershipId);
+    const confirm = await app.inject({
+      method: "POST",
+      url: "/workspace/confirm-projection",
+      headers: { origin: ORIGIN, cookie },
+      payload: { workspaceId, membershipId },
+    });
+    expect(confirm.statusCode, confirm.body).toBe(200);
+    return { cookie, userId, device, workspaceId, ownerMembershipId: membershipId };
+  }
+
+  /** A second, confirmed member of an EXISTING workspace (server-seeded —
+   * FDN-86 owns the real invitation flow). */
+  async function addConfirmedMember(workspaceId: string, roles: WorkspaceRoleName[]) {
+    const { userId } = await createSignedInAccount();
+    const membershipId = randomUUID();
+    await db.insert(member).values({
+      id: membershipId,
+      organizationId: workspaceId,
+      userId,
+      role: roles.join(","),
+      createdAt: new Date(),
+      status: "pending",
+      projectionState: "pending",
+    });
+    await confirmWorkspaceAdmission(membershipId);
+    return { userId, membershipId };
+  }
+
+  type WorkspaceRoleName = "owner" | "hr-admin" | "finance-admin" | "team-member";
+
+  async function post(
+    cookie: string,
+    url: string,
+    payload: Record<string, unknown>,
+  ): Promise<LightMyRequestResponse> {
+    return app.inject({
+      method: "POST",
+      url,
+      headers: { origin: ORIGIN, cookie },
+      payload,
+    });
+  }
+
+  it("revoke-member: Owner-gated, denies centrally first, then a transition grant projects the revocation and confirms it", async () => {
+    const owner = await ownerWithWorkspace();
+    const { membershipId } = await addConfirmedMember(owner.workspaceId, [
+      "team-member",
+    ]);
+
+    const revoked = await post(owner.cookie, "/workspace/revoke-member", {
+      workspaceId: owner.workspaceId,
+      membershipId,
+    });
+    expect(revoked.statusCode, revoked.body).toBe(200);
+
+    // Central denial is immediate — the member row is revoked/revocation-pending.
+    const [row] = await db
+      .select({ status: member.status, projectionState: member.projectionState })
+      .from(member)
+      .where(sql`${member.id} = ${membershipId}`);
+    expect(row).toMatchObject({
+      status: "revoked",
+      projectionState: "revocation-pending",
+    });
+
+    // A revocation transition grant is available for the Owner's device.
+    const grant = json(
+      await post(owner.cookie, "/workspace/transition-grant", {
+        workspaceId: owner.workspaceId,
+        membershipId,
+        deviceId: owner.device,
+        kind: "revocation",
+      }),
+    ) as Record<string, unknown>;
+    expect(grant.kind).toBe("revocation");
+    expect(String(grant.grant).startsWith(PROJECTION_GRANT_PREFIX)).toBe(true);
+
+    const consumed = await consumeMembershipTransitionGrant(String(grant.grant), {
+      workspaceId: owner.workspaceId,
+      membershipId,
+      deviceId: owner.device,
+      kind: "revocation",
+    });
+    expect(consumed.kind).toBe("revocation");
+
+    // ...then the history projection is confirmed.
+    const confirmed = await post(
+      owner.cookie,
+      "/workspace/confirm-revocation-projection",
+      {
+        workspaceId: owner.workspaceId,
+        membershipId,
+      },
+    );
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+    const [after] = await db
+      .select({ projectionState: member.projectionState })
+      .from(member)
+      .where(sql`${member.id} = ${membershipId}`);
+    expect(after?.projectionState).toBe("confirmed");
+  });
+
+  it("revoke-member: a non-Owner is denied, and an Owner cannot revoke their own membership", async () => {
+    const owner = await ownerWithWorkspace();
+    const other = await addConfirmedMember(owner.workspaceId, ["hr-admin"]);
+    // Sign the hr-admin in.
+    const [u] = await db
+      .select({ email: user.email })
+      .from(user)
+      .where(sql`${user.id} = ${other.userId}`);
+    const hrCookie = cookieHeader(await signIn(u!.email!));
+
+    const byNonOwner = await post(hrCookie, "/workspace/revoke-member", {
+      workspaceId: owner.workspaceId,
+      membershipId: owner.ownerMembershipId,
+    });
+    expect(byNonOwner.statusCode).toBe(401);
+
+    const selfRevoke = await post(owner.cookie, "/workspace/revoke-member", {
+      workspaceId: owner.workspaceId,
+      membershipId: owner.ownerMembershipId,
+    });
+    expect(selfRevoke.statusCode).toBe(401);
+  });
+
+  it("role change — NARROW: member.role is updated centrally immediately, before any graph projection", async () => {
+    const owner = await ownerWithWorkspace();
+    const { membershipId } = await addConfirmedMember(owner.workspaceId, [
+      "hr-admin",
+      "finance-admin",
+    ]);
+
+    const result = json(
+      await post(owner.cookie, "/workspace/change-role", {
+        workspaceId: owner.workspaceId,
+        membershipId,
+        deviceId: owner.device,
+        roles: ["hr-admin"],
+      }),
+    ) as Record<string, unknown>;
+    expect(result.direction).toBe("narrow");
+
+    // Central role already narrowed — the F127 poll will pick this up.
+    const [row] = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(sql`${member.id} = ${membershipId}`);
+    expect(row?.role).toBe("hr-admin");
+  });
+
+  it("role change — WIDEN: member.role is NOT updated until confirm-role-change, after the graph records it", async () => {
+    const owner = await ownerWithWorkspace();
+    const { membershipId } = await addConfirmedMember(owner.workspaceId, ["hr-admin"]);
+
+    const result = json(
+      await post(owner.cookie, "/workspace/change-role", {
+        workspaceId: owner.workspaceId,
+        membershipId,
+        deviceId: owner.device,
+        roles: ["hr-admin", "finance-admin"],
+      }),
+    ) as Record<string, unknown>;
+    expect(result.direction).toBe("widen");
+
+    // Central role unchanged so far — widen is graph-first.
+    const [before] = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(sql`${member.id} = ${membershipId}`);
+    expect(before?.role).toBe("hr-admin");
+
+    const confirmed = await post(owner.cookie, "/workspace/confirm-role-change", {
+      workspaceId: owner.workspaceId,
+      membershipId,
+      roles: ["hr-admin", "finance-admin"],
+    });
+    expect(confirmed.statusCode, confirmed.body).toBe(200);
+
+    const [after] = await db
+      .select({ role: member.role })
+      .from(member)
+      .where(sql`${member.id} = ${membershipId}`);
+    expect(after?.role?.split(",").sort()).toEqual(["finance-admin", "hr-admin"]);
+  });
+
+  it("stale-state CAS: a revocation transition grant cannot be consumed while the membership is still active/confirmed", async () => {
+    const owner = await ownerWithWorkspace();
+    const { membershipId } = await addConfirmedMember(owner.workspaceId, [
+      "team-member",
+    ]);
+
+    // No revoke has happened — the membership is active/confirmed.
+    const grant = await post(owner.cookie, "/workspace/transition-grant", {
+      workspaceId: owner.workspaceId,
+      membershipId,
+      deviceId: owner.device,
+      kind: "revocation",
+    });
+    expect(grant.statusCode).toBe(401);
+  });
+
+  it("stale-state CAS: confirm-revocation-projection fails once the membership is no longer revocation-pending", async () => {
+    const owner = await ownerWithWorkspace();
+    const { membershipId } = await addConfirmedMember(owner.workspaceId, [
+      "team-member",
+    ]);
+    await revokeWorkspaceAdmission(membershipId);
+    // First confirm succeeds.
+    await confirmWorkspaceRevocationProjection(membershipId);
+    // Second confirm — no longer revocation-pending.
+    const again = await post(owner.cookie, "/workspace/confirm-revocation-projection", {
+      workspaceId: owner.workspaceId,
+      membershipId,
+    });
+    expect(again.statusCode).toBe(401);
+  });
+
+  it("roleChangeDirection classifies widen, narrow and a mixed swap (mixed is narrow — fail-closed)", () => {
+    expect(roleChangeDirection(["hr-admin"], ["hr-admin", "finance-admin"])).toBe(
+      "widen",
+    );
+    expect(roleChangeDirection(["hr-admin", "finance-admin"], ["hr-admin"])).toBe(
+      "narrow",
+    );
+    expect(roleChangeDirection(["hr-admin"], ["finance-admin"])).toBe("narrow");
   });
 });

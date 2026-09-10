@@ -148,6 +148,113 @@ export function authorizeEdgeWrite(
   return GRANTED;
 }
 
+/**
+ * FDN-85. Workspace and WorkspaceMembership are Better Auth control-plane
+ * records; their local graph nodes, and the `membership_of` / `membership_in`
+ * edges between them, are a deterministic one-way projection of that control
+ * plane. They are written ONLY by FDN-85's privileged projection command — a
+ * distinctly-named, single-use, server-signed path that is not this generic
+ * `mutate` gate. Any generic mutation batch that adds, changes, or removes
+ * one of them is refused `unsupported`, the same treatment a Movable Tree
+ * change gets: a committable representation exists, but not through this
+ * entrypoint. ("Prevent direct application writes to either representation",
+ * FDN-85 Scope.)
+ *
+ * `User` is deliberately NOT reserved here — the projection command writes it
+ * too, but as an idempotent upsert keyed by the shared account id, and other
+ * legitimate paths may write a `User` fragment. Only the two control-plane
+ * *representations* are locked to the projection command.
+ */
+const RESERVED_PROJECTION_NODE_TYPES: ReadonlySet<NodeType> = new Set<NodeType>([
+  "Workspace",
+  "WorkspaceMembership",
+]);
+const RESERVED_PROJECTION_EDGE_TYPES: ReadonlySet<string> = new Set([
+  "membership_of",
+  "membership_in",
+]);
+
+function reservedProjectionReason(what: string): string {
+  return (
+    `This batch changes ${what}, a Workspace/membership projection record. ` +
+    "Those are written only by FDN-85's privileged projection command, never " +
+    "through the generic mutation entrypoint (F132/FDN-85); refused rather " +
+    "than committed."
+  );
+}
+
+/**
+ * FDN-85. The first reserved Workspace/membership projection record this
+ * batch would add, change, or remove — matched on the RAW `node_type` /
+ * `edge_type` string, before any Zod parse, so a malformed projection record
+ * cannot be used to probe past this refusal. Returns a describing phrase for
+ * `reservedProjectionReason`, or `null` when the batch touches none.
+ *
+ * "Changed" is by canonical-JSON inequality per container key, exactly as
+ * the node- and edge-fragment diffs are — an unchanged projection record
+ * carried along in an unrelated batch is left alone.
+ */
+function firstReservedProjectionChange(
+  beforeNodes: readonly NodeFragmentInput[],
+  afterNodes: readonly NodeFragmentInput[],
+  beforeEdges: readonly EdgeInput[],
+  afterEdges: readonly EdgeInput[],
+): string | null {
+  const rawType = (
+    record: unknown,
+    field: "node_type" | "edge_type",
+  ): string | null => {
+    if (typeof record !== "object" || record === null) return null;
+    const value = (record as Record<string, unknown>)[field];
+    return typeof value === "string" ? value : null;
+  };
+
+  const scan = <T>(
+    before: readonly T[],
+    after: readonly T[],
+    key: (item: T) => string,
+    record: (item: T) => unknown,
+    field: "node_type" | "edge_type",
+    reserved: ReadonlySet<string>,
+    describe: (type: string) => string,
+  ): string | null => {
+    const beforeByKey = new Map(before.map((item) => [key(item), item]));
+    const afterByKey = new Map(after.map((item) => [key(item), item]));
+    for (const k of new Set([...beforeByKey.keys(), ...afterByKey.keys()])) {
+      const b = beforeByKey.get(k);
+      const a = afterByKey.get(k);
+      const bJson = b === undefined ? null : canonicalJson(record(b) as JsonValue);
+      const aJson = a === undefined ? null : canonicalJson(record(a) as JsonValue);
+      if (bJson === aJson) continue;
+      const type = rawType(record(a ?? b!), field) ?? rawType(record(b ?? a!), field);
+      if (type !== null && reserved.has(type)) return describe(type);
+    }
+    return null;
+  };
+
+  return (
+    scan(
+      beforeNodes,
+      afterNodes,
+      (f) =>
+        `${(f.record as Record<string, unknown>)?.["node_id"] as string} ${f.partitionKey}`,
+      (f) => f.record,
+      "node_type",
+      RESERVED_PROJECTION_NODE_TYPES as ReadonlySet<string>,
+      (type) => `a ${type} node fragment`,
+    ) ??
+    scan(
+      beforeEdges,
+      afterEdges,
+      (e) => (e.record as Record<string, unknown>)?.["edge_id"] as string,
+      (e) => e.record,
+      "edge_type",
+      RESERVED_PROJECTION_EDGE_TYPES,
+      (type) => `a ${type} edge`,
+    )
+  );
+}
+
 export interface DiffedNodeFragment {
   readonly nodeId: string;
   readonly partitionKey: string;
@@ -314,19 +421,24 @@ export const INVALID_BATCH_REASON =
  *      "the Tree" by name: nothing this function does not explicitly
  *      recognize is permitted to slip through uninspected, the exact failure
  *      shape F131 exists to close.
- *   2. Within the node-fragment container, only the fragments this batch
+ *   2. A changed fragment for a reserved Workspace/membership projection
+ *      node type (`Workspace`, `WorkspaceMembership`), or a changed
+ *      `membership_of` / `membership_in` edge, refuses the whole batch as
+ *      `unsupported` (FDN-85): those are written only by FDN-85's privileged
+ *      projection command, never this generic entrypoint.
+ *   3. Within the node-fragment container, only the fragments this batch
  *      adds, changes, or removes are gated (`diffChangedNodeFragments` +
  *      `authorizeNodeWrite`) — never the whole document's fragments.
- *   3. Within the edge-fragment container (FDN-92), only the edges this
+ *   4. Within the edge-fragment container (FDN-92), only the edges this
  *      batch adds, changes, or removes are gated (`diffChangedEdgeFragments`
  *      + `authorizeEdgeWrite`), the endpoint node types resolved from the
  *      fork's own materialized fragments.
- *   4. The fork is materialized and `validateGraphSnapshot`-checked whole
+ *   5. The fork is materialized and `validateGraphSnapshot`-checked whole
  *      (F138) — including the generic edges alongside `managed_by`'s
  *      Tree-derived ones — so an authorized-but-incoherent batch is refused
  *      (`invalid`) before any merge.
  *
- * A single denial at 2 or 3 refuses the whole batch; there is no partial
+ * A single denial at 3 or 4 refuses the whole batch; there is no partial
  * commit.
  */
 export async function authorizeMutationBatch(
@@ -355,6 +467,24 @@ export async function authorizeMutationBatch(
             "(F132/F134); refused rather than committed unchecked.",
         };
       }
+    }
+
+    // FDN-85. Workspace / WorkspaceMembership node fragments and
+    // `membership_of` / `membership_in` edges are a one-way projection of the
+    // Better Auth control plane, written only by FDN-85's privileged
+    // projection command. A generic batch that touches one is refused
+    // `unsupported` — a committable representation exists, just not here.
+    const reservedProjection = firstReservedProjectionChange(
+      readNodeFragments(document),
+      readNodeFragments(fork),
+      readEdgeFragments(document),
+      readEdgeFragments(fork),
+    );
+    if (reservedProjection !== null) {
+      return {
+        status: "unsupported",
+        reason: reservedProjectionReason(reservedProjection),
+      };
     }
 
     const changedNodes = diffChangedNodeFragments(

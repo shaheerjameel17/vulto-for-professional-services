@@ -37,6 +37,24 @@ import {
   parseSyncTicketRequest,
   SyncTicketDeniedError,
 } from "./sync-ticket.js";
+import {
+  changeWorkspaceRole,
+  confirmRevocationProjectionForActor,
+  confirmRoleChangeProjection,
+  confirmWorkspaceProjection,
+  consumeMembershipTransitionGrant,
+  consumeWorkspaceProjectionGrant,
+  createWorkspaceWithPendingOwner,
+  mintMembershipTransitionGrant,
+  parseChangeRoleRequest,
+  parseConfirmProjectionRequest,
+  parseConfirmTransitionRequest,
+  parseCreateWorkspaceRequest,
+  parseRevokeMemberRequest,
+  parseTransitionGrantRequest,
+  revokeMembershipForActor,
+  WorkspaceProjectionDeniedError,
+} from "./workspace-projection.js";
 
 const SENSITIVE_RESPONSE_KEYS = new Set([
   "token",
@@ -340,6 +358,227 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return reply
         .code(503)
         .send({ error: "The sync ticket service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-85 — the server half of the `workspace.create` matched pair. Records
+  // the pending owner admission and returns a single-use projection grant the
+  // caller's graph Worker consumes to write the five reserved-type records.
+  app.post("/workspace/create", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceName: string; deviceId: string };
+    try {
+      parsed = parseCreateWorkspaceRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid workspace creation request" });
+    }
+    try {
+      return await createWorkspaceWithPendingOwner(requestHeaders(request), parsed);
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The workspace creation service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-85 — mark a projection grant consumed and return its validated
+  // context. The client calls this immediately before running the projection
+  // command; the single-use CAS lives here.
+  app.post("/workspace/consume-projection-grant", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    try {
+      const consumed = await consumeWorkspaceProjectionGrant(String(body.grant), {
+        workspaceId: String(body.workspaceId),
+        membershipId: String(body.membershipId),
+        deviceId: String(body.deviceId),
+      });
+      return consumed;
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError || error instanceof Error) {
+        return reply
+          .code(401)
+          .send({ error: "This projection grant is not valid for this write" });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The projection-grant service is temporarily unavailable" });
+    }
+  });
+
+  app.post("/workspace/consume-transition-grant", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const body = (request.body ?? {}) as Record<string, unknown>;
+    if (body.kind !== "revocation" && body.kind !== "role-change") {
+      return reply.code(400).send({ error: "Invalid transition kind" });
+    }
+    try {
+      const consumed = await consumeMembershipTransitionGrant(String(body.grant), {
+        workspaceId: String(body.workspaceId),
+        membershipId: String(body.membershipId),
+        deviceId: String(body.deviceId),
+        kind: body.kind,
+      });
+      return consumed;
+    } catch (error) {
+      if (error instanceof Error) {
+        return reply
+          .code(401)
+          .send({ error: "This transition grant is not valid for this write" });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The transition-grant service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-85 — the reconciler's confirmation call. The graph Worker invokes this
+  // once the projection delta is durably flushed locally; it flips the
+  // membership to active/confirmed via FDN-60's CAS.
+  app.post("/workspace/confirm-projection", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string; membershipId: string };
+    try {
+      parsed = parseConfirmProjectionRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid confirmation request" });
+    }
+    try {
+      await confirmWorkspaceProjection(requestHeaders(request), parsed);
+      return reply.code(200).send({ confirmed: true });
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply.code(503).send({
+        error: "The projection confirmation service is temporarily unavailable",
+      });
+    }
+  });
+
+  // FDN-85 Stage 3 — an Owner denies a membership centrally. Thin wrapper over
+  // FDN-60's revokeWorkspaceAdmission (which owns the cascade); "deny centrally
+  // first" — returns before any graph write.
+  app.post("/workspace/revoke-member", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed: { workspaceId: string; membershipId: string };
+    try {
+      parsed = parseRevokeMemberRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid revocation request" });
+    }
+    try {
+      await revokeMembershipForActor(requestHeaders(request), parsed);
+      return reply.code(200).send({ revoked: true });
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply.code(503).send({
+        error: "The membership revocation service is temporarily unavailable",
+      });
+    }
+  });
+
+  // FDN-85 Stage 3 — an Owner changes a membership's roles. narrow: central
+  // update first; widen: grant first, central update deferred to confirm.
+  app.post("/workspace/change-role", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed;
+    try {
+      parsed = parseChangeRoleRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid role-change request" });
+    }
+    try {
+      return await changeWorkspaceRole(requestHeaders(request), parsed);
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The role-change service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-85 Stage 3 — mint a transition grant for reconciliation (a re-project
+  // of an already-decided revocation or role change).
+  app.post("/workspace/transition-grant", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed;
+    try {
+      parsed = parseTransitionGrantRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid transition-grant request" });
+    }
+    try {
+      return await mintMembershipTransitionGrant(requestHeaders(request), parsed);
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The transition-grant service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-85 Stage 3 — confirm a revocation history projection (Owner-gated
+  // wrapper over FDN-60's confirmWorkspaceRevocationProjection CAS).
+  app.post("/workspace/confirm-revocation-projection", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed;
+    try {
+      parsed = parseConfirmTransitionRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid confirmation request" });
+    }
+    try {
+      await confirmRevocationProjectionForActor(requestHeaders(request), parsed);
+      return reply.code(200).send({ confirmed: true });
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply.code(503).send({
+        error: "The revocation confirmation service is temporarily unavailable",
+      });
+    }
+  });
+
+  // FDN-85 Stage 3 — confirm a role-change history projection. For a widen,
+  // this is where member.role finally advances.
+  app.post("/workspace/confirm-role-change", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed;
+    try {
+      parsed = parseConfirmTransitionRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid confirmation request" });
+    }
+    try {
+      await confirmRoleChangeProjection(requestHeaders(request), parsed);
+      return reply.code(200).send({ confirmed: true });
+    } catch (error) {
+      if (error instanceof WorkspaceProjectionDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply.code(503).send({
+        error: "The role-change confirmation service is temporarily unavailable",
+      });
     }
   });
 
