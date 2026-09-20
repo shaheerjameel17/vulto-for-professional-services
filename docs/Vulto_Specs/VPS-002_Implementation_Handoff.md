@@ -114,7 +114,7 @@ Not whether it works. **Whether the amber lands.** Whether 220px is enough for a
 
 ## The four things most likely to go wrong
 
-**The Sync Stream generator is load-bearing and easy to underrate.** It turns the permission policy into what each device holds. A mistake there leaks rows to a device silently, which is why [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]]'s stream conformance gate exists. Treat a change to it with the care a change to the interceptor gets.
+**The sync shape generator is load-bearing and easy to underrate.** It turns the permission policy into what each device holds. A mistake there leaks rows to a device silently, which is why [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]]'s shape conformance gate exists. Treat a change to it with the care a change to the interceptor gets.
 
 **The permission matrix test suite is large and non-optional.** Every role against every privacy class, every role against every node type. [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s A004-T07 forbids reducing that coverage, and it is the single test suite that keeps ninety documents' worth of access decisions honest.
 

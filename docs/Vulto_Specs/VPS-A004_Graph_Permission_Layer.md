@@ -35,7 +35,7 @@ Permission is derived by default from each node type's Privacy Class in [[VPS-A0
 
 A property graph connects everything. Without a principled permission layer, a sufficiently creative traversal can navigate from a broadly visible node to a sensitive one it was never meant to reach. This is acute here specifically, because Roster stores wellness signals, salary figures and performance assessments alongside project assignments, skills and team structure in the same graph. Separating them into different databases would destroy the intelligence value of the graph. They must coexist with architecturally enforced boundaries.
 
-Enforcement is layered, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Standing Rule 5. This document's interceptor, running in `services/api`, decides every read and write and generates the Sync Streams that decide what reaches a device. The storage layer in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] adds a second, independent layer: Tier 1 and Tier 2 content is field-encrypted and never replicated to any device, so a mistaken stream cannot deliver it. Tier 3 adds end-to-end encryption on top.
+Enforcement is layered, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Standing Rule 5. This document's interceptor, running in `services/api`, decides every read and write and generates the sync shapes that decide what reaches a device. The storage layer in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] adds a second, independent layer: Tier 1 and Tier 2 content is field-encrypted and never replicated to any device, so a mistaken stream cannot deliver it. Tier 3 adds end-to-end encryption on top.
 
 Every decision this interceptor makes — every denial at any tier, and every successful grant of Tier 1, Tier 2 or Tier 3 data — writes an AuditEntry per [[VPS-F004_Silent_Audit_Log|VPS-F004]]. This is intrinsic to the single choke point every query already passes through, not a per-feature integration a future feature could forget to wire up.
 
@@ -46,7 +46,7 @@ Every decision this interceptor makes — every denial at any tier, and every su
 
 **The interceptor runs in `services/api`, and nowhere else decides access.** It is the single path for every API read, every `protected.read`, every mutation, every job and every export, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
 
-**The policy table lives in `packages/schema`.** It is the one machine-readable statement of this document's default mapping, per-node matrix, subject exclusions and principal rules. Three consumers read it: the server interceptor; the Sync Stream generator, which turns it into the rows each person's device receives; and the client, which may use it only to hide actions a person cannot take — never to grant one. It is also published at every release under [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]].
+**The policy table lives in `packages/schema`.** It is the one machine-readable statement of this document's default mapping, per-node matrix, subject exclusions and principal rules. Three consumers read it: the server interceptor; the sync shape generator, which turns it into the rows each person's device receives; and the client, which may use it only to hide actions a person cannot take — never to grant one. It is also published at every release under [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]].
 
 **One source, three consumers, is what prevents drift.** A stream written by hand, or a client-side visibility rule, is a second answer to "who may read this" and is prohibited.
 
@@ -113,7 +113,7 @@ A locked box tells the viewer a record exists. Where everyone in a role has one 
 
 A reader set names roles. For most node types that is sufficient. For a record *about a person*, it is not: the person the record concerns may hold one of the roles that reads it.
 
-**Where a node type registers a subject exclusion, the reader set is its effective grant minus any person who is the subject of that record.** This is a filter applied when the reader set is resolved, not a new Privacy Class and not a parallel mechanism — it composes with the reader resolution the interceptor already performs, and the same resolved set feeds `protected.read` and the generated Sync Streams, per A004-T16 and A004-T21.
+**Where a node type registers a subject exclusion, the reader set is its effective grant minus any person who is the subject of that record.** This is a filter applied when the reader set is resolved, not a new Privacy Class and not a parallel mechanism — it composes with the reader resolution the interceptor already performs, and the same resolved set feeds `protected.read` and the generated sync shapes, per A004-T16 and A004-T21.
 
 **The exclusion makes a role-holder equal to everyone else, not less than them.** [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] establishes that the subject of a case cannot read it, so that an investigating officer can take honest notes. An Owner who is the subject of a case *is* a subject. Writing the reader set as a fixed list of roles rather than "those roles, minus whoever this record concerns" granted the Owner a privilege no other employee has, in the one record type where privilege is least defensible.
 
@@ -325,12 +325,12 @@ This gate runs after role permission and write authority have both passed. It ne
 | A004-T13 | An aggregate below threshold MUST be suppressed entirely. Rounding, noising or approximating a sub-threshold aggregate is prohibited |
 | A004-T14 | A filter reducing a cohort by fewer than `k` members MUST return the unfiltered aggregate and indicate that it has done so |
 | A004-T15 | Aggregates MUST be computed over the filtered cohort directly. Deriving one aggregate by subtracting another is prohibited |
-| A004-T16 | For a node type registering a subject exclusion, the resolved reader set MUST exclude the person that record concerns, at the interceptor, in the generated Sync Streams and in `protected.read`, and MUST be re-resolved when the subject changes or a role changes. A person becoming a subject is a narrowing event: their devices remove the record on next connection, per A003-T67 |
+| A004-T16 | For a node type registering a subject exclusion, the resolved reader set MUST exclude the person that record concerns, at the interceptor, in the generated sync shapes and in `protected.read`, and MUST be re-resolved when the subject changes or a role changes. A person becoming a subject is a narrowing event: their devices remove the record on next connection, per A003-T67 |
 | A004-T17 | The interceptor MUST refuse a write that would produce a Tier 1 or Tier 3 node with an empty reader set, after role permission and write authority have both passed. Creating a record no one can read is prohibited |
 | A004-T18 | A denial MUST resolve to `None` or `Restricted`, and the two MUST render as [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s structurally-absent and visibly-restricted treatments respectively. `Restricted` MUST be used only where a specification states it; every unqualified `None` in this document is structural absence |
 | A004-T19 | A `Restricted` render for a Tier 1 or Tier 3 field MUST be derived from the node type's schema — that this node type always carries this field — and MUST NOT depend on any ciphertext, metadata or sync-status signal received for the specific instance, since [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] guarantees an unauthorized reader receives none of those for such a field |
 | A004-T20 | The interceptor MUST run in `services/api` and MUST be the only component that decides access. No client-side code MAY grant access |
-| A004-T21 | The policy table MUST live in `packages/schema` and MUST be the sole input to the interceptor, the Sync Stream generator and client-side action hiding |
+| A004-T21 | The policy table MUST live in `packages/schema` and MUST be the sole input to the interceptor, the sync shape generator and client-side action hiding |
 | A004-T22 | Support principals and system principals MUST be evaluated by the interceptor against their own policy rows, and every decision they receive MUST be audited |
 
 ---
@@ -397,7 +397,7 @@ This gate runs after role permission and write authority have both passed. It ne
 
 ## Decisions recorded
 
-**The interceptor moves to the server — F199, 20 September 2026.** It previously ran in each device's Worker, in front of a local canonical graph, with a key-wrapping layer beside it. With PostgreSQL as the source of truth it runs once, in `services/api`, and also generates each device's Sync Streams. The rules themselves are unchanged. Two principals that are not members — support and system — are added for [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]; Tier 1 recovery keyholders are withdrawn.
+**The interceptor moves to the server — F199, 20 September 2026.** It previously ran in each device's Worker, in front of a local canonical graph, with a key-wrapping layer beside it. With PostgreSQL as the source of truth it runs once, in `services/api`, and also generates each device's sync shapes. The rules themselves are unchanged. Two principals that are not members — support and system — are added for [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]; Tier 1 recovery keyholders are withdrawn.
 
 **The k-anonymity mechanism is unified here.** Four features had independently reached the same answer with four configuration keys and four implementations, and no aggregate outside those four was protected at all. One mechanism, two thresholds, applied everywhere.
 

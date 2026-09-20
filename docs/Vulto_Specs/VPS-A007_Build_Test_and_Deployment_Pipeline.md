@@ -25,9 +25,9 @@ This document is the single source of truth for how code gets from a change to p
 
 Four properties of this architecture make a standard Node.js pipeline insufficient, and each produces a real requirement below.
 
-**Sync Streams are generated from the permission policy.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] requires every device's replicated slice of the graph to be produced from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table. A change that lets a stream deliver a row the interceptor would deny must fail before merge, not on a customer's laptop.
+**Sync shapes are generated from the permission policy.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] requires every device's replicated slice of the graph to be produced from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table. A change that lets a stream deliver a row the interceptor would deny must fail before merge, not on a customer's laptop.
 
-**`packages/schema` is consumed by every one of them, across every application.** A schema change touches the API, the jobs, the generated Sync Streams, every application's web client and the mobile client simultaneously. **It must break the build everywhere before it ships anywhere** — which is the entire reason [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] keeps every application in one repository.
+**`packages/schema` is consumed by every one of them, across every application.** A schema change touches the API, the jobs, the generated sync shapes, every application's web client and the mobile client simultaneously. **It must break the build everywhere before it ships anywhere** — which is the entire reason [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] keeps every application in one repository.
 
 **Data protection guarantees are testable claims, not conventions.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] states that Tier 1 and Tier 2 content never reaches a device, never reaches a log, and is never read without an audit event; that Tier 3 plaintext never reaches a server. **Each is a testable property**, and a pipeline that does not test it is a pipeline in which the guarantee degrades quietly with the next well-meaning refactor.
 
@@ -71,7 +71,7 @@ The trigger is written as a condition rather than an exemption deliberately. **A
 
 ### What it is doing for this project specifically
 
-**It is how [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s one-command local stack holds.** A001-T04 requires every engineer to run the frontend, API, jobs, PostgreSQL, Redis and the PowerSync Service with only Node, pnpm and Docker. The PowerSync Service and the databases are containers; without them every engineer assembles the stack by hand.
+**It is how [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s one-command local stack holds.** A001-T04 requires every engineer to run the frontend, API, jobs, PostgreSQL, Redis and the Electric sync service with only Node, pnpm and Docker. The Electric sync service and the databases are containers; without them every engineer assembles the stack by hand.
 
 **It is what makes Codespaces reproducible.** A007-T14 requires development to happen in Codespaces, and a Codespace is defined by a container image. Without one, each developer gets whatever the base image happened to contain that week.
 
@@ -81,7 +81,7 @@ The trigger is written as a condition rather than an exemption deliberately. **A
 
 | Image | Contains | Consumed by |
 |---|---|---|
-| **Development** | Node, pnpm, Postgres, Redis, the PowerSync Service, and every service running locally | Codespaces, per A007-T14 |
+| **Development** | Node, pnpm, Postgres, Redis, the Electric sync service, and every service running locally | Codespaces, per A007-T14 |
 | **Service** | One built service and its runtime only. One per service in `services/` | Staging and production |
 | **CI** | The toolchain each gate needs, pinned | The pipeline itself |
 
@@ -89,7 +89,7 @@ The trigger is written as a condition rather than an exemption deliberately. **A
 
 ### Composition, locally
 
-`docker compose` brings up the full stack — API, PowerSync Service, job workers, render service, Postgres, Redis — in one command, with [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s synthetic fixtures loaded.
+`docker compose` brings up the full stack — API, Electric sync service, job workers, render service, Postgres, Redis — in one command, with [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s synthetic fixtures loaded.
 
 **A new engineer, or Claude Code in a fresh Codespace, is running the whole product within minutes of cloning.** That is the actual test of whether A001-T04 holds, and it is worth treating as one.
 
@@ -171,11 +171,11 @@ Vitest. Two suites are non-optional and named individually because both enforce 
 
 **These are the tests that stop a guarantee eroding through ordinary, well-intentioned refactoring.** Nobody sets out to weaken Tier 3. It happens when a convenience import makes a decryption helper reachable from a job worker, and nothing notices.
 
-### 6. Sync Stream conformance
+### 6. Sync shape conformance
 
 **The gate that keeps what a device holds equal to what the policy allows.** Per A003-T57 and A003-T58:
 
-- Sync Streams are regenerated from the policy table and compared with the committed definitions; any difference fails the build, so a hand edit cannot ship.
+- sync shapes are regenerated from the policy table and compared with the committed definitions; any difference fails the build, so a hand edit cannot ship.
 - For every role and privacy class, against the synthetic fixture workspace, the rows each generated stream delivers are asserted to be a subset of what the interceptor permits for that person.
 - The replication publication is asserted to contain only `graph_nodes` and `graph_edges`, with no protected column reachable.
 
@@ -205,7 +205,7 @@ Each of those is a case this specification set corrected a defect in. **A fixtur
 
 [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Schema Evolution Protocol is additive-only, so there are no destructive migrations to guard against. Two things still require a gate.
 
-**Device cache resyncs.** A change to the replicated table shape or to a Sync Stream means affected devices re-download their slice on next connection. That is safe and it is slow on a poor connection, and the pipeline flags it so it is a known consequence rather than a support surprise.
+**Device cache resyncs.** A change to the replicated table shape or to a sync shape means affected devices re-download their slice on next connection. That is safe and it is slow on a poor connection, and the pipeline flags it so it is a known consequence rather than a support surprise.
 
 **Client version tolerance.** Per A002-T07, an older client must tolerate a node property it does not recognize. Tested by running the previous release's client against the current schema.
 
@@ -217,7 +217,7 @@ This section is the target topology. **As built, none of it is provisioned and n
 
 **Frontend** to Vercel, one deployment per application in `apps/` — preview per pull request, staging on merge, production on promotion. **Applications deploy independently**, since a Projects release should not require a Roster release.
 
-**Backend services** to DigitalOcean as containers, deployed in dependency order: database migrations, then the API, then the PowerSync Service's stream definitions, then job workers, then the render service. **Rolling, with health checks**, so a failed deploy does not take the workspace down.
+**Backend services** to DigitalOcean as containers, deployed in dependency order: database migrations, then the API, then the Electric sync service's shape definitions, then job workers, then the render service. **Rolling, with health checks**, so a failed deploy does not take the workspace down.
 
 **`services/cross-tenant-aggregation` deploys separately**, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T08. It shares no database, no connection pool and no deployment with the per-workspace path, and the pipeline enforces that separation rather than relying on someone remembering it.
 
@@ -239,7 +239,7 @@ This section is the target topology. **As built, none of it is provisioned and n
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
 | A007-T01 | Every gate is a separate job with one reason to fail. Combined gates producing ambiguous output are prohibited                                                                                                                                                                                                                      |                       |
 | A007-T02 | Failure output MUST name the specific rule, test or file. An aggregate failure message is a pipeline defect                                                                                                                                                                                                                         |                       |
-| A007-T03 | Sync Streams MUST be regenerated from the policy table on every change and MUST match the committed definitions; the stream conformance suite of A003-T57 and the publication allowlist of A003-T58 MUST pass. The Rust multi-target build gate is retired with the sync engine (F199) | |
+| A007-T03 | Sync shapes MUST be regenerated from the policy table on every change and MUST match the committed definitions; the shape conformance suite of A003-T57 and the publication allowlist of A003-T58 MUST pass. The Rust multi-target build gate is retired with the sync engine (F199) | |
 | A007-T04 | A schema change MUST fail the build in every consumer before it can merge                                                                                                                                                                                                                                                           |                       |
 | A007-T05 | The schema conformance gate MUST enforce additive-only evolution, registry completeness, and the Universal Node Conventions with only the enumerated exemptions                                                                                                                                                                     |                       |
 | A007-T06 | The permission matrix suite MUST cover every role and Privacy Class combination. Coverage MUST NOT decrease between releases                                                                                                                                                                                                        |                       |
@@ -255,7 +255,7 @@ This section is the target topology. **As built, none of it is provisioned and n
 | A007-T16 | Every base image MUST be pinned to a digest, never a tag                                                                                                                                                                                                                                                                            |                       |
 | A007-T17 | A service image MUST NOT contain a compiler or build toolchain. It receives a built artifact                                                                                                                                                                                                                                        |                       |
 | A007-T18 | `docker compose` MUST bring up the full local stack, with synthetic fixtures, in one command                                                                                                                                                                                                                                        |                       |
-| A007-T19 | The development image MUST allow a full local run — including the PowerSync Service — with no host toolchain beyond Docker, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T04 | |
+| A007-T19 | The development image MUST allow a full local run — including the Electric sync service — with no host toolchain beyond Docker, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T04 | |
 
 ---
 
@@ -279,9 +279,9 @@ This section is the target topology. **As built, none of it is provisioned and n
 
 ---
 
-**GIVEN** a policy change that would let a Standard Sync Stream deliver an HR-restricted node
-**WHEN** the stream conformance gate runs
-**THEN** it fails, naming the role, class and stream, and the change cannot merge
+**GIVEN** a policy change that would let a Standard sync shape deliver an HR-restricted node
+**WHEN** the shape conformance gate runs
+**THEN** it fails, naming the role, class and shape, and the change cannot merge
 
 ---
 
@@ -293,7 +293,7 @@ This section is the target topology. **As built, none of it is provisioned and n
 
 **GIVEN** an engineer opens a fresh Codespace
 **WHEN** they run `docker compose up`
-**THEN** the full stack runs locally, including the PowerSync Service, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T04
+**THEN** the full stack runs locally, including the Electric sync service, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T04
 
 ---
 
@@ -327,7 +327,7 @@ This section is the target topology. **As built, none of it is provisioned and n
 
 ## Decisions recorded
 
-**The Rust multi-target gate is replaced by Sync Stream conformance — F199, 20 September 2026.** With the sync engine retired, there is no second language to build; the risk that replaces it is a device receiving rows the policy forbids, and gate 6 now proves that cannot happen. The encryption boundary gate changes from "no server path decrypts Tier 1" to "only audited paths decrypt, and nothing protected persists on a device", per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. The release pipeline additionally publishes [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]'s trust artifacts on every production release, per A008-T07.
+**The Rust multi-target gate is replaced by sync shape conformance — F199, 20 September 2026.** With the sync engine retired, there is no second language to build; the risk that replaces it is a device receiving rows the policy forbids, and gate 6 now proves that cannot happen. The encryption boundary gate changes from "no server path decrypts Tier 1" to "only audited paths decrypt, and nothing protected persists on a device", per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. The release pipeline additionally publishes [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]'s trust artifacts on every production release, per A008-T07.
 
 **This document exists because excluding it was wrong.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] and [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] both listed CI/CD as out of scope, which was defensible for a generic pipeline and not for this one — three build targets, a shared schema package, and two cryptographic guarantees that are testable properties rather than policies.
 

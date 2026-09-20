@@ -32,8 +32,9 @@ This document is the single source of truth for what [[Vulto for Professional Se
 | Mobile | React Native, sharing `packages/schema`, per [[VPS-F011_Mobile-Native_Experience|VPS-F011]] |
 | Styling | Tailwind CSS, consuming [[VPS-D001_Design_Foundations|VPS-D001]]'s tokens exclusively |
 | Component primitives | Radix UI, wrapped in `packages/ui` per [[VPS-D002_Component_Library|VPS-D002]] |
-| Sync and device cache | PowerSync: the self-hosted PowerSync Service replicates PostgreSQL into a SQLite cache on each device through Sync Streams; `@powersync/web` on the web, `@powersync/react-native` on mobile |
-| Local query layer | `packages/graph`'s typed query layer over the PowerSync SQLite cache, in the sync client's worker |
+| Read replication | Electric (Apache-2.0), self-hosted in front of PostgreSQL, streaming each person's permitted rows to their device over HTTP as sync shapes |
+| Device cache and outbox | Vulto's own sync client in `packages/graph`: SQLite-WASM on the web (OPFS-backed), native SQLite on React Native, plus the queued-write outbox |
+| Local query layer | `packages/graph`'s typed query layer over that SQLite cache, in the sync worker |
 | API and business logic | Node.js and TypeScript, tRPC over Fastify — the only writer to the canonical graph |
 | Server persistence | PostgreSQL via Drizzle ORM — the single source of truth |
 | Key management | AWS KMS, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] and [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] |
@@ -65,7 +66,7 @@ Four constraints produced this stack, and they are recorded because they are the
 
 **Every surface is TypeScript.** `apps/*`, `services/api`, `services/jobs`, `services/render` and every package share one language, one toolchain and one set of Zod schemas.
 
-**The PowerSync Service is infrastructure, not code we write.** It is deployed from its published image, configured with Sync Streams generated from `packages/schema`, and holds read-only database access. Nothing in this repository extends it.
+**The Electric sync service is infrastructure, not code we write.** It is deployed from its published image, needs nothing but PostgreSQL with logical replication, holds read-only database access, and is configured entirely by the sync shapes generated from `packages/schema`. Nothing in this repository extends it. **The device cache and the outbox are ours**, in `packages/graph`, in TypeScript.
 
 **Consequence for hiring:** every engineering hire can work anywhere in the codebase.
 
@@ -73,34 +74,39 @@ Four constraints produced this stack, and they are recorded because they are the
 
 ## Sync client selection
 
-
 | Criterion | Requirement |
 |---|---|
 | Source of truth | PostgreSQL stays authoritative; the device holds a cache |
+| Licensing | A permissive open-source license, free to self-host commercially, with no ambiguity about our product being a "competing use" |
+| Infrastructure | No datastore beyond PostgreSQL and Redis, which [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] already runs |
+| Sovereignty | Self-hostable in any region, so a customer's data never depends on a vendor's cloud |
+| Partial replication | Each person's device receives only the rows they may read, defined declaratively from the policy table |
 | Offline writes | Writes queue while disconnected and upload to **our** API, where [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor decides them |
 | Local store | SQLite on the device, so `packages/graph`'s typed SQLite query layer carries over |
-| Partial replication | Each person's device receives only the rows they may read, defined declaratively |
 | Platforms | Web, iOS, Android |
-| Maturity | Production-proven and actively maintained |
 
-**PowerSync is selected.** It replicates PostgreSQL into client SQLite through Sync Streams, supports queued offline writes through an upload connector to the application's own backend, and has web and React Native SDKs. Its client SDKs are Apache-2.0; its service is source-available under the Functional Source License and self-hosted on Vulto's infrastructure, which that license permits for a product that does not compete with PowerSync.
+**Electric is selected for the read path, and Vulto owns the write path and the local store.** Electric is a read-path sync engine for PostgreSQL under **Apache-2.0**: it needs only the database it already syncs from, streams filtered row sets ("shapes") to clients over HTTP, and resumes from a cursor. Writes were always going to pass through our own named mutations, so a sync engine's write path was never needed. The device cache, the outbox and the queued-write lifecycle live in `packages/graph`, where we control them.
 
-**Zero** (Rocicorp) was rejected because it refuses writes while disconnected, which contradicts [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s offline requirement. **ElectricSQL** was rejected because it replicates reads only, leaving the write queue and local store for us to build. **A bespoke replication protocol** was rejected because it recreates the engineering cost this revision removes.
+**PowerSync was selected first and then rejected, on two grounds.** Its service is source-available under the Functional Source License rather than open source — free for our use as we read it, but the license turns on whether a use "offers substantially similar functionality", which is not a question a small company should have to argue about later. Its Open Edition also requires **MongoDB** alongside PostgreSQL for sync buckets, which adds a second datastore, a second backup and restore story and a second thing to keep alive in every region a customer's data must stay in. That is exactly the kind of invisible complexity this architecture was revised to remove. Recorded as F201.
 
-**Sync Streams are generated, never hand-written.** They are produced from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table in `packages/schema`, so the rows a device holds and the rows the interceptor permits cannot drift apart.
+**Zero** (Rocicorp) was rejected because it refuses writes while disconnected, which contradicts [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s offline requirement. **A fully bespoke replication protocol** was rejected because logical-replication handling, fan-out and resumable cursors are the hard, boring parts, and Electric gives them for one container and no license question.
 
-**The pinned version is recorded when the first package imports it**, exactly as A001-T02 requires, in the same commit.
+**What Vulto builds, because Electric does not:** the SQLite cache and its schema, shape subscription and application into that cache, the outbox with idempotent retry, optimistic application and rollback, and SyncStatus. Roughly two weeks of TypeScript we own, against a dependency we cannot be surprised by. The alternative saved that work and cost a second datastore and a license argument.
 
-**Loro is retired.** `loro-crdt@1.14.1` was pinned in `packages/schema` for the previous architecture; it is removed with that architecture. The reporting hierarchy no longer needs a Movable Tree because [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s single writer validates moves transactionally, and [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] is corrected accordingly.
+**Sync shapes are generated, never hand-written.** They are produced from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table in `packages/schema`, so the rows a device holds and the rows the interceptor permits cannot drift apart.
+
+**Versions are pinned exactly** — the Electric service by image digest, its client library in the lockfile — and recorded here in the same commit, per A001-T02.
+
+**Loro is retired.** `loro-crdt@1.14.1` was pinned in `packages/schema` for the previous architecture; it is removed with that architecture. `wa-sqlite` stays: the device cache is still SQLite-WASM, now fed by replication rather than by CRDT materialization. The reporting hierarchy no longer needs a Movable Tree because [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s single writer validates moves transactionally, and [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] is corrected accordingly.
 
 ---
 
 ## Local graph query layer
 
 
-**Decision:** `packages/graph`'s typed query layer runs against the PowerSync SQLite cache, inside the sync client's worker, never on the main thread. Recursive CTEs serve multi-hop traversal. The cache holds Tier 0 data only; Tier 1 and Tier 2 values are fetched through the API and joined in memory for authorized readers, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
+**Decision:** `packages/graph`'s typed query layer runs against the Electric SQLite cache, inside the sync client's worker, never on the main thread. Recursive CTEs serve multi-hop traversal. The cache holds Tier 0 data only; Tier 1 and Tier 2 values are fetched through the API and joined in memory for authorized readers, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
 
-**Permission is decided on the server.** The cache contains only what the person may read, because Sync Streams are generated from the policy table. The client-side query layer never decides access; it may hide an action a person cannot take, but the server refuses it regardless.
+**Permission is decided on the server.** The cache contains only what the person may read, because sync shapes are generated from the policy table. The client-side query layer never decides access; it may hide an action a person cannot take, but the server refuses it regardless.
 
 **Availability is separate from row data.** The query layer reports one availability outcome for a query or subscription: `mid-sync`, `requires-connection`, `permission-absence` or `ready`. `ready` is the normal condition and may contain zero rows; zero rows means genuinely empty. A permission-absence result carries no node or edge instance metadata. When [[VPS-A004_Graph_Permission_Layer|VPS-A004]] requires a visibly restricted render, the client derives it from the node type's schema under A004-T19.
 
@@ -195,7 +201,7 @@ tools/
 
 One repository also means a change to `Employee` breaks every application's build simultaneously, which is precisely what [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]]'s type-check gate exists to do.
 
-**`packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` are shared by every application** and are built with the discipline of published packages — versioned, with stable public interfaces — even though every consumer lives beside them. `packages/graph` owns the typed query layer and mutators; the PowerSync client and its SQLite database remain private to the package.
+**`packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` are shared by every application** and are built with the discipline of published packages — versioned, with stable public interfaces — even though every consumer lives beside them. `packages/graph` owns the typed query layer and mutators; the Electric client and its SQLite database remain private to the package.
 
 **A new application adds one directory under `apps/` and nothing else.** No new service, no new database, no new sync infrastructure.
 
@@ -203,7 +209,7 @@ One repository also means a change to `Employee` breaks every application's buil
 
 ## Hosting and deployment
 
-**DigitalOcean** for backend infrastructure: the API, the PowerSync Service, the job workers, the render service, PostgreSQL and Redis. **Vercel** for the Next.js frontend. **AWS KMS** for key management only, because DigitalOcean offers no key management service with customer-managed keys, per [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]].
+**DigitalOcean** for backend infrastructure: the API, the Electric sync service, the job workers, the render service, PostgreSQL and Redis. **Vercel** for the Next.js frontend. **AWS KMS** for key management only, because DigitalOcean offers no key management service with customer-managed keys, per [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]].
 
 Hetzner was considered earlier for data sovereignty. That reasoning rested on a premise that does not hold: Vulto is a Delaware C-Corp, so the company already sits inside US jurisdiction regardless of which server hosts the data. A European host would have protected against a narrower risk than it appeared to — a foreign server compelled independently of the company, not the company itself being compelled.
 
@@ -217,9 +223,9 @@ Hetzner was considered earlier for data sovereignty. That reasoning rested on a 
 | ID | Specification |
 |---|---|
 | A001-T01 | The repository MUST contain no Rust. Introducing a second language requires a superseding decision document |
-| A001-T02 | The sync client MUST be PowerSync. Every sync-related dependency's exact version MUST be pinned in the lockfile when first imported and recorded in this document in the same commit |
+| A001-T02 | Read replication MUST be Electric, self-hosted, pinned by image digest. The device cache, outbox and queued-write lifecycle MUST live in `packages/graph` and MUST NOT depend on a third-party write path. Every sync-related version MUST be pinned and recorded in this document in the same commit |
 | A001-T03 | The device cache MUST be a derived, disposable copy of PostgreSQL, never a source of truth |
-| A001-T04 | Every engineer MUST be able to run the full local stack — frontend, API, jobs, PostgreSQL, Redis and the PowerSync Service — with one command and no toolchain beyond Node, pnpm and Docker |
+| A001-T04 | Every engineer MUST be able to run the full local stack — frontend, API, jobs, PostgreSQL, Redis and the Electric sync service — with one command and no toolchain beyond Node, pnpm and Docker. No datastore other than PostgreSQL and Redis may be required |
 | A001-T05 | New suite applications MUST live in this repository as a directory under `apps/`, consuming `packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` rather than reimplementing them. A separate repository per application is prohibited |
 | A001-T06 | Sync processing and local queries MUST run off the main thread, in the sync client's worker |
 | A001-T07 | The query layer MUST report an availability outcome separate from row data, distinguishing `mid-sync`, `requires-connection`, `permission-absence` and `ready`. A `ready` result MAY contain zero rows. Permission absence MUST disclose no node or edge instance metadata. A visibly restricted render MUST be derived from type schema per A004-T19 |
@@ -228,7 +234,7 @@ Hetzner was considered earlier for data sovereignty. That reasoning rested on a 
 | A001-T10 | No feature MUST compute working days, weekends or holidays independently. All such arithmetic MUST call [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] |
 | A001-T11 | Authentication MUST support passkeys. WebAuthn PRF MUST be supported before any Tier 3 node type is implemented, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] |
 | A001-T12 | Backend infrastructure MUST run on DigitalOcean, key management on AWS KMS, and the frontend MUST deploy to Vercel unless superseded |
-| A001-T13 | Sync Streams MUST be generated from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table in `packages/schema` and MUST NOT be edited by hand |
+| A001-T13 | Sync shapes MUST be generated from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table in `packages/schema` and MUST NOT be edited by hand |
 
 ---
 
@@ -237,13 +243,13 @@ Hetzner was considered earlier for data sovereignty. That reasoning rested on a 
 
 **GIVEN** a new engineer joins
 **WHEN** they clone the repository and follow the documented setup
-**THEN** one command runs the frontend, API, jobs, PostgreSQL, Redis and the PowerSync Service end to end with only Node, pnpm and Docker installed
+**THEN** one command runs the frontend, API, jobs, PostgreSQL, Redis and the Electric sync service end to end with only Node, pnpm and Docker installed
 
 ---
 
 **GIVEN** a feature needs new data on devices
 **WHEN** it is implemented
-**THEN** it registers node types and permissions in `packages/schema`, the generated Sync Streams change accordingly, and no stream is edited by hand
+**THEN** it registers node types and permissions in `packages/schema`, the generated sync shapes change accordingly, and no shape is edited by hand
 
 ---
 
@@ -276,7 +282,7 @@ Hetzner was considered earlier for data sovereignty. That reasoning rested on a 
 
 **The two-language, local-first stack is superseded — F199, 20 September 2026.** Rust, Loro, the sealed device store and the custom relay are retired with [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s device-canonical architecture. The decisions below that concern them — Rust ownership, the Loro pin, shallow snapshots, the Movable Tree's authority, the Worker package boundary and local-storage encryption ownership — are retained as history and no longer govern. Their code is preserved on the archive branch recorded in F199.
 
-**PowerSync over a bespoke sync layer.** Recorded under Sync client selection. The reversal's purpose was to stop paying for infrastructure every feature inherits; writing our own replication protocol would have kept that cost.
+**Electric for replication, Vulto for the write path — F201, 20 September 2026.** Recorded under Sync client selection. PowerSync was the first choice and was reversed within the day on licensing and on its MongoDB requirement. The reversal's purpose was to remove invisible complexity and keep the product self-hostable anywhere; a second datastore and a source-available license both work against that.
 
 **Styling framework and component library are decided here** rather than deferred to a design system team that does not exist. Tailwind consuming [[VPS-D001_Design_Foundations|VPS-D001]]'s tokens, Radix primitives wrapped in `packages/ui`. The earlier draft's deferral was correct when there was no design system; there is one now.
 
