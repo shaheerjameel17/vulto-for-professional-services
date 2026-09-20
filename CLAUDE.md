@@ -16,11 +16,11 @@ It will tell you which other documents to read. Follow it.
 
 ## What the specifications are
 
-94 documents across three prefixes, in `docs/Vulto_Specs/`:
+95 documents across three prefixes, in `docs/Vulto_Specs/`:
 
 | Prefix | Scope |
 |---|---|
-| **`VPS-`** | The suite. Architecture, design system, pipeline, and platform features every application shares |
+| **`VPS-`** | The suite. Architecture, trust program, design system, pipeline, and platform features every application shares |
 | **`VRS-`** | Vulto Roster's own features |
 | **`VPJ-`** | Vulto Projects' register (features not yet written) |
 
@@ -30,27 +30,32 @@ It will tell you which other documents to read. Follow it.
 
 ---
 
-## Current phase: core engineering and graph foundations
+## Current phase: the server-authoritative re-foundation
 
-**We are building the substrate every application runs on.** The prototype is finished and its corrections are in `VPS-D001` through `VPS-D004`.
+**On 20 September 2026 the architecture changed direction** (F199 in `docs/Foundations_Findings.md`). The local-first, device-canonical graph, the Rust sync engine, and end-to-end encryption of Tier 1 data are retired. **PostgreSQL is now the single source of truth; each device holds a fast, permission-filtered cache of it**, with optimistic writes and queued offline writes. Tier 1 and Tier 2 data are field-encrypted on the server under keys in KMS and never stored on a device. Tier 3 stays end-to-end encrypted as a deferred module.
 
-The governing specifications are **`VPS-A001`** (the stack) and **`VPS-A002`** (the graph). `VPS-A002` is the one to get right — ninety documents depend on it, and a defect encoded here propagates into every feature built afterward.
+The governing specifications are **`VPS-A003`** (the data architecture), **`VPS-A001`** (the stack), **`VPS-A004`** (permissions — now enforced on the server) and **`VPS-A008`** (the trust program). Read `VPS-A003`'s Context and Decisions recorded before anything else.
 
 ### Phase scope
 
-1. **Specification correction.** `VPS-A002`'s registry has defects that only surfaced on trying to implement it. They are recorded in `docs/Foundations_Findings.md` and corrected before schema code exists.
-2. **The monorepo and runtime** per `VPS-A001` — package boundaries, pinned toolchains, containerized local dependencies, a bootstrap a TypeScript contributor completes without a Rust toolchain
-3. **`packages/schema`** — `VPS-A002`'s node and edge registry as typed contracts
-4. **Local graph persistence and the typed query layer** — Loro, SQLite-WASM, materialized, in a Worker
-5. **Conformance gates** — schema, graph invariants, architecture boundaries
+1. **The server graph** — `graph_nodes`, `graph_edges`, `graph_protected_fragments` in PostgreSQL via Drizzle, ported from the registry already in `packages/schema`
+2. **The server interceptor** — `packages/graph`'s policy table moved to `packages/schema`, evaluated in `services/api` for every read, mutation and job
+3. **Named mutations** — the typed mutator pipeline with idempotency and stale-state rejection
+4. **Field-level encryption** — the KMS key hierarchy and `protected.read`, with audit-before-release
+5. **The sync layer** — PowerSync Service and client, Sync Streams generated from the policy table, and the stream conformance gate
+6. **The audit journal on the server**, hash-chained per `VPS-A008`
 
-Nothing else. No feature work. `VPS-F001` and the MVP features follow this phase, in `VRS-001`'s order.
+Then one thin end-to-end workflow a design partner can use, before any broad feature work.
 
 ### What is deliberately not in this phase
 
-**The Rust sync engine.** Its substance — sync protocol, encryption, key wrapping, permission-filtered relay — belongs to `VPS-A003` and `VPS-A004`, and neither is this phase's specification. `services/sync-engine` is stood up as a crate with its multi-target build proven and its delta contract defined. It gets its content when `VPS-A003` is implemented.
+**Tier 3.** No Tier 3 node type is built until the Tier 3 module is, with the first wellness or pulse feature.
 
-**The permission interceptor.** `VPS-A004` owns it. This phase registers the privacy metadata the interceptor will read; it does not evaluate a permission.
+**Customer-managed keys and residency choice.** Enterprise features under `VPS-A008`, built when an Enterprise customer needs them. The key hierarchy is designed so they slot in without rework.
+
+### The archive
+
+The retired implementation — `services/sync-engine`, the Loro Worker runtime, the sealed store, Tier 1 envelopes and recovery — is preserved on the branch `archive/local-first-e2e` and removed from `main` by a tracked Linear issue. **Do not delete archived code outside that issue, and do not revive it without a superseding decision.**
 
 ---
 
@@ -60,7 +65,11 @@ Nothing else. No feature work. `VPS-F001` and the MVP features follow this phase
 
 **Never write a permission check in a feature.** `VPS-A004`'s interceptor is the only place access is decided.
 
-**Never let Tier 1 or Tier 3 plaintext reach a server.** If you are writing a server-side job that decrypts something, stop. The answer is always that it runs on an authorized device.
+**Never let Tier 1 or Tier 2 data reach device storage, and never decrypt it outside the audited path.** Protected values come from `protected.read` or an audited job principal, live in memory, and never touch the device cache, browser storage, logs or analytics. Tier 3 plaintext never reaches a server.
+
+**Never hand-write a Sync Stream.** Streams are generated from the policy table. A hand-written stream is a second answer to "who may read this".
+
+**Never write to the graph except through a named mutation.** `services/api` is the only writer. State transitions carry the base version they were decided against.
 
 **Never store what can be derived.** Bench time, leave balance, utilization, compa-ratio — computed at read.
 
@@ -83,20 +92,21 @@ Nothing else. No feature work. `VPS-F001` and the MVP features follow this phase
 Per `VPS-A001`, and settled — do not evaluate alternatives:
 
 - **Next.js**, App Router, TypeScript
-- **Loro** for CRDT, **SQLite-WASM** for the local query index, materialized in a dedicated Web Worker
-- **tRPC over Fastify**, **PostgreSQL via Drizzle**, **Better Auth**
+- **PostgreSQL via Drizzle** as the single source of truth; **tRPC over Fastify** as the only writer; **Better Auth**
+- **PowerSync** (self-hosted service, web and React Native SDKs) replicating each person's permitted Tier 0 slice into SQLite on their device
+- **AWS KMS** for the field-encryption key hierarchy
 - **Tailwind CSS**, configured from `packages/tokens`
 - **Radix UI** primitives, wrapped in `packages/ui`
 - **Vitest** for unit and integration, **Playwright** for end-to-end
 - **pnpm** workspaces, Turborepo
 - **Inter Variable** via `next/font`, self-hosted. One face, with tabular numerals rather than a separate mono family
-- **Rust**, confined to `services/sync-engine` and nowhere else
+- **TypeScript only.** No Rust anywhere in the repository
 
 Repository structure per `VPS-A001`:
 
 ```
 apps/roster-web/     Vulto Roster
-services/            sync-engine (Rust), api, jobs, render
+services/            api, jobs, render
 packages/schema/     Graph schema, shared types, Zod validators
 packages/ui/         Design system components
 packages/tokens/     Design tokens

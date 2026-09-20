@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Post-MVP
 Feature Type:
@@ -186,13 +186,13 @@ records_affected:     JSON summary — classes and counts, never content
 
 ### What erasure actually does, per tier
 
-**Tier 1 and Tier 3** — cryptographic erasure per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. Every wrapped-key entry and the document key destroyed, no copy retained in any backup generation, a device wipe instruction fired. The node, its edges and its position remain.
+**Tier 1 and Tier 3** — cryptographic erasure per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. For Tier 1, the data key of each affected erasure domain is destroyed in the live store and in every retained key backup. For Tier 3, the subject's document keys are destroyed on their devices and their envelopes on the server. The node, its edges and its position remain.
 
-**Tier 2** — data-layer redaction or deletion plus local/server cache purge. Tier 2 uses A003's standard-encryption architecture and has no per-document end-to-end envelope key to destroy.
+**Tier 2** — data-layer redaction or deletion. Tier 2 is field-encrypted under one workspace data key, not a per-subject key, so there is no subject-level key to destroy. It is never cached on a device, so there is no device copy to purge.
 
 **Tier 0** — field-level redaction. Personal identifying fields are overwritten with a stable pseudonymous token; structural and operational fields remain, so that assignments, utilization history and aggregate figures stay correct.
 
-**Tier 0 and Tier 2 provide a weaker guarantee than cryptographic erasure and are stated as such.** Their standard-encryption keys remain available to legitimate application operation, so erasure removes or redacts the subject data and purges reachable cached copies rather than making retained ciphertext mathematically unreadable. If a future record class requires mathematically irreversible subject-level erasure, its data should ordinarily be reclassified to Tier 1 or Tier 3 rather than acquiring a silent Tier 2 envelope architecture.
+**Tier 0 and Tier 2 provide a weaker guarantee than cryptographic erasure and are stated as such.** Their keys remain available to legitimate application operation, so erasure removes or redacts the subject data and purges reachable cached copies rather than making retained ciphertext mathematically unreadable. If a future record class requires mathematically irreversible subject-level erasure, it should be reclassified to Tier 1.
 
 **Documents** — blob key destruction per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]. The ciphertext remains in object storage until its own lifecycle expires it; it is unreadable from the moment the key is gone.
 
@@ -202,11 +202,11 @@ records_affected:     JSON summary — classes and counts, never content
 
 Stated plainly rather than glossed:
 
-**A device that decrypted a record before erasure may retain a local copy** until it next connects. A wipe instruction fires; a device that never reconnects cannot be reached. A property of distributed systems, not a defect in this design.
+**A device that cached Tier 0 subject data before erasure may retain it** until it next connects, when the removal replicates. A device that never reconnects cannot be reached. Tier 1 and Tier 2 content was never on a device.
 
 **Aggregate contributions are already anonymous.** `PulseAggregateContribution` and `WellnessAggregateContribution` carry no edge to any Employee, so there is nothing to erase and nothing that identifies anyone. Team sentiment history survives an erasure, correctly.
 
-**Backups within their retention window** hold ciphertext whose keys are destroyed. Unreadable, and not separately purged.
+**Backups within their retention window** hold Tier 1 ciphertext whose keys are destroyed — unreadable, and not separately purged — and Tier 0 and Tier 2 subject data that expires with the backup, which is stated in the response to the requester.
 
 ### The purge job
 
@@ -224,9 +224,7 @@ A hold suspends purge and erasure for a record class, a subject, or both. While 
 
 ### The workspace export
 
-Every node the workspace holds, in JSON, with documents as files. Tier 1 and Tier 3 content decrypted client-side on an authorized device, since **a server-generated export could not read it.**
-
-Necessarily slow and necessarily local. That is the correct trade for the alternative, which would be Vulto's servers being able to assemble a readable copy of a customer's entire employment record.
+Every node the workspace holds, in JSON, with documents as files, in [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]'s published open export format. Assembled by a job in `services/jobs` running as the requesting Owner's principal, with every protected read audited, and delivered as an encrypted archive through an expiring, single-use download. Tier 3 content is excluded from the server-assembled archive; each person exports their own Tier 3 records from their own device.
 
 ### API contracts
 
@@ -240,7 +238,7 @@ purge.preview(workspaceId) -> {
 purge.placeHold(recordClass?, subjectId?, reason)  -> { holdId }
 purge.releaseHold(holdId)                          -> { success }
 purge.execute(workspaceId)                         -> { purged, held, failed }
-  // Runs on an authorized device where Tier 1 or Tier 3 keys are involved
+  // Runs as a system principal in services/jobs; every protected read is audited
 
 erasureRequest.create(requestType, subjectId, receivedAt) -> {
   requestId, responseDueAt, affectedRecords, blockedBy
@@ -251,10 +249,10 @@ erasureRequest.fulfill(requestId)   -> { erased: { recordClass, count }[] }
 erasureRequest.refuse(requestId, ground, detail) -> { success }
 
 subjectAccess.assemble(subjectId) -> { export }
-  // Client-side. Reviewed by an HR Admin before release
+  // Server-assembled as the requesting HR Admin's principal. Reviewed by an HR Admin before release
 
 workspace.export(workspaceId)     -> { archiveUrl }
-  // Owner only. Client-side assembly on an authorized device
+  // Owner only. Server-assembled as the Owner's principal, open export format per VPS-A008
 ```
 
 ---
@@ -272,8 +270,8 @@ workspace.export(workspaceId)     -> { archiveUrl }
 | G07 | A legal hold suspends purge and erasure entirely for everything in scope, and overrides an erasure request with the requester informed |
 | G08 | `records_affected` and every request record store counts and classes, never erased content |
 | G09 | Tier 0 erasure is field-level redaction, a weaker guarantee than cryptographic erasure, and is described as such |
-| G10 | Workspace export and subject access assembly run client-side. No server-side path assembles readable Tier 1 or Tier 3 content |
-| G11 | Tier 2 erasure is data-layer redaction or deletion plus local/server cache purge, not cryptographic erasure. A future record class requiring mathematical erasure SHOULD be reclassified to Tier 1 or Tier 3 |
+| G10 | Workspace export and subject access assembly run as audited server jobs under the requester's principal and follow the published export format. No server-side path assembles Tier 3 plaintext |
+| G11 | Tier 2 erasure is data-layer redaction or deletion, not cryptographic erasure. A future record class requiring mathematical erasure SHOULD be reclassified to Tier 1 |
 
 ---
 
@@ -312,7 +310,7 @@ workspace.export(workspaceId)     -> { archiveUrl }
 
 **GIVEN** an erasure is fulfilled
 **WHEN** it executes
-**THEN** every usable current and historical document-key envelope and loaded raw document key for the subject's Tier 1 and Tier 3 records is destroyed with no usable backup copy retained; Tier 0 and Tier 2 subject data is redacted or deleted and its reachable caches are purged; and every required node, edge and graph position remains intact
+**THEN** the data keys of the subject's Tier 1 erasure domains are destroyed with no usable backup copy retained, and their Tier 3 keys are destroyed; Tier 0 and Tier 2 subject data is redacted or deleted and its reachable caches are purged; and every required node, edge and graph position remains intact
 
 ---
 
@@ -330,13 +328,13 @@ workspace.export(workspaceId)     -> { archiveUrl }
 
 **GIVEN** a subject access request
 **WHEN** it is assembled
-**THEN** assembly runs on an authorized device, an HR Admin reviews before release, and no server-side path produced readable Tier 1 content
+**THEN** assembly runs as an audited server job under the HR Admin's principal, an HR Admin reviews before release, and every protected read appears in the audit journal
 
 ---
 
 **GIVEN** an Owner exports the workspace
 **WHEN** it completes
-**THEN** the archive contains every node and document in a portable format, assembled client-side
+**THEN** the archive contains every node and document in the published open export format, and the export is recorded in the audit journal
 
 ---
 
@@ -349,21 +347,21 @@ workspace.export(workspaceId)     -> { archiveUrl }
 ## Non-Functional Requirements
 
 - The purge preview resolves within 500ms
-- Erasure of a single subject completes within 30 seconds on an authorized device
+- Erasure of a single subject completes within 30 seconds
 - Subject access assembly completes within 2 minutes for a long-tenured employee
 - Workspace export completes within 30 minutes for a 150-person workspace with full history
-- Every operation touching Tier 1 or Tier 3 runs on an authorized device
+- Every operation touching Tier 1 or Tier 2 runs under an audited principal; no operation touching Tier 3 plaintext runs on a server
 
 ---
 
 ## Security Considerations
 
-- **Cryptographic erasure makes Tier 1 and Tier 3 erasure possible without breaking the graph**, and its limits are stated rather than glossed: Tier 0/2 redaction or deletion is weaker, an unreachable device may retain a copy, and protected-tier backups hold unreadable ciphertext.
+- **Cryptographic erasure makes Tier 1 and Tier 3 erasure possible without breaking the graph**, and its limits are stated rather than glossed: Tier 0/2 redaction or deletion is weaker, an unreachable device may retain a Tier 0 copy, and Tier 1 backups hold unreadable ciphertext.
 - **Erasure is itself audited**, per [[VPS-F004_Silent_Audit_Log|VPS-F004]]. That a record was erased, when and by whom must survive the erasure, or the process cannot be demonstrated to have happened.
 - **Refusal is a legitimate outcome and is designed for.** Statutory retention frequently defeats an erasure request, and a product that fulfilled every request regardless would put its customers in breach of a different obligation.
 - **The two-phase purge exists because destruction is irreversible.** Every other operation in this product can be undone; this one cannot, and fourteen days of warning against an obligation measured in years is a trivial cost.
 - **Retention defaults are starting points, not legal advice**, and the interface says so once, plainly. Seven jurisdictions with materially different requirements, and a product asserting the correct period would be wrong in most of them.
-- **The workspace export is a security consideration in its own right.** It produces a decrypted archive of a firm's entire employment record, assembled on one device by one Owner. It is audited, Owner-only, and deliberately slow.
+- **The workspace export is a security consideration in its own right.** It produces a decrypted archive of a firm's entire employment record. It is Owner-only, audited, encrypted at rest, delivered once through an expiring link, and deleted from storage after download or seven days.
 
 ---
 
@@ -378,6 +376,8 @@ workspace.export(workspaceId)     -> { archiveUrl }
 ---
 
 ## Decisions Recorded
+
+**Export, subject access and purge move to the server — F199, 20 September 2026.** They ran on an authorized device because the server could not read Tier 1. Under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s revision they run as audited jobs, which makes them faster, resumable and independent of one person's laptop. Cryptographic erasure is kept for Tier 1 through per-erasure-domain data keys, so the guarantee this feature was built on survives the change.
 
 **This feature is new and resolves the collision between [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Standing Rule 1 and statutory erasure rights**, which no previous document acknowledged. Cryptographic erasure satisfies both: no row is deleted, and the content becomes permanently unreadable.
 

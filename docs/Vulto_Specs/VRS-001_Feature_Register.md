@@ -17,7 +17,7 @@ aliases:
 
 This document is the authoritative index of **Vulto Roster's own features**: each one's identifier, its position in the build order, its Product Phase, its Feature Type, and where it came from.
 
-**It does not index the suite foundations.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] through [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]], [[VPS-D001_Design_Foundations|VPS-D001]] through [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] and the eleven `VPS-F` platform features are inherited by Roster rather than owned by it, and are governed by [[VPS-000_Documentation_Standard|VPS-000]]. Roster consumes them; this register does not restate them.
+**It does not index the suite foundations.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] through [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]], [[VPS-D001_Design_Foundations|VPS-D001]] through [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] and the eleven `VPS-F` platform features are inherited by Roster rather than owned by it, and are governed by [[VPS-000_Documentation_Standard|VPS-000]]. Roster consumes them; this register does not restate them.
 
 It replaces `Vulto_Roster_Features_List.md`, which is retired.
 
@@ -27,11 +27,11 @@ The crosswalk below records the renumbering as executed. Every code in the Was c
 
 ## What changed, in summary
 
-The original 66 documents became 94 across three prefixes.
+The original 66 documents became 94 across three prefixes; [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] made 95 on 20 September 2026.
 
 | Prefix | Contents | Count |
 |---|---|---|
-| **`VPS-`** Vulto Professional Services | [[VPS-000_Documentation_Standard|VPS-000]], [[VPS-002_Implementation_Handoff|VPS-002]], [[VPS-003_Commercial_Model|VPS-003]] · A001–A007 · D001–D004 · F001–F011 | 25 |
+| **`VPS-`** Vulto Professional Services | [[VPS-000_Documentation_Standard|VPS-000]], [[VPS-002_Implementation_Handoff|VPS-002]], [[VPS-003_Commercial_Model|VPS-003]] · A001–A008 · D001–D004 · F001–F011 | 26 |
 | **`VRS-`** Vulto Roster | This register + 67 features | 68 |
 | **`VPJ-`** Vulto Projects | [[VPJ-001_Feature_Register|VPJ-001]] | 1 |
 
@@ -66,6 +66,7 @@ The build order is derived from four rules, applied in this priority:
 | [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | Cross-App Reference Protocol | A04 | Architecture | Platform |
 | [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] | Platform Services and Infrastructure | **new** | Architecture | Platform |
 | [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]] | Build, Test and Deployment Pipeline | **new** | Architecture | Platform |
+| [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] | Trust and Data Protection Program | **new, 20 September 2026** | Architecture | Platform |
 
 **[[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] is new and closes four gaps the existing set explicitly flagged and left open:** transactional email delivery and sender-domain mechanism (needed by at least six features), object storage for encrypted file blobs, webhook delivery with retry and dead-lettering, and server-side PDF rendering. Each was flagged independently by the feature that first hit it, each was correctly identified as an architecture-level decision, and none had a home.
 

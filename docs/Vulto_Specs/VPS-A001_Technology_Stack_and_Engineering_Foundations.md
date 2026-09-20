@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-08-17]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -15,7 +15,7 @@ aliases:
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
 **Depends On:** Nothing. This is a co-root decision alongside [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]
-**Blocks:** [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]], [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]], and every feature in every application that touches storage, sync, authentication, rendering or the API layer
+**Blocks:** [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]], [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]], [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]], and every feature in every application that touches storage, sync, authentication, rendering or the API layer
 
 This document is the single source of truth for what [[Vulto for Professional Services]] is built with. Every application in the suite runs on this stack, in this repository, against one graph. [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] owns the infrastructure services this stack runs on top of.
 
@@ -23,7 +23,8 @@ This document is the single source of truth for what [[Vulto for Professional Se
 
 ## Decision
 
-The stack partitions engineering responsibility across exactly two languages: **Rust**, confined to a single isolated sync engine, and **TypeScript**, used for everything else. No third backend language is introduced. No engineer outside the sync engine needs to read or write Rust.
+
+**One language: TypeScript, end to end.** The server is the source of truth; devices hold a fast, permission-filtered cache of it, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. No Rust, no CRDT, and no custom sync relay.
 
 | Layer | Choice |
 |---|---|
@@ -31,98 +32,84 @@ The stack partitions engineering responsibility across exactly two languages: **
 | Mobile | React Native, sharing `packages/schema`, per [[VPS-F011_Mobile-Native_Experience|VPS-F011]] |
 | Styling | Tailwind CSS, consuming [[VPS-D001_Design_Foundations|VPS-D001]]'s tokens exclusively |
 | Component primitives | Radix UI, wrapped in `packages/ui` per [[VPS-D002_Component_Library|VPS-D002]] |
-| CRDT engine | Loro — Rust core, WASM and native bindings |
-| Local query layer | SQLite-WASM on web, native SQLite on React Native, materialized from Loro |
-| Sync / relay server | Rust service, native binary |
-| API and business logic | Node.js and TypeScript, tRPC over Fastify |
-| Server persistence | PostgreSQL via Drizzle ORM |
+| Sync and device cache | PowerSync: the self-hosted PowerSync Service replicates PostgreSQL into a SQLite cache on each device through Sync Streams; `@powersync/web` on the web, `@powersync/react-native` on mobile |
+| Local query layer | `packages/graph`'s typed query layer over the PowerSync SQLite cache, in the sync client's worker |
+| API and business logic | Node.js and TypeScript, tRPC over Fastify — the only writer to the canonical graph |
+| Server persistence | PostgreSQL via Drizzle ORM — the single source of truth |
+| Key management | AWS KMS, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] and [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] |
 | Job queue and scheduling | BullMQ on Redis, per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] |
 | Authentication | Better Auth |
 | Repository | Turborepo monorepo, pnpm workspaces |
+
+**This document was revised on 20 September 2026.** The previous stack confined Rust to a sync engine and used Loro as a device-canonical CRDT. Both are retired, per F199 and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Decisions recorded.
 
 ---
 
 ## Context
 
+
 Four constraints produced this stack, and they are recorded because they are the things a future engineer would otherwise relitigate.
 
-**The hiring market is a first-order constraint, not an afterthought.** Rust engineers are scarce in Pakistan, the primary near-term hiring market. A stack that spreads Rust across the backend creates a bottleneck TypeScript does not. A stack that uses Rust nowhere forfeits the performance and correctness guarantees a CRDT sync engine genuinely needs. Confining Rust to one bounded surface resolves that tension rather than choosing an extreme.
+**The hiring market is a first-order constraint, not an afterthought.** TypeScript engineers are plentiful in Pakistan, the primary near-term hiring market; Rust engineers and CRDT specialists are not. A stack any competent TypeScript engineer can work in end to end is the one a small team can staff.
 
 **The product must last years.** Boring where it counts, without sacrificing the velocity a small founding team depends on to reach revenue.
 
 **Next.js and the eventual multi-application suite are given.** Founder decisions, not open questions this document revisits.
 
-**Local-first is not a feature, it is the justification for the whole architecture.** Every latency budget in [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]] depends on reads being local queries and writes being acknowledged before the network is consulted. A choice that compromises that compromises the product's only remaining claim to feeling exceptional.
+**It must feel instant.** Every latency budget in [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]] depends on reads being local queries and writes being acknowledged before the network is consulted. That requires a local cache and optimistic writes. It does not require the device to be canonical, which is the distinction the previous stack missed and this one keeps.
 
 ---
 
-## The two-language boundary
+## One language
 
-| Surface | Language | Reasoning |
-|---|---|---|
-| `services/sync-engine` | Rust | A single shared core — CRDT merge, encryption, wire protocol — compiled three ways from one source: native binary for the server, WASM for the client, native bindings for mobile, per A003-T10. The **server deployment** additionally relays deltas between authorized devices per [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s permission filter and persists them to Postgres for durability. The **client and mobile builds** produce and apply deltas against the local graph and hold no server responsibilities. No business logic in any target |
-| `apps/roster-web` and every future application under `apps/` | TypeScript | Consumes the sync engine's WASM build as an ordinary npm package. Never touches Rust |
-| `services/api` | TypeScript | Auth, workspace management, billing, every feature's server-side logic |
-| Every future suite application | TypeScript | Shares the same sync engine and API conventions |
 
-**Consequence for hiring:** the entire Rust surface is one deliberately small, deliberately boring service. Every other engineering hire works entirely in TypeScript.
+**Every surface is TypeScript.** `apps/*`, `services/api`, `services/jobs`, `services/render` and every package share one language, one toolchain and one set of Zod schemas.
+
+**The PowerSync Service is infrastructure, not code we write.** It is deployed from its published image, configured with Sync Streams generated from `packages/schema`, and holds read-only database access. Nothing in this repository extends it.
+
+**Consequence for hiring:** every engineering hire can work anywhere in the codebase.
 
 ---
 
-## CRDT library selection
+## Sync client selection
+
 
 | Criterion | Requirement |
 |---|---|
-| Graph support | Property graph represented as node and edge records |
-| Offline-first | Fully disconnected operation, deterministic merge on reconnection |
-| Performance | Node and edge level sync with negligible latency on mobile connections |
-| Maturity | Production-proven, actively maintained, no beta status |
-| Platform support | Web, iOS, Android, macOS, Windows |
-| Audit compatibility | Change events capturable by [[VPS-F004_Silent_Audit_Log|VPS-F004]] |
+| Source of truth | PostgreSQL stays authoritative; the device holds a cache |
+| Offline writes | Writes queue while disconnected and upload to **our** API, where [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor decides them |
+| Local store | SQLite on the device, so `packages/graph`'s typed SQLite query layer carries over |
+| Partial replication | Each person's device receives only the rows they may read, defined declaratively |
+| Platforms | Web, iOS, Android |
+| Maturity | Production-proven and actively maintained |
 
-**Automerge** was rejected as primary: its data model has no native tree type, so the `managed_by` reporting hierarchy would be an application-level workaround, and `automerge-repo` remains alpha.
+**PowerSync is selected.** It replicates PostgreSQL into client SQLite through Sync Streams, supports queued offline writes through an upload connector to the application's own backend, and has web and React Native SDKs. Its client SDKs are Apache-2.0; its service is source-available under the Functional Source License and self-hosted on Vulto's infrastructure, which that license permits for a product that does not compete with PowerSync.
 
-**Yjs** was rejected for the same reason — a general document CRDT with no tree or graph primitive.
+**Zero** (Rocicorp) was rejected because it refuses writes while disconnected, which contradicts [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s offline requirement. **ElectricSQL** was rejected because it replicates reads only, leaving the write queue and local store for us to build. **A bespoke replication protocol** was rejected because it recreates the engineering cost this revision removes.
 
-**Loro is selected.** It natively supports Map, List, Rich Text and Movable Tree, which map directly onto this schema rather than requiring workarounds: Movable Tree for the reporting hierarchy, Rich Text for every field supporting [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]]'s reference protocol, Map for node properties generally.
+**Sync Streams are generated, never hand-written.** They are produced from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table in `packages/schema`, so the rows a device holds and the rows the interceptor permits cannot drift apart.
 
-**The shallow-snapshot rationale is withdrawn.** This document previously also cited Loro's shallow snapshots — trimming CRDT history while preserving mergeability — as addressing unbounded tombstone accumulation. Implementing that against the pinned `loro-crdt@1.14.1` proved it does not hold for this system's document shape. The local graph Worker's document is a forest of concurrent roots, because every delta it merges arrives as an independently authored document from a peer that never synced before contributing; anchoring a shallow snapshot against such a history produces bytes that `export` accepts and `import` rejects. Full snapshots are written instead. The cost is storage growth rather than any risk to correctness, and the Movable Tree — not this — remains the load-bearing reason Loro was chosen over Automerge and Yjs. Recorded as F121, with the reproduction and the import-time failure mode; revisitable if Loro's own shallow-snapshot semantics change in a way that is actually verified against a real document of this shape rather than assumed from a release note.
+**The pinned version is recorded when the first package imports it**, exactly as A001-T02 requires, in the same commit.
 
-Loro is MIT licensed and in active production use. Its ecosystem is younger than Automerge's; this is a defensible tradeoff, recorded rather than assumed.
-
-**On the Movable Tree specifically.** This primitive is a material part of why Loro was chosen over two more mature alternatives, and the specification set must actually use it. [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] is the feature that does, and its existence is partly a consequence of this decision. A future proposal to model the reporting hierarchy as flat parent pointers in application code would forfeit the reason this library was selected and requires a superseding decision, not an implementation shortcut.
-
-**A Movable-Tree-backed edge is derived, not independently maintained.** `managed_by` is registered in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] both as a Tree-backed relationship and as a temporal edge under the single-active-outgoing-edge-with-history pattern. The Tree is the sole write target and sole authority on the current answer; the edge is a one-way materialization of the Tree's resolved state, and no application code writes it directly. A future feature adding a second write path to `managed_by` — an edge write that bypasses the Tree — is the same category of violation as replacing the Tree with flat parent pointers: it forfeits the concurrent-merge guarantee this library was selected for, and requires a superseding decision rather than an implementation shortcut. Recorded as F104.
-
-**Loro's causal ordering answers which move wins, and nothing else.** Selecting the winner among concurrent moves uses `(lamport, peer)` — Lamport alone is insufficient, because two concurrent moves of the same node commonly share a Lamport value and the peer identifier is the tie-break. What that ordering cannot supply is a real-world effective date: a Loro operation carries no deterministic timestamp, so the materialized edge's `effective_from` and `effective_to` come from a date carried on the move operation itself rather than from the CRDT's logical clock. Recorded as F124.
-
-A bespoke CRDT implementation is explicitly prohibited.
-
-**The pinned version is `loro-crdt@1.14.1`**, declared exactly — not as a range — in `packages/schema`, and pinned transitively in `pnpm-lock.yaml`. Recorded here per A001-T02, in the commit that pinned it.
-
-`packages/schema` declares it because that package is the first legitimate importer: [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Schema Evolution Protocol makes the schema package the enforcement point and prohibits raw untyped access to CRDT documents anywhere outside the sync engine and the materialization worker, so the Loro document shapes are defined there.
-
-**The pin lands before anything imports it, deliberately.** A001-T02 says *implementation start*, and the monorepo and runtime foundation is implementation start; deferring until the first import would make that phrase mean whenever someone happens to feel like it. The cost is that a dependency nothing yet imports looks like dead weight to a later cleanup — which would delete this record along with it. Naming the declaring package here is the mitigation: the specification and the manifest point at each other, so removing one means confronting the other.
+**Loro is retired.** `loro-crdt@1.14.1` was pinned in `packages/schema` for the previous architecture; it is removed with that architecture. The reporting hierarchy no longer needs a Movable Tree because [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s single writer validates moves transactionally, and [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] is corrected accordingly.
 
 ---
 
 ## Local graph query layer
 
-Loro guarantees conflict-free merge. It does not provide fast multi-hop traversal, and [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s budgets require it.
 
-**Decision:** SQLite compiled to WASM runs on the client, materialized incrementally from Loro state. Loro remains the authoritative merge layer; SQLite is a derived, rebuildable index existing purely to make graph queries fast, including recursive CTEs for traversal. This is also where [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s permission interceptor is implemented in practice — as a query-rewriting layer in front of the index, never inside the CRDT library.
+**Decision:** `packages/graph`'s typed query layer runs against the PowerSync SQLite cache, inside the sync client's worker, never on the main thread. Recursive CTEs serve multi-hop traversal. The cache holds Tier 0 data only; Tier 1 and Tier 2 values are fetched through the API and joined in memory for authorized readers, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
 
-**The first implementation is deliberately in memory.** Persisting a readable SQLite file in IndexedDB or OPFS before [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s A003-T04 session-key mechanism exists would put sensitive graph data on disk without the encryption this architecture requires. FDN-48 therefore builds the disposable read model and deterministic rebuild path; FDN-84 owns the sealed local device store and its cold-restart online unlock; FDN-50 owns durable canonical Loro persistence written into that sealed store; and FDN-52 owns privacy-tier partitioning, envelope-wrapped reader keys, and any later encrypted SQLite cache or VFS. Rebuilding is the safe default until evidence shows an encrypted cache is needed.
+**Permission is decided on the server.** The cache contains only what the person may read, because Sync Streams are generated from the policy table. The client-side query layer never decides access; it may hide an action a person cannot take, but the server refuses it regardless.
 
-**Execution boundary.** Both Loro merge processing and SQLite materialization run inside a dedicated Web Worker, never the main thread. A device rejoining after days offline processes thousands of queued deltas; doing that on the main thread would freeze the UI exactly when a founder most needs the Bench Forecast responsive. The UI layer never imports `wa-sqlite` and never processes a delta directly.
-
-**Availability is separate from row data.** The worker reports one availability outcome for a query or subscription: `mid-sync`, `retention-window-absence`, `permission-absence` or `ready`. `ready` is the normal condition and may contain zero rows; zero rows means genuinely empty and is not a fourth system state. A permission-absence result carries no node or edge instance metadata. When [[VPS-A004_Graph_Permission_Layer|VPS-A004]] requires a visibly restricted render, the client derives that placeholder from the node type's schema under A004-T19, never from instance data the device did not receive.
+**Availability is separate from row data.** The query layer reports one availability outcome for a query or subscription: `mid-sync`, `requires-connection`, `permission-absence` or `ready`. `ready` is the normal condition and may contain zero rows; zero rows means genuinely empty. A permission-absence result carries no node or edge instance metadata. When [[VPS-A004_Graph_Permission_Layer|VPS-A004]] requires a visibly restricted render, the client derives it from the node type's schema under A004-T19.
 
 ---
 
 ## Server persistence
 
-**PostgreSQL via Drizzle ORM.** Drizzle over Prisma for a lighter, more SQL-honest query layer as complexity grows, particularly for audit and reporting queries that sit outside the CRDT-synced graph. Postgres also stores the durable copy of Loro snapshots and deltas the Rust sync engine persists.
+
+**PostgreSQL via Drizzle ORM is the single source of truth** for the graph, the protected field store, the audit journal and the mutation log, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. Drizzle over Prisma for a lighter, more SQL-honest query layer as complexity grows, particularly for audit and reporting queries.
 
 ---
 
@@ -138,7 +125,7 @@ Note that tRPC is the internal contract only. [[VPS-F009_Vulto_Sync_API|VPS-F009
 
 **Better Auth.** Self-hosted, TypeScript-native, database-first. Its organization/member tables are the online admission and revocation control plane for the Workspace and WorkspaceMembership graph projection defined in [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]]. Both representations share stable identifiers and one role enum; grants wait for projection confirmation, removals deny centrally first, and disagreement fails closed. Lucia, the prior standard, is in maintenance mode and no longer recommended by its author.
 
-Passkeys and WebAuthn PRF are required rather than optional, because [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 3 key recovery depends on the device's native secure keychain.
+Passkeys are supported and offered first where the browser supports them. WebAuthn PRF is required only by [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 3 module, when it is built.
 
 ---
 
@@ -160,10 +147,10 @@ These were not previously specified and each would otherwise be decided inconsis
 
 | Concern | Decision |
 |---|---|
-| Server state | tRPC with TanStack Query. Local graph reads bypass both and query the worker directly |
-| Client state | React state and context. No global store library; local-first means most state is the graph |
+| Server state | tRPC with TanStack Query for protected (Tier 1 and Tier 2) reads. Tier 0 graph reads bypass both and query the local cache directly |
+| Client state | React state and context. No global store library; most state is the cached graph |
 | Forms | React Hook Form with Zod resolvers |
-| Validation | `zod@4.4.3`, pinned exactly in `packages/schema`. Schemas are shared by client, API and sync engine; a validation rule is written once and TypeScript types are inferred from it |
+| Validation | `zod@4.4.3`, pinned exactly in `packages/schema`. Schemas are shared by client, API and jobs; a validation rule is written once and TypeScript types are inferred from it |
 | Dates and time | `date-fns` v4 with IANA time zone support. All timestamps stored UTC ISO-8601. **All working-day arithmetic delegates to [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] without exception** |
 | Tables | TanStack Table, headless, styled per [[VPS-D002_Component_Library|VPS-D002]] |
 | Charts | Recharts, constrained to the three chart types [[VPS-D002_Component_Library|VPS-D002]] permits |
@@ -183,19 +170,20 @@ apps/
   projects-web/             Vulto Projects, Next.js
   mobile/                   React Native, all applications, per VPS-F011
 services/
-  sync-engine/              Rust, native binary and WASM
-  api/                      Node.js, TypeScript, tRPC
+  api/                      Node.js, TypeScript, tRPC — the only writer to the graph
   jobs/                     BullMQ workers, per VPS-A006
   render/                   Headless Chromium PDF rendering, per VPS-A006
   cross-tenant-aggregation/ Isolated anonymized aggregation, per VRS-F071
 packages/
-  graph/                    Worker client, validated local-graph protocol and private Worker runtime
+  graph/                    Typed query layer and mutators over the device cache, and the sync client wiring
   schema/                   Shared types, graph schema, Zod validators
   ui/                       Design system components, per VPS-D002
   tokens/                   Design tokens, per VPS-D001, source of Tailwind config
+tools/
+  audit-verifier/           Open-source audit chain verifier, published per VPS-A008
 ```
 
-`services/cross-tenant-aggregation` is the one deliberate exception to this stack's per-workspace model. Every other service syncs one workspace's graph to its own authorized devices; this one pools anonymized, already-bucketed contributions across many workspaces for [[VRS-F071_Salary_Benchmarking|VRS-F071]] and [[VRS-F072_Agency_Benchmarking|VRS-F072]]. That is a fundamentally different data flow and does not belong inside the sync engine's trust boundary.
+`services/cross-tenant-aggregation` is the one deliberate exception to this stack's per-workspace model. Every other service serves one workspace's graph to its own members; this one pools anonymized, already-bucketed contributions across many workspaces for [[VRS-F071_Salary_Benchmarking|VRS-F071]] and [[VRS-F072_Agency_Benchmarking|VRS-F072]]. That is a fundamentally different data flow and does not belong inside the per-workspace trust boundary.
 
 ---
 
@@ -207,58 +195,55 @@ packages/
 
 One repository also means a change to `Employee` breaks every application's build simultaneously, which is precisely what [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]]'s type-check gate exists to do.
 
-**`services/sync-engine`, `packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` are shared by every application** and are built with the discipline of published packages — versioned, with stable public interfaces — even though every consumer lives beside them. `packages/graph` is the TypeScript home of the dedicated Worker boundary: its public surface is the Worker client and validated local protocol; Loro, `wa-sqlite` and Worker internals remain private to the package.
+**`packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` are shared by every application** and are built with the discipline of published packages — versioned, with stable public interfaces — even though every consumer lives beside them. `packages/graph` owns the typed query layer and mutators; the PowerSync client and its SQLite database remain private to the package.
 
-**A new application adds one directory under `apps/` and nothing else.** No new service, no new database, no new sync engine.
+**A new application adds one directory under `apps/` and nothing else.** No new service, no new database, no new sync infrastructure.
 
 ---
 
 ## Hosting and deployment
 
-**DigitalOcean** for backend infrastructure: the sync engine, the API, the job workers, the render service, PostgreSQL and Redis. **Vercel** for the Next.js frontend.
+**DigitalOcean** for backend infrastructure: the API, the PowerSync Service, the job workers, the render service, PostgreSQL and Redis. **Vercel** for the Next.js frontend. **AWS KMS** for key management only, because DigitalOcean offers no key management service with customer-managed keys, per [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]].
 
 Hetzner was considered earlier for data sovereignty. That reasoning rested on a premise that does not hold: Vulto is a Delaware C-Corp, so the company already sits inside US jurisdiction regardless of which server hosts the data. A European host would have protected against a narrower risk than it appeared to — a foreign server compelled independently of the company, not the company itself being compelled.
 
-**What this does not resolve.** Genuine protection against compulsion is an encryption decision, not a hosting decision. [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] defines the tiered model: standard encryption at rest where Vulto holds keys, and true end-to-end encryption where Vulto cannot read the data under any circumstance. That is the decision worth getting right. The hosting provider was not.
-
----
-
-## Sync architecture consequence
-
-One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] rather than resolved here. Because Loro, like every document-based CRDT, syncs at document rather than field granularity, permission-filtered sync requires partitioning the graph into multiple Loro documents by sensitivity tier, and in some cases by field group within a node type. The full partitioning model belongs in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. This document records only why such partitioning is required at all: it is a direct consequence of the CRDT choice made here, not a design preference.
+**What this does not resolve.** Neither hosting nor encryption makes Vulto immune to lawful compulsion, and the product does not claim otherwise. [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] governs what Vulto promises instead: no staff access without customer approval, disclosure of any compelled access, customer-managed keys on Enterprise, and a residency region per workspace.
 
 ---
 
 ## Technical specifications
 
+
 | ID | Specification |
 |---|---|
-| A001-T01 | The sync engine MUST be the only Rust in the repository. A second Rust service requires a superseding decision document |
-| A001-T02 | The CRDT library MUST be Loro. The exact version MUST be pinned in the lockfile at implementation start and recorded in this document in the same commit |
-| A001-T03 | The local query layer MUST be a materialized index derived from Loro state, never a replacement source of truth |
-| A001-T04 | Every engineer not working on the sync engine MUST be able to run the full local stack without a Rust toolchain |
-| A001-T05 | New suite applications MUST live in this repository as a directory under `apps/`, consuming `services/sync-engine`, `packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` rather than reimplementing them. A separate repository per application is prohibited |
-| A001-T06 | Loro merge processing and SQLite materialization MUST run in a dedicated Web Worker. The main thread MUST NOT import `wa-sqlite` or process deltas directly |
-| A001-T07 | The materialization worker MUST maintain an availability outcome separate from row data, distinguishing `mid-sync`, `retention-window-absence`, `permission-absence` and `ready`. A `ready` result MAY contain zero rows; zero rows is genuinely empty, not a sync-status marker. Permission absence MUST disclose no node or edge instance metadata. A visibly restricted render MUST be derived from type schema per A004-T19, never from received instance data |
+| A001-T01 | The repository MUST contain no Rust. Introducing a second language requires a superseding decision document |
+| A001-T02 | The sync client MUST be PowerSync. Every sync-related dependency's exact version MUST be pinned in the lockfile when first imported and recorded in this document in the same commit |
+| A001-T03 | The device cache MUST be a derived, disposable copy of PostgreSQL, never a source of truth |
+| A001-T04 | Every engineer MUST be able to run the full local stack — frontend, API, jobs, PostgreSQL, Redis and the PowerSync Service — with one command and no toolchain beyond Node, pnpm and Docker |
+| A001-T05 | New suite applications MUST live in this repository as a directory under `apps/`, consuming `packages/graph`, `packages/schema`, `packages/tokens` and `packages/ui` rather than reimplementing them. A separate repository per application is prohibited |
+| A001-T06 | Sync processing and local queries MUST run off the main thread, in the sync client's worker |
+| A001-T07 | The query layer MUST report an availability outcome separate from row data, distinguishing `mid-sync`, `requires-connection`, `permission-absence` and `ready`. A `ready` result MAY contain zero rows. Permission absence MUST disclose no node or edge instance metadata. A visibly restricted render MUST be derived from type schema per A004-T19 |
 | A001-T08 | `services/cross-tenant-aggregation` MUST NOT share a database, connection pool or process boundary with per-workspace data paths, and MUST receive only anonymized, pre-bucketed contributions |
 | A001-T09 | Tailwind configuration MUST be generated from `packages/tokens`; Tailwind's default visual scales MUST be deleted rather than extended, and arbitrary values in class names MUST fail lint |
 | A001-T10 | No feature MUST compute working days, weekends or holidays independently. All such arithmetic MUST call [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] |
-| A001-T11 | Authentication MUST support passkeys and WebAuthn PRF, required by [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 3 key recovery |
-| A001-T12 | Backend infrastructure MUST run on DigitalOcean and the frontend MUST deploy to Vercel unless superseded |
+| A001-T11 | Authentication MUST support passkeys. WebAuthn PRF MUST be supported before any Tier 3 node type is implemented, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] |
+| A001-T12 | Backend infrastructure MUST run on DigitalOcean, key management on AWS KMS, and the frontend MUST deploy to Vercel unless superseded |
+| A001-T13 | Sync Streams MUST be generated from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table in `packages/schema` and MUST NOT be edited by hand |
 
 ---
 
 ## Acceptance criteria
 
-**GIVEN** a new frontend or API engineer joins
+
+**GIVEN** a new engineer joins
 **WHEN** they clone the repository and follow the documented setup
-**THEN** they run the frontend, the API and a local Postgres end to end without installing Rust, and without understanding the sync engine's internals to build a feature
+**THEN** one command runs the frontend, API, jobs, PostgreSQL, Redis and the PowerSync Service end to end with only Node, pnpm and Docker installed
 
 ---
 
-**GIVEN** the sync engine needs a change
-**WHEN** the change is proposed
-**THEN** it is scoped and owned within `services/sync-engine` exclusively, with no CRDT or sync logic duplicated into the API layer
+**GIVEN** a feature needs new data on devices
+**WHEN** it is implemented
+**THEN** it registers node types and permissions in `packages/schema`, the generated Sync Streams change accordingly, and no stream is edited by hand
 
 ---
 
@@ -270,14 +255,15 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 
 **GIVEN** a new suite application is started
 **WHEN** it is added to the platform
-**THEN** it reuses the existing sync engine, auth layer, tokens and component library without modification to their core contracts
+**THEN** it reuses the existing API, sync client, auth layer, tokens and component library without modification to their core contracts
 
 ---
 
 ## Out of scope
 
 - Node and edge schema — [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]
-- Sync protocol, conflict resolution, document partitioning and the encryption model — [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
+- Sync behavior, offline behavior, conflict resolution and the encryption model — [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
+- Trust controls: staff access, customer-managed keys, residency, published artifacts — [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]
 - Permission matrix — [[VPS-A004_Graph_Permission_Layer|VPS-A004]]
 - Email, object storage, job queue configuration, PDF rendering, observability, backup and disaster recovery — [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]
 - Visual design decisions — [[VPS-D001_Design_Foundations|VPS-D001]] through [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]
@@ -286,6 +272,11 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 ---
 
 ## Decisions recorded
+
+
+**The two-language, local-first stack is superseded — F199, 20 September 2026.** Rust, Loro, the sealed device store and the custom relay are retired with [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s device-canonical architecture. The decisions below that concern them — Rust ownership, the Loro pin, shallow snapshots, the Movable Tree's authority, the Worker package boundary and local-storage encryption ownership — are retained as history and no longer govern. Their code is preserved on the archive branch recorded in F199.
+
+**PowerSync over a bespoke sync layer.** Recorded under Sync client selection. The reversal's purpose was to stop paying for infrastructure every feature inherits; writing our own replication protocol would have kept that cost.
 
 **Styling framework and component library are decided here** rather than deferred to a design system team that does not exist. Tailwind consuming [[VPS-D001_Design_Foundations|VPS-D001]]'s tokens, Radix primitives wrapped in `packages/ui`. The earlier draft's deferral was correct when there was no design system; there is one now.
 
@@ -307,6 +298,7 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 
 ---
 
+
 ## Related Notes
 
 - [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] — the graph schema this stack stores
@@ -314,5 +306,6 @@ One consequence of this stack is carried into [[VPS-A003_Unified_Sync_Architectu
 - [[VPS-A004_Graph_Permission_Layer|VPS-A004]] — the permission layer
 - [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] — the cross-app reference protocol
 - [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] — the platform services this stack runs on
+- [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] — the trust controls built on this stack
 - [[VPS-D001_Design_Foundations|VPS-D001]] — the design tokens the styling layer expresses
 - [[VPS-000_Documentation_Standard|VPS-000]] — the Documentation Standard

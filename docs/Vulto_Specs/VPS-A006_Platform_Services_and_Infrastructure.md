@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -87,7 +87,7 @@ Bounces and complaints are received by webhook and recorded against the recipien
 Spaces stores ciphertext for anything above Tier 0. [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] establishes that a document's tier is inherited from its provenance, and that inheritance is enforced at the storage boundary:
 
 - **Tier 0** blobs are stored with server-side encryption at rest. Vulto holds the keys.
-- **Tier 1 and Tier 2** blobs are encrypted client-side, in the Web Worker, before upload. Spaces receives ciphertext and object metadata that reveals only workspace, size and timestamp. Vulto's infrastructure cannot read a signed employment contract or a salary letter, by construction rather than by policy.
+- **Tier 1 and Tier 2** blobs are encrypted by `services/api` before storage, with AES-256-GCM under a per-blob key wrapped by the same key hierarchy as protected fields in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — Tier 1 blobs in their erasure domain. Spaces receives ciphertext and object metadata that reveals only workspace, size and timestamp. Someone with access to the bucket, or to a backup of it, cannot read a signed employment contract or a salary letter. Downloads are served through the API after an audited permission check, never as a public or long-lived signed URL.
 
 Object keys deliberately contain no human-readable content. A key that read `.../ahmed-khan-termination-letter.pdf` would leak through bucket metadata precisely what encrypting the body was intended to protect.
 
@@ -111,7 +111,7 @@ Postgres-based alternatives such as pg-boss were considered and would avoid a se
 
 Every job carries a workspace identifier and runs under that workspace's permission context. A job is not an authority bypass, and a scheduled evaluation that can read what a user cannot is a permission hole with a cron expression attached.
 
-**Jobs never touch Tier 1 or Tier 3 plaintext.** Server-side workers operate on ciphertext or on Tier 0 data exclusively. Where an evaluation genuinely requires Tier 1 content — payroll calculation — it runs client-side in an authorized session, and the job's only role is to notify someone that it is ready to be run.
+**Jobs may process Tier 1 and Tier 2 data, and never Tier 3 plaintext.** Payroll calculation, scheduled reports, alerts and exports run here. Each job executes as a principal [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor evaluates — the triggering person's grant re-evaluated at run time, or a named system principal — and every protected read it performs is audited, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. Decrypted values exist only in the job's memory.
 
 ---
 
@@ -123,7 +123,7 @@ The alternative — a PDF library building documents programmatically — was re
 
 The cost is real and is accepted: headless Chromium is memory-hungry and must be isolated so that a rendering spike cannot degrade the API. `services/render` is separately scaled, has a hard concurrency cap, and a 30-second timeout per document.
 
-Rendering runs server-side against a permission-scoped session. Where a document contains Tier 1 content, it is rendered client-side instead and never leaves the authorized device unencrypted — a payslip PDF assembled on Vulto's servers would defeat the encryption model that made the salary field unreadable in the first place.
+Rendering runs server-side against a permission-scoped session, for every tier except Tier 3. A document containing Tier 1 or Tier 2 content is rendered in `services/render`, encrypted as a blob of its source's tier before it is stored, and never written to disk in plaintext; the render process holds the plaintext only in memory for the duration of the render.
 
 ---
 
@@ -133,9 +133,9 @@ Rendering runs server-side against a permission-scoped session. Where a document
 
 Self-hosted rather than cloud, and the reason is the same one that governs everything else here: **an HR product cannot send its customers' usage data to a third party's servers by default**, and a self-hosted deployment means analytics never leaves infrastructure Vulto already controls and already discloses.
 
-### The problem local-first creates, stated plainly
+### The problem a local cache creates, stated plainly
 
-**Most reads in this product never reach a server.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s materialized index means opening the Bench Forecast, searching, navigating a profile and filtering a table are all local operations. Conventional server-side analytics would see almost none of the product being used.
+**Most Tier 0 reads in this product never reach a server.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s device cache means opening the Bench Forecast, searching, navigating a profile and filtering a table are all local operations. Conventional server-side analytics would see almost none of the product being used.
 
 Client-side event capture solves that and introduces a worse problem, which is why this needs a decision rather than an integration.
 
@@ -202,7 +202,7 @@ Three environments: `development` local, `staging` with synthetic data only, and
 
 A backup that has never been restored is a hypothesis. The rehearsal requirement is what converts it into a fact.
 
-**Local-first is a genuine resilience property here and worth stating.** Every device holds a materialized copy of the graph it is authorized to see. A total server outage degrades this product to read-only local operation with queued writes, rather than to a blank page. That is a consequence of [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s architecture rather than a disaster recovery feature, but it is the reason the RTO above is tolerable.
+**The device cache is a genuine resilience property and worth stating.** Every device holds a cached copy of the Tier 0 graph it is authorized to see. A total server outage degrades this product to Tier 0 reads with queued writes, rather than to a blank page; Tier 1 and Tier 2 values are unavailable until the server returns. That is a consequence of [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s architecture rather than a disaster recovery feature, but it is part of why the RTO above is tolerable. **PostgreSQL is now the only canonical copy**, so the backup and restore rehearsal above carry the full weight of durability.
 
 ---
 
@@ -221,14 +221,14 @@ This is not portability theater. [[VRS-F066_Disbursement_and_Payment_Adapter|VRS
 | A006-T01 | Transactional email MUST send from a dedicated subdomain with SPF, DKIM and DMARC configured before the first production send |
 | A006-T02 | Email bodies MUST NOT contain Tier 1, Tier 2 or Tier 3 field values. Email MUST link to the product rather than reproduce protected content |
 | A006-T03 | Every action initiated by email MUST also be reachable from [[VPS-F003_Notification_and_Alert_Center|VPS-F003]]'s Inbox, excepting signing links for signatories without accounts |
-| A006-T04 | Blobs above Tier 0 MUST be encrypted client-side before upload. The object store MUST NOT receive plaintext for those tiers |
+| A006-T04 | Blobs above Tier 0 MUST be encrypted by `services/api` under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s key hierarchy before storage. The object store MUST NOT receive plaintext for those tiers, and downloads MUST pass an audited permission check |
 | A006-T05 | Object keys MUST NOT contain human-readable subject matter |
 | A006-T06 | All blob access MUST use presigned URLs with a TTL not exceeding 15 minutes. No object is publicly readable |
 | A006-T07 | Every uploaded file MUST be malware-scanned before becoming retrievable |
 | A006-T08 | Every job MUST execute under a workspace permission context and MUST NOT read data the initiating context could not |
-| A006-T09 | Server-side jobs MUST NOT access Tier 1 or Tier 3 plaintext. Such work executes in an authorized client session |
+| A006-T09 | Server-side jobs MUST execute as a principal the [[VPS-A004_Graph_Permission_Layer|VPS-A004]] interceptor evaluates, MUST audit every protected read, and MUST NOT access Tier 3 plaintext |
 | A006-T10 | Scheduled jobs MUST be idempotent. A repeated run MUST NOT produce a duplicate alert, notification or record |
-| A006-T11 | Documents containing Tier 1 content MUST be rendered client-side and MUST NOT be assembled on Vulto infrastructure |
+| A006-T11 | Documents containing Tier 1 or Tier 2 content MUST be rendered in `services/render` without writing plaintext to disk, and MUST be stored encrypted at their source's tier. Tier 3 content MUST NOT be rendered on Vulto infrastructure |
 | A006-T12 | Application logs MUST NOT contain Tier 1, Tier 2 or Tier 3 values, decrypted content, tokens, keys or signing links, enforced by a redaction allowlist rather than convention |
 | A006-T13 | Production data MUST NOT be copied into any non-production environment |
 | A006-T14 | Backup restoration MUST be rehearsed quarterly against staging with the outcome recorded |
@@ -298,6 +298,8 @@ This is not portability theater. [[VRS-F066_Disbursement_and_Payment_Adapter|VRS
 ---
 
 ## Decisions recorded
+
+**Jobs, rendering and blob encryption move to the server — F199, 20 September 2026.** With [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s reversal, Tier 1 and Tier 2 content is server-readable inside audited operations, so payroll, rendering and exports run as ordinary server work rather than on an authorized device. Blob encryption moves from the browser Worker to the API under the same KMS key hierarchy. The **AWS KMS** dependency is added here as a provider, per [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]], and the **PowerSync Service** joins the services deployed to DigitalOcean, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]].
 
 This document resolves four items the previous specification set carried as open: the transactional email provider and sender-domain mechanism flagged by [[VRS-F021_E-Signature_Native|VRS-F021]]; the object storage decision flagged by [[VRS-F022_Encrypted_Document_Vault|VRS-F022]]; the webhook delivery, retry and dead-lettering mechanism deferred by [[VPS-F009_Vulto_Sync_API|VPS-F009]]; and the document rendering mechanism [[VRS-F061_Reporting_and_Export_Engine|VRS-F061]] requires and which no document previously provided.
 

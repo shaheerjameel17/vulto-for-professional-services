@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -52,9 +52,11 @@ Each plan is the previous plan plus one or two Feature Types.
 | **Starter** | `Core` · `Experience` | The Bench Forecast, profiles, assignments, timesheets, leave, onboarding, the org chart, the self-service portal |
 | **Professional** | `Intelligence` · `Compliance` | Utilization and capacity analytics, the strain and retention signals, the reasoning layer, contracts, e-signature, policies, right to work, case management, audit |
 | **Complete** | `Financial` | Payroll, tax configuration, multi-currency, disbursement, contractor invoicing, expenses, compensation bands, benchmarking |
-| **Enterprise** | `Platform` | The API, suite bridge, custom fields, SSO and SCIM, configurable retention, priority support |
+| **Enterprise** | `Platform` | The API, suite bridge, custom fields, SSO and SCIM, configurable retention, customer-managed encryption keys, choice of data residency region, priority support |
 
 **Starter includes `Experience` deliberately**, and this is the one deviation from a strict type-per-plan mapping. Experience features — the self-service portal, the daily briefing, the manager dashboard — are what make the product feel finished rather than functional. A Starter workspace where employees cannot see their own leave balance is not a cheaper product; it is a worse one, and it churns.
+
+**Trust is not a plan feature, with two exceptions.** Every plan carries [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]'s baseline promises — no staff access without the Owner's approval, a visible Access Transparency log, field-level encryption of pay and HR data, a tamper-evident audit log, published access rules and an open export. A customer trusting Vulto with salaries should not have to pay more to be told who looked at them. Customer-managed keys and residency choice are Enterprise because each carries real operating cost and is asked for by enterprise security teams specifically.
 
 **Compliance sits at Professional rather than Complete**, which is arguable. Contracts and e-signature are the second thing a small agency asks for after the Forecast, and placing them behind the payroll tier would put the most common upgrade trigger two plans away from the entry point.
 

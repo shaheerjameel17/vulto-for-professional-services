@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (the CRDT library and storage engine must be settled facts, not open choices)
+**Depends On:** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (the storage engine and sync client must be settled facts, not open choices)
 **Blocks:** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], [[VPS-A004_Graph_Permission_Layer|VPS-A004]], [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]], [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]], and every feature in every application without exception
 
 This document is the single source of truth for the shape of the data behind [[Vulto for Professional Services]]: every node type, every edge type, every node's privacy class and sync tier, and the rules that govern how the graph may change.
@@ -31,7 +31,7 @@ It is a registry, not a schema dump — a node's full field-by-field properties 
 
 All product data is modeled as a **property graph**: typed nodes connected by typed, directed, first-class edges. Every feature reads from and writes to this single shared graph. No feature defines its own isolated data model. No entity is defined twice.
 
-The graph is implemented per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] as Loro CRDT documents on the client, with a SQLite-WASM materialized index providing the query surface, and PostgreSQL as the durable server-side store.
+The graph is implemented per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] as PostgreSQL tables that are the single source of truth — `graph_nodes`, `graph_edges`, and `graph_protected_fragments` for Tier 1 and Tier 2 content — with a permission-filtered SQLite cache of the Tier 0 graph on each device providing the local query surface.
 
 ---
 
@@ -119,27 +119,23 @@ Assignment and WorkspaceMembership are nodes: the first is Active, Completed or 
 
 **The single-active-outgoing-edge-with-history pattern** applies to any edge type representing a relationship that changes over time but whose history must remain traversable. `managed_by` and `scoped_to_entity` are the current registrations. For a registered relationship, one source node may have at most one outgoing edge active at any moment, regardless of target; changing it sets `effective_to` on the prior edge and creates a new one with `effective_from`. Full history remains traversable. Keying this rule by source-target pair would permit one Employee to have two active managers or two active employing entities, and in the first case would incorrectly widen direct-report permission scope.
 
-**Where the registered relationship is backed by a Loro Movable Tree — currently only `managed_by`, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] — the edge is a downstream materialization of the Tree's resolved state, never an independently maintained record.** The Tree is authoritative for the current answer; the edge is authoritative for history; the two cannot disagree because only one of them is ever written to. No application code writes such an edge directly — every change to `managed_by`, from any surface, is a Movable Tree move operation, and the materialization worker performs the corresponding close-and-open on the edge, so every device converges on the identical edge history once synced. Recorded as F104.
-
-**Two separate facts govern that materialization, and conflating them is a defect.** *Which* of two concurrent moves wins is a convergence question, decided by the Tree operation's causal ordering — specifically the pair `(lamport, peer)`, because a Lamport timestamp alone is not a total order: two genuinely concurrent moves of the same node routinely carry the same Lamport value, and the peer identifier is what breaks the tie. *When* the winning move took effect is a real-world question, and it is not derivable from causal ordering at all. A Lamport counter is not a date, and the originating device's own clock is neither deterministic across devices nor fine-grained enough to separate two moves.
-
-**The effective date is therefore carried on the move operation itself**, as data on the Tree node, authored by whoever performed the move. It replicates with the operation, so every device reads the identical value and no second channel exists that could disagree with it. The winning move's carried date becomes the new edge's `effective_from` and closes the prior edge's `effective_to`; `(lamport, peer)` selects the winner and orders the resulting history. Recorded as F124.
+**`managed_by` changes only through one server mutation, `org.moveEmployee`, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].** It runs in a serializable transaction that rejects a move creating a cycle, closes the prior edge's `effective_to` and opens the new edge's `effective_from` together. No other code path writes a `managed_by` edge. The effective date is supplied by whoever performs the move and is never defaulted to the wall clock. This replaces the Loro Movable Tree that previously guaranteed cycle-free concurrent merge (F104, F124): with one writer, concurrent moves are ordered by the database and the cycle check is an ordinary transactional constraint. Recorded as F199.
 
 **Temporal intervals are half-open: `[effective_from, effective_to)`.** A null start is unbounded in the past and a null end remains active. At an exact handoff timestamp the prior edge is inactive and its replacement is active, so a valid history never produces two answers at the boundary. The materialized query layer rejects overlapping intervals for a single-active-outgoing registration, including overlaps between two already-closed historical edges.
 
 ---
 
-### The generic edge on-disk contract
+### The edge storage contract
 
-Every edge type other than the Tree-materialized `managed_by` is **stored**, in a reserved root Loro `LoroMap` named `__vulto_edge_fragments` — a sibling of the node-fragment container. The key is the edge's own `edge_id` verbatim, nothing composite, and each edge's value is its own nested `LoroMap`, one map per edge. The container name and key scheme are durable on-disk contract, frozen in the same sense as the node-fragment container: a rename makes every persisted document read as "this workspace has no edges," which materializes as an empty edge set rather than an error. Recorded as F132, closed by FDN-92.
+Every edge is a row in PostgreSQL's `graph_edges`, keyed by its own `edge_id`, carrying `edge_type`, `from_node_id`, `to_node_id`, `effective_from` and `effective_to` as indexed columns and its Tier 0 metadata as `jsonb`. Protected edge metadata lives in `graph_protected_fragments` under the edge's ID, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. The device cache holds the same shape for the edges a person may read.
 
-The registry key — the triple of `edge_type`, from-node type, to-node type — is **not** in the storage key. It is recovered per edge instance at materialization, from `edge_type` plus the materialized types of the two endpoint nodes, and validated against the registry there, exactly as `managed_by` already is. Folding any of the triple into the storage key would collapse distinct relationships: `edge_type` alone merges `governed_by`'s four registrations; `(edge_type, from_node_id)` merges the two `governed_by` edges one PayRun legitimately holds; even `(edge_type, from_node_id, to_node_id)` merges two edges with the same endpoints but different ids and intervals — a re-opened `scoped_to_entity`, a re-added `has_skill`.
+The registry key — the triple of `edge_type`, from-node type, to-node type — is validated on every write against the registry and the materialized types of both endpoints. It is never collapsed into a storage key: `edge_type` alone merges `governed_by`'s four registrations, and even `(edge_type, from_node_id, to_node_id)` merges two edges with the same endpoints but different intervals.
 
-**Default conflict semantics are last-write-wins per field**, via the nested per-edge `LoroMap` — the same shape and the same justification as a node fragment. Two devices writing different fields of one edge merge field by field; two devices writing the same field resolve by Loro's register order, which is acceptable for edge metadata. This is sufficient for every edge type that carries only metadata, which is all of them except the single-active-outgoing pair above.
+**Field writes are last-write-wins, ordered by the server.** A mutation writes only the fields it names; two mutations on the same field resolve in commit order, and both are in the audit journal.
 
-**`scoped_to_entity` is the one exception among stored edges.** It is single-active-outgoing but not Tree-backed. Storage is identical (a nested `LoroMap` per `edge_id`); the extra rule is a **writer obligation**, not a storage-layer mechanism — the writer that changes an Employee's employing entity must, in the same delta batch, set `effective_to` on the prior edge and `effective_from` on the new one. `validateSingleActiveOutgoing` (which rejects any interval overlap for a single-active-outgoing registration) and the SQLite `graph_edges_one_open_outgoing` unique index are the backstops. All three mechanisms exist today and are exercised by existing materialization and index tests; the `scoped_to_entity` write path is therefore proven **by construction** rather than by a dedicated end-to-end test, because no feature writes `scoped_to_entity` yet. When [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] builds that write, it owns the end-to-end proof.
+**Single-active-outgoing registrations are enforced by the database.** A partial unique index on `(from_node_id, edge_type)` where `effective_to` is null, together with a check that intervals for the same source and registration never overlap, backs every writer. `scoped_to_entity` changes through one mutation that closes the prior edge and opens the new one in the same transaction, as `managed_by` does.
 
-**Interval fields on a stored edge are caller-supplied.** Unlike a Tree-materialized `managed_by` edge, whose `effective_to` is derived from the next move's `effective_from` because moves form a per-employee chain, a stored edge is independent — there is nothing to derive. The `effective_from` and `effective_to` in the delta are written verbatim. The Worker never defaults `effective_from` to a wall-clock "now": that value would be non-replicated and non-deterministic across devices, the exact mistake F124 documents for `managed_by`. An omitted `effective_from` is `null` — the caller's explicit "unbounded," not a silent clock read.
+**Interval fields are caller-supplied.** An omitted `effective_from` is `null` — the caller's explicit "unbounded" — never a silent clock read.
 
 **A split-protection endpoint's edge write is governed by a partition the registry names, never by the write.** [[VPS-A004_Graph_Permission_Layer|VPS-A004]] assigns write-permission columns to node types and node-type partitions, never to an edge type. An edge write requires Full write on both endpoints (F136); where an endpoint node type has more than one privacy partition, the governing partition is a static, reviewed field on the [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] / FDN-45 / FDN-75 edge-type registry — `governingPartitions`, keyed by node type — looked up independently by the authorization gate. The write delta never supplies it: a self-declared governing partition would be a bypass, since a caller could always name the innocuous partition. A split endpoint with no `governingPartitions` entry stays at the conservative `none` — denied for every role — which is the fallback for anything the registry has not reviewed. Recorded as F136, refined by FDN-92.
 
@@ -156,7 +152,7 @@ Current `governingPartitions` entries:
 
 A polymorphic edge type whose split `from` types differ (for example `has_document`, once [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] is built) names a partition per concrete split type it connects; the `Record<node type, partition>` shape already expresses that, and A002-T09's registration-before-implementation order means each entry is added with the feature that needs it, not guessed now.
 
-**The Workspace and WorkspaceMembership nodes and the `membership_of` / `membership_in` edges are a one-way projection of the Better Auth control plane, and the generic write path refuses them.** FDN-85 projects them — plus the member's User node in that workspace's graph — through a single-use, server-signed projection command; the generic `mutate` gate refuses a batch that adds, changes, or removes any of them (`unsupported`, the same treatment a Movable Tree move gets), so there is exactly one writer. The `membership_in` `governingPartitions` entry above (`{ Workspace: display }`) is exercised there: a founding Owner holds Full write on `Workspace/display` and the projection is authorized against that partition, not `billing`. Recorded as F196.
+**The Workspace and WorkspaceMembership nodes and the `membership_of` / `membership_in` edges are a one-way projection of the Better Auth control plane, and the generic write path refuses them.** FDN-85 projects them — plus the member's User node in that workspace's graph — through a single-use, server-signed projection command; the generic mutation path refuses a mutation that adds, changes, or removes any of them (`unsupported`), so there is exactly one writer. The `membership_in` `governingPartitions` entry above (`{ Workspace: display }`) is exercised there: a founding Owner holds Full write on `Workspace/display` and the projection is authorized against that partition, not `billing`. Recorded as F196.
 
 ---
 
@@ -166,10 +162,10 @@ Two orthogonal properties govern every node. **Privacy Class** determines who ma
 
 | Tier | Protection | Contains |
 |---|---|---|
-| **Tier 0** | Standard encryption at rest, broad sync | Most operational data |
-| **Tier 1** | True end-to-end encryption. Vulto's servers cannot read it | Salary, payroll, rate cards, commercial terms, compensation |
-| **Tier 2** | Standard encryption, narrow distribution | HR-sensitive records, contracts, signals about individuals |
-| **Tier 3** | Single-reader end-to-end encryption. Not even Owner reads another person's | Wellness, individual pulse responses |
+| **Tier 0** | Encryption at rest; replicated to the device cache of each person permitted to read it | Most operational data |
+| **Tier 1** | Field-level encryption under per-erasure-domain keys held in KMS; never persisted on a device; every read audited; cryptographically erasable | Salary, payroll, rate cards, commercial terms, compensation, contract content, case narratives |
+| **Tier 2** | Field-level encryption under a workspace key held in KMS; never persisted on a device; every read audited | HR-sensitive records, signals about individuals |
+| **Tier 3** | Single-reader end-to-end encryption, built as a deferred module. Not even Owner, and not Vulto, reads another person's | Wellness, individual pulse responses |
 
 **Field-level tier splitting is an established pattern, not an exception.** Employee, Pitch, Contract, Requisition, Offer and HRCase each carry a Tier 0 or Tier 2 identifying half and a Tier 1 protected half. The rule that produces the split is consistent: *if a field states a compensation figure or a commercial term, it is Tier 1, regardless of what node it sits on.* A signed contract that states a salary receives the same protection as the salary field itself, because the protection followed the figure rather than the container.
 
@@ -219,7 +215,7 @@ Nodes marked **A002-owned** have their lifecycle statuses, privacy class and tie
 | **Device** | Active, Revoked | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | Standard | 0 |
 | **Entity** | Active, Dissolved | [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] | Standard | 0 |
 
-**Device, Workspace and WorkspaceMembership are registered here; Workspace and WorkspaceMembership are now projected as local graph nodes by FDN-85, Device is not yet.** Their online records are Better Auth control-plane rows, and the mechanisms that decide access — session admission, `deriveEffectiveRoles` reading `SealedStore.roles` (still the sole live role input), device trust and the revocation signal — read the server grant, never a local node. FDN-85 projects the Workspace and WorkspaceMembership nodes (and the member's User node) as **deterministic offline history and audit**: the WorkspaceMembership node carries the role, but no permission decision reads it. FDN-63 implements `Device` as a Postgres control-plane row (`VPS-F001`'s nine fields); its node projection stays deferred. Registration precedes implementation per A002-T09. Recorded as F189, updated by FDN-85.
+**Device, Workspace and WorkspaceMembership are registered here; Workspace and WorkspaceMembership are projected as graph nodes by FDN-85, Device is not yet.** Their online records are Better Auth control-plane rows, and the mechanisms that decide access — session admission, server-side role resolution in [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor, device trust and revocation — read the server grant, never a graph node. FDN-85 projects the Workspace and WorkspaceMembership nodes (and the member's User node) as **history and audit**: the WorkspaceMembership node carries the role, but no permission decision reads it. FDN-63 implements `Device` as a Postgres control-plane row (`VPS-F001`'s nine fields); its node projection stays deferred. Registration precedes implementation per A002-T09. Recorded as F189, updated by FDN-85.
 
 Entity is permanently Roster-owned and scoped specifically to employment jurisdiction: which entity's employment law, leave policy and payroll applies to a person. Consolidated financial reporting remains [[Vulto Accounts]]' territory; intercompany contract structuring remains [[Vulto Legal]]'s.
 
@@ -278,7 +274,7 @@ Assignment's `effective_billing_rate`, added by [[VRS-F006_Rate_Card_Engine|VRS-
 | CaseEvent | [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] | Owner and HR Admin only | Split: 2 / 1 |
 | OrgScenario | [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] | Owner and HR Admin only | 2 |
 
-Contract's content half is Tier 1 rather than Tier 2 because a generated employment contract states the exact salary figure, which cannot sit at weaker, server-readable protection when that same figure enjoys full end-to-end encryption on the Employee node.
+Contract's content half is Tier 1 rather than Tier 2 because a generated employment contract states the exact salary figure, which must be erasable with the same per-subject guarantee that protects that figure on the Employee node.
 
 HRCase and CaseEvent follow the identical pattern for a different reason: a disciplinary or grievance narrative contains allegations about named individuals, and is among the most consequential text this product will ever hold.
 
@@ -322,7 +318,7 @@ Referral carries no bonus amount. The amount is a compensation adjustment record
 | ProbationCheckIn | [[VRS-F057_Probation_Review_Intelligence|VRS-F057]] | Manager-restricted | 2 |
 | HeadcountSnapshot | [[VRS-F058_People_Analytics_Dashboard|VRS-F058]] | HR-restricted | 0 † |
 
-**† HeadcountSnapshot is Tier 0 against a class that maps to Tier 2, and this is deliberate.** The node holds an aggregate headcount count and nothing else. Who may open the analytics view is a permission question, answered by the Privacy Class; how strongly the number is encrypted is a protection question, and a count of employees does not need end-to-end treatment or narrow distribution. This is the only tier departure in the registry.
+**† HeadcountSnapshot is Tier 0 against a class that maps to Tier 2, and this is deliberate.** The node holds an aggregate headcount count and nothing else. Who may open the analytics view is a permission question, answered by the Privacy Class; how strongly the number is encrypted is a protection question, and a count of employees does not need field-level encryption or on-demand handling. This is the only tier departure in the registry.
 
 `PulseAggregateContribution` and `WellnessAggregateContribution` each carry a value with **deliberately no identifying field or edge to Employee at all**. This is anonymization by structural absence of an identifying link, not by permission rule alone, and it is the mechanism that makes team-level sentiment reporting possible without ever putting a Tier 3 record within reach of a role change.
 
@@ -421,7 +417,7 @@ The Workspace node accumulates configuration keys, each added by whichever featu
 | `wellness_resource_text` | string | null | [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]] | Configured confidential resource, shown alongside the baseline crisis reference, never instead of it |
 | `wellness_resource_contact` | string | null | [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]] | As above |
 | `max_file_size_mb` | integer | 25 | [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] | Upload limit |
-| `tier1_retention_window_months` | integer | 12 | [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] | Rolling window for closed Tier 1 records held on device. Configurable 6 to 24 |
+| `tier1_retention_window_months` | integer | 12 | [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] | **Deprecated 20 September 2026 (F199).** Bounded Tier 1 history held on devices; devices no longer hold Tier 1 data. Retained per the additive-only rule and read by nothing |
 | `payroll_variance_flag_threshold` | decimal % | 15 | [[VRS-F065_Payroll_Approval_Workflow|VRS-F065]] | Net-pay change against the prior period that flags a payslip for review |
 | `vocabulary_profile` | enum | Agency | [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] | One of four fixed profiles: Agency, Consultancy, Engineering, Studio. Never free text |
 | Billing status, subscription tier, deletion controls | — | — | [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] | **Tier 2, Owner-only** |
@@ -443,7 +439,7 @@ Where an edge connects several node type pairs, each pair is listed explicitly. 
 | `membership_of` | WorkspaceMembership → User | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | |
 | `membership_in` | WorkspaceMembership → Workspace | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | A user's workspaces are the two-hop traversal, not an edge |
 | `registered_on` | Device → User | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Carries platform, registered_at, last_active_at |
-| `managed_by` | Employee → Employee | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Single-active-outgoing-edge-with-history. Backed by Loro's Movable Tree per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] |
+| `managed_by` | Employee → Employee | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Single-active-outgoing-edge-with-history. Written only by `org.moveEmployee`, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] |
 | `scoped_to_entity` | Employee → Entity | [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] | Single-active-outgoing-edge-with-history; employment jurisdiction only |
 | `governed_by_calendar` | Entity → WorkingCalendar | [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] | |
 | `pattern_for` | WorkingPattern → Employee | [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] | Overrides the Entity calendar |
@@ -639,11 +635,11 @@ This is a reusable pattern. A future node-type transition registers its own doma
 
 ## Schema Evolution Protocol
 
-Loro stores node properties as CRDT Maps, which are schema-flexible at the storage layer. Schema discipline therefore lives in the TypeScript type layer — `packages/schema` per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] — that every application and the sync engine consume.
+Node and edge properties are stored as `jsonb`, which is schema-flexible at the storage layer. Schema discipline therefore lives in the TypeScript type layer — `packages/schema` per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] — that every application, the API and the jobs consume, and the API validates every mutation against it before commit.
 
 1. **Additive only.** New node types and new properties may be added freely. Existing properties are never removed or renamed, only deprecated with a `deprecated_at` timestamp.
 2. **Clients tolerate unknown properties.** A device on an older build syncing a node written by a newer build ignores properties it does not recognize rather than failing. This is a hard requirement, not best-effort.
-3. **The schema package is the enforcement point.** Feature code reads and writes only through generated types. Raw, untyped access to CRDT documents is prohibited outside the sync engine and the materialization worker.
+3. **The schema package is the enforcement point.** Feature code reads and writes only through generated types and named mutations. Raw, untyped access to graph tables is prohibited outside `packages/graph` and the API's mutation pipeline.
 4. **Registration precedes implementation.** A new node type is added here, or to a feature spec with a pointer added here, before any code is written against it.
 5. **`schema_version` increments on every structural change** to a node type, allowing a client to reason about what it is looking at rather than inferring from field presence.
 
@@ -659,7 +655,7 @@ Loro stores node properties as CRDT Maps, which are schema-flexible at the stora
 
 **Rule 4 — Permission enforcement happens at the graph query layer.** [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s rules are enforced by a query interceptor before results are returned, never in the UI.
 
-**Rule 5 — Privacy-partitioned nodes carry layered enforcement.** Tier 2 and Tier 3 nodes are protected at both the sync layer ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]) and the query layer ([[VPS-A004_Graph_Permission_Layer|VPS-A004]]) as a floor. Tier 1 and Tier 3 add a third: the data is cryptographically unreadable to Vulto's own servers. Two layers is the minimum; encryption is the layer that holds when the first two fail or Vulto itself is compelled.
+**Rule 5 — Privacy-partitioned nodes carry layered enforcement.** Every node above Tier 0 is protected at the storage layer ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — field-encrypted and never replicated to a device) and at the permission layer ([[VPS-A004_Graph_Permission_Layer|VPS-A004]] — the interceptor decides every read) as a floor. Tier 3 adds a third: the data is end-to-end encrypted so that neither the employer nor Vulto can read it. Two layers is the minimum; field encryption is the layer that holds when a database copy leaks.
 
 **Rule 6 — All new node types are registered here before implementation.** Schema-first is non-negotiable.
 
@@ -679,11 +675,11 @@ Loro stores node properties as CRDT Maps, which are schema-flexible at the stora
 
 | ID | Specification |
 |---|---|
-| A002-T01 | The graph MUST be Loro CRDT documents with a SQLite-WASM materialized index for querying, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] |
+| A002-T01 | The graph MUST be stored in PostgreSQL as the single source of truth, with a permission-filtered SQLite cache on devices for querying, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] |
 | A002-T02 | All node and edge IDs MUST be UUID v4. Auto-incrementing integers are prohibited |
 | A002-T03 | All edges MUST be first-class objects with their own UUID. Implicit foreign key joins not materialized as edge records are prohibited |
 | A002-T04 | The schema MUST evolve additively only. Properties are never removed or renamed, only deprecated |
-| A002-T05 | Features MUST access the graph through the typed query interface against the materialized index. Raw SQL in feature code and direct Loro reads outside the sync engine and materialization worker are prohibited |
+| A002-T05 | Features MUST read the graph through `packages/graph`'s typed query interface and write it only through named mutations. Raw SQL in feature code is prohibited |
 | A002-T06 | Every node MUST carry the Universal Node Conventions, including the Workspace and User scoping exceptions |
 | A002-T07 | Clients MUST tolerate unknown node properties gracefully rather than failing |
 | A002-T08 | `effective_from` and `effective_to` MUST be first-class indexed edge columns, never JSON metadata |
@@ -718,7 +714,7 @@ Loro stores node properties as CRDT Maps, which are schema-flexible at the stora
 
 **GIVEN** [[VRS-F021_E-Signature_Native|VRS-F021]] files a signed employment contract as a Document
 **WHEN** that Document's tier is resolved
-**THEN** it inherits Contract's Tier 1 half rather than defaulting to Tier 0, and is unreadable to Vulto's servers
+**THEN** it inherits Contract's Tier 1 half rather than defaulting to Tier 0, is field-encrypted in its erasure domain, and is never persisted on a device
 
 ---
 
@@ -739,13 +735,15 @@ Loro stores node properties as CRDT Maps, which are schema-flexible at the stora
 - End-user configuration of the graph schema at runtime
 - Real-time graph visualization for end users
 - A bespoke graph database engine, explicitly ruled out by [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]
-- The sync protocol, document partitioning and encryption model — [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
+- The sync, storage and encryption model — [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
 - The permission matrix and query interceptor implementation — [[VPS-A004_Graph_Permission_Layer|VPS-A004]]
 - Field-level property schemas, which belong to the feature owning each node type
 
 ---
 
 ## Decisions recorded
+
+**The graph moves from device-canonical CRDT documents to PostgreSQL as the source of truth — F199, 20 September 2026.** The node and edge registry, privacy classes, tier assignments and standing rules are unchanged; what changes is where the graph lives and what each tier means for storage. Tier 1 is field-level encrypted and server-readable within audited requests rather than end-to-end encrypted; Tier 3 remains end-to-end as a deferred module. The Movable Tree, the Loro edge-fragment container and the tier retention window are retired. Decisions below that describe Loro storage — F104, F124, F132's container — are retained as history.
 
 **The reconciliation notes are retired.** They documented merging two superseded drafts and carried one item marked *needs CTO confirmation*, which is an open question in a document that may not contain one. The two outcomes that still matter — `belongs_to` versus `scoped_to_entity`, and SubVendor's scope — are stated as decisions in Context above.
 

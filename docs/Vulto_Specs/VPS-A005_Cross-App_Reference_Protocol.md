@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -37,7 +37,7 @@ In conventional software, a manager typing an employee's name in a project note 
 
 This is a primary mechanism by which [[VRS-F055_Vulto_Roster_Intelligence_Engine|VRS-F055]] gains traversal surface, and it must be active from MVP rather than deferred to the intelligence phase — a reasoning layer switched on three years in has no accumulated references to reason over.
 
-The mention token lives inside a Loro Rich Text CRDT container, which is one of the specific reasons Loro was selected over Automerge and Yjs in [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]. The GraphReference edge is a separate graph object created synchronously alongside the text edit, never derived from the text content after the fact.
+The mention token lives inside the field's structured rich-text JSON document, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. The GraphReference edge is a separate graph object created in the same mutation as the text edit, never derived from the text content after the fact.
 
 ---
 
@@ -49,7 +49,7 @@ The `@` character in any field whose type is `rich_text` opens the picker. Suppo
 
 ### Reference picker
 
-A typeahead search against the local SQLite-WASM index defined in [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]. Never a remote API, never the raw Loro documents. Results return within the 30ms budget in [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], rendered per the Command Palette specification in [[VPS-D002_Component_Library|VPS-D002]].
+A typeahead search against the device's local graph cache defined in [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]. Never a remote API. The cache holds only Tier 0 data the user may read, which is every default-eligible type. A Tier 2 type made mentionable under the rule below is searched through the API instead, and its results merge into the same picker. Results return within the 30ms budget in [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]], rendered per the Command Palette specification in [[VPS-D002_Component_Library|VPS-D002]].
 
 Results are grouped by node type in this display order:
 
@@ -63,7 +63,7 @@ Results are grouped by node type in this display order:
 
 **Eligibility is a rule, not a fixed list.** Only node types classed **Tier 0** in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] are eligible as mentionable targets by default. As new Tier 0 node types are registered, they become mentionable automatically, without amending this document — **unless the registry marks the node anonymity-protected**. An anonymity-protected node is never a member of Mentionable Node regardless of tier, role or future configuration; VPS-A002 requires every connection it may carry to be enumerated explicitly, and a GraphReference is not one of them.
 
-**Tier 2 node types may be made mentionable case by case** — Contract is a plausible example — but the resulting edge inherits the more restrictive tier of its endpoints for sync purposes. This is a deliberate per-node-type decision made when the relevant feature is specified, never a default.
+**Tier 2 node types may be made mentionable case by case** — Contract is a plausible example — but the resulting edge inherits the more restrictive tier of its endpoints, so it is served on demand rather than replicated. This is a deliberate per-node-type decision made when the relevant feature is specified, never a default.
 
 **Tier 1 and Tier 3 node types are never eligible, under any circumstance.** This closes a real gap. A reference a viewer cannot decrypt still reveals that *something* was mentioned, and for wellness data the mere existence of a reference to Employee X's WellnessTriggerEvent would violate [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s absolute rule that no indication of its existence may surface for anyone but the owner. A GraphReference is metadata, and metadata about a Tier 1 or Tier 3 node is precisely the leak the tier model exists to prevent.
 

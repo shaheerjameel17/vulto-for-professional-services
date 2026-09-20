@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -35,9 +35,20 @@ Permission is derived by default from each node type's Privacy Class in [[VPS-A0
 
 A property graph connects everything. Without a principled permission layer, a sufficiently creative traversal can navigate from a broadly visible node to a sensitive one it was never meant to reach. This is acute here specifically, because Roster stores wellness signals, salary figures and performance assessments alongside project assignments, skills and team structure in the same graph. Separating them into different databases would destroy the intelligence value of the graph. They must coexist with architecturally enforced boundaries.
 
-Enforcement is layered, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Standing Rule 5. The sync layer prevents sensitive nodes from reaching an unauthorized device at all — cryptographically for Tiers 1 and 3, by distribution control for Tiers 0 and 2. This document prevents sensitive nodes from appearing in query results even where the data exists locally. For Tiers 1 and 3 this is defense in depth behind a mathematical guarantee. For Tiers 0 and 2 it is the primary mechanism.
+Enforcement is layered, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Standing Rule 5. This document's interceptor, running in `services/api`, decides every read and write and generates the Sync Streams that decide what reaches a device. The storage layer in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] adds a second, independent layer: Tier 1 and Tier 2 content is field-encrypted and never replicated to any device, so a mistaken stream cannot deliver it. Tier 3 adds end-to-end encryption on top.
 
-Every decision this interceptor makes — every denial at any tier, and every successful grant of Tier 1 or Tier 3 data — writes an AuditEntry per [[VPS-F004_Silent_Audit_Log|VPS-F004]]. This is intrinsic to the single choke point every query already passes through, not a per-feature integration a future feature could forget to wire up.
+Every decision this interceptor makes — every denial at any tier, and every successful grant of Tier 1, Tier 2 or Tier 3 data — writes an AuditEntry per [[VPS-F004_Silent_Audit_Log|VPS-F004]]. This is intrinsic to the single choke point every query already passes through, not a per-feature integration a future feature could forget to wire up.
+
+---
+
+## Where enforcement runs
+
+
+**The interceptor runs in `services/api`, and nowhere else decides access.** It is the single path for every API read, every `protected.read`, every mutation, every job and every export, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
+
+**The policy table lives in `packages/schema`.** It is the one machine-readable statement of this document's default mapping, per-node matrix, subject exclusions and principal rules. Three consumers read it: the server interceptor; the Sync Stream generator, which turns it into the rows each person's device receives; and the client, which may use it only to hide actions a person cannot take — never to grant one. It is also published at every release under [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]].
+
+**One source, three consumers, is what prevents drift.** A stream written by hand, or a client-side visibility rule, is a second answer to "who may read this" and is prohibited.
 
 ---
 
@@ -55,9 +66,9 @@ Every decision this interceptor makes — every denial at any tier, and every su
 
 **Role combinations.** A user may hold several roles and receives the union of their permissions — the higher grant wherever rules differ. A founder who also manages a team holds both Owner and Manager permissions.
 
-**Cross-application evaluation.** Role is evaluated per authenticated user, never per application. A person's WorkspaceMembership role applies identically regardless of whether the query came from Roster, [[Vulto Projects]] or [[Vulto Accounts]], because local-first means every application is a different lens over the same session and the same local graph, not a separate service with its own identity.
+**Cross-application evaluation.** Role is evaluated per authenticated user, never per application. A person's WorkspaceMembership role applies identically regardless of whether the query came from Roster, [[Vulto Projects]] or [[Vulto Accounts]], because every application is a different lens over the same session and the same graph, not a separate service with its own identity.
 
-**Recovery keyholders are not a role.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 1 recovery model designates trusted people as keyholders. These are existing Owner, Finance Admin or HR Admin holders selected for recovery, not a new permission category.
+**Principals that are not members.** Two kinds exist, and neither is a role a member can hold. A **support principal** is created by an Owner-approved access request under [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]], limited to the approved scope and expiring automatically. A **system principal** is a named identity for a system job under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — retention, erasure, key rotation — whose permitted operations are enumerated in the policy table and nowhere else. Both are evaluated by this interceptor like any member, and every decision they receive is audited. (The former Tier 1 recovery keyholders are withdrawn with that recovery model, per F199.)
 
 ---
 
@@ -92,7 +103,7 @@ A locked box tells the viewer a record exists. Where everyone in a role has one 
 
 **The test, applied precisely: does a guaranteed field-level split exist on a node instance the viewer can already see part of, or is the hidden thing a separate, optional, cardinality-variable related record?** Employee's compensation half is guaranteed — every Employee node has one, by schema, whether or not a value was ever set. A Manager who can already see an Employee's operational half loses nothing new by learning the compensation half exists too. An HRCase is not guaranteed — most employees never have one — so a Manager learning an HRCase exists for a direct report learns something true and damaging about that specific person that no amount of content-hiding undoes. The same distinction separates a Contract *node* (every active employee has at least one, by definition of being employed) from a Document *row in the vault* (a specific uploaded file's presence is optional and instance-informative) — [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] already reasons through the second case correctly; see its cross-reference below.
 
-**Restricted must be renderable from schema knowledge alone, never from received data.** For a Tier 1 or Tier 3 field, [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] guarantees an unauthorized device receives no ciphertext, no metadata and no indication of existence for that field — there is nothing locally present to build a locked box from. A `Restricted` placeholder is therefore drawn from the fact that this is an instance of a node type whose registry entry guarantees the field, not from anything the device received about this specific instance. This is what makes `Restricted` safe to use on a field the device may hold zero bytes for: the box says "this node type always has this," which is public information about the schema, not private information about the row.
+**Restricted must be renderable from schema knowledge alone, never from received data.** For a Tier 1, Tier 2 or Tier 3 field, [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] guarantees an unauthorized reader receives no ciphertext, no metadata and no indication of existence for that field — there is nothing locally present to build a locked box from. A `Restricted` placeholder is therefore drawn from the fact that this is an instance of a node type whose registry entry guarantees the field, not from anything the device received about this specific instance. This is what makes `Restricted` safe to use on a field the device may hold zero bytes for: the box says "this node type always has this," which is public information about the schema, not private information about the row.
 
 **The asymmetry to hold onto as this rule gets applied further.** Moving a cell from `Restricted` to `None` is always safe — it only removes information a viewer had. Moving a cell from `None` to `Restricted` is a disclosure decision and needs the same review any other access change gets, because it adds information a viewer did not have, even if that information is "this type of thing exists." Where a cell does not obviously sort — where it cannot be determined whether existence is universal for the node type or contingent on the individual — it stays `None`. Conservative is the correct default for anything ambiguous, and this rule is revisable on user evidence after launch precisely because the safe direction to be wrong in is already known.
 
@@ -212,9 +223,9 @@ A query traversing from Node A to Node B via an edge operates under these rules:
 3. The result does not indicate that Node B or the edge exists. The node is absent — not hidden, not redacted, not replaced with a placeholder or a count.
 4. This applies recursively at every hop. A boundary at hop 2 does not expose the existence of nodes at hop 3.
 
-**Relationship to the tier model.** For Tiers 1 and 3 an unauthorized device never receives the document, so these rules never encounter it — the node was never locally present. For Tiers 0 and 2, which sync broadly, these rules are the only enforcement. Both produce the same observable result; only the second depends on this document working correctly.
+**Where these rules run.** On the server, for every `protected.read`, every API query and every mutation; and at stream-generation time, so that a device's cache contains only rows these rules permit. A device never evaluates them to decide access — it queries a cache that already reflects them.
 
-**Three kinds of absence must never be conflated.** A node absent through permission is absent permanently for that user and presents as though it never existed. A Tier 1 record absent through [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s retention window is absent only from local materialization, for an authorized user, and is one fetch away. A record absent mid-sync is absent transiently and resolves without user action.
+**Three kinds of absence must never be conflated.** A node absent through permission is absent permanently for that user and presents as though it never existed. A protected value absent because the device is offline — `requires-connection` under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — is absent only until connectivity returns, for an authorized user. A record absent mid-sync is absent transiently and resolves without user action.
 
 Conflating them means telling a user that a forbidden record can be requested, that a retrievable one cannot, or that a loading one needs action. All three are distinguishable through the query or subscription availability outcome required by [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], carried separately from rows, and each has a defined visual treatment in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]].
 
@@ -289,7 +300,7 @@ That becomes possible once subject exclusion exists. A workspace whose only Owne
 
 **Where a write would produce a Tier 1 or Tier 3 node with an empty reader set, the interceptor refuses it.** The refusal states plainly that the workspace has no independent reader for a record concerning this person, and that the matter requires escalation outside the product.
 
-**The product must not pretend it can hold a confidential record with no confidential reader.** Encrypting to nobody is theater: it produces a record that exists, consumes a key, appears in the audit log, and can never be opened by anyone — while presenting to the person who created it as though the matter has been handled. A firm in that position needs an external HR consultant or a non-executive director, and **software cannot manufacture independence that the organization does not have.** Refusing is the honest answer and the only one that leaves the firm looking for the right one.
+**The product must not pretend it can hold a confidential record with no confidential reader.** Storing a record for nobody is theater: it produces a record that exists, appears in the audit log, and can never be opened by anyone in the workspace — while presenting to the person who created it as though the matter has been handled. A firm in that position needs an external HR consultant or a non-executive director, and **software cannot manufacture independence that the organization does not have.** Refusing is the honest answer and the only one that leaves the firm looking for the right one.
 
 This gate runs after role permission and write authority have both passed. It never widens a write; it only refuses one those two would have allowed.
 
@@ -308,16 +319,19 @@ This gate runs after role permission and write authority have both passed. It ne
 | A004-T07 | An automated test suite MUST cover every role and Privacy Class combination in the default mapping, and every role and node type combination in the matrix. No deployment may reduce this coverage |
 | A004-T08 | A node type absent from the matrix MUST fall back to its Privacy Class default automatically. A node type reaching implementation with no defined behavior is a specification error, not something for application code to guess |
 | A004-T09 | Role evaluation MUST be identical regardless of which application issued the query. No application-specific permission path may exist |
-| A004-T10 | Permission absence, retention-window absence and mid-sync absence MUST be distinguishable through the query or subscription availability outcome from [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], carried separately from rows, and MUST render per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s three defined states |
+| A004-T10 | Permission absence, requires-connection absence and mid-sync absence MUST be distinguishable through the query or subscription availability outcome from [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]], carried separately from rows, and MUST render per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s three defined states |
 | A004-T11 | For any bootstrap node type, the interceptor MUST additionally check write authority per [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] after role permission has passed, never as a substitute for it |
 | A004-T12 | Every aggregate MUST pass through the disclosure control mechanism defined here. A feature MUST NOT define its own threshold |
 | A004-T13 | An aggregate below threshold MUST be suppressed entirely. Rounding, noising or approximating a sub-threshold aggregate is prohibited |
 | A004-T14 | A filter reducing a cohort by fewer than `k` members MUST return the unfiltered aggregate and indicate that it has done so |
 | A004-T15 | Aggregates MUST be computed over the filtered cohort directly. Deriving one aggregate by subtracting another is prohibited |
-| A004-T16 | For a node type registering a subject exclusion, the resolved reader set MUST exclude the person that record concerns, at both the query layer and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s key-wrapping layer, and MUST be re-resolved when the subject changes or a role changes. A person becoming a subject while already holding a wrapped key is a revocation event under A003-T16 |
+| A004-T16 | For a node type registering a subject exclusion, the resolved reader set MUST exclude the person that record concerns, at the interceptor, in the generated Sync Streams and in `protected.read`, and MUST be re-resolved when the subject changes or a role changes. A person becoming a subject is a narrowing event: their devices remove the record on next connection, per A003-T67 |
 | A004-T17 | The interceptor MUST refuse a write that would produce a Tier 1 or Tier 3 node with an empty reader set, after role permission and write authority have both passed. Creating a record no one can read is prohibited |
 | A004-T18 | A denial MUST resolve to `None` or `Restricted`, and the two MUST render as [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s structurally-absent and visibly-restricted treatments respectively. `Restricted` MUST be used only where a specification states it; every unqualified `None` in this document is structural absence |
-| A004-T19 | A `Restricted` render for a Tier 1 or Tier 3 field MUST be derived from the node type's schema — that this node type always carries this field — and MUST NOT depend on any ciphertext, metadata or sync-status signal received for the specific instance, since [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] guarantees an unauthorized device holds none of those for such a field |
+| A004-T19 | A `Restricted` render for a Tier 1 or Tier 3 field MUST be derived from the node type's schema — that this node type always carries this field — and MUST NOT depend on any ciphertext, metadata or sync-status signal received for the specific instance, since [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] guarantees an unauthorized reader receives none of those for such a field |
+| A004-T20 | The interceptor MUST run in `services/api` and MUST be the only component that decides access. No client-side code MAY grant access |
+| A004-T21 | The policy table MUST live in `packages/schema` and MUST be the sole input to the interceptor, the Sync Stream generator and client-side action hiding |
+| A004-T22 | Support principals and system principals MUST be evaluated by the interceptor against their own policy rows, and every decision they receive MUST be audited |
 
 ---
 
@@ -382,6 +396,8 @@ This gate runs after role permission and write authority have both passed. It ne
 ---
 
 ## Decisions recorded
+
+**The interceptor moves to the server — F199, 20 September 2026.** It previously ran in each device's Worker, in front of a local canonical graph, with a key-wrapping layer beside it. With PostgreSQL as the source of truth it runs once, in `services/api`, and also generates each device's Sync Streams. The rules themselves are unchanged. Two principals that are not members — support and system — are added for [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]; Tier 1 recovery keyholders are withdrawn.
 
 **The k-anonymity mechanism is unified here.** Four features had independently reached the same answer with four configuration keys and four implementations, and no aggregate outside those four was protected at all. One mechanism, two thresholds, applied everywhere.
 

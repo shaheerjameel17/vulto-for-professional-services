@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -23,11 +23,11 @@ This is the entry point to every specification set in this project. **Read this 
 
 ## What this set is, and what that means for you
 
-Ninety-four documents across three prefixes. **They are not a product requirements document.**
+Ninety-five documents across three prefixes. **They are not a product requirements document.**
 
 | Prefix | What it is |
 |---|---|
-| **`VPS-`** | The suite. Foundations every application inherits — the stack, the graph, sync, permissions, the design system, the pipeline, and eleven platform features every application shares |
+| **`VPS-`** | The suite. Foundations every application inherits — the stack, the graph, sync, permissions, trust, the design system, the pipeline, and eleven platform features every application shares |
 | **`VRS-`** | Vulto Roster's own features |
 | **`VPJ-`** | Vulto Projects' own features |
 
@@ -45,7 +45,7 @@ Not skim. Read.
 
 1. **[[VPS-000_Documentation_Standard|VPS-000]]** — how these documents work. Prefixes, numbering, frontmatter, the two enums, the linking convention, and the rule that no document may contain an unresolved question.
 2. **[[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]** — the graph. Ninety-odd node types, their edges, their privacy classes, their tiers, and the standing rules that govern everything downstream.
-3. **[[VPS-A003_Unified_Sync_Architecture|VPS-A003]]** — the encryption model. Four tiers, what each protects against, and the two that Vulto's own servers cannot read.
+3. **[[VPS-A003_Unified_Sync_Architecture|VPS-A003]]** — the data architecture. PostgreSQL as the source of truth, a permission-filtered cache on each device, optimistic writes, and four tiers deciding where data may live and how it is encrypted. Then **[[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]** — what Vulto promises customers about their data, and how each promise is checked.
 4. **The Feature Register for whatever you are building** — [[VRS-001_Feature_Register|VRS-001]] for Roster, [[VPJ-001_Feature_Register|VPJ-001]] for Projects. Each holds its own build order and the reasoning behind it.
 
 **Those four are the whole mental model.** Everything else is an application of them.
@@ -60,7 +60,7 @@ Each of these was violated somewhere in an earlier draft of this specification s
 
 **Never write a permission check in a feature.** [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor is the only place access is decided. A feature that constructs its own visibility logic has created a boundary nobody reviewed.
 
-**Never let Tier 1 or Tier 3 plaintext reach a server.** Payroll generation, contract rendering, document assembly, workspace export and bulk import all run client-side for this reason. If you find yourself writing a server-side job that decrypts something, stop — the answer is always that it runs on an authorized device instead.
+**Never let Tier 1 or Tier 2 data reach device storage, and never decrypt it outside the audited path.** Protected values are fetched through `protected.read` or read by a job running as an audited principal, held in memory, and never written to the device cache, IndexedDB, a log or an analytics event. If you find yourself caching a salary on a device "for speed", prefetch it into memory instead. Tier 3 plaintext never reaches a server at all.
 
 **Never store what can be derived.** Bench time, leave balance, utilization, compa-ratio, skill coverage, plan entitlement — all computed at read. A stored derivation is a derivation that will disagree with its source.
 
@@ -76,7 +76,7 @@ The design system — [[VPS-D001_Design_Foundations|VPS-D001]] through [[VPS-D00
 
 A 14px base with 32px rows is either obviously right or obviously wrong within thirty seconds of looking at it, and no amount of careful writing substitutes for those thirty seconds.
 
-**The economics decide this.** A static prototype is cheap. The sync engine is not. Discovering the type scale is wrong after building a CRDT layer against it is the expensive failure, and building the prototype first is how it is avoided.
+**The economics decide this.** A static prototype is cheap. The data layer is not. Discovering the type scale is wrong after building the data layer against it is the expensive failure, and building the prototype first is how it is avoided.
 
 ### Scope
 
@@ -104,7 +104,7 @@ Not whether it works. **Whether the amber lands.** Whether 220px is enough for a
 
 [[VRS-001_Feature_Register|VRS-001]] holds the full ordering with reasoning. The shape of it:
 
-**Foundation, in strict sequence.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s monorepo and the sync engine, then [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]]'s pipeline before the first feature — **the gates are how the rules above stay true**, and retrofitting them after thirty features is considerably harder than starting with them.
+**Foundation, in strict sequence.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s monorepo and the data layer of [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], then [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]]'s pipeline before the first feature — **the gates are how the rules above stay true**, and retrofitting them after thirty features is considerably harder than starting with them.
 
 **Then MVP, [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] through [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]], in order.** The ordering is dependency-derived and it is not decorative. [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] before anything that counts a day. [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] before contracts need a jurisdiction. [[VRS-F006_Rate_Card_Engine|VRS-F006]] before bench cost is calculated from a rate. [[VPS-F004_Silent_Audit_Log|VPS-F004]] alongside the first Tier 1 field rather than after it.
 
@@ -114,11 +114,11 @@ Not whether it works. **Whether the amber lands.** Whether 220px is enough for a
 
 ## The four things most likely to go wrong
 
-**The sync engine will take longer than estimated.** It is one Rust service building three ways, and it is the only Rust in the repository by deliberate decision. Budget accordingly rather than discovering it.
+**The Sync Stream generator is load-bearing and easy to underrate.** It turns the permission policy into what each device holds. A mistake there leaks rows to a device silently, which is why [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]]'s stream conformance gate exists. Treat a change to it with the care a change to the interceptor gets.
 
 **The permission matrix test suite is large and non-optional.** Every role against every privacy class, every role against every node type. [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s A004-T07 forbids reducing that coverage, and it is the single test suite that keeps ninety documents' worth of access decisions honest.
 
-**Client-side rendering constrains more than it appears to.** Payroll cannot be generated by a scheduled job. Contracts cannot be assembled server-side. Export runs on one device and is slow. Each is a consequence of [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] rather than a limitation to engineer around.
+**Protected data is online-only, and screens must plan for it.** Tier 1 and Tier 2 values are never on the device, so a surface showing them must prefetch them at session start and render [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s `requires-connection` state offline. A surface that simply awaits a fetch will feel slow, which is the one thing this product cannot afford.
 
 **The working-day index must be materialized, not computed.** [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s resolution order evaluated per cell would be 13,500 traversals for one Bench Forecast render. It will not meet the budget, and the Forecast's entire proposition is that it appears instantly.
 
@@ -130,6 +130,8 @@ Not whether it works. **Whether the amber lands.** Whether 220px is enough for a
 |---|---|
 | What node types exist, and what tier | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] |
 | Who can read or write this | [[VPS-A004_Graph_Permission_Layer|VPS-A004]] |
+| Where may this data live, and how is it encrypted | [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] |
+| What have we promised customers about their data | [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] |
 | What does this color, size or spacing mean | [[VPS-D001_Design_Foundations|VPS-D001]] |
 | What component is this, and does it exist | [[VPS-D002_Component_Library|VPS-D002]] |
 | How fast must this be | [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]] |
@@ -137,14 +139,13 @@ Not whether it works. **Whether the amber lands.** Whether 220px is enough for a
 | Which provider, and how is it reached | [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] |
 | What must the pipeline check | [[VPS-A007_Build_Test_and_Deployment_Pipeline|VPS-A007]] |
 | Which plan includes this | [[VPS-003_Commercial_Model|VPS-003]] |
-| Which plan includes this | [[VPS-003_Commercial_Model|VPS-003]] |
 | What order do I build in | [[VRS-001_Feature_Register|VRS-001]] or [[VPJ-001_Feature_Register|VPJ-001]] |
 
 ---
 
 ## When a document is wrong
 
-It will happen. Ninety-four documents written against each other will contain errors that only surface when code is written.
+It will happen. Ninety-five documents written against each other will contain errors that only surface when code is written.
 
 **Report it. Do not work around it.**
 

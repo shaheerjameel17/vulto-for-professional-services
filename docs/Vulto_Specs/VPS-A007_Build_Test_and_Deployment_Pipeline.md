@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-20]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (the monorepo, the two-language boundary, the three Loro build targets), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (the Schema Evolution Protocol this pipeline enforces), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (**the encryption guarantees this pipeline proves rather than assumes**), [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] (environments, and the prohibition on production data leaving production)
+**Depends On:** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (the monorepo and the one-language stack), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (the Schema Evolution Protocol this pipeline enforces), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (**the encryption guarantees this pipeline proves rather than assumes**), [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] (environments, and the prohibition on production data leaving production)
 **Blocks:** Nothing structurally, and everything practically. No feature ships without this.
 
 This document is the single source of truth for how code gets from a change to production, for every application in the suite. **One pipeline, one repository, one artifact promotion path.**
@@ -25,11 +25,11 @@ This document is the single source of truth for how code gets from a change to p
 
 Four properties of this architecture make a standard Node.js pipeline insufficient, and each produces a real requirement below.
 
-**One Rust source builds several ways.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] requires the sync engine as a native server binary, a WASM module for the browser, and native bindings for React Native. A change that compiles for one and breaks another must fail before merge, not on a device. The `[lib]` is written to compile for all of them — `crate-type = ["rlib", "cdylib", "staticlib"]`, zero-dependency wire module — but the **mobile FFI target's compile is deferred** until React Native work begins (see the Multi-target build gate and F193); the gate today builds and verifies the native server binary and the `wasm32-unknown-unknown` library.
+**Sync Streams are generated from the permission policy.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] requires every device's replicated slice of the graph to be produced from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table. A change that lets a stream deliver a row the interceptor would deny must fail before merge, not on a customer's laptop.
 
-**`packages/schema` is consumed by every one of them, across every application.** A schema change touches the Rust engine, the TypeScript API, every application's web client and the mobile client simultaneously. **It must break the build everywhere before it ships anywhere** — which is the entire reason [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] keeps every application in one repository.
+**`packages/schema` is consumed by every one of them, across every application.** A schema change touches the API, the jobs, the generated Sync Streams, every application's web client and the mobile client simultaneously. **It must break the build everywhere before it ships anywhere** — which is the entire reason [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] keeps every application in one repository.
 
-**Tier 1 and Tier 3 guarantees are cryptographic claims, not conventions.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] states that no server-side code path can decrypt a Tier 1 or Tier 3 payload. **That is a testable property**, and a pipeline that does not test it is a pipeline in which the guarantee degrades quietly with the next well-meaning refactor.
+**Data protection guarantees are testable claims, not conventions.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] states that Tier 1 and Tier 2 content never reaches a device, never reaches a log, and is never read without an audit event; that Tier 3 plaintext never reaches a server. **Each is a testable property**, and a pipeline that does not test it is a pipeline in which the guarantee degrades quietly with the next well-meaning refactor.
 
 **Production data never enters any other environment**, per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]. Every fixture is synthetic, which means fixture generation is pipeline infrastructure rather than a developer convenience.
 
@@ -71,7 +71,7 @@ The trigger is written as a condition rather than an exemption deliberately. **A
 
 ### What it is doing for this project specifically
 
-**It is how [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s two-language boundary actually holds.** A001-T04 requires that an engineer not working on the sync engine can run the full local stack without a Rust toolchain. The sync engine is a compiled Rust binary; without a container that ships it pre-built, every TypeScript engineer installs Rust, and the boundary that exists to avoid a Rust hiring track quietly stops meaning anything.
+**It is how [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s one-command local stack holds.** A001-T04 requires every engineer to run the frontend, API, jobs, PostgreSQL, Redis and the PowerSync Service with only Node, pnpm and Docker. The PowerSync Service and the databases are containers; without them every engineer assembles the stack by hand.
 
 **It is what makes Codespaces reproducible.** A007-T14 requires development to happen in Codespaces, and a Codespace is defined by a container image. Without one, each developer gets whatever the base image happened to contain that week.
 
@@ -81,15 +81,15 @@ The trigger is written as a condition rather than an exemption deliberately. **A
 
 | Image | Contains | Consumed by |
 |---|---|---|
-| **Development** | Node, pnpm, the Rust toolchain, Postgres, Redis, and every service running locally | Codespaces, per A007-T14 |
+| **Development** | Node, pnpm, Postgres, Redis, the PowerSync Service, and every service running locally | Codespaces, per A007-T14 |
 | **Service** | One built service and its runtime only. One per service in `services/` | Staging and production |
 | **CI** | The toolchain each gate needs, pinned | The pipeline itself |
 
-**The development image is the only one carrying a Rust toolchain.** Service images receive a compiled binary; a service image that could rebuild the sync engine is a service image carrying a compiler into production for no reason.
+**The development image is the only one carrying build tooling.** Service images receive built artifacts; a service image that could rebuild itself is carrying a toolchain into production for no reason.
 
 ### Composition, locally
 
-`docker compose` brings up the full stack — sync engine, API, job workers, render service, Postgres, Redis — in one command, with [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s synthetic fixtures loaded.
+`docker compose` brings up the full stack — API, PowerSync Service, job workers, render service, Postgres, Redis — in one command, with [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s synthetic fixtures loaded.
 
 **A new engineer, or Claude Code in a fresh Codespace, is running the whole product within minutes of cloning.** That is the actual test of whether A001-T04 holds, and it is worth treating as one.
 
@@ -97,7 +97,7 @@ The trigger is written as a condition rather than an exemption deliberately. **A
 
 **Every base image is pinned to a digest, never a tag.** A tag moves; a digest does not. An image rebuilt six months later from `node:22` is not the image that was tested, and the promotion guarantee in A007-T12 depends on it being.
 
-Base image updates are deliberate, reviewed changes — the same treatment [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] gives the Loro version pin, and for the same reason.
+Base image updates are deliberate, reviewed changes — the same treatment [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] gives the sync client's version pin, and for the same reason.
 
 ### What is not containerized
 
@@ -119,7 +119,7 @@ Per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]], with the pipelin
 
 **Production is promoted, never built.** The artifact that reaches production is byte-identical to the one tested in staging. A separate production build is a build nobody tested.
 
-**As built (F194): "merge to `main`" publishes the promotable artifacts; it does not deploy them.** There is no Preview, Staging or Production environment provisioned — `A001-T12`'s stack choice (DigitalOcean, Vercel) is recorded, nothing is stood up. FDN-55's Stage 4 delivers the *publish* half: on every push to `main`, once the full verification matrix is green, `slow-lane.yml`'s `publish-artifacts` job builds and pushes the API and sync-engine images to the registry (`ghcr.io/<repo>/api` and `ghcr.io/<repo>/sync-engine`, tagged by commit SHA and recorded by digest), re-uses — never rebuilds — the exact `roster-web` build the gate verified, and emits a `deploy-manifest.json` (commit, latest migration, `packages/schema/src` digest, each artifact's digest) as the seed of the promotion record. **FDN-58 owns everything past that line**: provisioning the environments and the approved topology, environment isolation, all secrets and configuration, the deploy itself (Vercel promotion, DigitalOcean rolling deploy in dependency order), rollback, backup-restore rehearsal, promotion approvals, and pre-promotion migration validation. Until FDN-58 lands there is nothing to promote *to*; the artifacts and their manifest simply accumulate. Artifact publishing has no dependency on the synthetic fixture generator (F71) — pushing an image to a registry and seeding a staging database are unrelated concerns.
+**As built (F194): "merge to `main`" publishes the promotable artifacts; it does not deploy them.** There is no Preview, Staging or Production environment provisioned — `A001-T12`'s stack choice (DigitalOcean, Vercel) is recorded, nothing is stood up. FDN-55's Stage 4 delivers the *publish* half: on every push to `main`, once the full verification matrix is green, `slow-lane.yml`'s `publish-artifacts` job builds and pushes the API image to the registry (`ghcr.io/<repo>/api`, tagged by commit SHA and recorded by digest; the sync-engine image published under the retired architecture stops with F199), re-uses — never rebuilds — the exact `roster-web` build the gate verified, and emits a `deploy-manifest.json` (commit, latest migration, `packages/schema/src` digest, each artifact's digest) as the seed of the promotion record. **FDN-58 owns everything past that line**: provisioning the environments and the approved topology, environment isolation, all secrets and configuration, the deploy itself (Vercel promotion, DigitalOcean rolling deploy in dependency order), rollback, backup-restore rehearsal, promotion approvals, and pre-promotion migration validation. Until FDN-58 lands there is nothing to promote *to*; the artifacts and their manifest simply accumulate. Artifact publishing has no dependency on the synthetic fixture generator (F71) — pushing an image to a registry and seeding a staging database are unrelated concerns.
 
 ---
 
@@ -134,7 +134,7 @@ Prettier and ESLint, including the custom rules [[VPS-A001_Technology_Stack_and_
 - **No arbitrary Tailwind values.** A color or spacing value outside `packages/tokens` fails here rather than reaching review, per [[VPS-D001_Design_Foundations|VPS-D001]].
 - **No vendor SDK imported in feature code.** Every external service goes through an interface in `packages/schema`, per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]. This is what keeps [[VRS-F066_Disbursement_and_Payment_Adapter|VRS-F066]]'s adapter and [[VRS-F035_Background_Check_Integration|VRS-F035]]'s provider abstraction real.
 - **No `localStorage` or `sessionStorage`.** The local graph is the store.
-- **No direct Loro access outside the sync engine and materialization worker**, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T06.
+- **No raw access to graph tables or the device SQLite database outside `packages/graph` and the API's mutation pipeline**, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s A002-T05.
 
 ### 2. Type check
 
@@ -161,25 +161,29 @@ Vitest. Two suites are non-optional and named individually because both enforce 
 
 **The gate that proves [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s central claim.**
 
-- **No server-side path decrypts Tier 1 or Tier 3.** A static analysis over `services/api` and `services/jobs` asserting that no code path reaches a decryption primitive for those tiers, per A003-T05.
-- **No Tier 1 or Tier 3 value reaches an application log**, per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s A006-T12. The redaction allowlist is tested against a payload containing every protected field.
+- **No device persists Tier 1 or Tier 2 content**, per A003-T56. A browser test signs in as each role, exercises every protected surface, and asserts the device SQLite database, IndexedDB, OPFS, the upload queue and every cache contain no protected value.
+- **Only the protected-read path decrypts.** A static analysis over `services/api` and `services/jobs` asserting that the field-decryption primitive is reachable only through `protected.read` and the job principal wrapper, each of which writes an audit event first, per A003-T59.
+- **No server-side path touches Tier 3 plaintext or a usable Tier 3 key**, per A003-T70.
+- **No Tier 1, Tier 2 or Tier 3 value reaches an application log**, per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s A006-T12. The redaction allowlist is tested against a payload containing every protected field.
 - **No push or email payload carries protected content**, per [[VPS-F011_Mobile-Native_Experience|VPS-F011]] and [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]].
 - **Object keys contain no human-readable subject matter**, per A006-T05.
 - **The anonymous contribution nodes resolve to nobody.** A test asserting that no field on `PulseAggregateContribution` or `WellnessAggregateContribution` carries an actor UUID or exact correlation timestamp, and that their complete edge adjacency equals the registry's explicit per-node allowlist. No wildcard or endpoint set may match an anonymity-protected node — current or future. This is the guarantee [[VRS-F048_Employee_Pulse_Surveys|VRS-F048]] and [[VRS-F078_Mental_Health_and_Wellness_Layer|VRS-F078]] both describe as structural, verified as structural.
 
 **These are the tests that stop a guarantee eroding through ordinary, well-intentioned refactoring.** Nobody sets out to weaken Tier 3. It happens when a convenience import makes a decryption helper reachable from a job worker, and nothing notices.
 
-### 6. Multi-target build
+### 6. Sync Stream conformance
 
-`services/sync-engine` compiles from one source, in parallel, to every target that has a consumer today: the **native server binary** and the **`wasm32-unknown-unknown` library**. **Both must succeed.** A change that compiles for the server and breaks WASM is a broken change.
+**The gate that keeps what a device holds equal to what the policy allows.** Per A003-T57 and A003-T58:
 
-**The native mobile FFI target is deferred**, not omitted (F193). The `[lib]` is `crate-type = ["rlib", "cdylib", "staticlib"]` and the wire module is zero-dependency by construction, so the source is written to compile for Android and iOS FFI — but nothing consumes that build yet (there is no `wasm-bindgen`, no uniffi definition, no React Native host), and compiling a target with no consumer proves only that a compiler accepts it. The gate adds the Android and iOS FFI compiles when the React Native work that consumes them begins; until then, the deferral is a recorded limitation with A007-T03 restated wherever that work is scoped, on the same F187/F188 basis — the spec is corrected to match what is built rather than describing a gate that does not run.
+- Sync Streams are regenerated from the policy table and compared with the committed definitions; any difference fails the build, so a hand edit cannot ship.
+- For every role and privacy class, against the synthetic fixture workspace, the rows each generated stream delivers are asserted to be a subset of what the interceptor permits for that person.
+- The replication publication is asserted to contain only `graph_nodes` and `graph_edges`, with no protected column reachable.
 
 ### 7. End-to-end tests
 
-Playwright against a preview deployment, covering the journeys that would be catastrophic to break silently: sign-up through workspace creation, the timesheet week, leave request through approval, the payroll finalize-approve-disburse chain, and the offline-then-reconnect sync path.
+Playwright against a preview deployment, covering the journeys that would be catastrophic to break silently: sign-up through workspace creation, the timesheet week, leave request through approval, the payroll finalize-approve-disburse chain, and the offline-then-reconnect sync path, including a cold start while offline.
 
-**That last one matters most and is easiest to skip.** Local-first is this product's central claim, and a regression in offline behavior is invisible to every test that assumes connectivity.
+**That last one matters most and is easiest to skip.** Instant, offline-tolerant use is a central claim of this product, and a regression in offline behavior is invisible to every test that assumes connectivity.
 
 ### 8. Accessibility
 
@@ -191,7 +195,7 @@ Automated checks against [[VPS-D002_Component_Library|VPS-D002]]'s floor on ever
 
 Production data never leaves production, so every test needs generated data — and generated data that exercises the cases this product actually fails on.
 
-**The fixture generator produces a workspace containing**: multiple entities across at least three jurisdictions with different working weeks; employees on full-time, part-time, compressed and contractor arrangements; a provisional holiday awaiting confirmation; assignments that overlap only across a weekend; a payroll run mid-approval; and a Tier 1 record outside the retention window.
+**The fixture generator produces a workspace containing**: multiple entities across at least three jurisdictions with different working weeks; employees on full-time, part-time, compressed and contractor arrangements; a provisional holiday awaiting confirmation; assignments that overlap only across a weekend; a payroll run mid-approval; a Tier 1 erasure domain already cryptographically erased; and a queued offline mutation that will be rejected as stale.
 
 Each of those is a case this specification set corrected a defect in. **A fixture set containing only the happy path tests only the code that was never going to break.**
 
@@ -201,7 +205,7 @@ Each of those is a case this specification set corrected a defect in. **A fixtur
 
 [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Schema Evolution Protocol is additive-only, so there are no destructive migrations to guard against. Two things still require a gate.
 
-**Materialized index rebuilds.** A change to the SQLite index shape means every client rebuilds from Loro on next launch. That is safe and it is slow, and the pipeline flags it so it is a known consequence rather than a support surprise.
+**Device cache resyncs.** A change to the replicated table shape or to a Sync Stream means affected devices re-download their slice on next connection. That is safe and it is slow on a poor connection, and the pipeline flags it so it is a known consequence rather than a support surprise.
 
 **Client version tolerance.** Per A002-T07, an older client must tolerate a node property it does not recognize. Tested by running the previous release's client against the current schema.
 
@@ -213,7 +217,7 @@ This section is the target topology. **As built, none of it is provisioned and n
 
 **Frontend** to Vercel, one deployment per application in `apps/` — preview per pull request, staging on merge, production on promotion. **Applications deploy independently**, since a Projects release should not require a Roster release.
 
-**Backend services** to DigitalOcean as containers, deployed in dependency order: sync engine, then API, then job workers, then the render service. **Rolling, with health checks**, so a failed deploy does not take the workspace down.
+**Backend services** to DigitalOcean as containers, deployed in dependency order: database migrations, then the API, then the PowerSync Service's stream definitions, then job workers, then the render service. **Rolling, with health checks**, so a failed deploy does not take the workspace down.
 
 **`services/cross-tenant-aggregation` deploys separately**, per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T08. It shares no database, no connection pool and no deployment with the per-workspace path, and the pipeline enforces that separation rather than relying on someone remembering it.
 
@@ -235,12 +239,12 @@ This section is the target topology. **As built, none of it is provisioned and n
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------- |
 | A007-T01 | Every gate is a separate job with one reason to fail. Combined gates producing ambiguous output are prohibited                                                                                                                                                                                                                      |                       |
 | A007-T02 | Failure output MUST name the specific rule, test or file. An aggregate failure message is a pipeline defect                                                                                                                                                                                                                         |                       |
-| A007-T03 | The Rust sync engine MUST build, on every change, to every target that has a consumer: the native server binary and the `wasm32-unknown-unknown` library. A partial build across those is a failure. The native mobile FFI target's compile is added to this gate when React Native work begins to consume it (F193); until then its deferral is a recorded limitation, not a gate failure |                       |
+| A007-T03 | Sync Streams MUST be regenerated from the policy table on every change and MUST match the committed definitions; the stream conformance suite of A003-T57 and the publication allowlist of A003-T58 MUST pass. The Rust multi-target build gate is retired with the sync engine (F199) | |
 | A007-T04 | A schema change MUST fail the build in every consumer before it can merge                                                                                                                                                                                                                                                           |                       |
 | A007-T05 | The schema conformance gate MUST enforce additive-only evolution, registry completeness, and the Universal Node Conventions with only the enumerated exemptions                                                                                                                                                                     |                       |
 | A007-T06 | The permission matrix suite MUST cover every role and Privacy Class combination. Coverage MUST NOT decrease between releases                                                                                                                                                                                                        |                       |
 | A007-T07 | The working-day suite MUST test at least five distinct calendar shapes. A hardcoded weekend MUST fail                                                                                                                                                                                                                               |                       |
-| A007-T08 | Static analysis MUST assert that no server-side path can decrypt Tier 1 or Tier 3 content                                                                                                                                                                                                                                           |                       |
+| A007-T08 | Static analysis MUST assert that field decryption is reachable only through audited protected-read paths, that no device persists Tier 1 or Tier 2 content, and that no server-side path touches Tier 3 plaintext | |
 | A007-T09 | Log redaction MUST be tested against a payload containing every protected field                                                                                                                                                                                                                                                     |                       |
 | A007-T10 | Every anonymity-protected node MUST be tested to confirm that it carries no identifying actor or exact correlation timestamp, that its actual adjacency equals its explicitly enumerated permitted edge triples, and that no wildcard or endpoint set matches it                                                                 |                       |
 | A007-T11 | Production data MUST NOT reach any pipeline stage, fixture or environment                                                                                                                                                                                                                                                           |                       |
@@ -251,7 +255,7 @@ This section is the target topology. **As built, none of it is provisioned and n
 | A007-T16 | Every base image MUST be pinned to a digest, never a tag                                                                                                                                                                                                                                                                            |                       |
 | A007-T17 | A service image MUST NOT contain a compiler or build toolchain. It receives a built artifact                                                                                                                                                                                                                                        |                       |
 | A007-T18 | `docker compose` MUST bring up the full local stack, with synthetic fixtures, in one command                                                                                                                                                                                                                                        |                       |
-| A007-T19 | The development image MUST allow a full local run without a host-installed Rust toolchain, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations| VPS-A001]]'s A001-T04 |
+| A007-T19 | The development image MUST allow a full local run — including the PowerSync Service — with no host toolchain beyond Docker, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T04 | |
 
 ---
 
@@ -275,9 +279,9 @@ This section is the target topology. **As built, none of it is provisioned and n
 
 ---
 
-**GIVEN** a change compiles for the native server target and breaks the WASM build
-**WHEN** the multi-target gate runs
-**THEN** it fails, and the change cannot merge
+**GIVEN** a policy change that would let a Standard Sync Stream deliver an HR-restricted node
+**WHEN** the stream conformance gate runs
+**THEN** it fails, naming the role, class and stream, and the change cannot merge
 
 ---
 
@@ -287,9 +291,9 @@ This section is the target topology. **As built, none of it is provisioned and n
 
 ---
 
-**GIVEN** an engineer with no Rust toolchain installed opens a fresh Codespace
+**GIVEN** an engineer opens a fresh Codespace
 **WHEN** they run `docker compose up`
-**THEN** the full stack runs locally, including the sync engine, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T04
+**THEN** the full stack runs locally, including the PowerSync Service, satisfying [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s A001-T04
 
 ---
 
@@ -315,13 +319,15 @@ This section is the target topology. **As built, none of it is provisioned and n
 
 - **Load and performance testing** — the latency budgets in [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]] are design constraints verified in review, not automated benchmarks at this stage
 - **Penetration testing** — a periodic external engagement, not a pipeline gate
-- **Automatic dependency updates** — reviewed deliberately, since a CRDT or crypto library update is not a routine bump
+- **Automatic dependency updates** — reviewed deliberately, since a sync or crypto library update is not a routine bump
 - **Multi-region deployment** — [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] establishes a single-region posture
 - **Automated rollback on error-rate threshold** — rollback is a human decision at this stage
 
 ---
 
 ## Decisions recorded
+
+**The Rust multi-target gate is replaced by Sync Stream conformance — F199, 20 September 2026.** With the sync engine retired, there is no second language to build; the risk that replaces it is a device receiving rows the policy forbids, and gate 6 now proves that cannot happen. The encryption boundary gate changes from "no server path decrypts Tier 1" to "only audited paths decrypt, and nothing protected persists on a device", per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. The release pipeline additionally publishes [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]'s trust artifacts on every production release, per A008-T07.
 
 **This document exists because excluding it was wrong.** [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] and [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] both listed CI/CD as out of scope, which was defensible for a generic pipeline and not for this one — three build targets, a shared schema package, and two cryptographic guarantees that are testable properties rather than policies.
 
