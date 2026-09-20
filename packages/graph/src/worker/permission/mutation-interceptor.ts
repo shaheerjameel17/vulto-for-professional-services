@@ -1,10 +1,14 @@
 import {
   assertRegisteredRelationship,
   getProtectionPartitions,
+  POLICY_ROLES,
   parseEdgeRecord,
   parseNodeRecord,
   type EdgeRecord,
   type EdgeType,
+  type AuditOperation,
+  type AuditTargetReference,
+  type DataTier,
   type JsonValue,
   type NodeRecord,
   type NodeType,
@@ -20,7 +24,11 @@ import {
 } from "../materialization";
 import { canonicalJson } from "../storage/canonical-json";
 import { bestResolution } from "./interceptor";
-import type { PolicyRole } from "./policy-table";
+import {
+  resolvePermissionDecision,
+  type PermissionDecision,
+  type PolicyRole,
+} from "./policy-table";
 
 /**
  * FDN-53 stage 2. The `VPS-A004` mutation interceptor's Gate 1: role-based
@@ -173,6 +181,7 @@ const RESERVED_PROJECTION_EDGE_TYPES: ReadonlySet<string> = new Set([
   "membership_of",
   "membership_in",
 ]);
+const RESERVED_AUDIT_NODE_TYPES: ReadonlySet<string> = new Set(["AuditEntry"]);
 
 function reservedProjectionReason(what: string): string {
   return (
@@ -180,6 +189,14 @@ function reservedProjectionReason(what: string): string {
     "Those are written only by FDN-85's privileged projection command, never " +
     "through the generic mutation entrypoint (F132/FDN-85); refused rather " +
     "than committed."
+  );
+}
+
+function reservedAuditReason(): string {
+  return (
+    "This batch changes an AuditEntry node fragment. AuditEntry is append-only " +
+    "and is written only by the internal audit recorder; generic mutation " +
+    "cannot create, alter, or remove one (F198/FDN-68)."
   );
 }
 
@@ -253,6 +270,62 @@ function firstReservedProjectionChange(
       (type) => `a ${type} edge`,
     )
   );
+}
+
+/**
+ * F198 / FDN-68 Stage 1. AuditEntry has a storage representation, but its
+ * only ordinary writer is the dedicated audit recorder FDN-68 builds in a
+ * later stage. Detect the raw type before Zod parsing and before
+ * `authorizeNodeWrite`, so the policy table's intentional read grant cannot
+ * fall through to generic Full=CRUD behavior. Added, changed, and removed
+ * fragments are all reserved; an unchanged AuditEntry carried in a batch is
+ * not treated as a mutation.
+ */
+function changesReservedAuditEntry(
+  before: readonly NodeFragmentInput[],
+  after: readonly NodeFragmentInput[],
+): boolean {
+  const beforeByKey = new Map(
+    before.map((fragment) => [
+      `${(fragment.record as Record<string, unknown>)?.["node_id"] as string}\u0000${fragment.partitionKey}`,
+      fragment,
+    ]),
+  );
+  const afterByKey = new Map(
+    after.map((fragment) => [
+      `${(fragment.record as Record<string, unknown>)?.["node_id"] as string}\u0000${fragment.partitionKey}`,
+      fragment,
+    ]),
+  );
+
+  for (const key of new Set([...beforeByKey.keys(), ...afterByKey.keys()])) {
+    const beforeFragment = beforeByKey.get(key);
+    const afterFragment = afterByKey.get(key);
+    const beforeJson =
+      beforeFragment === undefined
+        ? null
+        : canonicalJson(beforeFragment.record as JsonValue);
+    const afterJson =
+      afterFragment === undefined
+        ? null
+        : canonicalJson(afterFragment.record as JsonValue);
+    if (beforeJson === afterJson) continue;
+
+    const rawNodeType = (record: unknown): string | null => {
+      if (typeof record !== "object" || record === null) return null;
+      const nodeType = (record as Record<string, unknown>)["node_type"];
+      return typeof nodeType === "string" ? nodeType : null;
+    };
+    const beforeNodeType = rawNodeType(beforeFragment?.record);
+    const afterNodeType = rawNodeType(afterFragment?.record);
+    if (
+      (beforeNodeType !== null && RESERVED_AUDIT_NODE_TYPES.has(beforeNodeType)) ||
+      (afterNodeType !== null && RESERVED_AUDIT_NODE_TYPES.has(afterNodeType))
+    ) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export interface DiffedNodeFragment {
@@ -385,6 +458,160 @@ export type MutationBatchOutcome =
   | { readonly status: "unsupported"; readonly reason: string }
   | { readonly status: "invalid"; readonly reason: string };
 
+export interface MutationAuditEvidence {
+  readonly operation: AuditOperation;
+  readonly target: AuditTargetReference;
+  readonly tier: DataTier;
+  readonly decision: PermissionDecision;
+}
+
+/**
+ * FDN-68's provenance-only view of a candidate batch. This does not decide
+ * permission and does not alter authorizeMutationBatch's established public
+ * outcomes; it describes the same before/after diff for the runtime's one
+ * internal AuditRecorder after the existing decision has been made.
+ */
+export function describeMutationAuditEvidence(
+  document: LoroDoc,
+  deltas: readonly Uint8Array[],
+  roles: readonly PolicyRole[],
+): MutationAuditEvidence[] {
+  const fork = document.fork();
+  try {
+    for (const delta of deltas) fork.import(delta);
+    const before = indexFragments(readNodeFragments(document));
+    const after = indexFragments(readNodeFragments(fork));
+    const evidence: MutationAuditEvidence[] = [];
+    for (const key of new Set([...before.keys(), ...after.keys()])) {
+      const prior = before.get(key);
+      const candidate = after.get(key);
+      const priorJson = prior
+        ? canonicalJson(prior.record as unknown as JsonValue)
+        : null;
+      const candidateJson = candidate
+        ? canonicalJson(candidate.record as unknown as JsonValue)
+        : null;
+      if (priorJson === candidateJson) continue;
+      const winner = candidate ?? prior!;
+      const partition = getProtectionPartitions(winner.record.node_type).find(
+        ({ key: partitionKey }) => partitionKey === winner.fragment.partitionKey,
+      );
+      if (partition === undefined) continue;
+      evidence.push({
+        operation:
+          prior === undefined
+            ? "NodeCreate"
+            : candidate === undefined
+              ? "NodeRemoveAttempt"
+              : "NodeUpdate",
+        target: {
+          kind: "NodeTarget",
+          node_type: winner.record.node_type,
+          node_id: candidate?.record.node_id ?? null,
+          partition_key: winner.fragment.partitionKey,
+          target_tier: partition.tier,
+        },
+        tier: partition.tier,
+        decision: resolvePermissionDecision(
+          roles,
+          winner.record.node_type,
+          winner.fragment.partitionKey,
+        ),
+      });
+    }
+
+    const beforeEdges = indexEdges(readEdgeFragments(document));
+    const afterEdges = indexEdges(readEdgeFragments(fork));
+    const nodeTypeById = new Map<string, NodeType>();
+    for (const fragment of [
+      ...readNodeFragments(document),
+      ...readNodeFragments(fork),
+    ]) {
+      const record = parseNodeRecord(fragment.record);
+      nodeTypeById.set(record.node_id, record.node_type);
+    }
+    for (const key of new Set([...beforeEdges.keys(), ...afterEdges.keys()])) {
+      const prior = beforeEdges.get(key);
+      const candidate = afterEdges.get(key);
+      if ((prior?.canonical ?? null) === (candidate?.canonical ?? null)) continue;
+      const winner = (candidate ?? prior)!.record;
+      const fromNodeType = nodeTypeById.get(winner.from_node_id);
+      const toNodeType = nodeTypeById.get(winner.to_node_id);
+      if (fromNodeType === undefined || toNodeType === undefined) continue;
+      let registration;
+      try {
+        registration = assertRegisteredRelationship(
+          winner.edge_type,
+          fromNodeType,
+          toNodeType,
+        );
+      } catch {
+        continue;
+      }
+      const endpoint = (nodeType: NodeType) => {
+        const partitions = getProtectionPartitions(nodeType);
+        const partitionKey =
+          partitions.length === 1
+            ? partitions[0]!.key
+            : registration.governingPartitions[nodeType];
+        return partitionKey === undefined
+          ? null
+          : (partitions.find(
+              ({ key: candidateKey }) => candidateKey === partitionKey,
+            ) ?? null);
+      };
+      const from = endpoint(fromNodeType);
+      const to = endpoint(toNodeType);
+      if (from === null || to === null) continue;
+      const fromDecision = resolvePermissionDecision(roles, fromNodeType, from.key);
+      const toDecision = resolvePermissionDecision(roles, toNodeType, to.key);
+      const rolesSnapshot = fromDecision.rolesSnapshot;
+      // authorizeEdgeWrite resolves each endpoint independently over the role
+      // union. Preserve that composition here: if different roles decide the
+      // two endpoints, the canonical policy order supplies the one recorded
+      // actor_role instead of incorrectly requiring one role to cover both.
+      const decidingRole = POLICY_ROLES.find(
+        (role) =>
+          role === fromDecision.decidingRole || role === toDecision.decidingRole,
+      );
+      const authorized = authorizeEdgeWrite(
+        winner.edge_type,
+        fromNodeType,
+        toNodeType,
+        roles,
+      ).allowed;
+      const tier = Math.max(from.tier, to.tier) as DataTier;
+      evidence.push({
+        operation:
+          prior === undefined
+            ? "EdgeCreate"
+            : candidate === undefined
+              ? "EdgeRemoveAttempt"
+              : "EdgeUpdate",
+        target: {
+          kind: "EdgeTarget",
+          edge_type: winner.edge_type,
+          edge_id: candidate?.record.edge_id ?? null,
+          from_node_type: fromNodeType,
+          to_node_type: toNodeType,
+          target_tier: tier,
+        },
+        tier,
+        decision: {
+          outcome: authorized ? "full" : "none",
+          decidingRole: authorized ? (decidingRole ?? null) : null,
+          rolesSnapshot,
+        },
+      });
+    }
+    return evidence;
+  } catch {
+    return [];
+  } finally {
+    fork.free();
+  }
+}
+
 /**
  * F138. The single refusal reason every coherence failure returns, verbatim.
  *
@@ -426,19 +653,21 @@ export const INVALID_BATCH_REASON =
  *      `membership_of` / `membership_in` edge, refuses the whole batch as
  *      `unsupported` (FDN-85): those are written only by FDN-85's privileged
  *      projection command, never this generic entrypoint.
- *   3. Within the node-fragment container, only the fragments this batch
+ *   3. A changed AuditEntry fragment refuses the whole batch as
+ *      `unsupported` (F198/FDN-68), before ordinary node-write dispatch.
+ *   4. Within the node-fragment container, only the fragments this batch
  *      adds, changes, or removes are gated (`diffChangedNodeFragments` +
  *      `authorizeNodeWrite`) — never the whole document's fragments.
- *   4. Within the edge-fragment container (FDN-92), only the edges this
+ *   5. Within the edge-fragment container (FDN-92), only the edges this
  *      batch adds, changes, or removes are gated (`diffChangedEdgeFragments`
  *      + `authorizeEdgeWrite`), the endpoint node types resolved from the
  *      fork's own materialized fragments.
- *   5. The fork is materialized and `validateGraphSnapshot`-checked whole
+ *   6. The fork is materialized and `validateGraphSnapshot`-checked whole
  *      (F138) — including the generic edges alongside `managed_by`'s
  *      Tree-derived ones — so an authorized-but-incoherent batch is refused
  *      (`invalid`) before any merge.
  *
- * A single denial at 3 or 4 refuses the whole batch; there is no partial
+ * A single denial at 4 or 5 refuses the whole batch; there is no partial
  * commit.
  */
 export async function authorizeMutationBatch(
@@ -485,6 +714,17 @@ export async function authorizeMutationBatch(
         status: "unsupported",
         reason: reservedProjectionReason(reservedProjection),
       };
+    }
+
+    // F198 / FDN-68 Stage 1. AuditEntry's Owner/HR Admin `full` policy is a
+    // read grant for this exceptional immutable node type, not authority to
+    // use the generic fragment writer. Keep this reservation ahead of
+    // `authorizeNodeWrite`; FDN-68's internal append and actor-only
+    // pseudonymization paths are separate and never dispatch through here.
+    if (
+      changesReservedAuditEntry(readNodeFragments(document), readNodeFragments(fork))
+    ) {
+      return { status: "unsupported", reason: reservedAuditReason() };
     }
 
     const changedNodes = diffChangedNodeFragments(

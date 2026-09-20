@@ -1,0 +1,2 @@
+ALTER TABLE "audit_journal" DROP CONSTRAINT "audit_journal_event_type_check";--> statement-breakpoint
+ALTER TABLE "audit_journal" ADD CONSTRAINT "audit_journal_event_type_check" CHECK ("audit_journal"."event_type" in ('PermissionDenied', 'SensitiveAccessGranted', 'AuthorizedOperationFailed', 'PrivilegedProjectionAuthorized'));

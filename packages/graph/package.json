@@ -5,9 +5,13 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./audit-log": "./src/audit-log.ts",
+    "./permission": "./src/permission.ts",
     "./testing": "./src/worker/testing/managed-by-proof.ts",
     "./testing/chain": "./src/worker/testing/chain-proof.ts",
     "./testing/edges": "./src/worker/testing/edge-write-proof.ts",
+    "./testing/audit-generic-mutation": "./src/worker/testing/audit-generic-mutation-proof.ts",
+    "./testing/audit-local-query": "./src/worker/testing/audit-local-journal-proof.ts",
     "./testing/permission": "./src/worker/testing/permission-proof.ts",
     "./testing/poisoning": "./src/worker/testing/mutation-poisoning-proof.ts",
     "./testing/unchecked-mutation": "./src/worker/testing/unchecked-mutation.ts"

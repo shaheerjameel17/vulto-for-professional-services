@@ -1,9 +1,11 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
+  deviceApplicationSchema,
   parseWorkspaceRoles,
   serializeWorkspaceRoles,
   workspaceRoleSchema,
   uuidV4Schema,
+  type DeviceApplication,
   type WorkspaceRole,
 } from "@vulto/schema";
 import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
@@ -110,6 +112,8 @@ export interface WorkspaceProjectionGrant {
   membershipId: string;
   /** The stable account id whose `User` node the projection must write. */
   userId: string;
+  /** Read from the authenticated user's registered device row, never input. */
+  application: DeviceApplication;
   roles: WorkspaceRole[];
   /** Deterministic, server-computed. The graph Worker never derives its own. */
   membershipOfEdgeId: string;
@@ -201,11 +205,12 @@ export async function mintWorkspaceProjectionGrant(
   // FDN-63: the device must hold a registered, non-revoked identity row for
   // this user — the same gate `requestDeviceUnlock` applies.
   const [identity] = await db
-    .select({ isRevoked: device.isRevoked })
+    .select({ isRevoked: device.isRevoked, application: device.application })
     .from(device)
     .where(and(eq(device.id, deviceId), eq(device.userId, userId)))
     .limit(1);
   if (!identity || identity.isRevoked) throw new WorkspaceProjectionDeniedError();
+  const application = deviceApplicationSchema.parse(identity.application);
 
   let roles: WorkspaceRole[];
   try {
@@ -251,6 +256,7 @@ export async function mintWorkspaceProjectionGrant(
     workspaceId,
     membershipId,
     userId,
+    application,
     roles,
     membershipOfEdgeId: membershipOfEdgeId(membershipId),
     membershipInEdgeId: membershipInEdgeId(membershipId),
@@ -322,6 +328,7 @@ export interface ConsumedProjectionGrant {
   workspaceId: string;
   membershipId: string;
   userId: string;
+  application: DeviceApplication;
   deviceId: string;
   roles: WorkspaceRole[];
   membershipOfEdgeId: string;
@@ -376,12 +383,28 @@ export async function consumeWorkspaceProjectionGrant(
     .limit(1);
   if (!pending) throw new WorkspaceProjectionDeniedError();
 
+  // Revalidate the exact registered device at consumption time. Founding
+  // admission cannot have a per-workspace deviceUnlockSecret before this
+  // flow provisions it, so the global identity row is the bootstrap trust
+  // boundary: exact id + session-derived user, non-revoked, closed app value.
+  const [identity] = await db
+    .select({ isRevoked: device.isRevoked, application: device.application })
+    .from(device)
+    .where(and(eq(device.id, deviceId), eq(device.userId, consumed.userId)))
+    .limit(1);
+  if (!identity || identity.isRevoked) throw new WorkspaceProjectionDeniedError();
+  const application = deviceApplicationSchema.parse(identity.application);
+
+  const roles = parseWorkspaceRoles(pending.roles);
+  if (roles.length === 0) throw new WorkspaceProjectionDeniedError();
+
   return {
     workspaceId,
     membershipId,
     userId: consumed.userId,
+    application,
     deviceId,
-    roles: parseWorkspaceRoles(pending.roles),
+    roles,
     membershipOfEdgeId: membershipOfEdgeId(membershipId),
     membershipInEdgeId: membershipInEdgeId(membershipId),
   };

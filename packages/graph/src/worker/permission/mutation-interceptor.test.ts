@@ -14,6 +14,7 @@ import {
   authorizeEdgeWrite,
   authorizeMutationBatch,
   authorizeNodeWrite,
+  describeMutationAuditEvidence,
   diffChangedNodeFragments,
   INVALID_BATCH_REASON,
 } from "./mutation-interceptor";
@@ -683,6 +684,58 @@ describe("authorizeMutationBatch — the fork-then-diff-then-gate integration, a
     document.free();
   });
 
+  it("describes a split-role processed_in edge grant using canonical role precedence", () => {
+    const timesheetEntryId = "99999999-9999-4999-8999-999999999999";
+    const invoiceId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+    const processedInEdgeId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    const document = new LoroDoc();
+    writeFragment(document, timesheetEntryId, "TimesheetEntry", "record");
+    writeFragment(document, invoiceId, "Invoice", "record");
+    document.commit();
+
+    const baseVersion = document.oplogVersion();
+    const candidate = document.fork();
+    writeEdge(
+      candidate,
+      edgeRecord({
+        edge_id: processedInEdgeId,
+        edge_type: "processed_in",
+        from_node_id: timesheetEntryId,
+        to_node_id: invoiceId,
+      }),
+    );
+    candidate.commit();
+    const delta = candidate.export({ mode: "update", from: baseVersion });
+
+    const evidence = describeMutationAuditEvidence(
+      document,
+      [delta],
+      ["hr-admin", "finance-admin"],
+    );
+
+    expect(evidence).toHaveLength(1);
+    expect(evidence[0]).toMatchObject({
+      operation: "EdgeCreate",
+      target: {
+        kind: "EdgeTarget",
+        edge_type: "processed_in",
+        edge_id: processedInEdgeId,
+        from_node_type: "TimesheetEntry",
+        to_node_type: "Invoice",
+        target_tier: 1,
+      },
+      tier: 1,
+      decision: {
+        outcome: "full",
+        decidingRole: "hr-admin",
+        rolesSnapshot: ["hr-admin", "finance-admin"],
+      },
+    });
+
+    candidate.free();
+    document.free();
+  });
+
   it("refuses an edge whose endpoint is not materialized as invalid, not denied", async () => {
     const document = new LoroDoc();
     const outcome = await authorizeMutationBatch(
@@ -854,6 +907,133 @@ describe("authorizeMutationBatch — FDN-85 reserves the Workspace/membership pr
     document.free();
     expect(outcome).toEqual({ status: "authorized" });
   });
+});
+
+describe("authorizeMutationBatch — FDN-68 reserves AuditEntry for every policy role and generic mutation shape", () => {
+  const workspaceId = "22222222-2222-4222-8222-222222222222";
+  const auditId = "68000000-0000-4000-8000-000000000001";
+  const createdAuditId = "68000000-0000-4000-8000-000000000002";
+  const actorId = "68686868-6868-4868-8868-686868686868";
+
+  function writeAudit(document: LoroDoc, nodeId: string): void {
+    const fragment = document
+      .getMap(NODE_FRAGMENT_CONTAINER)
+      .setContainer(`${nodeId}:record`, new LoroMap());
+    const record = {
+      node_id: nodeId,
+      workspace_id: workspaceId,
+      node_type: "AuditEntry",
+      schema_version: 1,
+      lifecycle_status: "Recorded",
+      created_at: "2026-09-10T09:00:00.000Z",
+      created_by: actorId,
+      actor_user_id: actorId,
+      actor_membership_id: "68686868-6868-4868-8868-686868686869",
+      actor_role: null,
+      actor_roles: ["owner"],
+      actor_application: "VultoRoster",
+      event_type: "PermissionDenied",
+      operation: "NodeRead",
+      outcome: "Denied",
+      target: {
+        kind: "NodeTarget",
+        node_type: "Skill",
+        node_id: null,
+        partition_key: "record",
+        target_tier: 0,
+      },
+      metadata: {
+        denial_class: "InsufficientPermission",
+        result_cardinality: "Single",
+      },
+      occurred_at: "2026-09-10T09:00:00.000Z",
+    };
+    for (const [field, value] of Object.entries(record)) fragment.set(field, value);
+  }
+
+  function snapshots(): Record<
+    "seed" | "create" | "alter" | "remove" | "typeChange",
+    Uint8Array
+  > {
+    const seed = new LoroDoc();
+    seed.setPeerId(680n);
+    writeAudit(seed, auditId);
+    seed.commit();
+    const seedBytes = seed.export({ mode: "snapshot" });
+    seed.free();
+
+    const create = new LoroDoc();
+    create.setPeerId(681n);
+    writeAudit(create, createdAuditId);
+    create.commit();
+    const createBytes = create.export({ mode: "snapshot" });
+    create.free();
+
+    const alter = new LoroDoc();
+    alter.setPeerId(682n);
+    alter.import(seedBytes);
+    const altered = alter
+      .getMap(NODE_FRAGMENT_CONTAINER)
+      .get(`${auditId}:record`) as LoroMap;
+    altered.set("event_type", "SensitiveAccessGranted");
+    alter.commit();
+    const alterBytes = alter.export({ mode: "snapshot" });
+    alter.free();
+
+    const remove = new LoroDoc();
+    remove.setPeerId(683n);
+    remove.import(seedBytes);
+    remove.getMap(NODE_FRAGMENT_CONTAINER).delete(`${auditId}:record`);
+    remove.commit();
+    const removeBytes = remove.export({ mode: "snapshot" });
+    remove.free();
+
+    const typeChange = new LoroDoc();
+    typeChange.setPeerId(684n);
+    typeChange.import(seedBytes);
+    const changed = typeChange
+      .getMap(NODE_FRAGMENT_CONTAINER)
+      .get(`${auditId}:record`) as LoroMap;
+    changed.set("node_type", "Skill");
+    changed.set("lifecycle_status", "Active");
+    changed.set("updated_at", "2026-09-10T09:00:00.000Z");
+    changed.set("updated_by", actorId);
+    changed.set("is_soft_deleted", false);
+    changed.set("soft_deleted_at", null);
+    changed.set("soft_deleted_by", null);
+    changed.set("name", "Forbidden type change");
+    typeChange.commit();
+    const typeChangeBytes = typeChange.export({ mode: "snapshot" });
+    typeChange.free();
+
+    return {
+      seed: seedBytes,
+      create: createBytes,
+      alter: alterBytes,
+      remove: removeBytes,
+      typeChange: typeChangeBytes,
+    };
+  }
+
+  for (const role of ALL_ROLES) {
+    for (const shape of ["create", "alter", "remove", "typeChange"] as const) {
+      it(`${role}: ${shape} is unsupported before ordinary write authorization`, async () => {
+        const proof = snapshots();
+        const document = new LoroDoc();
+        if (shape !== "create") document.import(proof.seed);
+        const outcome = await authorizeMutationBatch(
+          document,
+          [proof[shape]],
+          [role],
+          workspaceId,
+        );
+        expect(outcome.status).toBe("unsupported");
+        if (outcome.status !== "unsupported") throw new Error("expected refusal");
+        expect(outcome.reason).toContain("AuditEntry");
+        document.free();
+      });
+    }
+  }
 });
 
 /**

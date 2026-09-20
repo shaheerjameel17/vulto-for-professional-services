@@ -113,11 +113,7 @@ function harness(page: Page) {
     ) as Promise<T>;
   return {
     deviceId: () => proj<{ deviceId: string }>("deviceId", {}),
-    runFounding: (m: Body) =>
-      proj<{ outboxEntry: { kind: string; authorizationPath: string } }>(
-        "runFounding",
-        m,
-      ),
+    runFounding: (m: Body) => proj<{ outboxEntry: { kind: string } }>("runFounding", m),
     foundingThenOrdinaryMutate: (m: Body) =>
       proj<{ projectionCommitted: boolean; ordinaryMutateStatus: string }>(
         "foundingThenOrdinaryMutate",
@@ -209,9 +205,6 @@ test.describe("FDN-85 Stage 4 — workspace/membership projection", () => {
       const f = await foundGrant(page, "Northwind");
       const founding = await harness(page).runFounding(foundingMessage(f, "Northwind"));
       expect(founding.outboxEntry.kind).toBe("admission");
-      expect(founding.outboxEntry.authorizationPath).toBe(
-        "privileged-projection-exception",
-      );
 
       const confirmed = await apiPost(page, "/workspace/confirm-projection", {
         workspaceId: f.workspaceId,

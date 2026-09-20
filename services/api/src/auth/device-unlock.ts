@@ -1,5 +1,10 @@
 import { randomBytes } from "node:crypto";
-import { uuidV4Schema, type WorkspaceRole } from "@vulto/schema";
+import {
+  deviceApplicationSchema,
+  uuidV4Schema,
+  type DeviceApplication,
+  type WorkspaceRole,
+} from "@vulto/schema";
 import { and, eq, isNull } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
@@ -57,11 +62,11 @@ export interface DeviceUnlockEnvelope {
 }
 
 /**
- * FDN-53 stage 1 (F127, F128 candidate). `roles` and `membershipId` are
- * siblings of `envelope`, deliberately not folded into it: `envelope` is
+ * FDN-53 stage 1 / FDN-68 Stage 2. Roles and authenticated actor identity
+ * are siblings of `envelope`, deliberately not folded into it: `envelope` is
  * durable on-disk contract on the device side (`SealedStore.unlock()`
  * persists it to IndexedDB to detect a workspace/key-epoch mismatch on a
- * later unlock), and role data must never behave that way — it is a live
+ * later unlock), and actor data must never behave that way — it is a live
  * fact from THIS `requireCurrentWorkspaceSession` call, held only in the
  * Worker's memory, and refreshed independently of the envelope by the
  * role-refresh endpoint below.
@@ -71,6 +76,8 @@ export interface DeviceUnlockGrant {
   envelope: DeviceUnlockEnvelope;
   roles: WorkspaceRole[];
   membershipId: string;
+  userId: string;
+  application: DeviceApplication;
 }
 
 function toGrant(
@@ -83,6 +90,8 @@ function toGrant(
   },
   roles: WorkspaceRole[],
   membershipId: string,
+  userId: string,
+  application: DeviceApplication,
 ): DeviceUnlockGrant {
   return {
     serverHalf: row.serverHalf,
@@ -95,6 +104,8 @@ function toGrant(
     },
     roles,
     membershipId,
+    userId,
+    application,
   };
 }
 
@@ -130,13 +141,14 @@ export async function requestDeviceUnlock(
   // user before any unlock secret is released. An untrusted or revoked
   // device is denied here, non-enumerably, exactly like a bad session.
   const [identity] = await db
-    .select({ isRevoked: device.isRevoked })
+    .select({ isRevoked: device.isRevoked, application: device.application })
     .from(device)
     .where(and(eq(device.id, deviceId), eq(device.userId, current.userId)))
     .limit(1);
   if (!identity || identity.isRevoked) {
     throw new DeviceUnlockDeniedError();
   }
+  const application = deviceApplicationSchema.parse(identity.application);
 
   const [existing] = await db
     .select()
@@ -154,7 +166,13 @@ export async function requestDeviceUnlock(
       throw new DeviceUnlockDeniedError();
     }
     await touchDeviceActivity(deviceId).catch(() => {});
-    return toGrant(existing, current.roles, current.membershipId);
+    return toGrant(
+      existing,
+      current.roles,
+      current.membershipId,
+      current.userId,
+      application,
+    );
   }
 
   const serverHalf = randomBytes(32).toString("base64");
@@ -170,7 +188,13 @@ export async function requestDeviceUnlock(
     .returning();
 
   if (!created) throw new DeviceUnlockDeniedError();
-  return toGrant(created, current.roles, current.membershipId);
+  return toGrant(
+    created,
+    current.roles,
+    current.membershipId,
+    current.userId,
+    application,
+  );
 }
 
 export interface DeviceRoleRefreshRequest {

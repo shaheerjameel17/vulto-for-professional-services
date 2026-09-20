@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { auditEntryEventFields, refineAuditEntryCoherence } from "./audit";
 import { EDGE_TYPES, type EdgeType } from "./registry/edges";
 import {
   getNodeRegistration,
@@ -148,13 +149,15 @@ const auditEntryNodeSchema = z
     node_type: z.literal("AuditEntry"),
     workspace_id: uuidV4Schema,
     created_by: uuidV4Schema,
+    ...auditEntryEventFields,
     updated_at: z.never().optional(),
     updated_by: z.never().optional(),
     is_soft_deleted: z.never().optional(),
     soft_deleted_at: z.never().optional(),
     soft_deleted_by: z.never().optional(),
   })
-  .passthrough();
+  .strict()
+  .superRefine(refineAuditEntryCoherence);
 
 export const nodeRecordSchema = z
   .union([

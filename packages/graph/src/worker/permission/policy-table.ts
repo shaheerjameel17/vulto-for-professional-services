@@ -1,4 +1,13 @@
-import { getNodeRegistration, type NodeType, type PrivacyClass } from "@vulto/schema";
+import {
+  POLICY_ROLES,
+  getNodeRegistration,
+  type NodeType,
+  type PolicyRole,
+  type PrivacyClass,
+} from "@vulto/schema";
+
+export { POLICY_ROLES };
+export type { PolicyRole };
 
 /**
  * FDN-53 stage 1. The graph permission layer's policy table, per
@@ -64,22 +73,22 @@ import { getNodeRegistration, type NodeType, type PrivacyClass } from "@vulto/sc
  * absorbed — see this stage's report for the full accounting.
  */
 
-export const POLICY_ROLES = [
-  "owner",
-  "hr-admin",
-  "finance-admin",
-  "manager",
-  "team-member",
-] as const;
-
-export type PolicyRole = (typeof POLICY_ROLES)[number];
-
 export type PermissionOutcome = "full" | "read" | "none" | "restricted";
 
 /** The exported resolution shape: exactly what the interceptor acts on. */
 export interface PolicyResolution {
   readonly outcome: PermissionOutcome;
   readonly restrictedLabel?: string;
+}
+
+/**
+ * FDN-68. Additive provenance around the existing public resolution. The
+ * snapshot is deduplicated and sorted by POLICY_ROLES, which is also the
+ * stable tie precedence for the role that produced the winning grant.
+ */
+export interface PermissionDecision extends PolicyResolution {
+  readonly decidingRole: PolicyRole | null;
+  readonly rolesSnapshot: readonly PolicyRole[];
 }
 
 /**
@@ -751,6 +760,41 @@ export function resolvePermission(
   }
 
   return toResolution(DEFAULT_CLASS_MAPPING[privacyClass][role]);
+}
+
+const PERMISSION_OUTCOME_RANK: Readonly<Record<PermissionOutcome, number>> = {
+  full: 3,
+  read: 2,
+  restricted: 1,
+  none: 0,
+};
+
+export function resolvePermissionDecision(
+  roles: readonly PolicyRole[],
+  nodeType: NodeType,
+  partitionKey: string | null,
+): PermissionDecision {
+  const supplied = new Set(roles);
+  const rolesSnapshot = POLICY_ROLES.filter((role) => supplied.has(role));
+  let winningResolution: PolicyResolution = { outcome: "none" };
+  let decidingRole: PolicyRole | null = null;
+
+  for (const role of rolesSnapshot) {
+    const resolution = resolvePermission(role, nodeType, partitionKey);
+    if (
+      PERMISSION_OUTCOME_RANK[resolution.outcome] >
+      PERMISSION_OUTCOME_RANK[winningResolution.outcome]
+    ) {
+      winningResolution = resolution;
+      decidingRole = resolution.outcome === "none" ? null : role;
+    }
+  }
+
+  return {
+    ...winningResolution,
+    decidingRole,
+    rolesSnapshot,
+  };
 }
 
 /** Exposed for fidelity tests: the raw, qualifier-preserving cells. */

@@ -216,7 +216,7 @@ async function inspectGeneration(
   storeKey: string,
 ): Promise<number | null> {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    const open = indexedDB.open("vulto-sealed-store", 1);
+    const open = indexedDB.open("vulto-sealed-store");
     open.onsuccess = () => resolve(open.result);
     open.onerror = () => reject(open.error ?? new Error("Could not inspect store"));
   });
@@ -243,7 +243,7 @@ async function payloadRecord(
   storeKey: string,
 ): Promise<Record<string, unknown>> {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    const open = indexedDB.open("vulto-sealed-store", 1);
+    const open = indexedDB.open("vulto-sealed-store");
     open.onsuccess = () => resolve(open.result);
     open.onerror = () => reject(open.error ?? new Error("Could not inspect store"));
   });
@@ -264,7 +264,7 @@ async function payloadRecord(
 
 async function replacePayloadRecord(record: Record<string, unknown>): Promise<void> {
   const database = await new Promise<IDBDatabase>((resolve, reject) => {
-    const open = indexedDB.open("vulto-sealed-store", 1);
+    const open = indexedDB.open("vulto-sealed-store");
     open.onsuccess = () => resolve(open.result);
     open.onerror = () => reject(open.error ?? new Error("Could not inspect store"));
   });

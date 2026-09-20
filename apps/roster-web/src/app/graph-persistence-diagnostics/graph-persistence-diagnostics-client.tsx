@@ -2,6 +2,8 @@
 
 import {
   graphSnapshotStoreKey,
+  type AuditLogQueryFilters,
+  type AuditLogQueryResult,
   type GraphQuery,
   type GraphQueryResult,
   type LocalGraphClient,
@@ -30,6 +32,16 @@ import {
   EDGE_PROOF_TAX_CONFIG,
 } from "@vulto/graph/testing/edges";
 import {
+  AUDIT_PROOF_CREATED_ID,
+  AUDIT_PROOF_EXISTING_ID,
+  AUDIT_PROOF_SKILL_ID,
+  buildAuditGenericMutationProofSnapshots,
+} from "@vulto/graph/testing/audit-generic-mutation";
+import {
+  AUDIT_LOCAL_IDS,
+  buildAuditLocalSeed,
+} from "@vulto/graph/testing/audit-local-query";
+import {
   buildPermissionProofEmployeeSnapshot,
   buildPermissionProofOrgScenarioSnapshot,
   PERMISSION_PROOF_EMPLOYEE,
@@ -48,6 +60,9 @@ import { useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { LockedShellGate } from "../../components/device-store/LockedShellGate";
 import { apiOrigin } from "../../lib/auth-client";
+
+const syncRelayUrl =
+  process.env.NEXT_PUBLIC_SYNC_RELAY_URL ?? "ws://localhost:3102/sync";
 
 interface GraphPersistenceDiagnosticsApi {
   getStatus(): Promise<{ locked: boolean }>;
@@ -198,6 +213,20 @@ interface GraphPersistenceDiagnosticsApi {
    * builds (F105).
    */
   query(graphQuery: GraphQuery): Promise<GraphQueryResult>;
+  /** FDN-68 Stage 4: direct use of the production LocalGraphClient audit surface. */
+  auditLog: {
+    query(
+      workspaceId: string,
+      filters?: AuditLogQueryFilters,
+    ): Promise<AuditLogQueryResult>;
+  };
+  startSync(): Promise<void>;
+  stopSync(): Promise<void>;
+  getSyncStatus(): { state: string; pendingLocalChanges: boolean };
+  auditLocalQueryProof: {
+    buildSeed(workspaceId: string): string;
+    tier1NodeId: string;
+  };
   /** F127's live role-refresh entrypoint, called directly on the same client `query` uses. */
   refreshRole(): Promise<string[]>;
   /**
@@ -252,6 +281,24 @@ interface GraphPersistenceDiagnosticsApi {
     payrollPolicyId: string;
     taxConfigId: string;
   };
+  /** FDN-68 Stage 1 scratch fixtures; all attempted writes use `mutate`. */
+  auditGenericMutation: {
+    buildSnapshots(workspaceId: string): {
+      seed: string;
+      create: string;
+      alter: string;
+      remove: string;
+      typeChange: string;
+      permittedSkillCreate: string;
+    };
+    existingAuditId: string;
+    createdAuditId: string;
+    skillId: string;
+  };
+  /** FDN-68 Stage 2 real authenticated-Worker and bundled-contract proof. */
+  createAuditContractContextProof(): AuditContractContextProofHandle;
+  /** FDN-68 Stage 3 real sealed-journal/interceptor proof. */
+  createAuditLocalJournalProof(): AuditLocalJournalProofHandle;
   /**
    * FDN-85 Stage 4. The workspace/membership projection, driven through the
    * real sealed store inside a test-only Worker (see
@@ -260,20 +307,83 @@ interface GraphPersistenceDiagnosticsApi {
   workspaceProjection: {
     deviceId(): Promise<{ deviceId: string }>;
     runFounding(message: Record<string, unknown>): Promise<{
-      outboxEntry: { kind: string; authorizationPath: string; confirmed: boolean };
+      outboxEntry: { kind: string; confirmed: boolean };
     }>;
     foundingThenOrdinaryMutate(message: Record<string, unknown>): Promise<{
       projectionCommitted: boolean;
       ordinaryMutateStatus: string;
     }>;
     runTransition(message: Record<string, unknown>): Promise<{ committed: boolean }>;
+    runTransitionCommitFailure(message: Record<string, unknown>): Promise<{
+      error: string;
+      journal: Array<Record<string, unknown>>;
+    }>;
     queryMembership(workspaceId: string): Promise<{
       membershipLifecycle: string | null;
       membershipRole: string | null;
       membershipOfTo: string | null;
       membershipInTo: string | null;
     }>;
+    queryAudit(
+      workspaceId: string,
+      application: "VultoRoster" | "VultoAccounts" | "VultoProjects" | "VultoLegal",
+    ): Promise<unknown>;
   };
+}
+
+interface AuditActorContext {
+  workspaceId: string;
+  userId: string;
+  membershipId: string;
+  application: string;
+  roles: string[];
+}
+
+interface AuditContractContextProofHandle {
+  open(workspaceId: string): Promise<{ context: AuditActorContext; deviceId: string }>;
+  context(): Promise<AuditActorContext>;
+  lock(): Promise<{ contextAvailable: boolean }>;
+  reopen(workspaceId: string): Promise<AuditActorContext>;
+  decisions(permutations: string[][]): Promise<
+    Array<{
+      outcome: string;
+      decidingRole: string | null;
+      rolesSnapshot: string[];
+    }>
+  >;
+  validate(entries: unknown[]): Promise<boolean[]>;
+  dispose(): Promise<void>;
+}
+
+interface AuditLocalJournalProofHandle {
+  open(workspaceId: string): Promise<unknown>;
+  seed(): Promise<unknown>;
+  queryTier(tier: 0 | 1 | 2 | 3): Promise<unknown>;
+  queryTierList(tier: 0 | 1): Promise<unknown>;
+  querySkill(): Promise<unknown>;
+  snapshot(): Promise<{ journal: unknown[]; outbox: unknown[] }>;
+  appendAuditForCacheProof(entry: unknown): Promise<{
+    journal: unknown[];
+    outbox: unknown[];
+  }>;
+  flushOutbox(): Promise<{ journal: unknown[]; outbox: unknown[] }>;
+  pseudonymizeActor(
+    workspaceId: string,
+    currentActorUserId: string,
+    opaqueActorToken: string,
+  ): Promise<{ serverEntryIds: string[]; localEntryIds: string[] }>;
+  reopenJournal(): Promise<{ journal: unknown[]; outbox: unknown[] }>;
+  proveIdempotency(): Promise<unknown>;
+  lock(): Promise<unknown>;
+  reunlock(workspaceId: string): Promise<unknown>;
+  recreate(workspaceId: string): Promise<unknown>;
+  abortNextAudit(): Promise<unknown>;
+  forceAuthorizedFailure(): Promise<unknown>;
+  mutateTier1(): Promise<unknown>;
+  mutateTier1Edge(): Promise<unknown>;
+  mutateDenied(): Promise<unknown>;
+  measure(count: number): Promise<{ durations: number[] }>;
+  dispose(): Promise<void>;
 }
 
 interface EdgeConvergedSide {
@@ -524,6 +634,122 @@ function createOfflineProofHandle(workspaceId: string): OfflineProofHandle {
   };
 }
 
+function createAuditContractContextProof(): AuditContractContextProofHandle {
+  const worker = new Worker(
+    new URL(
+      "../../../../../packages/graph/src/worker/testing/audit-contract-context-proof.worker.ts",
+      import.meta.url,
+    ),
+    { type: "module", name: "vulto-fdn68-audit-contract-context-proof" },
+  );
+
+  function send<T>(message: Record<string, unknown>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<unknown>) => {
+        const response = event.data as
+          { ok: true; result: T } | { ok: false; error: string };
+        if (response.ok) resolve(response.result);
+        else reject(new Error(response.error));
+      };
+      worker.onerror = (event) =>
+        reject(new Error(event.message || "Audit contract context Worker failed"));
+      worker.postMessage(message);
+    });
+  }
+
+  return {
+    open: (targetWorkspaceId) =>
+      send({ kind: "open", workspaceId: targetWorkspaceId, apiOrigin }),
+    context: () => send({ kind: "context" }),
+    lock: () => send({ kind: "lock" }),
+    reopen: (targetWorkspaceId) =>
+      send({ kind: "reopen", workspaceId: targetWorkspaceId, apiOrigin }),
+    decisions: (permutations) => send({ kind: "decisions", permutations }),
+    validate: (entries) => send({ kind: "validate", entries }),
+    dispose: async () => {
+      try {
+        await send({ kind: "dispose" });
+      } finally {
+        worker.terminate();
+      }
+    },
+  };
+}
+
+function createAuditLocalJournalProof(): AuditLocalJournalProofHandle {
+  let worker: Worker;
+
+  const spawn = () => {
+    worker = new Worker(
+      new URL(
+        "../../../../../packages/graph/src/worker/testing/audit-local-journal-proof.worker.ts",
+        import.meta.url,
+      ),
+      { type: "module", name: "vulto-fdn68-audit-local-journal-proof" },
+    );
+  };
+  spawn();
+
+  function send<T>(message: Record<string, unknown>): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      worker.onmessage = (event: MessageEvent<unknown>) => {
+        const response = event.data as
+          { ok: true; result: T } | { ok: false; error: string };
+        if (response.ok) resolve(response.result);
+        else reject(new Error(response.error));
+      };
+      worker.onerror = (event) =>
+        reject(new Error(event.message || "Audit local journal Worker failed"));
+      worker.postMessage(message);
+    });
+  }
+
+  const disposeWorker = async () => {
+    try {
+      await send({ kind: "dispose" });
+    } finally {
+      worker.terminate();
+    }
+  };
+
+  return {
+    open: (targetWorkspaceId) =>
+      send({ kind: "open", workspaceId: targetWorkspaceId, apiOrigin }),
+    seed: () => send({ kind: "seed" }),
+    queryTier: (tier) => send({ kind: "query-tier", tier }),
+    queryTierList: (tier) => send({ kind: "query-tier-list", tier }),
+    querySkill: () => send({ kind: "query-skill" }),
+    snapshot: () => send({ kind: "snapshot" }),
+    appendAuditForCacheProof: (entry) =>
+      send({ kind: "append-audit-for-cache-proof", entry }),
+    flushOutbox: () => send({ kind: "flush-outbox" }),
+    pseudonymizeActor: (targetWorkspaceId, currentActorUserId, opaqueActorToken) =>
+      send({
+        kind: "pseudonymize-actor",
+        workspaceId: targetWorkspaceId,
+        currentActorUserId,
+        opaqueActorToken,
+      }),
+    reopenJournal: () => send({ kind: "reopen-journal" }),
+    proveIdempotency: () => send({ kind: "prove-idempotency" }),
+    lock: () => send({ kind: "lock" }),
+    reunlock: (targetWorkspaceId) =>
+      send({ kind: "reunlock", workspaceId: targetWorkspaceId, apiOrigin }),
+    recreate: async (targetWorkspaceId) => {
+      await disposeWorker();
+      spawn();
+      return send({ kind: "open", workspaceId: targetWorkspaceId, apiOrigin });
+    },
+    abortNextAudit: () => send({ kind: "abort-next-audit" }),
+    forceAuthorizedFailure: () => send({ kind: "force-authorized-failure" }),
+    mutateTier1: () => send({ kind: "mutate-tier1" }),
+    mutateTier1Edge: () => send({ kind: "mutate-tier1-edge" }),
+    mutateDenied: () => send({ kind: "mutate-denied" }),
+    measure: (count) => send({ kind: "measure", count }),
+    dispose: disposeWorker,
+  };
+}
+
 /**
  * FDN-92 Stage 3: spawns the edge-write proof Worker for a single one-shot
  * request and resolves its one result message. The Worker is reachable only
@@ -701,6 +927,24 @@ export function GraphPersistenceDiagnosticsClient() {
           runChainProof(workspaceId, danglingWorkspaceId),
         createOfflineProof: () => createOfflineProofHandle(workspaceId),
         query: (graphQuery) => created.query(graphQuery),
+        auditLog: {
+          query: (targetWorkspaceId, filters) =>
+            created.auditLog.query(targetWorkspaceId, filters),
+        },
+        startSync: () => created.startSync(syncRelayUrl),
+        stopSync: () => created.stopSync(),
+        getSyncStatus: () => {
+          const status = created.getSyncStatus();
+          return {
+            state: status.state,
+            pendingLocalChanges: status.pendingLocalChanges,
+          };
+        },
+        auditLocalQueryProof: {
+          buildSeed: (targetWorkspaceId) =>
+            toBase64(buildAuditLocalSeed(targetWorkspaceId)),
+          tier1NodeId: AUDIT_LOCAL_IDS.tier1,
+        },
         refreshRole: () => created.refreshRole(),
         mutate: async (base64Snapshots) => {
           try {
@@ -746,6 +990,14 @@ export function GraphPersistenceDiagnosticsClient() {
           payrollPolicyId: EDGE_PROOF_PAYROLL_POLICY,
           taxConfigId: EDGE_PROOF_TAX_CONFIG,
         },
+        auditGenericMutation: {
+          buildSnapshots: buildAuditGenericMutationProofSnapshots,
+          existingAuditId: AUDIT_PROOF_EXISTING_ID,
+          createdAuditId: AUDIT_PROOF_CREATED_ID,
+          skillId: AUDIT_PROOF_SKILL_ID,
+        },
+        createAuditContractContextProof,
+        createAuditLocalJournalProof,
         workspaceProjection: {
           deviceId: () =>
             runWorkspaceProjectionProof<{ deviceId: string }>({ kind: "device-id" }),
@@ -762,6 +1014,12 @@ export function GraphPersistenceDiagnosticsClient() {
               apiOrigin,
               ...message,
             }),
+          runTransitionCommitFailure: (message: Record<string, unknown>) =>
+            runWorkspaceProjectionProof({
+              kind: "run-transition-commit-failure",
+              apiOrigin,
+              ...message,
+            }),
           queryMembership: (targetWorkspaceId: string) =>
             runWorkspaceProjectionProof<{
               membershipLifecycle: string | null;
@@ -769,6 +1027,13 @@ export function GraphPersistenceDiagnosticsClient() {
               membershipOfTo: string | null;
               membershipInTo: string | null;
             }>({ kind: "query-membership", workspaceId: targetWorkspaceId, apiOrigin }),
+          queryAudit: (targetWorkspaceId, application) =>
+            runWorkspaceProjectionProof({
+              kind: "query-audit",
+              workspaceId: targetWorkspaceId,
+              apiOrigin,
+              application,
+            }),
         },
       };
     });

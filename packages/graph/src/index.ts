@@ -7,6 +7,17 @@ export {
 } from "./client";
 
 export {
+  AUDIT_LOG_QUERY_DENIED_REASON,
+  auditLogQueryFiltersSchema,
+  auditLogQueryRequestSchema,
+  auditLogQueryResultSchema,
+  type AuditLogClient,
+  type AuditLogQueryFilters,
+  type AuditLogQueryRequest,
+  type AuditLogQueryResult,
+} from "./audit-log";
+
+export {
   GRAPH_WORKER_PROTOCOL_VERSION,
   graphAvailabilitySchema,
   graphWorkerRequestSchema,

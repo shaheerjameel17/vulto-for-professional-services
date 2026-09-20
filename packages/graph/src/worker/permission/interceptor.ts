@@ -1,4 +1,11 @@
-import { getProtectionPartitions, type NodeRecord, type NodeType } from "@vulto/schema";
+import {
+  getProtectionPartitions,
+  type AuditOperation,
+  type AuditTargetReference,
+  type DataTier,
+  type NodeRecord,
+  type NodeType,
+} from "@vulto/schema";
 import type { GraphQuery } from "../../query";
 import type {
   GraphQueryResult,
@@ -10,10 +17,13 @@ import type {
 } from "../storage/sqlite-graph-index";
 import {
   resolvePermission,
+  resolvePermissionDecision,
+  type PermissionDecision,
   type PermissionOutcome,
   type PolicyRole,
   type PolicyResolution,
 } from "./policy-table";
+import type { AuditRecorder } from "../audit/audit-recorder";
 
 /**
  * FDN-53 stage 1. The `VPS-A004` permission interceptor.
@@ -157,6 +167,167 @@ export function isNodeTypeReadable(
 export interface PermissionContext {
   /** The effective role set for this query, already resolved to the union per A004-T05. */
   readonly roles: readonly PolicyRole[];
+  /** FDN-68's Worker-private recorder; absent only from narrow unit tests. */
+  readonly auditRecorder?: AuditRecorder;
+}
+
+function operationForQuery(query: GraphQuery): AuditOperation {
+  switch (query.kind) {
+    case "node-get":
+      return "NodeRead";
+    case "node-list":
+      return "NodeList";
+    case "edge-neighbors":
+      return "EdgeTraversal";
+    case "recursive-neighbors":
+      return "RecursiveTraversal";
+  }
+}
+
+function queryCardinality(query: GraphQuery): "Single" | "Collection" {
+  return query.kind === "node-get" ? "Single" : "Collection";
+}
+
+function requestedNodeType(query: GraphQuery): NodeType {
+  if (query.kind === "node-get" || query.kind === "node-list") return query.nodeType;
+  return query.direction === "outgoing" ? query.toNodeType : query.fromNodeType;
+}
+
+function queryAuditTarget(
+  query: GraphQuery,
+  targetTier: DataTier | null,
+  partitionKey: string | null = null,
+): AuditTargetReference {
+  if (query.kind === "node-get") {
+    return {
+      kind: "NodeTarget",
+      node_type: query.nodeType,
+      node_id: query.nodeId,
+      partition_key: partitionKey,
+      target_tier: targetTier ?? 0,
+    };
+  }
+  return {
+    kind: "QueryTarget",
+    query_kind: query.kind,
+    requested_node_type: requestedNodeType(query),
+    target_tier: targetTier,
+  };
+}
+
+function queryDecisions(
+  query: GraphQuery,
+  roles: readonly PolicyRole[],
+): Array<{
+  readonly partitionKey: string;
+  readonly tier: DataTier;
+  readonly decision: PermissionDecision;
+}> {
+  return getProtectionPartitions(requestedNodeType(query)).map((partition) => ({
+    partitionKey: partition.key,
+    tier: partition.tier,
+    decision: resolvePermissionDecision(roles, requestedNodeType(query), partition.key),
+  }));
+}
+
+async function recordQueryDenial(
+  recorder: AuditRecorder | undefined,
+  query: GraphQuery,
+  roles: readonly PolicyRole[],
+): Promise<boolean> {
+  const decisions = queryDecisions(query, roles);
+  const denied = decisions.filter(
+    ({ decision }) => decision.outcome === "none" || decision.outcome === "restricted",
+  );
+  if (denied.length === 0) return false;
+
+  // A direct lookup records each denied schema partition named by the
+  // caller. This remains non-enumerating: the target id came from the
+  // request, and no raw row is read to decide whether it exists.
+  if (query.kind === "node-get") {
+    for (const { partitionKey, tier, decision } of denied) {
+      try {
+        await recorder?.record({
+          eventType: "PermissionDenied",
+          operation: operationForQuery(query),
+          target: queryAuditTarget(query, tier, partitionKey),
+          metadata: {
+            denial_class: "InsufficientPermission",
+            result_cardinality: "Single",
+          },
+          decision,
+        });
+      } catch {
+        // The denial remains a denial. AuditRecorder records the durable
+        // failure and the runtime refuses the next operation.
+      }
+    }
+    return decisions.every(({ decision }) => decision.outcome === "none");
+  }
+
+  const tiers = new Set(denied.map(({ tier }) => tier));
+  const tier = tiers.size === 1 ? denied[0]!.tier : null;
+  // A collection or traversal denial is deliberately one schema-level
+  // event. It is decided without reading raw rows, so neither row ids nor a
+  // hidden count can leak into the journal.
+  try {
+    await recorder?.record({
+      eventType: "PermissionDenied",
+      operation: operationForQuery(query),
+      target: queryAuditTarget(query, tier),
+      metadata: {
+        denial_class: "InsufficientPermission",
+        result_cardinality: queryCardinality(query),
+      },
+      decision: denied[0]!.decision,
+    });
+  } catch {
+    // The denial remains a denial. AuditRecorder records the durable failure
+    // and the runtime refuses the next operation instead of continuing.
+  }
+  // Restricted is still a denial of content, but it intentionally returns a
+  // schema-derived placeholder. Only an all-None type can skip raw execution.
+  return decisions.every(({ decision }) => decision.outcome === "none");
+}
+
+async function recordSensitiveGrants(
+  recorder: AuditRecorder | undefined,
+  query: GraphQuery,
+  roles: readonly PolicyRole[],
+  nodes: readonly MaterializedNode[],
+): Promise<void> {
+  if (recorder === undefined) return;
+  for (const node of nodes) {
+    for (const fragment of node.fragments) {
+      const partition = getProtectionPartitions(node.nodeType).find(
+        ({ key }) => key === fragment.partitionKey,
+      );
+      if (partition === undefined || (partition.tier !== 1 && partition.tier !== 3)) {
+        continue;
+      }
+      const decision = resolvePermissionDecision(
+        roles,
+        node.nodeType,
+        fragment.partitionKey,
+      );
+      if (decision.outcome !== "full" && decision.outcome !== "read") continue;
+      // Awaited before executeWithPermissions returns: protected plaintext
+      // cannot cross the Worker boundary before the sealed append commits.
+      await recorder.record({
+        eventType: "SensitiveAccessGranted",
+        operation: operationForQuery(query),
+        target: {
+          kind: "NodeTarget",
+          node_type: node.nodeType,
+          node_id: node.nodeId,
+          partition_key: fragment.partitionKey,
+          target_tier: partition.tier,
+        },
+        metadata: { result_cardinality: queryCardinality(query) },
+        decision,
+      });
+    }
+  }
 }
 
 function filterNeighbor(
@@ -313,26 +484,88 @@ export async function executeWithPermissions(
    */
   const roles: readonly PolicyRole[] = [...context.roles];
 
-  switch (query.kind) {
-    case "node-get": {
-      const raw = await index.execute(query);
-      if (raw.kind !== "node-get") throw new Error("Invalid node-get result");
-      return {
-        kind: "node-get",
-        node: raw.node ? filterNode(raw.node, roles) : null,
-      };
+  const fullyDenied = await recordQueryDenial(context.auditRecorder, query, roles);
+  if (fullyDenied) {
+    switch (query.kind) {
+      case "node-get":
+        return { kind: "node-get", node: null };
+      case "node-list":
+        return { kind: "node-list", nodes: [], nextNodeId: null };
+      case "edge-neighbors":
+        return { kind: "edge-neighbors", neighbors: [], nextEdgeId: null };
+      case "recursive-neighbors":
+        return { kind: "recursive-neighbors", neighbors: [], truncated: false };
     }
-    case "node-list": {
-      const raw = await index.execute(query);
-      if (raw.kind !== "node-list") throw new Error("Invalid node-list result");
-      const nodes = raw.nodes
-        .map((node) => filterNode(node, roles))
-        .filter((node): node is MaterializedNode => node !== null);
-      return { kind: "node-list", nodes, nextNodeId: raw.nextNodeId };
+  }
+
+  try {
+    switch (query.kind) {
+      case "node-get": {
+        const raw = await index.execute(query);
+        if (raw.kind !== "node-get") throw new Error("Invalid node-get result");
+        const result = {
+          kind: "node-get",
+          node: raw.node ? filterNode(raw.node, roles) : null,
+        } as const;
+        await recordSensitiveGrants(
+          context.auditRecorder,
+          query,
+          roles,
+          result.node ? [result.node] : [],
+        );
+        return result;
+      }
+      case "node-list": {
+        const raw = await index.execute(query);
+        if (raw.kind !== "node-list") throw new Error("Invalid node-list result");
+        const nodes = raw.nodes
+          .map((node) => filterNode(node, roles))
+          .filter((node): node is MaterializedNode => node !== null);
+        await recordSensitiveGrants(context.auditRecorder, query, roles, nodes);
+        return { kind: "node-list", nodes, nextNodeId: raw.nextNodeId };
+      }
+      case "edge-neighbors": {
+        const result = await interceptedEdgeNeighbors(index, query, roles);
+        await recordSensitiveGrants(
+          context.auditRecorder,
+          query,
+          roles,
+          result.neighbors.map(({ node }) => node),
+        );
+        return result;
+      }
+      case "recursive-neighbors": {
+        const result = await interceptedRecursiveNeighbors(index, query, roles);
+        await recordSensitiveGrants(
+          context.auditRecorder,
+          query,
+          roles,
+          result.neighbors.map(({ node }) => node),
+        );
+        return result;
+      }
     }
-    case "edge-neighbors":
-      return interceptedEdgeNeighbors(index, query, roles);
-    case "recursive-neighbors":
-      return interceptedRecursiveNeighbors(index, query, roles);
+  } catch (error) {
+    const decision = queryDecisions(query, roles).find(
+      ({ decision: candidate }) =>
+        candidate.outcome === "full" || candidate.outcome === "read",
+    )?.decision;
+    if (
+      decision !== undefined &&
+      context.auditRecorder !== undefined &&
+      !context.auditRecorder.failed
+    ) {
+      await context.auditRecorder.record({
+        eventType: "AuthorizedOperationFailed",
+        operation: operationForQuery(query),
+        target: queryAuditTarget(query, null),
+        metadata: {
+          failure_class: "CommitFailed",
+          result_cardinality: queryCardinality(query),
+        },
+        decision,
+      });
+    }
+    throw error;
   }
 }

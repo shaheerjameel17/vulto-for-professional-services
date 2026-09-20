@@ -264,6 +264,20 @@ async function handle(request: GraphWorkerRequest): Promise<void> {
         scope.postMessage(success(request, result as GraphWorkerSuccess["result"]));
         return;
       }
+      case "audit-log-query": {
+        if (runtime.workspaceId === null) {
+          scope.postMessage(
+            notInitialized(request, "Initialize the Worker before querying audit"),
+          );
+          return;
+        }
+        const result = await runtime.queryAuditLog(
+          request.workspaceId,
+          request.filters,
+        );
+        scope.postMessage(success(request, result));
+        return;
+      }
       case "refresh-role": {
         if (runtime.workspaceId === null) {
           scope.postMessage(

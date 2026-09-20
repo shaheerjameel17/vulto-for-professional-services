@@ -66,13 +66,6 @@ export interface WorkspaceAdmissionDetails {
   readonly occurredAt: string;
 }
 
-/**
- * The audit marker required by founder ruling Q1c: a projection write is
- * recorded in the outbox as having taken the privileged-exception path,
- * distinguishable from an ordinary role-authorized `mutate`.
- */
-export const PROJECTION_AUTHORIZATION_PATH = "privileged-projection-exception" as const;
-
 /** Sorted, de-duplicated, comma-joined — the canonical form stored on the
  * WorkspaceMembership node's `role` field so drift comparison is
  * order-independent. */
@@ -86,13 +79,18 @@ export interface WorkspaceProjectionOutboxEntry {
   readonly kind: ProjectionKind;
   readonly membershipId: string;
   readonly workspaceId: string;
-  /** The Q1c audit marker. Never any other value for a projection write. */
-  readonly authorizationPath: typeof PROJECTION_AUTHORIZATION_PATH;
   readonly createdAt: string;
   /** Set true once the delta is durably flushed to the sealed store. */
   readonly committedLocally: boolean;
   /** Set true once the matching server confirm endpoint has acknowledged it. */
   readonly confirmed: boolean;
+}
+
+/** The command identity used by the centralized audit recorder. */
+export interface PrivilegedProjectionCommit {
+  readonly kind: ProjectionKind;
+  readonly membershipId: string;
+  readonly occurredAt: string;
 }
 
 export interface WorkspaceAdmissionProjection {

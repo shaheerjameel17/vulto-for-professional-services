@@ -1,5 +1,18 @@
 import { passkeyRegistrationInputSchema } from "@vulto/schema";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import {
+  appendAuditEntry,
+  AuditJournalConflictError,
+  AuditJournalCursorError,
+  AuditJournalDeniedError,
+  parseAuditAppendRequest,
+  parseAuditHistoricalQueryRequest,
+  queryHistoricalAudit,
+} from "./audit-journal.js";
+import {
+  auditPseudonymizer,
+  parseAuditPseudonymizationRequest,
+} from "./audit-pseudonymizer.js";
 import { auth } from "./config.js";
 import {
   DeviceRevokeDeniedError,
@@ -358,6 +371,78 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return reply
         .code(503)
         .send({ error: "The sync ticket service is temporarily unavailable" });
+    }
+  });
+
+  // FDN-68. Append, historical read, and the narrow actor pseudonymization
+  // command are the complete public audit service surface. There is no
+  // generic update or delete route.
+  app.post("/audit/append", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed;
+    try {
+      parsed = parseAuditAppendRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid audit append request" });
+    }
+    try {
+      return await appendAuditEntry(requestHeaders(request), parsed);
+    } catch (error) {
+      if (error instanceof AuditJournalDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      if (error instanceof AuditJournalConflictError) {
+        return reply.code(409).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The audit journal is temporarily unavailable" });
+    }
+  });
+
+  app.post("/audit/query", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed;
+    try {
+      parsed = parseAuditHistoricalQueryRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid audit query request" });
+    }
+    try {
+      return await queryHistoricalAudit(requestHeaders(request), parsed);
+    } catch (error) {
+      if (error instanceof AuditJournalDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      if (error instanceof AuditJournalCursorError) {
+        return reply.code(400).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "The audit journal is temporarily unavailable" });
+    }
+  });
+
+  app.post("/audit/pseudonymize-actor", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    let parsed;
+    try {
+      parsed = parseAuditPseudonymizationRequest(request.body);
+    } catch {
+      return reply.code(400).send({ error: "Invalid audit pseudonymization request" });
+    }
+    try {
+      return await auditPseudonymizer.execute(requestHeaders(request), parsed);
+    } catch (error) {
+      if (error instanceof AuditJournalDeniedError) {
+        return reply.code(401).send({ error: error.message });
+      }
+      request.log.error(error);
+      return reply
+        .code(503)
+        .send({ error: "Audit pseudonymization is temporarily unavailable" });
     }
   });
 

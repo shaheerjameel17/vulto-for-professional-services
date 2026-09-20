@@ -97,6 +97,49 @@ describe("graph Worker protocol", () => {
     ).toThrow();
   });
 
+  it("accepts the closed audit-log query and its local, denied, and unavailable results", () => {
+    const request = {
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: "request-audit",
+      sentAt,
+      type: "audit-log-query",
+      workspaceId: "22222222-2222-4222-8222-222222222222",
+      filters: { limit: 25, eventType: "PermissionDenied" },
+    };
+    expect(graphWorkerRequestSchema.parse(request)).toEqual(request);
+    expect(
+      graphWorkerRequestSchema.safeParse({
+        ...request,
+        filters: { ...request.filters, resolveTargets: true },
+      }).success,
+    ).toBe(false);
+
+    const base = {
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: "request-audit",
+      sentAt,
+      type: "success" as const,
+      availability: { state: "ready" as const },
+    };
+    for (const result of [
+      {
+        kind: "audit-log-page",
+        entries: [],
+        source: "Local",
+      },
+      {
+        kind: "audit-log-denied",
+        reason: "Audit log access is not available",
+      },
+      {
+        kind: "audit-log-retention-window-unavailable",
+        availableFrom: "2025-09-10T00:00:00.000Z",
+      },
+    ]) {
+      expect(() => graphWorkerResponseSchema.parse({ ...base, result })).not.toThrow();
+    }
+  });
+
   it("rejects a protocol version mismatch", () => {
     expect(() =>
       graphWorkerResponseSchema.parse({

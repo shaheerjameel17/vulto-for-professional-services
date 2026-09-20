@@ -1,5 +1,11 @@
 import type { WorkspaceRole } from "@vulto/schema";
 import {
+  auditLogQueryFiltersSchema,
+  type AuditLogClient,
+  type AuditLogQueryFilters,
+  type AuditLogQueryResult,
+} from "./audit-log";
+import {
   GRAPH_WORKER_PROTOCOL_VERSION,
   parseGraphWorkerResponse,
   type GraphAvailability,
@@ -37,6 +43,8 @@ export type MutationOutcome =
 
 export interface LocalGraphClient {
   readonly workspaceId: string;
+  /** FDN-68: the only application-readable audit interface. */
+  readonly auditLog: AuditLogClient;
   initialize(): Promise<GraphAvailability>;
   /**
    * FDN-53 stage 2: the real, permission-gated local WRITE path (F131) —
@@ -152,6 +160,9 @@ class BrowserLocalGraphClient implements LocalGraphClient {
     lastError: null,
   };
   readonly #workerFactory: WorkerFactory;
+  readonly auditLog: AuditLogClient = {
+    query: (workspaceId, filters) => this.#queryAuditLog(workspaceId, filters),
+  };
 
   constructor(workspaceId: string, workerFactory: WorkerFactory) {
     if (workspaceId.length === 0) throw new Error("workspaceId must not be empty");
@@ -370,6 +381,29 @@ class BrowserLocalGraphClient implements LocalGraphClient {
       response.result.kind !== "recursive-neighbors"
     ) {
       throw this.#fatal("Worker returned the wrong result for query");
+    }
+    return response.result;
+  }
+
+  async #queryAuditLog(
+    workspaceId: string,
+    filters?: AuditLogQueryFilters,
+  ): Promise<AuditLogQueryResult> {
+    this.#assertInitialized();
+    const response = await this.#send({
+      protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+      requestId: requestId(),
+      sentAt: now(),
+      type: "audit-log-query",
+      workspaceId,
+      filters: auditLogQueryFiltersSchema.parse(filters ?? {}),
+    });
+    if (
+      response.result.kind !== "audit-log-page" &&
+      response.result.kind !== "audit-log-denied" &&
+      response.result.kind !== "audit-log-retention-window-unavailable"
+    ) {
+      throw this.#fatal("Worker returned the wrong result for auditLog.query");
     }
     return response.result;
   }

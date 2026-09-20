@@ -22,13 +22,21 @@
  *    starts locked. There is no cross-instance carry-over by design.
  */
 
-import type { WorkspaceRole } from "@vulto/schema";
+import {
+  auditEntrySchema,
+  deviceApplicationSchema,
+  uuidV4Schema,
+  type DeviceApplication,
+  type WorkspaceRole,
+} from "@vulto/schema";
 
 const DATABASE_NAME = "vulto-sealed-store";
-const DATABASE_VERSION = 1;
+const DATABASE_VERSION = 2;
 const DEVICE_STORE = "device-identity";
 const ENVELOPE_STORE = "envelope";
 const PAYLOAD_STORE = "payload";
+const AUDIT_JOURNAL_STORE = "audit-journal";
+const AUDIT_OUTBOX_STORE = "audit-outbox";
 const DEVICE_RECORD_KEY = "device";
 
 const HKDF_INFO_PREFIX = "vulto-sealed-store:v1:epoch:";
@@ -42,10 +50,10 @@ export interface SealedStoreEnvelope {
 }
 
 /**
- * FDN-53 stage 1: `roles` and `membershipId` are siblings of `envelope`,
- * deliberately NOT part of it. `envelope` is persisted into IndexedDB by
+ * FDN-53 stage 1 / FDN-68 Stage 2. Roles and authenticated actor identity
+ * are siblings of `envelope`, deliberately NOT part of it. `envelope` is persisted into IndexedDB by
  * `unlock()` below and read back on a future unlock attempt to check for a
- * workspace/key-epoch mismatch — durable, on-disk contract. Role data must
+ * workspace/key-epoch mismatch — durable, on-disk contract. Actor data must
  * never behave that way: it is a live fact from `requireCurrentWorkspaceSession`
  * at the moment of THIS unlock (or refresh), and persisting it would let a
  * stale, once-true role survive in the clear on disk and get read back
@@ -58,12 +66,33 @@ export interface DeviceUnlockGrant {
   envelope: SealedStoreEnvelope;
   roles: WorkspaceRole[];
   membershipId: string;
+  /** Required on an ordinary authenticated unlock; absent only on bounded projection/test grants. */
+  userId?: string;
+  /** Required on an ordinary authenticated unlock; absent only on bounded projection/test grants. */
+  application?: DeviceApplication;
+}
+
+export interface AuthenticatedWorkerContext {
+  readonly workspaceId: string;
+  readonly userId: string;
+  readonly membershipId: string;
+  readonly application: DeviceApplication;
+  readonly roles: readonly WorkspaceRole[];
 }
 
 interface PayloadRecord {
   storeKey: string;
   workspaceId: string;
   generation: number;
+  digest: string;
+  iv: Uint8Array;
+  ciphertext: Uint8Array;
+}
+
+interface AuditPayloadRecord {
+  sequence?: number;
+  auditKey: string;
+  workspaceId: string;
   digest: string;
   iv: Uint8Array;
   ciphertext: Uint8Array;
@@ -165,6 +194,16 @@ function openDatabase(): Promise<IDBDatabase> {
       if (!database.objectStoreNames.contains(PAYLOAD_STORE)) {
         database.createObjectStore(PAYLOAD_STORE, { keyPath: "storeKey" });
       }
+      for (const storeName of [AUDIT_JOURNAL_STORE, AUDIT_OUTBOX_STORE]) {
+        if (!database.objectStoreNames.contains(storeName)) {
+          const store = database.createObjectStore(storeName, {
+            keyPath: "sequence",
+            autoIncrement: true,
+          });
+          store.createIndex("auditKey", "auditKey", { unique: true });
+          store.createIndex("workspaceId", "workspaceId", { unique: false });
+        }
+      }
     };
     request.onsuccess = () => resolve(request.result);
     request.onerror = () =>
@@ -241,6 +280,12 @@ function base64Url(bytes: Uint8Array): string {
   return btoa(binary).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
 
+function fromBase64Url(value: string): Uint8Array {
+  const base64 = value.replaceAll("-", "+").replaceAll("_", "/");
+  const padded = base64 + "=".repeat((4 - (base64.length % 4)) % 4);
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+
 async function contentDigest(bytes: Uint8Array): Promise<string> {
   return base64Url(
     new Uint8Array(await crypto.subtle.digest("SHA-256", bytes as BufferSource)),
@@ -257,6 +302,9 @@ export class SealedStore {
   #envelope: SealedStoreEnvelope | null = null;
   #roles: WorkspaceRole[] | null = null;
   #membershipId: string | null = null;
+  #userId: string | null = null;
+  #application: DeviceApplication | null = null;
+  #abortNextAuditAppend = false;
 
   get isUnlocked(): boolean {
     return this.#key !== null;
@@ -285,6 +333,26 @@ export class SealedStore {
       throw new SealedStoreLockedError();
     }
     return this.#membershipId;
+  }
+
+  get authenticatedContext(): AuthenticatedWorkerContext {
+    if (
+      this.#key === null ||
+      this.#envelope === null ||
+      this.#roles === null ||
+      this.#membershipId === null ||
+      this.#userId === null ||
+      this.#application === null
+    ) {
+      throw new SealedStoreLockedError();
+    }
+    return {
+      workspaceId: this.#envelope.workspaceId,
+      userId: this.#userId,
+      membershipId: this.#membershipId,
+      application: this.#application,
+      roles: [...this.#roles],
+    };
   }
 
   async #requireDatabase(): Promise<IDBDatabase> {
@@ -321,7 +389,11 @@ export class SealedStore {
    * AES-256-GCM key entirely inside this Worker. Never returns or exposes
    * the derived key or either half to the caller.
    */
-  async unlockOnline(workspaceId: string, apiOrigin: string): Promise<void> {
+  async unlockOnline(
+    workspaceId: string,
+    apiOrigin: string,
+    application: DeviceApplication = "VultoRoster",
+  ): Promise<void> {
     const identity = await this.#deviceIdentity();
 
     // FDN-63. A device registers its identity as part of coming online —
@@ -340,7 +412,7 @@ export class SealedStore {
         deviceId: identity.deviceId,
         deviceName: describeWebClient(),
         platform: "web",
-        application: "VultoRoster",
+        application,
       }),
     });
     if (!registration.ok) throw new SealedStoreUnlockDeniedError();
@@ -355,8 +427,17 @@ export class SealedStore {
     const grant = (await response.json()) as DeviceUnlockGrant;
     if (
       grant.envelope.workspaceId !== workspaceId ||
-      grant.envelope.deviceId !== identity.deviceId
+      grant.envelope.deviceId !== identity.deviceId ||
+      grant.userId === undefined ||
+      grant.application === undefined
     ) {
+      throw new SealedStoreUnlockDeniedError();
+    }
+    try {
+      uuidV4Schema.parse(grant.userId);
+      uuidV4Schema.parse(grant.membershipId);
+      deviceApplicationSchema.parse(grant.application);
+    } catch {
       throw new SealedStoreUnlockDeniedError();
     }
     await this.unlock(grant, identity.deviceHalf);
@@ -407,6 +488,8 @@ export class SealedStore {
     this.#envelope = grant.envelope;
     this.#roles = grant.roles;
     this.#membershipId = grant.membershipId;
+    this.#userId = grant.userId ?? null;
+    this.#application = grant.application ?? null;
   }
 
   /**
@@ -427,6 +510,9 @@ export class SealedStore {
     this.#envelope = null;
     this.#roles = null;
     this.#membershipId = null;
+    this.#userId = null;
+    this.#application = null;
+    this.#abortNextAuditAppend = false;
   }
 
   #requireUnlocked(): { key: CryptoKey; envelope: SealedStoreEnvelope } {
@@ -521,6 +607,319 @@ export class SealedStore {
     objectStore.put(record);
     await transactionDone(transaction);
     return { generation: nextGeneration, digest };
+  }
+
+  /** Atomic append to both individually encrypted audit stores. */
+  async appendAuditEntry(auditEntryId: string, plaintext: Uint8Array): Promise<void> {
+    const { key, envelope } = this.#requireUnlocked();
+    const database = await this.#requireDatabase();
+    const digest = await contentDigest(plaintext);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        plaintext as BufferSource,
+      ),
+    );
+    const auditKey = `${envelope.workspaceId}:${auditEntryId}`;
+    const transaction = database.transaction(
+      [AUDIT_JOURNAL_STORE, AUDIT_OUTBOX_STORE],
+      "readwrite",
+    );
+    const journal = transaction.objectStore(AUDIT_JOURNAL_STORE);
+    const outbox = transaction.objectStore(AUDIT_OUTBOX_STORE);
+    const journalExisting = (await requestToPromise(
+      journal.index("auditKey").get(auditKey),
+    )) as AuditPayloadRecord | undefined;
+    const outboxExisting = (await requestToPromise(
+      outbox.index("auditKey").get(auditKey),
+    )) as AuditPayloadRecord | undefined;
+    if (journalExisting !== undefined || outboxExisting !== undefined) {
+      if (
+        journalExisting === undefined ||
+        outboxExisting === undefined ||
+        journalExisting.digest !== digest ||
+        outboxExisting.digest !== digest
+      ) {
+        transaction.abort();
+        try {
+          await transactionDone(transaction);
+        } catch {
+          // Explicit abort is the required refusal path.
+        }
+        throw new Error("An audit_entry_id cannot be reused with different content");
+      }
+      await transactionDone(transaction);
+      return;
+    }
+    const record: AuditPayloadRecord = {
+      auditKey,
+      workspaceId: envelope.workspaceId,
+      digest,
+      iv,
+      ciphertext,
+    };
+    journal.add(record);
+    outbox.add(record);
+    if (this.#abortNextAuditAppend) {
+      this.#abortNextAuditAppend = false;
+      transaction.abort();
+    }
+    await transactionDone(transaction);
+  }
+
+  async readAuditEntries(source: "journal" | "outbox"): Promise<readonly Uint8Array[]> {
+    const { key, envelope } = this.#requireUnlocked();
+    const database = await this.#requireDatabase();
+    const storeName = source === "journal" ? AUDIT_JOURNAL_STORE : AUDIT_OUTBOX_STORE;
+    const transaction = database.transaction(storeName, "readonly");
+    const records = (await requestToPromise(
+      transaction
+        .objectStore(storeName)
+        .index("workspaceId")
+        .getAll(envelope.workspaceId),
+    )) as AuditPayloadRecord[];
+    const plaintext: Uint8Array[] = [];
+    for (const record of records) {
+      try {
+        const opened = new Uint8Array(
+          await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: record.iv as BufferSource },
+            key,
+            record.ciphertext as BufferSource,
+          ),
+        );
+        if ((await contentDigest(opened)) !== record.digest) {
+          throw new Error("Audit digest mismatch");
+        }
+        plaintext.push(opened);
+      } catch {
+        throw new SealedStoreCannotOpenError();
+      }
+    }
+    return plaintext;
+  }
+
+  /** Reads one immutable local journal entry by its workspace-bound identity. */
+  async readAuditEntry(auditEntryId: string): Promise<Uint8Array | null> {
+    const { key, envelope } = this.#requireUnlocked();
+    const database = await this.#requireDatabase();
+    const transaction = database.transaction(AUDIT_JOURNAL_STORE, "readonly");
+    const record = (await requestToPromise(
+      transaction
+        .objectStore(AUDIT_JOURNAL_STORE)
+        .index("auditKey")
+        .get(`${envelope.workspaceId}:${auditEntryId}`),
+    )) as AuditPayloadRecord | undefined;
+    if (record === undefined) return null;
+    try {
+      const opened = new Uint8Array(
+        await crypto.subtle.decrypt(
+          { name: "AES-GCM", iv: record.iv as BufferSource },
+          key,
+          record.ciphertext as BufferSource,
+        ),
+      );
+      if ((await contentDigest(opened)) !== record.digest) {
+        throw new Error("Audit digest mismatch");
+      }
+      return opened;
+    } catch {
+      throw new SealedStoreCannotOpenError();
+    }
+  }
+
+  /**
+   * Records a server acknowledgement durably. The outbox row is always
+   * removed; the journal row is removed only when the caller has established
+   * that it is outside the local retention window. That removal is cache
+   * eviction, not deletion of the retained server record.
+   */
+  async acknowledgeAuditEntry(
+    auditEntryId: string,
+    evictFromLocalJournal: boolean,
+  ): Promise<void> {
+    const { envelope } = this.#requireUnlocked();
+    const database = await this.#requireDatabase();
+    const auditKey = `${envelope.workspaceId}:${auditEntryId}`;
+    const transaction = database.transaction(
+      [AUDIT_JOURNAL_STORE, AUDIT_OUTBOX_STORE],
+      "readwrite",
+    );
+    const outbox = transaction.objectStore(AUDIT_OUTBOX_STORE);
+    const journal = transaction.objectStore(AUDIT_JOURNAL_STORE);
+    const outboxRecord = (await requestToPromise(
+      outbox.index("auditKey").get(auditKey),
+    )) as AuditPayloadRecord | undefined;
+    if (outboxRecord?.sequence !== undefined) outbox.delete(outboxRecord.sequence);
+    if (evictFromLocalJournal) {
+      const journalRecord = (await requestToPromise(
+        journal.index("auditKey").get(auditKey),
+      )) as AuditPayloadRecord | undefined;
+      if (journalRecord?.sequence !== undefined) journal.delete(journalRecord.sequence);
+    }
+    await transactionDone(transaction);
+  }
+
+  /**
+   * FDN-68 Stage 6's only local audit mutation. Both sealed projections are
+   * rewritten in one IndexedDB transaction, and the closed AuditEntry schema
+   * plus the explicit comparison below make actor_user_id the sole mutable
+   * event field. Replaying old identifier -> token is a no-op.
+   */
+  async pseudonymizeAuditActor(
+    currentActorUserId: string,
+    opaqueActorToken: string,
+  ): Promise<readonly string[]> {
+    const { key, envelope } = this.#requireUnlocked();
+    const currentActor = uuidV4Schema.parse(currentActorUserId);
+    const opaqueToken = uuidV4Schema.parse(opaqueActorToken);
+    if (currentActor === opaqueToken) {
+      throw new Error("The opaque actor token must replace the current identifier");
+    }
+    const database = await this.#requireDatabase();
+    const selected: Array<{
+      storeName: typeof AUDIT_JOURNAL_STORE | typeof AUDIT_OUTBOX_STORE;
+      record: AuditPayloadRecord;
+    }> = [];
+    for (const storeName of [AUDIT_JOURNAL_STORE, AUDIT_OUTBOX_STORE] as const) {
+      const transaction = database.transaction(storeName, "readonly");
+      const records = (await requestToPromise(
+        transaction
+          .objectStore(storeName)
+          .index("workspaceId")
+          .getAll(envelope.workspaceId),
+      )) as AuditPayloadRecord[];
+      selected.push(...records.map((record) => ({ storeName, record })));
+    }
+
+    const replacements: Array<{
+      storeName: typeof AUDIT_JOURNAL_STORE | typeof AUDIT_OUTBOX_STORE;
+      record: AuditPayloadRecord;
+      auditEntryId: string;
+    }> = [];
+    for (const selectedRecord of selected) {
+      try {
+        const opened = new Uint8Array(
+          await crypto.subtle.decrypt(
+            { name: "AES-GCM", iv: selectedRecord.record.iv as BufferSource },
+            key,
+            selectedRecord.record.ciphertext as BufferSource,
+          ),
+        );
+        if ((await contentDigest(opened)) !== selectedRecord.record.digest) {
+          throw new Error("Audit digest mismatch");
+        }
+        const before = auditEntrySchema.parse(
+          JSON.parse(new TextDecoder().decode(opened)),
+        );
+        if (before.actor_user_id !== currentActor) continue;
+        const after = auditEntrySchema.parse({
+          ...before,
+          actor_user_id: opaqueToken,
+        });
+        const { actor_user_id: _beforeActor, ...beforeImmutable } = before;
+        const { actor_user_id: _afterActor, ...afterImmutable } = after;
+        if (JSON.stringify(beforeImmutable) !== JSON.stringify(afterImmutable)) {
+          throw new Error("Audit pseudonymization altered immutable fields");
+        }
+        const plaintext = new TextEncoder().encode(JSON.stringify(after));
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const ciphertext = new Uint8Array(
+          await crypto.subtle.encrypt(
+            { name: "AES-GCM", iv },
+            key,
+            plaintext as BufferSource,
+          ),
+        );
+        replacements.push({
+          storeName: selectedRecord.storeName,
+          auditEntryId: before.audit_entry_id,
+          record: {
+            ...selectedRecord.record,
+            digest: await contentDigest(plaintext),
+            iv,
+            ciphertext,
+          },
+        });
+      } catch (error) {
+        if (error instanceof Error && error.message.includes("pseudonymization")) {
+          throw error;
+        }
+        throw new SealedStoreCannotOpenError();
+      }
+    }
+
+    if (replacements.length === 0) return [];
+    const transaction = database.transaction(
+      [AUDIT_JOURNAL_STORE, AUDIT_OUTBOX_STORE],
+      "readwrite",
+    );
+    for (const replacement of replacements) {
+      transaction.objectStore(replacement.storeName).put(replacement.record);
+    }
+    await transactionDone(transaction);
+    return [...new Set(replacements.map(({ auditEntryId }) => auditEntryId))];
+  }
+
+  /**
+   * FDN-68 Stage 4. Audit cursors are encrypted with the unlocked workspace's
+   * sealed-store key and bind that workspace as authenticated data. Callers
+   * receive an opaque token; a token copied from another workspace, modified,
+   * or opened under another key cannot select a local journal position.
+   */
+  async sealAuditCursor(plaintext: Uint8Array): Promise<string> {
+    const { key, envelope } = this.#requireUnlocked();
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const ciphertext = new Uint8Array(
+      await crypto.subtle.encrypt(
+        {
+          name: "AES-GCM",
+          iv,
+          additionalData: new TextEncoder().encode(
+            `vulto:audit-cursor:v1:${envelope.workspaceId}`,
+          ),
+        },
+        key,
+        plaintext as BufferSource,
+      ),
+    );
+    const encoded = new Uint8Array(1 + iv.byteLength + ciphertext.byteLength);
+    encoded[0] = 1;
+    encoded.set(iv, 1);
+    encoded.set(ciphertext, 13);
+    return base64Url(encoded);
+  }
+
+  async openAuditCursor(cursor: string): Promise<Uint8Array | null> {
+    const { key, envelope } = this.#requireUnlocked();
+    try {
+      const encoded = fromBase64Url(cursor);
+      if (encoded.byteLength < 30 || encoded[0] !== 1) return null;
+      const iv = encoded.slice(1, 13);
+      const ciphertext = encoded.slice(13);
+      return new Uint8Array(
+        await crypto.subtle.decrypt(
+          {
+            name: "AES-GCM",
+            iv,
+            additionalData: new TextEncoder().encode(
+              `vulto:audit-cursor:v1:${envelope.workspaceId}`,
+            ),
+          },
+          key,
+          ciphertext as BufferSource,
+        ),
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  abortNextAuditAppendForTesting(): void {
+    this.#requireUnlocked();
+    this.#abortNextAuditAppend = true;
   }
 
   /**
@@ -639,31 +1038,34 @@ export class SealedStore {
     const database = await this.#requireDatabase();
 
     const transaction = database.transaction(
-      [PAYLOAD_STORE, ENVELOPE_STORE],
+      [PAYLOAD_STORE, AUDIT_JOURNAL_STORE, AUDIT_OUTBOX_STORE, ENVELOPE_STORE],
       "readwrite",
     );
-    const payloads = transaction.objectStore(PAYLOAD_STORE);
 
     // Cursored and matched on the record's own `workspaceId` field rather
     // than on a key prefix. The key is `${workspaceId}:${storeKey}` and a
     // prefix range would depend on no store key ever containing a colon —
     // a constraint nothing enforces and a future caller would not know to
     // preserve. Under-erasing here would leave readable ciphertext behind.
-    const cursorRequest = payloads.openCursor();
-    await new Promise<void>((resolve, reject) => {
-      cursorRequest.onsuccess = () => {
-        const cursor = cursorRequest.result;
-        if (!cursor) {
-          resolve();
-          return;
-        }
-        const record = cursor.value as PayloadRecord | undefined;
-        if (record?.workspaceId === workspaceId) cursor.delete();
-        cursor.continue();
-      };
-      cursorRequest.onerror = () =>
-        reject(cursorRequest.error ?? new Error("Could not scan sealed payloads"));
-    });
+    await Promise.all(
+      [PAYLOAD_STORE, AUDIT_JOURNAL_STORE, AUDIT_OUTBOX_STORE].map((storeName) => {
+        const cursorRequest = transaction.objectStore(storeName).openCursor();
+        return new Promise<void>((resolve, reject) => {
+          cursorRequest.onsuccess = () => {
+            const cursor = cursorRequest.result;
+            if (!cursor) {
+              resolve();
+              return;
+            }
+            const record = cursor.value as { workspaceId?: string } | undefined;
+            if (record?.workspaceId === workspaceId) cursor.delete();
+            cursor.continue();
+          };
+          cursorRequest.onerror = () =>
+            reject(cursorRequest.error ?? new Error("Could not scan sealed payloads"));
+        });
+      }),
+    );
 
     transaction.objectStore(ENVELOPE_STORE).delete(workspaceId);
     await transactionDone(transaction);

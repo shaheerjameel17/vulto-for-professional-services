@@ -11,6 +11,17 @@ export const WORKSPACE_ROLES = [
 export const workspaceRoleSchema = z.enum(WORKSPACE_ROLES);
 export type WorkspaceRole = z.infer<typeof workspaceRoleSchema>;
 
+/** VPS-A004 role order, including the graph-derived Manager role. */
+export const POLICY_ROLES = [
+  "owner",
+  "hr-admin",
+  "finance-admin",
+  "manager",
+  "team-member",
+] as const;
+export const policyRoleSchema = z.enum(POLICY_ROLES);
+export type PolicyRole = z.infer<typeof policyRoleSchema>;
+
 export const passkeyRegistrationInputSchema = z.object({
   name: z.string().trim().min(1).max(100),
   email: z.email().trim().toLowerCase(),

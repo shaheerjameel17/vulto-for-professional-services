@@ -35,7 +35,7 @@ Logging therefore happens inside the one query-layer interceptor every feature a
 
 ## What It Is
 
-An append-only record of two things only: **every permission denial, at any tier**, and **every successful access to Tier 1 or Tier 3 data specifically.**
+An append-only record of three things only: **every permission denial, at any tier**; **every successful access to Tier 1 or Tier 3 data specifically**; and **every authorized operation that fails before completion.**
 
 It records who, what kind of record, and when. It never records the content. And by design it cannot be edited or removed by anyone, including Owner.
 
@@ -106,21 +106,38 @@ Drops `role exercised`, then `tier`, below 1280px. Actor and timestamp are never
 
 ```
 audit_entry_id:    UUID v4
+schema_version:    integer, starts at 1
 workspace_id:      UUID
-event_type:        enum: PermissionDenied, SensitiveAccessGranted
+event_type:        enum: PermissionDenied, SensitiveAccessGranted,
+                   AuthorizedOperationFailed
+operation:         enum: NodeRead, NodeList, EdgeTraversal,
+                   RecursiveTraversal, NodeCreate, NodeUpdate,
+                   NodeRemoveAttempt, EdgeCreate, EdgeUpdate,
+                   EdgeRemoveAttempt
+outcome:           enum: Granted, Denied, Failed
 actor_user_id:     UUID, FK to User — see pseudonymization below
-actor_role:        string — the specific role exercised at the moment of the
-                   event, since a user may hold several
+actor_membership_id: UUID, FK to WorkspaceMembership
+actor_role:        string, nullable — the specific role that produced the
+                   winning grant; null on denial because no role granted it
+actor_roles:       string[] — the canonically sorted role snapshot evaluated
+                   for this operation
 actor_application: string, default 'VultoRoster' — which suite application
                    issued the query. Invisible while Roster was the only
                    application able to reach the interceptor; a real gap the
                    moment VPS-F008 makes a second one possible
-target_node_type:  string
-target_node_id:    UUID, nullable — the specific record where known.
-                   Never the content it holds
-target_tier:       enum: Tier0, Tier1, Tier2, Tier3
+target:            closed target reference — exactly one of NodeTarget,
+                   EdgeTarget or QueryTarget, defined below
+metadata:          closed metadata object, defined below; never arbitrary JSON
 occurred_at:       timestamp
 ```
+
+`NodeTarget` carries `node_type`, nullable `node_id`, nullable `partition_key` and `target_tier`. `EdgeTarget` carries `edge_type`, nullable `edge_id`, nullable endpoint node types and `target_tier`. `QueryTarget` carries the query kind, nullable requested node type and nullable target tier. A nullable identifier means only that no specific identifier was safely known; its presence records an identifier supplied by the caller or already legitimately visible to them, never confirmation that a guessed record exists.
+
+`metadata` is a closed object. Its permitted keys are `denial_class`, `failure_class` and `result_cardinality`. `denial_class` is one of `InsufficientPermission`, `UnregisteredRelationship` or `UnresolvedProtection`. `failure_class` is one of `InvalidInput`, `UnsupportedOperation`, `CommitFailed` or `AuditPersistenceFailed`. `result_cardinality` is `Single` or `Collection`. No other key is accepted.
+
+An entry never contains a record value or fragment, query text, exception message or stack, candidate delta bytes, a hidden endpoint identifier learned from restricted graph state, a hidden result count or free-form application metadata. In particular, the permission layer's human-readable denial reason and an underlying schema-validation error are not audit metadata.
+
+Where several roles tie for the winning permission, the permission layer uses one specified stable role precedence for `actor_role`; caller array order never decides provenance. A denial carries `actor_role: null`, because no role authorized it, while `actor_roles` preserves the complete role snapshot that was evaluated.
 
 There is no `updated_at`, no `updated_by`, and **no soft-delete field**. That is deliberate rather than an oversight, and it is the one node type in the product that departs from [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Universal Node Conventions. The departure is stated here explicitly rather than inferred.
 
@@ -136,15 +153,33 @@ An audit log that a compromised or malicious Owner account could edit or erase i
 
 **No API surface anywhere in this product accepts an update or delete targeting an AuditEntry.** Rejected at the write layer, not merely absent from the interface — the same discipline this project applies everywhere a rule must hold regardless of what a modified client attempts.
 
+The one narrow exception is [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]] actor pseudonymization. It may replace `actor_user_id` in place with a stable, workspace-scoped opaque token and may change no other field. It is a distinctly named privileged operation, not generic mutation; it is idempotent, cannot remove an entry, and applies the same token to every entry for that actor so the history remains correlatable.
+
 ### What is logged, and what deliberately is not
 
 **Every permission denial, at every tier.** A denial at any level is a security-relevant fact.
 
 **Every successful Tier 1 and Tier 3 access.** Not Tier 0 or Tier 2 — logging every routine, broadly-permitted read would produce overwhelming volume with no proportionate accountability value. Tier 1 and Tier 3 are the most sensitive data in the product, and the logging concentrates exactly there.
 
+**Every authorized operation that fails before completion.** It carries `AuthorizedOperationFailed`, `outcome: Failed` and one closed `failure_class`; it never carries the underlying exception text or restricted values. `Denied`, `invalid` and `unsupported` remain distinct decision categories rather than being collapsed into one caller-facing result. Where an invalid or unsupported attempt is retained as failure evidence, the event records only its closed classification and caller-supplied or registry-public target facts.
+
+For a direct attempt, the target may record the identifier and type the caller supplied, but the event does not assert that the identifier exists. A denied collection query records one query-level event and no hidden result count or hidden row identifiers. A successful collection access to Tier 1 or Tier 3 records each protected target actually disclosed, so the log can answer who accessed a specific record.
+
+### Dedicated append-only storage convention
+
+AuditEntry does not use the ordinary mutable node-fragment write path. The suite permission interceptor is the sole ordinary writer and calls one internal typed audit recorder in `packages/graph`; Roster, Foundation features and later applications receive no create, update or delete method.
+
+The recorder first appends the event to a sealed local journal and durable outbox. An idempotent authenticated append operation then replicates it into a workspace-isolated Tier 2 server journal, keyed by `audit_entry_id`; redelivery of identical content is accepted and different content under the same identifier is rejected. The server journal is a durable retained replica and historical-query source, not a canonical copy of the customer's graph and not authority to invent or alter an event.
+
+The local retention-window projection materializes recent entries for offline review. Evicting an entry from that projection is cache eviction only and never emits a graph deletion or removes the server-retained journal entry. Older pages are fetched on demand through the permission-aware audit query and may be cached locally for the period the sync specification defines.
+
+The sensitive-release boundary includes audit durability. A Tier 1 or Tier 3 result is not released until its event is durable in the local journal. If connectivity is unavailable after that local append, the operation completes and the outbox retries. If the local append cannot become durable, the protected result is withheld. A permission denial remains denied if audit persistence fails, and the graph runtime becomes unavailable before accepting another operation rather than continuing with an unaudited session. A successful mutation is not reported as ordinary success unless its audit evidence is durably queued.
+
+The supported product and API surface is immutable and tamper-resistant even for Owner: generic mutation cannot create, update or remove an AuditEntry, and the server accepts append or the narrow pseudonymization operation only. Cryptographic proof against a person running a deliberately modified client on a device already authorized to decrypt the target is expressly out of scope and requires a separate future architecture decision; this feature does not imply that stronger guarantee.
+
 ### Volume
 
-A workspace of 150 people running payroll generates on the order of tens of thousands of entries per year. The table is indexed on `occurred_at`, `actor_user_id` and `target_node_type`, and entries older than the local retention window are not materialized on device, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — they render as the aged-out state and fetch on demand, exactly as Tier 1 records do.
+A workspace of 150 people running payroll generates on the order of tens of thousands of entries per year. The journal and its query projection are indexed on `occurred_at`, `actor_user_id`, `event_type`, `operation`, `outcome` and `target.kind`, plus the discriminator carried by the applicable target variant — `NodeTarget.node_type`, `EdgeTarget.edge_type` or `QueryTarget.requested_node_type` — and `target_tier` where that variant carries one. Entries older than the local retention window are not materialized on device, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — they render as the aged-out state and fetch on demand, exactly as Tier 1 records do.
 
 ### Retention and erasure
 
@@ -164,11 +199,14 @@ This resolves a genuine collision between an immutable audit log and a statutory
 
 ```
 auditLog.query(workspaceId, filters?: {
-  startDate?, endDate?, actorUserId?, eventType?, targetNodeType?, targetTier?
-}) -> AuditEntry[]
+  cursor?, limit, startDate?, endDate?, actorUserId?, eventType?,
+  operation?, outcome?, targetNodeType?, targetTier?
+}) -> { entries: AuditEntry[], nextCursor: string?, source: Local | Historical }
   // Owner and HR Admin only. No create, update or delete endpoint exists
   // for this node type anywhere in the product
 ```
+
+The authenticated session workspace, not `workspaceId` supplied by a caller, is authoritative and must match it exactly. Cursors are opaque and workspace-bound. An unauthorized audit query returns the same denial whether or not a matching entry exists and itself writes a Tier 2 `PermissionDenied` event; the denied caller cannot read that event. An authorized audit query is a Tier 2 success and therefore does not recursively log itself. Target identifiers remain opaque: this query never resolves one into a label, subject, payload or related record automatically.
 
 ---
 
@@ -183,6 +221,10 @@ auditLog.query(workspaceId, filters?: {
 | G05 | `actor_application` records which suite application issued the query, defaulting to `'VultoRoster'` |
 | G06 | AuditEntry is exempt from erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. An erased actor's identifier is pseudonymized to a stable opaque token; the entry itself persists |
 | G07 | AuditEntry is never indexed by [[VPS-F002_Local-First_Search|VPS-F002]] |
+| G08 | Every entry carries `operation`, `outcome`, a closed target reference and closed metadata. `AuthorizedOperationFailed` records an authorized operation that failed before completion without retaining exception text or restricted values |
+| G09 | The suite interceptor writes through one internal typed recorder backed by a sealed local append journal and durable outbox; an idempotent authenticated append replicates into a workspace-isolated Tier 2 server journal retained for the workspace lifetime |
+| G10 | AuditEntry is reserved from generic graph mutation. The only post-append field change is the distinctly named, idempotent VPS-F007 operation that replaces `actor_user_id` with one stable workspace-scoped opaque token and changes nothing else |
+| G11 | Audit retrieval authorizes the authenticated workspace and Owner/HR Admin role before reading either the local retention projection or historical server pages; it never resolves opaque target references into protected data |
 
 ---
 
@@ -241,10 +283,29 @@ auditLog.query(workspaceId, filters?: {
 
 ---
 
+**GIVEN** an operation has passed authorization but fails before completion
+**WHEN** the interceptor records the failure
+**THEN** an AuditEntry exists with event type `AuthorizedOperationFailed`, outcome `Failed` and one permitted closed `failure_class`, with no exception text, stack, record value or restricted value anywhere in the entry
+
+---
+
+**GIVEN** an authorized Owner or HR Admin requests a page of audit entries with an opaque workspace-bound cursor
+**WHEN** the requested page is resolved from the materialized local retention window or fetched from the retained historical journal
+**THEN** the response carries `entries`, `nextCursor` and `source: Local | Historical`, with `Local` identifying local-window results and `Historical` identifying an on-demand historical fetch
+
+---
+
+**GIVEN** an approved erasure has already pseudonymized an actor's audit entries with the stable workspace-scoped opaque token
+**WHEN** the same pseudonymization operation is replayed
+**THEN** it is idempotent: `actor_user_id` remains that same token and every other field — `event_type`, `operation`, `target`, `outcome`, `occurred_at` and `metadata` — is provably unchanged afterward
+
+---
+
 ## Non-Functional Requirements
 
 - Logging adds no more than 10ms to any interceptor decision. This feature must never become a bottleneck in the one mechanism every other feature depends on
 - No code path anywhere updates or deletes an existing entry, verified as a structural property of the API surface rather than a policy
+- The sole exception to the preceding rule is the typed actor-pseudonymization operation, which can replace only `actor_user_id` and is verified incapable of changing or deleting anything else
 - Review functions from local cache for entries inside the retention window; older entries render as the aged-out state and fetch on demand
 - The table remains responsive across a year of entries for a workspace of 150 people
 
@@ -256,6 +317,7 @@ auditLog.query(workspaceId, filters?: {
 - **Logging is structural, not conventional.** A missed subscription rule for a notification is an inconvenience. A missed one for an audit event is a gap in exactly the record this feature exists to keep complete.
 - **The log is itself sensitive.** It reveals which people hold which roles, which records exist, and who is interested in whom. It is Tier 2, Owner and HR Admin only, excluded from search, and reached from settings rather than navigation. Every one of those is a deliberate reduction in casual exposure.
 - **Pseudonymization is not anonymization, and this is stated honestly.** A pseudonymized actor's events remain correlatable with one another by design, which is what makes the log still useful. Where a jurisdiction requires stronger treatment, that is a legal question for that workspace rather than an engineering default.
+- **Tamper resistance has a stated boundary.** Every supported product and API path, including one used by Owner, is append-only apart from the narrow actor-pseudonymization operation. Detecting an authorized person running a deliberately modified client that omits its own local read event requires a separate cryptographic architecture and is not claimed here.
 
 ---
 
@@ -277,6 +339,12 @@ auditLog.query(workspaceId, filters?: {
 **AuditEntry is excluded from search.** Not previously stated, and a real leak — indexing the log would let someone discover that a restricted record type exists by searching for it, which is the inference the interceptor prevents everywhere else.
 
 **The exemption from Universal Node Conventions is stated explicitly.** The previous specification noted the absent fields were deliberate; [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] did not record the exemption, which would have surfaced as a schema-conformance failure in review.
+
+**FDN-68 extends the canonical event vocabulary.** The founder approved `operation`, `outcome`, a closed target reference, closed metadata and `AuthorizedOperationFailed`. This preserves `PermissionDenied` and `SensitiveAccessGranted` while making failed-operation evidence typed rather than free-form.
+
+**FDN-68 owns one dedicated audit-storage convention.** The founder approved the sealed local append journal and durable outbox, the idempotent workspace-isolated Tier 2 server journal, and the local retention-window projection with historical fetch on demand. Ordinary mutable node-fragment storage is not the AuditEntry write path.
+
+**The tamper-resistance boundary is explicit.** The founder approved immutability across every supported product and API path. Cryptographic proof against a hostile modified client on an already-authorized device is a separate future architecture decision and is not part of this feature's claim.
 
 ---
 

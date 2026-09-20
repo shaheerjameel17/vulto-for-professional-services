@@ -200,6 +200,9 @@ importers:
       '@trpc/server':
         specifier: 11.18.0
         version: 11.18.0(typescript@5.9.3)
+      '@vulto/graph':
+        specifier: workspace:*
+        version: link:../../packages/graph
       '@vulto/schema':
         specifier: workspace:*
         version: link:../../packages/schema

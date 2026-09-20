@@ -6,15 +6,20 @@ import {
   workspaceRoleSchema,
 } from "@vulto/schema";
 import { z } from "zod";
+import {
+  auditLogDeniedSchema,
+  auditLogPageSchema,
+  auditLogQueryRequestSchema,
+  auditLogRetentionWindowUnavailableSchema,
+} from "./audit-log";
 import { graphQuerySchema } from "./query";
 
 /**
- * Bumped to 2 in FDN-51 Stage 4a: the `start-sync` / `stop-sync` /
- * `get-sync-status` requests, the `sync-status` result, and — the first
- * unsolicited Worker -> main message on this protocol — the
- * `sync-status-changed` event.
+ * Bumped to 3 in FDN-68 Stage 4 for the permission-aware `audit-log-query`
+ * request and its local-page, denied, and retention-window-unavailable
+ * results. Version 2 introduced FDN-51's sync requests and event.
  */
-export const GRAPH_WORKER_PROTOCOL_VERSION = 2 as const;
+export const GRAPH_WORKER_PROTOCOL_VERSION = 3 as const;
 
 /**
  * FDN-53 stage 1. Mirrors `packages/graph/src/worker/storage/sqlite-graph-index.ts`'s
@@ -135,6 +140,10 @@ export const graphWorkerRequestSchema = z.discriminatedUnion("type", [
   messageBaseSchema.extend({
     type: z.literal("query"),
     query: graphQuerySchema,
+  }),
+  messageBaseSchema.extend({
+    type: z.literal("audit-log-query"),
+    ...auditLogQueryRequestSchema.shape,
   }),
   // F127: the live role-refresh receiving surface. Re-validates against the
   // server and updates the in-memory role the interceptor reads, without a
@@ -289,6 +298,9 @@ export const graphWorkerSuccessSchema = messageBaseSchema.extend({
     syncStartedResultSchema,
     syncStoppedResultSchema,
     syncStatusResultSchema,
+    auditLogPageSchema,
+    auditLogDeniedSchema,
+    auditLogRetentionWindowUnavailableSchema,
     ...graphQueryResultSchema.options,
   ]),
 });

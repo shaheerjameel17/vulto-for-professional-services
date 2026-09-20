@@ -12,8 +12,10 @@ import {
   integer,
   uuid,
   index,
+  jsonb,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { AuditEntry } from "@vulto/schema";
 
 /** Postgres `bytea`. drizzle-orm has no first-class helper for it. */
 const bytea = customType<{ data: Buffer; notNull: true; default: false }>({
@@ -352,6 +354,87 @@ export const deviceTrustEvent = pgTable(
     check(
       "device_trust_event_type_check",
       sql`${table.eventType} in ('registered', 'revoked-explicit', 'revoked-membership', 'retired-by-user', 'stale-flagged', 're-approved')`,
+    ),
+  ],
+);
+
+/**
+ * FDN-68 — the workspace-lifetime, append-only Tier 2 audit journal.
+ *
+ * The canonical event is retained in `entry`; the remaining columns are
+ * server-derived query indexes. Application code has append and read
+ * operations only. There is deliberately no update or delete service.
+ */
+export const auditJournal = pgTable(
+  "audit_journal",
+  {
+    workspaceId: uuid("workspace_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    auditEntryId: uuid("audit_entry_id").notNull(),
+    contentDigest: text("content_digest").notNull(),
+    entry: jsonb("entry").$type<AuditEntry>().notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    actorUserId: uuid("actor_user_id").notNull(),
+    eventType: text("event_type").notNull(),
+    operation: text("operation").notNull(),
+    outcome: text("outcome").notNull(),
+    targetKind: text("target_kind").notNull(),
+    targetNodeType: text("target_node_type"),
+    targetTier: smallint("target_tier"),
+    appendedAt: timestamp("appended_at", { withTimezone: true })
+      .default(sql`clock_timestamp()`)
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.workspaceId, table.auditEntryId] }),
+    index("audit_journal_workspace_occurred_idx").on(
+      table.workspaceId,
+      table.occurredAt,
+      table.auditEntryId,
+    ),
+    index("audit_journal_workspace_actor_idx").on(
+      table.workspaceId,
+      table.actorUserId,
+      table.occurredAt,
+    ),
+    index("audit_journal_workspace_event_idx").on(
+      table.workspaceId,
+      table.eventType,
+      table.occurredAt,
+    ),
+    index("audit_journal_workspace_operation_idx").on(
+      table.workspaceId,
+      table.operation,
+      table.occurredAt,
+    ),
+    index("audit_journal_workspace_outcome_idx").on(
+      table.workspaceId,
+      table.outcome,
+      table.occurredAt,
+    ),
+    index("audit_journal_workspace_target_idx").on(
+      table.workspaceId,
+      table.targetKind,
+      table.targetNodeType,
+      table.targetTier,
+      table.occurredAt,
+    ),
+    check(
+      "audit_journal_event_type_check",
+      sql`${table.eventType} in ('PermissionDenied', 'SensitiveAccessGranted', 'AuthorizedOperationFailed', 'PrivilegedProjectionAuthorized')`,
+    ),
+    check(
+      "audit_journal_outcome_check",
+      sql`${table.outcome} in ('Granted', 'Denied', 'Failed')`,
+    ),
+    check(
+      "audit_journal_target_kind_check",
+      sql`${table.targetKind} in ('NodeTarget', 'EdgeTarget', 'QueryTarget')`,
+    ),
+    check(
+      "audit_journal_target_tier_check",
+      sql`${table.targetTier} is null or ${table.targetTier} between 0 and 3`,
     ),
   ],
 );

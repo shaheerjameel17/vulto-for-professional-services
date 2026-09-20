@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from "vitest";
 import {
   canonicalRoles,
   planProjectionReconciliation,
-  PROJECTION_AUTHORIZATION_PATH,
   reconcileWorkspaceProjectionOutbox,
   type WorkspaceProjectionOutboxEntry,
 } from "./workspace-projection";
@@ -35,7 +34,6 @@ describe("reconcileWorkspaceProjectionOutbox", () => {
     kind: "admission",
     membershipId: MEMBERSHIP_ID,
     workspaceId: WORKSPACE_ID,
-    authorizationPath: PROJECTION_AUTHORIZATION_PATH,
     createdAt: OCCURRED_AT,
     committedLocally: false,
     confirmed: false,
@@ -148,7 +146,6 @@ describe("planProjectionReconciliation — the four triggers", () => {
       kind: "admission",
       membershipId: MEMBERSHIP_ID,
       workspaceId: WORKSPACE_ID,
-      authorizationPath: PROJECTION_AUTHORIZATION_PATH,
       createdAt: "2026-02-01T00:00:00.000Z",
       committedLocally: true,
       confirmed: false,

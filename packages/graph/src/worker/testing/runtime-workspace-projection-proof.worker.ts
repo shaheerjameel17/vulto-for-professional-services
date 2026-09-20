@@ -1,4 +1,4 @@
-import type { WorkspaceRole } from "@vulto/schema";
+import type { AuditEntry, DeviceApplication, WorkspaceRole } from "@vulto/schema";
 import { LoroDoc, LoroMap } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import { parseGraphQuery } from "../../query";
@@ -33,6 +33,7 @@ interface ConsumedGrant {
   workspaceId: string;
   membershipId: string;
   userId: string;
+  application: DeviceApplication;
   deviceId: string;
   roles: WorkspaceRole[];
   membershipOfEdgeId: string;
@@ -67,7 +68,22 @@ type Request =
       apiOrigin: string;
       occurredAt: string;
     }
-  | { kind: "query-membership"; workspaceId: string; apiOrigin: string };
+  | {
+      kind: "run-transition-commit-failure";
+      workspaceId: string;
+      membershipId: string;
+      apiOrigin: string;
+      application: DeviceApplication;
+      actorUserId: string;
+      occurredAt: string;
+    }
+  | { kind: "query-membership"; workspaceId: string; apiOrigin: string }
+  | {
+      kind: "query-audit";
+      workspaceId: string;
+      apiOrigin: string;
+      application: DeviceApplication;
+    };
 
 function bufferOf(bytes: Uint8Array): ArrayBuffer {
   return bytes.slice().buffer;
@@ -97,6 +113,8 @@ async function foundingThenOrdinaryMutate(
       keyEpoch: request.keyEpoch,
       membershipId: request.consumed.membershipId,
       roles: request.consumed.roles,
+      userId: request.consumed.userId,
+      application: request.consumed.application,
     });
     await runtime.initialize(request.consumed.workspaceId);
 
@@ -115,7 +133,11 @@ async function foundingThenOrdinaryMutate(
         occurredAt: request.occurredAt,
       },
     );
-    await runtime.commitPrivilegedProjection(bufferOf(delta));
+    await runtime.commitPrivilegedProjection(bufferOf(delta), {
+      kind: "admission",
+      membershipId: request.consumed.membershipId,
+      occurredAt: request.occurredAt,
+    });
 
     // Now try an ordinary node-fragment mutate through the surviving handle.
     const scratchNode = buildScratchEmployeeNode(request.consumed.workspaceId);
@@ -183,11 +205,92 @@ async function runTransition(
       request.transitionKind === "revocation"
         ? projectMembershipRevocation(grant, details)
         : projectMembershipRoleChange(grant, details);
-    await runtime.commitPrivilegedProjection(bufferOf(projection.delta));
+    await runtime.commitPrivilegedProjection(bufferOf(projection.delta), {
+      kind: request.transitionKind,
+      membershipId: request.membershipId,
+      occurredAt: request.occurredAt,
+    });
     return { committed: true };
   } finally {
     await runtime.dispose();
   }
+}
+
+async function runTransitionCommitFailure(
+  request: Extract<Request, { kind: "run-transition-commit-failure" }>,
+): Promise<{ error: string; journal: readonly AuditEntry[] }> {
+  await initializeLoro();
+  const runtime = new LocalGraphWorkerRuntime();
+  try {
+    await runtime.unlockSealedStore(
+      request.workspaceId,
+      request.apiOrigin,
+      request.application,
+    );
+    await runtime.initialize(request.workspaceId);
+    let error = "";
+    try {
+      await runtime.commitPrivilegedProjection(
+        bufferOf(
+          buildStructurallyInvalidProjectionDelta(
+            request.workspaceId,
+            request.actorUserId,
+            request.occurredAt,
+          ),
+        ),
+        {
+          kind: "role-change",
+          membershipId: request.membershipId,
+          occurredAt: request.occurredAt,
+        },
+      );
+    } catch (cause) {
+      error = cause instanceof Error ? cause.message : String(cause);
+    }
+    if (error.length === 0) {
+      throw new Error("The malformed projection delta unexpectedly committed");
+    }
+    return {
+      error,
+      journal: (await runtime.auditSnapshotForDiagnostics()).journal,
+    };
+  } finally {
+    await runtime.dispose();
+  }
+}
+
+function buildStructurallyInvalidProjectionDelta(
+  workspaceId: string,
+  actorUserId: string,
+  occurredAt: string,
+): Uint8Array {
+  const invalidMembershipId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+  const document = new LoroDoc();
+  document.setPeerId(68n);
+  const fragment = document
+    .getMap("__vulto_node_fragments")
+    .setContainer(`${invalidMembershipId}:record`, new LoroMap());
+  for (const [key, value] of Object.entries({
+    node_id: invalidMembershipId,
+    node_type: "WorkspaceMembership",
+    schema_version: 1,
+    lifecycle_status: "StructurallyInvalid",
+    workspace_id: workspaceId,
+    role: "owner",
+    created_at: occurredAt,
+    created_by: actorUserId,
+    updated_at: occurredAt,
+    updated_by: actorUserId,
+    is_soft_deleted: false,
+    soft_deleted_at: null,
+    soft_deleted_by: null,
+  })) {
+    fragment.set(key, value);
+  }
+  document.commit();
+  const delta = document.export({ mode: "snapshot" });
+  document.free();
+  return delta;
 }
 
 async function queryMembership(
@@ -257,6 +360,33 @@ async function queryMembership(
   }
 }
 
+async function queryAudit(
+  request: Extract<Request, { kind: "query-audit" }>,
+): Promise<unknown> {
+  await initializeLoro();
+  const runtime = new LocalGraphWorkerRuntime();
+  try {
+    await runtime.unlockSealedStore(
+      request.workspaceId,
+      request.apiOrigin,
+      request.application,
+    );
+    await runtime.initialize(request.workspaceId);
+    const afterFlush = await runtime.flushAuditOutboxForDiagnostics();
+    const query = await runtime.queryAuditLog(request.workspaceId, {
+      eventType: "PrivilegedProjectionAuthorized",
+      limit: 50,
+    });
+    return {
+      context: runtime.authenticatedWorkerContext(),
+      afterFlush,
+      query,
+    };
+  } finally {
+    await runtime.dispose();
+  }
+}
+
 async function dispatch(request: Request): Promise<unknown> {
   switch (request.kind) {
     case "device-id":
@@ -270,6 +400,7 @@ async function dispatch(request: Request): Promise<unknown> {
           deviceId: request.consumed.deviceId,
           roles: request.consumed.roles,
           userId: request.consumed.userId,
+          application: request.consumed.application,
           membershipOfEdgeId: request.consumed.membershipOfEdgeId,
           membershipInEdgeId: request.consumed.membershipInEdgeId,
           serverHalf: request.serverHalf,
@@ -285,8 +416,12 @@ async function dispatch(request: Request): Promise<unknown> {
       return foundingThenOrdinaryMutate(request);
     case "run-transition":
       return runTransition(request);
+    case "run-transition-commit-failure":
+      return runTransitionCommitFailure(request);
     case "query-membership":
       return queryMembership(request);
+    case "query-audit":
+      return queryAudit(request);
   }
 }
 

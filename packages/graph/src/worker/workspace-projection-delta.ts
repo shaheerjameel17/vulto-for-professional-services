@@ -4,7 +4,6 @@ import { EDGE_FRAGMENT_CONTAINER } from "./document-edge-fragments";
 import { NODE_FRAGMENT_CONTAINER, nodeFragmentKey } from "./document-node-fragments";
 import {
   canonicalRoles,
-  PROJECTION_AUTHORIZATION_PATH,
   type ProjectionKind,
   type WorkspaceAdmissionDetails,
   type WorkspaceAdmissionGrant,
@@ -33,7 +32,6 @@ function outboxEntry(
     kind,
     membershipId: ids.membershipId,
     workspaceId: ids.workspaceId,
-    authorizationPath: PROJECTION_AUTHORIZATION_PATH,
     createdAt: occurredAt,
     committedLocally: false,
     confirmed: false,

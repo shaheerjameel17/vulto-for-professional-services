@@ -205,7 +205,9 @@ describe("wire records", () => {
       future_property: { nested: [true, 4, null] },
     });
 
-    expect(parsed.future_property).toEqual({ nested: [true, 4, null] });
+    expect((parsed as Record<string, unknown>).future_property).toEqual({
+      nested: [true, 4, null],
+    });
   });
 
   it("rejects runtime-specific values in additive properties", () => {
@@ -261,9 +263,30 @@ describe("wire records", () => {
       lifecycle_status: "Recorded",
       created_at: NOW,
       created_by: ID,
+      event_type: "PermissionDenied",
+      operation: "NodeRead",
+      outcome: "Denied",
+      actor_user_id: ID,
+      actor_membership_id: OTHER_ID,
+      actor_role: null,
+      actor_roles: ["owner"],
+      actor_application: "VultoRoster",
+      target: {
+        kind: "NodeTarget",
+        node_type: "Employee",
+        node_id: null,
+        partition_key: "compensation",
+        target_tier: 1,
+      },
+      metadata: {
+        denial_class: "InsufficientPermission",
+        result_cardinality: "Single",
+      },
+      occurred_at: NOW,
     } as const;
     expect(nodeRecordSchema.parse(audit).node_type).toBe("AuditEntry");
     expect(() => nodeRecordSchema.parse({ ...audit, updated_at: NOW })).toThrow();
+    expect(() => nodeRecordSchema.parse({ ...audit, arbitrary: true })).toThrow();
 
     const anonymous = {
       node_id: ID,

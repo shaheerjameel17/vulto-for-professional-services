@@ -52,6 +52,10 @@ class TestingLocalGraphClient implements UncheckedLocalGraphClient {
     return this.#graph.workspaceId;
   }
 
+  get auditLog() {
+    return this.#graph.auditLog;
+  }
+
   initialize(): Promise<GraphAvailability> {
     return this.#graph.initialize();
   }

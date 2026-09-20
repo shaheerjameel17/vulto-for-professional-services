@@ -1,4 +1,4 @@
-import type { WorkspaceRole } from "@vulto/schema";
+import type { DeviceApplication, WorkspaceRole } from "@vulto/schema";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
 import { LocalGraphWorkerRuntime } from "./runtime";
 import {
@@ -35,6 +35,8 @@ export interface ConsumedProjectionInput {
   roles: readonly WorkspaceRole[];
   /** Only for `admission`. */
   userId?: string;
+  /** Authenticated registered-device application; required for admission. */
+  application?: DeviceApplication;
   membershipOfEdgeId?: string;
   membershipInEdgeId?: string;
   /** The grant's unlock half. */
@@ -59,10 +61,13 @@ function buildProjection(
   if (input.kind === "admission") {
     if (
       input.userId === undefined ||
+      input.application === undefined ||
       input.membershipOfEdgeId === undefined ||
       input.membershipInEdgeId === undefined
     ) {
-      throw new Error("An admission projection needs userId and both edge ids");
+      throw new Error(
+        "An admission projection needs authenticated user/application and both edge ids",
+      );
     }
     return projectWorkspaceAdmission(
       acceptProjectionGrant({
@@ -107,9 +112,15 @@ export async function runWorkspaceProjection(
       keyEpoch: input.keyEpoch,
       membershipId: input.membershipId,
       roles: input.roles,
+      userId: input.userId,
+      application: input.application,
     });
     await runtime.initialize(input.workspaceId);
-    await runtime.commitPrivilegedProjection(bufferOf(projection.delta));
+    await runtime.commitPrivilegedProjection(bufferOf(projection.delta), {
+      kind: input.kind,
+      membershipId: input.membershipId,
+      occurredAt: details.occurredAt,
+    });
     return { outboxEntry: { ...projection.outboxEntry, committedLocally: true } };
   } finally {
     // Synchronous durable drain, then full teardown. The instance never

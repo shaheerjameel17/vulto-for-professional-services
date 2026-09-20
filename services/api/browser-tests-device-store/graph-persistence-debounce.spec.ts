@@ -108,7 +108,7 @@ async function readGraphSnapshotGeneration(
 ): Promise<number | null> {
   return page.evaluate((wsId) => {
     return new Promise<number | null>((resolve, reject) => {
-      const request = indexedDB.open("vulto-sealed-store", 1);
+      const request = indexedDB.open("vulto-sealed-store");
       request.onerror = () => reject(request.error);
       request.onsuccess = () => {
         const database = request.result;

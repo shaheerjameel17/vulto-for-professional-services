@@ -1,6 +1,20 @@
-import type { WorkspaceRole } from "@vulto/schema";
+import {
+  POLICY_ROLES,
+  auditEntrySchema,
+  deviceApplicationSchema,
+  uuidV4Schema,
+  type AuditEntry,
+  type DeviceApplication,
+  type WorkspaceRole,
+} from "@vulto/schema";
 import { LoroDoc } from "loro-crdt/web";
 import initializeLoro from "loro-crdt/web/loro_wasm.js";
+import {
+  AUDIT_LOG_QUERY_DENIED_REASON,
+  auditHistoricalTransportPageSchema,
+  type AuditLogQueryFilters,
+  type AuditLogQueryResult,
+} from "../audit-log";
 import type { GraphAvailability } from "../protocol";
 import type { GraphQuery } from "../query";
 import {
@@ -9,11 +23,18 @@ import {
 } from "./document-schema-gate";
 import { readEdgeFragments } from "./document-edge-fragments";
 import { readNodeFragments } from "./document-node-fragments";
-import type { WorkspaceProjectionOutboxEntry } from "./workspace-projection";
+import type {
+  PrivilegedProjectionCommit,
+  WorkspaceProjectionOutboxEntry,
+} from "./workspace-projection";
 import { materializeManagedByEdges } from "./managed-by-materialization";
 import { deriveEffectiveRoles } from "./permission/effective-roles";
 import { executeWithPermissions } from "./permission/interceptor";
-import { authorizeMutationBatch } from "./permission/mutation-interceptor";
+import {
+  authorizeMutationBatch,
+  describeMutationAuditEvidence,
+} from "./permission/mutation-interceptor";
+import { resolvePermissionDecision } from "./permission/policy-table";
 import {
   fetchCurrentRoles,
   RoleRefreshDeniedError,
@@ -24,6 +45,7 @@ import {
   SealedStoreConflictError,
   SealedStoreEnvelopeMismatchError,
   SealedStoreLockedError,
+  type AuthenticatedWorkerContext,
   type SealedStoreCommit,
   type SealedStoreVersionedValue,
 } from "./storage/sealed-store";
@@ -61,6 +83,13 @@ import {
 } from "./tier1-identity-transfer";
 import { Tier3PartitionRegistry } from "./tier3-partitions";
 import type { Tier3RootAddress } from "./tier3-root";
+import {
+  AuditRecorder,
+  auditLocalWindowStart,
+  privilegedProjectionAuditIdentity,
+  type AuditLocalState,
+} from "./audit/audit-recorder";
+import { AuditPseudonymizer } from "./audit/audit-pseudonymizer";
 
 /**
  * F127's explicitly-labeled PLACEHOLDER delivery mechanism for the live
@@ -132,6 +161,15 @@ export type RuntimeMutationOutcome =
  * only the durable flush is deferred.
  */
 const FLUSH_DEBOUNCE_MS = 250;
+
+function canonicalWorkspaceRoleSnapshot(
+  roles: readonly WorkspaceRole[],
+): WorkspaceRole[] {
+  const supplied = new Set(roles);
+  return POLICY_ROLES.filter(
+    (role): role is WorkspaceRole => role !== "manager" && supplied.has(role),
+  );
+}
 
 /**
  * F144. What happened to this device's local state when its authority ended.
@@ -282,6 +320,26 @@ export class LocalGraphWorkerRuntime {
    * plain tab reload always requires unlockSealedStore() again.
    */
   #sealedStore = new SealedStore();
+  /** FDN-68's one Worker-private append path, created only after initialize. */
+  #auditRecorder: AuditRecorder | null = null;
+  /** FDN-68 Stage 6's sole narrow actor-replacement path. */
+  #auditPseudonymizer = new AuditPseudonymizer(
+    this.#sealedStore,
+    () => {
+      if (this.#apiOrigin === null) throw new SealedStoreLockedError();
+      return this.#apiOrigin;
+    },
+    async () => {
+      if (this.#auditFlush !== null) await this.#auditFlush;
+      await this.#flushAuditOutbox();
+    },
+  );
+  /** Serialized best-effort delivery; local durability remains the release boundary. */
+  #auditFlush: Promise<void> | null = null;
+  #auditFlushRequested = false;
+  #auditFlushRetryTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Test-only forced post-authorization failure; no production protocol exposes it. */
+  #failNextAuthorizedOperationForAuditProof = false;
   /**
    * FDN-85. Set when this instance was opened via a workspace-projection
    * grant's unlock half rather than an ordinary `requireCurrentWorkspaceSession`
@@ -294,6 +352,8 @@ export class LocalGraphWorkerRuntime {
    */
   #projectionOnly = false;
   #projectionCommitted = false;
+  /** Grant-authenticated actor for the founding-admission bootstrap only. */
+  #projectionGrantActorContext: AuthenticatedWorkerContext | null = null;
   /**
    * FDN-85. Fired once a session is established (`initialize`) and after every
    * live role refresh (`refreshRoleOnline`) — the "unlock/startup" and
@@ -358,6 +418,10 @@ export class LocalGraphWorkerRuntime {
     lastError: null,
   };
   #syncStatusListener: ((snapshot: SyncStatusSnapshot) => void) | null = null;
+  /** Browser connectivity restoration is an independent retry signal from relay status. */
+  readonly #onAuditConnectivityRestored = (): void => {
+    if (this.#syncActive) this.#scheduleAuditFlush();
+  };
 
   get availability(): GraphAvailability {
     return this.#availability;
@@ -1001,13 +1065,17 @@ export class LocalGraphWorkerRuntime {
     }
   }
 
-  async unlockSealedStore(workspaceId: string, apiOrigin: string): Promise<void> {
+  async unlockSealedStore(
+    workspaceId: string,
+    apiOrigin: string,
+    application: DeviceApplication = "VultoRoster",
+  ): Promise<void> {
     if (this.#workspaceId !== null && this.#workspaceId !== workspaceId) {
       throw new Error(
         "The Worker cannot unlock a different workspace while initialized",
       );
     }
-    await this.#sealedStore.unlockOnline(workspaceId, apiOrigin);
+    await this.#sealedStore.unlockOnline(workspaceId, apiOrigin, application);
     this.#apiOrigin = apiOrigin;
     // F149. A successful online unlock is the server re-authorizing this
     // device — whatever ended the previous session is resolved. Clear the
@@ -1015,6 +1083,11 @@ export class LocalGraphWorkerRuntime {
     // `initialize()` reports as never-initialized, not as the old revocation.
     this.#lastSessionEnd = null;
     this.#startRolePolling(workspaceId);
+  }
+
+  /** FDN-68: authenticated actor identity retained only for this unlocked Worker. */
+  authenticatedWorkerContext() {
+    return this.#sealedStore.authenticatedContext;
   }
 
   /**
@@ -1041,9 +1114,19 @@ export class LocalGraphWorkerRuntime {
     keyEpoch: number;
     membershipId: string;
     roles: readonly WorkspaceRole[];
+    userId?: string;
+    application?: DeviceApplication;
   }): Promise<void> {
     if (this.#workspaceId !== null) {
       throw new Error("The Worker is already bound to a workspace");
+    }
+    const userId = uuidV4Schema.parse(grant.userId);
+    const membershipId = uuidV4Schema.parse(grant.membershipId);
+    const application = deviceApplicationSchema.parse(grant.application);
+    const suppliedRoles = new Set(grant.roles);
+    const roles = canonicalWorkspaceRoleSnapshot(grant.roles);
+    if (roles.length === 0 || roles.length !== suppliedRoles.size) {
+      throw new Error("A projection grant needs a canonical non-empty role set");
     }
     await this.#sealedStore.unlock({
       serverHalf: grant.serverHalf,
@@ -1054,10 +1137,19 @@ export class LocalGraphWorkerRuntime {
         algorithm: "AES-GCM-256",
         createdAt: new Date().toISOString(),
       },
-      roles: [...grant.roles],
-      membershipId: grant.membershipId,
+      roles,
+      membershipId,
+      userId,
+      application,
     });
     this.#projectionOnly = true;
+    this.#projectionGrantActorContext = {
+      workspaceId: grant.workspaceId,
+      userId,
+      membershipId,
+      application,
+      roles,
+    };
   }
 
   /**
@@ -1076,6 +1168,7 @@ export class LocalGraphWorkerRuntime {
    */
   async commitPrivilegedProjection(
     delta: ArrayBuffer,
+    command: PrivilegedProjectionCommit,
   ): Promise<RuntimeDeltaBatchResult> {
     if (this.#projectionOnly && this.#projectionCommitted) {
       throw new Error(
@@ -1085,8 +1178,66 @@ export class LocalGraphWorkerRuntime {
     this.#throwPendingFlushError();
     this.#requireDocument();
     this.#requireIndex();
+    const workspaceId = this.#requireWorkspaceId();
+    const membershipId = uuidV4Schema.parse(command.membershipId);
+    const projectionKind =
+      command.kind === "admission"
+        ? "Admission"
+        : command.kind === "role-change"
+          ? "RoleChange"
+          : "Revocation";
+    const identity = await privilegedProjectionAuditIdentity({
+      workspaceId,
+      membershipId,
+      projectionKind,
+      occurredAt: command.occurredAt,
+    });
+    const actor = this.#auditActorContext();
+    const rolesSnapshot = canonicalWorkspaceRoleSnapshot(actor.roles);
+    const operation = command.kind === "admission" ? "NodeCreate" : "NodeUpdate";
+    const target = {
+      kind: "NodeTarget" as const,
+      node_type: "WorkspaceMembership" as const,
+      node_id: membershipId,
+      partition_key: "record",
+      target_tier: 0 as const,
+    };
+    const decision = {
+      outcome: "full" as const,
+      decidingRole: null,
+      rolesSnapshot,
+    };
+    await this.#requireAuditRecorder().record(
+      {
+        eventType: "PrivilegedProjectionAuthorized",
+        operation,
+        target,
+        metadata: {
+          authorization_path: "PrivilegedProjectionException",
+          projection_kind: projectionKind,
+          result_cardinality: "Single",
+        },
+        decision,
+      },
+      identity,
+    );
+    let committed: RuntimeDeltaBatchResult;
+    try {
+      committed = await this.#commitDeltaBatch([delta]);
+    } catch (error) {
+      await this.#requireAuditRecorder().record({
+        eventType: "AuthorizedOperationFailed",
+        operation,
+        target,
+        metadata: {
+          failure_class: "CommitFailed",
+          result_cardinality: "Single",
+        },
+        decision,
+      });
+      throw error;
+    }
     this.#projectionCommitted = true;
-    const committed = await this.#commitDeltaBatch([delta]);
     this.#enqueueLocalDeltasForSync([delta]);
     return committed;
   }
@@ -1218,6 +1369,7 @@ export class LocalGraphWorkerRuntime {
     const deviceId = await this.#sealedStore.deviceId();
 
     this.#syncActive = true;
+    globalThis.addEventListener("online", this.#onAuditConnectivityRestored);
     // Queued (or about to lead) — report offline until the client says otherwise.
     this.#emitSyncStatus({
       state: "offline",
@@ -1275,7 +1427,10 @@ export class LocalGraphWorkerRuntime {
           return { ticket: grant.ticket, expiresAtMs: Date.parse(grant.expiresAt) };
         },
       },
-      onStatusChange: (snapshot) => this.#emitSyncStatus(snapshot),
+      onStatusChange: (snapshot) => {
+        this.#emitSyncStatus(snapshot);
+        if (snapshot.state !== "offline") this.#scheduleAuditFlush();
+      },
     });
   }
 
@@ -1287,6 +1442,11 @@ export class LocalGraphWorkerRuntime {
   async stopSync(): Promise<void> {
     if (!this.#syncActive) return;
     this.#syncActive = false;
+    globalThis.removeEventListener("online", this.#onAuditConnectivityRestored);
+    if (this.#auditFlushRetryTimer !== null) {
+      clearTimeout(this.#auditFlushRetryTimer);
+      this.#auditFlushRetryTimer = null;
+    }
     const leadership = this.#leadership;
     this.#leadership = null;
     await leadership?.stop();
@@ -1418,9 +1578,102 @@ export class LocalGraphWorkerRuntime {
    * permission-filtered, never raw.
    */
   async executeQuery(query: GraphQuery): Promise<GraphQueryResult> {
+    this.#requireAuditHealthy();
     const index = this.#requireIndex();
     const roles = deriveEffectiveRoles(this.#sealedStore.roles);
-    return executeWithPermissions(index, query, { roles });
+    return executeWithPermissions(index, query, {
+      roles,
+      auditRecorder: this.#requireAuditRecorder(),
+    });
+  }
+
+  /**
+   * FDN-68 Stage 4. The sole application-readable audit path. Authorization
+   * happens before the journal is read, and the request workspace must equal
+   * the authenticated Worker's workspace. A denial records one query-level
+   * event directly through AuditRecorder; it never recursively calls this
+   * method and never inventories matching rows.
+   */
+  async queryAuditLog(
+    requestedWorkspaceId: string,
+    filters: AuditLogQueryFilters = {},
+  ): Promise<AuditLogQueryResult> {
+    this.#requireAuditHealthy();
+    const workspaceId = this.#requireWorkspaceId();
+    const roles = deriveEffectiveRoles(this.#sealedStore.roles);
+    const resolved = resolvePermissionDecision(roles, "AuditEntry", "record");
+    if (requestedWorkspaceId !== workspaceId || resolved.outcome !== "full") {
+      const denialDecision = {
+        outcome: "none" as const,
+        decidingRole: null,
+        rolesSnapshot: resolved.rolesSnapshot,
+      };
+      try {
+        await this.#requireAuditRecorder().record({
+          eventType: "PermissionDenied",
+          operation: "NodeList",
+          target: {
+            kind: "QueryTarget",
+            query_kind: "node-list",
+            requested_node_type: "AuditEntry",
+            target_tier: 2,
+          },
+          metadata: {
+            denial_class: "InsufficientPermission",
+            result_cardinality: "Collection",
+          },
+          decision: denialDecision,
+        });
+      } catch {
+        // The denial remains non-enumerating; the recorder marks the runtime
+        // failed closed before any later operation can proceed.
+      }
+      return {
+        kind: "audit-log-denied",
+        reason: AUDIT_LOG_QUERY_DENIED_REASON,
+      };
+    }
+    return this.#requireAuditRecorder().query(filters, async (request) => {
+      const apiOrigin = this.#apiOrigin;
+      if (apiOrigin === null) throw new SealedStoreLockedError();
+      const response = await fetch(`${apiOrigin}/audit/query`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          workspaceId,
+          deviceId: await this.#sealedStore.deviceId(),
+          localWindowStart: request.localWindowStart,
+          ...(request.serverCursor === undefined
+            ? {}
+            : { cursor: request.serverCursor }),
+          filters: request.filters,
+        }),
+      });
+      if (!response.ok) throw new Error("Historical audit query is unavailable");
+      return auditHistoricalTransportPageSchema.parse(await response.json());
+    });
+  }
+
+  /**
+   * Test-only reachability for FDN-68's internal erasure seam. Production
+   * applications receive no generic AuditEntry update method; the future
+   * VPS-F007 orchestrator will call the same internal AuditPseudonymizer.
+   */
+  async pseudonymizeAuditActorForDiagnostics(
+    requestedWorkspaceId: string,
+    currentActorUserId: string,
+    opaqueActorToken: string,
+  ): Promise<{
+    readonly serverEntryIds: readonly string[];
+    readonly localEntryIds: readonly string[];
+  }> {
+    this.#requireAuditHealthy();
+    return this.#auditPseudonymizer.execute({
+      workspaceId: requestedWorkspaceId,
+      currentActorUserId,
+      opaqueActorToken,
+    });
   }
 
   async sealPayload(storeKey: string, plaintext: Uint8Array): Promise<void> {
@@ -1506,6 +1759,7 @@ export class LocalGraphWorkerRuntime {
     }
 
     this.#workspaceId = workspaceId;
+    this.#auditRecorder = this.#createAuditRecorder(workspaceId);
     this.#availability = { state: "ready" };
     // F149. A prior session's end outcome is stale once the Worker is serving
     // a workspace again — a device that legitimately re-unlocked and
@@ -1744,6 +1998,7 @@ export class LocalGraphWorkerRuntime {
    * `interceptor.test.ts`'s doc comment).
    */
   async mutate(deltas: readonly ArrayBuffer[]): Promise<RuntimeMutationOutcome> {
+    this.#requireAuditHealthy();
     if (this.#projectionOnly) {
       // FDN-85. A projection-only instance is one command, not a session. An
       // ordinary mutate through it is denied exactly as it would be for a
@@ -1759,18 +2014,98 @@ export class LocalGraphWorkerRuntime {
     const document = this.#requireDocument();
     this.#requireIndex();
     const roles = deriveEffectiveRoles(this.#sealedStore.roles);
+    const bytes = deltas.map((delta) => new Uint8Array(delta));
 
     const authorization = await authorizeMutationBatch(
       document,
-      deltas.map((delta) => new Uint8Array(delta)),
+      bytes,
       roles,
       this.#requireWorkspaceId(),
     );
-    if (authorization.status !== "authorized") return authorization;
+    const auditEvidence = describeMutationAuditEvidence(document, bytes, roles);
+    const recorder = this.#requireAuditRecorder();
+    if (authorization.status === "denied") {
+      const denied = auditEvidence.find(({ decision }) => decision.outcome !== "full");
+      if (denied !== undefined) {
+        try {
+          await recorder.record({
+            eventType: "PermissionDenied",
+            operation: denied.operation,
+            target: denied.target,
+            metadata: {
+              denial_class: "InsufficientPermission",
+              result_cardinality: "Single",
+            },
+            decision: denied.decision,
+          });
+        } catch {
+          // Preserve the denial; the recorder marks the runtime failed closed.
+        }
+      }
+      return authorization;
+    }
+    if (authorization.status !== "authorized") {
+      const attempted = auditEvidence[0];
+      if (attempted !== undefined) {
+        try {
+          await recorder.record({
+            eventType: "AuthorizedOperationFailed",
+            operation: attempted.operation,
+            target: attempted.target,
+            metadata: {
+              failure_class:
+                authorization.status === "invalid"
+                  ? "InvalidInput"
+                  : "UnsupportedOperation",
+              result_cardinality: "Single",
+            },
+            decision: attempted.decision,
+          });
+        } catch {
+          // The caller-facing refusal is retained; the next operation fails closed.
+        }
+      }
+      return authorization;
+    }
 
-    const committed = await this.#commitDeltaBatch(deltas);
-    this.#enqueueLocalDeltasForSync(deltas);
-    return { status: "applied", ...committed };
+    // A successful Tier 1/3 permission decision is durable before the
+    // protected mutation is applied or reported. If this append fails the
+    // canonical document remains untouched and this runtime stops here.
+    for (const evidence of auditEvidence) {
+      if (evidence.tier !== 1 && evidence.tier !== 3) continue;
+      await recorder.record({
+        eventType: "SensitiveAccessGranted",
+        operation: evidence.operation,
+        target: evidence.target,
+        metadata: { result_cardinality: "Single" },
+        decision: evidence.decision,
+      });
+    }
+
+    try {
+      if (this.#failNextAuthorizedOperationForAuditProof) {
+        this.#failNextAuthorizedOperationForAuditProof = false;
+        throw new Error("forced secret exception text must never be persisted");
+      }
+      const committed = await this.#commitDeltaBatch(deltas);
+      this.#enqueueLocalDeltasForSync(deltas);
+      return { status: "applied", ...committed };
+    } catch (error) {
+      const attempted = auditEvidence[0];
+      if (attempted !== undefined) {
+        await recorder.record({
+          eventType: "AuthorizedOperationFailed",
+          operation: attempted.operation,
+          target: attempted.target,
+          metadata: {
+            failure_class: "CommitFailed",
+            result_cardinality: "Single",
+          },
+          decision: attempted.decision,
+        });
+      }
+      throw error;
+    }
   }
 
   async #commitDeltaBatch(
@@ -2013,6 +2348,9 @@ export class LocalGraphWorkerRuntime {
     this.#protectedVersion = null;
     this.#tier3Version = null;
     this.#workspaceId = null;
+    this.#auditRecorder = null;
+    this.#projectionGrantActorContext = null;
+    this.#auditFlushRequested = false;
     this.#availability = { state: "mid-sync" };
     this.#sealedStore.dispose();
     // Reported last, after every resource above is fully torn down: a
@@ -2046,6 +2384,9 @@ export class LocalGraphWorkerRuntime {
     this.#protectedVersion = null;
     this.#tier3Version = null;
     this.#workspaceId = null;
+    this.#auditRecorder = null;
+    this.#projectionGrantActorContext = null;
+    this.#auditFlushRequested = false;
     this.#availability = { state: "mid-sync" };
     this.#materializationFailed = false;
     if (this.#flushTimer !== null) {
@@ -2057,6 +2398,165 @@ export class LocalGraphWorkerRuntime {
   #requireIndex(): SQLiteGraphIndex {
     if (this.#index === null) throw new Error("Worker is not initialized");
     return this.#index;
+  }
+
+  #requireAuditRecorder(): AuditRecorder {
+    if (this.#auditRecorder === null) throw new Error("Worker is not initialized");
+    return this.#auditRecorder;
+  }
+
+  #createAuditRecorder(workspaceId: string): AuditRecorder {
+    return new AuditRecorder(
+      this.#sealedStore,
+      workspaceId,
+      () => this.#auditActorContext(),
+      () => {
+        if (this.#syncActive) this.#scheduleAuditFlush();
+      },
+    );
+  }
+
+  /**
+   * Founding admission has no ordinary current session, so its actor comes
+   * from the consumed server grant. Every ordinary role-change/revocation
+   * command uses the currently authenticated sealed-store context instead.
+   */
+  #auditActorContext(): AuthenticatedWorkerContext {
+    if (this.#projectionOnly) {
+      if (this.#projectionGrantActorContext === null) {
+        throw new SealedStoreLockedError();
+      }
+      return this.#projectionGrantActorContext;
+    }
+    return this.#sealedStore.authenticatedContext;
+  }
+
+  #scheduleAuditFlush(): void {
+    this.#auditFlushRequested = true;
+    if (this.#auditFlush !== null || this.#apiOrigin === null) return;
+    this.#auditFlush = (async () => {
+      while (this.#auditFlushRequested) {
+        this.#auditFlushRequested = false;
+        try {
+          await this.#flushAuditOutbox();
+        } catch {
+          // The protected operation already crossed its local durability
+          // boundary. API failure leaves the sealed outbox intact for retry.
+          if (this.#syncActive && this.#auditFlushRetryTimer === null) {
+            this.#auditFlushRetryTimer = setTimeout(() => {
+              this.#auditFlushRetryTimer = null;
+              this.#scheduleAuditFlush();
+            }, 1_000);
+          }
+        }
+      }
+    })().finally(() => {
+      this.#auditFlush = null;
+    });
+  }
+
+  async #flushAuditOutbox(): Promise<void> {
+    const apiOrigin = this.#apiOrigin;
+    if (apiOrigin === null || this.#workspaceId === null) return;
+    const workspaceId = this.#workspaceId;
+    const deviceId = await this.#sealedStore.deviceId();
+    const pending = await this.#sealedStore.readAuditEntries("outbox");
+    for (const bytes of pending) {
+      const entry = auditEntrySchema.parse(JSON.parse(new TextDecoder().decode(bytes)));
+      const response = await fetch(`${apiOrigin}/audit/append`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ workspaceId, deviceId, entry }),
+      });
+      if (!response.ok) throw new Error("Audit outbox delivery is unavailable");
+      await this.#sealedStore.acknowledgeAuditEntry(
+        entry.audit_entry_id,
+        Date.parse(entry.occurred_at) < auditLocalWindowStart(new Date()).getTime(),
+      );
+    }
+  }
+
+  /** Test-only observation/trigger through the separate proof Worker. */
+  async flushAuditOutboxForDiagnostics(): Promise<AuditLocalState> {
+    await this.#flushAuditOutbox();
+    return this.#requireAuditRecorder().snapshotForDiagnostics();
+  }
+
+  /** Test-only aged-entry fixture for the real IndexedDB cache-eviction proof. */
+  async appendAuditEntryForDiagnostics(input: unknown): Promise<AuditLocalState> {
+    const entry = auditEntrySchema.parse(input);
+    await this.#sealedStore.appendAuditEntry(
+      entry.audit_entry_id,
+      new TextEncoder().encode(JSON.stringify(entry)),
+    );
+    return this.#requireAuditRecorder().snapshotForDiagnostics();
+  }
+
+  #requireAuditHealthy(): void {
+    if (this.#auditRecorder?.failed) {
+      throw new Error(
+        "The graph runtime is unavailable after audit persistence failed",
+      );
+    }
+  }
+
+  /** Separate test-only Worker protocol exposes these diagnostics, never production. */
+  async auditSnapshotForDiagnostics(): Promise<AuditLocalState> {
+    this.#requireAuditHealthy();
+    return this.#requireAuditRecorder().snapshotForDiagnostics();
+  }
+
+  async reopenAuditJournalForDiagnostics(): Promise<AuditLocalState> {
+    this.#requireAuditHealthy();
+    const workspaceId = this.#requireWorkspaceId();
+    this.#auditRecorder = this.#createAuditRecorder(workspaceId);
+    return this.#auditRecorder.snapshotForDiagnostics();
+  }
+
+  async proveAuditIdempotencyForDiagnostics(): Promise<{
+    before: number;
+    afterIdenticalReplay: number;
+    afterConflictingReplay: number;
+    conflict: string | null;
+  }> {
+    const recorder = this.#requireAuditRecorder();
+    const initial = await recorder.snapshotForDiagnostics();
+    const last = initial.journal.at(-1);
+    if (last === undefined) throw new Error("No audit entry exists to replay");
+    await recorder.append(last);
+    const afterIdentical = await recorder.snapshotForDiagnostics();
+    let conflict: string | null = null;
+    const conflicting: AuditEntry = {
+      ...last,
+      occurred_at: new Date(Date.parse(last.occurred_at) + 1).toISOString(),
+    };
+    try {
+      await recorder.append(conflicting);
+    } catch (error) {
+      conflict = error instanceof Error ? error.message : String(error);
+    }
+    const durable = await this.#sealedStore.readAuditEntries("journal");
+    return {
+      before: initial.journal.length,
+      afterIdenticalReplay: afterIdentical.journal.length,
+      afterConflictingReplay: durable.length,
+      conflict,
+    };
+  }
+
+  auditLastAppendDurationForDiagnostics(): number | null {
+    return this.#requireAuditRecorder().lastAppendMeasurement?.durationMs ?? null;
+  }
+
+  abortNextAuditTransactionForDiagnostics(): void {
+    this.#requireWorkspaceId();
+    this.#sealedStore.abortNextAuditAppendForTesting();
+  }
+
+  failNextAuthorizedOperationForAuditProof(): void {
+    this.#requireAuditHealthy();
+    this.#failNextAuthorizedOperationForAuditProof = true;
   }
 
   #requireDocument(): LoroDoc {

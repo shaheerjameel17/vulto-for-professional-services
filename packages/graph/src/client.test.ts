@@ -118,6 +118,41 @@ describe("local graph client lifecycle", () => {
     expect(client.sealPayload).toBeUndefined();
   });
 
+  it("exposes auditLog.query as the single application-readable audit request", async () => {
+    const worker = new FakeWorker();
+    worker.postMessage = (message: unknown) => {
+      const request = message as GraphWorkerRequest;
+      const result =
+        request.type === "initialize"
+          ? { kind: "initialized" as const, workspaceId: request.workspaceId }
+          : {
+              kind: "audit-log-page" as const,
+              entries: [],
+              source: "Local" as const,
+            };
+      queueMicrotask(() =>
+        worker.onmessage?.({
+          data: {
+            protocolVersion: GRAPH_WORKER_PROTOCOL_VERSION,
+            requestId: request.requestId,
+            sentAt: "2026-09-10T12:00:00.000Z",
+            type: "success",
+            availability: { state: "ready" },
+            result,
+          },
+        } as MessageEvent),
+      );
+    };
+    const client = createLocalGraphClientWithFactory("workspace-1", () => worker);
+    await client.initialize();
+
+    await expect(client.auditLog.query("workspace-1", { limit: 25 })).resolves.toEqual({
+      kind: "audit-log-page",
+      entries: [],
+      source: "Local",
+    });
+  });
+
   it("still reaches applyDeltaBatch through the widened unchecked test client", async () => {
     const worker = new FakeWorker();
     const client = createUncheckedLocalGraphClientWithFactory(
