@@ -113,7 +113,7 @@ A locked box tells the viewer a record exists. Where everyone in a role has one 
 
 A reader set names roles. For most node types that is sufficient. For a record *about a person*, it is not: the person the record concerns may hold one of the roles that reads it.
 
-**Where a node type registers a subject exclusion, the reader set is its effective grant minus any person who is the subject of that record.** This is a filter applied when the reader set is resolved, not a new Privacy Class and not a parallel mechanism — it composes with the resolution [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s A003-T06 already performs.
+**Where a node type registers a subject exclusion, the reader set is its effective grant minus any person who is the subject of that record.** This is a filter applied when the reader set is resolved, not a new Privacy Class and not a parallel mechanism — it composes with the reader resolution the interceptor already performs, and the same resolved set feeds `protected.read` and the generated Sync Streams, per A004-T16 and A004-T21.
 
 **The exclusion makes a role-holder equal to everyone else, not less than them.** [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] establishes that the subject of a case cannot read it, so that an investigating officer can take honest notes. An Owner who is the subject of a case *is* a subject. Writing the reader set as a fixed list of roles rather than "those roles, minus whoever this record concerns" granted the Owner a privilege no other employee has, in the one record type where privilege is least defensible.
 
