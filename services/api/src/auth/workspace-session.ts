@@ -8,6 +8,8 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { recordTrustEvent } from "./device-trust-log.js";
+import { writeFoundingRecords } from "../graph/founding.js";
+import { membershipInEdgeId, membershipOfEdgeId } from "./membership-edge-ids.js";
 import {
   device,
   deviceUnlockSecret,
@@ -106,6 +108,19 @@ export async function createPendingWorkspaceAdmission(
       slug: input.workspaceSlug,
       createdAt: new Date(),
       status: "active",
+    });
+    // Stage 2: the graph rows commit or roll back with the central rows. They
+    // are written before the membership row so a failure of either is a real
+    // rollback of the other.
+    await writeFoundingRecords(transaction, {
+      workspaceId,
+      workspaceName: input.workspaceName,
+      membershipId,
+      userId,
+      roles: input.roles,
+      membershipOfEdgeId: membershipOfEdgeId(membershipId),
+      membershipInEdgeId: membershipInEdgeId(membershipId),
+      occurredAt: new Date().toISOString(),
     });
     await transaction.insert(member).values({
       id: membershipId,

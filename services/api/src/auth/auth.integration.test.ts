@@ -1575,6 +1575,24 @@ describe("FDN-85 Stage 2 — the founding workspace-admission projection", () =>
       .where(sql`${organization.id} = ${String(grant.workspaceId)}`);
     expect(org?.status).toBe("active");
 
+    // Stage 2: the five founding graph records were written in the same
+    // transaction — three nodes and two edges, all in this workspace.
+    const graphNodeRows = await db.execute(
+      sql`select node_type from graph_nodes where workspace_id = ${String(grant.workspaceId)} order by node_type`,
+    );
+    expect(
+      (graphNodeRows as unknown as { node_type: string }[]).map((r) => r.node_type),
+    ).toEqual(["User", "Workspace", "WorkspaceMembership"]);
+    const graphEdgeRows = await db.execute(
+      sql`select edge_id, edge_type from graph_edges where workspace_id = ${String(grant.workspaceId)} order by edge_type`,
+    );
+    expect(
+      graphEdgeRows as unknown as { edge_id: string; edge_type: string }[],
+    ).toEqual([
+      { edge_id: grant.membershipInEdgeId, edge_type: "membership_in" },
+      { edge_id: grant.membershipOfEdgeId, edge_type: "membership_of" },
+    ]);
+
     // Only the grant's hash is stored, and it is unconsumed.
     const [stored] = await db
       .select({

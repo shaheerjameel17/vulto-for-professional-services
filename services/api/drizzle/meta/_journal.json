@@ -71,6 +71,13 @@
       "when": 1788985977943,
       "tag": "0009_lonely_lifeguard",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789976746481,
+      "tag": "0010_tricky_millenium_guard",
+      "breakpoints": true
     }
   ]
 }

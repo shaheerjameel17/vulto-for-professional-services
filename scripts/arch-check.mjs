@@ -3,19 +3,51 @@
 // FDN-55 Stage 1 — architecture assertions that have no package to live in
 // as an ESLint rule.
 //
-// Today there is exactly one: A001-T08's isolation constraint on
-// `services/cross-tenant-aggregation`. That service does not exist yet
-// (FDN-82 / F73 carries the decision to defer it to VRS-F071), so this check
-// is dormant — but it is written now, per founder ruling, because "must not
-// share a database" is the kind of constraint that is satisfied by accident
-// while the service is absent and then violated by a convenience import the
-// day someone builds it.
+// Two rules live here.
 //
-// When the service exists, this fails the build if anything under it reaches
-// for the per-workspace data path.
+//   1. A001-T08's isolation constraint on `services/cross-tenant-aggregation`.
+//      That service does not exist yet (FDN-82 / F73 carries the decision to
+//      defer it to VRS-F071), so this check is dormant — but it is written
+//      now, per founder ruling, because "must not share a database" is the
+//      kind of constraint that is satisfied by accident while the service is
+//      absent and then violated by a convenience import the day someone
+//      builds it.
+//
+//   2. The graph store's import boundary (Stage 2, A003-T52). Only the
+//      graph, permission, mutations, protected, audience and jobs folders of
+//      `services/api/src` may import `graph/store`, and only
+//      `graph/membership-projection.ts` may name the authority that lets a
+//      `User` row be written (F204).
+//
+// Both run from the current working directory, so a test can point the check
+// at a temporary tree by running it there.
+//
 
 import { readdirSync, readFileSync, statSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, normalize, sep } from "node:path";
+
+function walk(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    if (entry === "node_modules" || entry === ".next" || entry === "dist") continue;
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) out.push(...walk(path));
+    else if (/\.(ts|tsx|mjs|js)$/.test(entry)) out.push(path);
+  }
+  return out;
+}
+
+function isDirectory(path) {
+  try {
+    return statSync(path).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
+let failed = false;
+
+// ── Rule 1: A001-T08 ────────────────────────────────────────────────────────
 
 const CROSS_TENANT_DIR = "services/cross-tenant-aggregation";
 
@@ -29,57 +61,124 @@ const FORBIDDEN = [
   /from\s+["']@vulto\/api\/auth["']/,
 ];
 
-function walk(dir) {
-  const out = [];
-  for (const entry of readdirSync(dir)) {
-    if (entry === "node_modules" || entry === ".next" || entry === "dist") continue;
-    const path = join(dir, entry);
-    if (statSync(path).isDirectory()) out.push(...walk(path));
-    else if (/\.(ts|tsx|mjs|js)$/.test(entry)) out.push(path);
-  }
-  return out;
-}
-
-let dirExists = false;
-try {
-  dirExists = statSync(CROSS_TENANT_DIR).isDirectory();
-} catch {
-  dirExists = false;
-}
-
-if (!dirExists) {
+if (!isDirectory(CROSS_TENANT_DIR)) {
   process.stdout.write(
     `  ✓ ${CROSS_TENANT_DIR} not present — A001-T08 isolation assertion is armed and dormant\n`,
   );
-  process.exit(0);
+} else {
+  const violations = [];
+  for (const file of walk(CROSS_TENANT_DIR)) {
+    readFileSync(file, "utf8")
+      .split("\n")
+      .forEach((line, i) => {
+        if (FORBIDDEN.some((re) => re.test(line))) {
+          violations.push(`    ${file}:${i + 1}  ${line.trim()}`);
+        }
+      });
+  }
+  if (violations.length > 0) {
+    failed = true;
+    process.stderr.write(
+      [
+        "",
+        `  ✗ A001-T08 — ${CROSS_TENANT_DIR} must not share a database, connection pool`,
+        "    or process boundary with per-workspace data paths. Found:",
+        "",
+        ...violations,
+        "",
+        "    It receives only anonymized, pre-bucketed contributions over an",
+        "    explicit boundary. See VRS-F071's Technical Architecture section.",
+        "",
+      ].join("\n") + "\n",
+    );
+  } else {
+    process.stdout.write(`  ✓ ${CROSS_TENANT_DIR} — A001-T08 isolation holds\n`);
+  }
 }
 
-const violations = [];
-for (const file of walk(CROSS_TENANT_DIR)) {
-  const text = readFileSync(file, "utf8");
-  text.split("\n").forEach((line, i) => {
-    if (FORBIDDEN.some((re) => re.test(line))) {
-      violations.push(`    ${file}:${i + 1}  ${line.trim()}`);
-    }
-  });
-}
+// ── Rule 2: the graph store boundary ────────────────────────────────────────
 
-if (violations.length > 0) {
-  process.stderr.write(
-    [
-      "",
-      `  ✗ A001-T08 — ${CROSS_TENANT_DIR} must not share a database, connection pool`,
-      "    or process boundary with per-workspace data paths. Found:",
-      "",
-      ...violations,
-      "",
-      "    It receives only anonymized, pre-bucketed contributions over an",
-      "    explicit boundary. See VRS-F071's Technical Architecture section.",
-      "",
-    ].join("\n") + "\n",
+const API_SRC = "services/api/src";
+const STORE = `${API_SRC}/graph/store`;
+const AUTHORITY_HOMES = new Set([
+  `${API_SRC}/graph/store.ts`,
+  `${API_SRC}/graph/membership-projection.ts`,
+]);
+const STORE_IMPORTERS = [
+  "graph",
+  "permission",
+  "mutations",
+  "protected",
+  "audience",
+  "jobs",
+].map((folder) => `${API_SRC}/${folder}/`);
+const SPECIFIER =
+  /(?:from\s+|import\s*\(\s*|import\s+|require\s*\(\s*)["']([^"']+)["']/g;
+
+if (!isDirectory(API_SRC)) {
+  process.stdout.write(
+    `  ✓ ${API_SRC} not present — graph store boundary not applicable\n`,
   );
-  process.exit(1);
+} else {
+  const storeViolations = [];
+  const authorityViolations = [];
+  for (const raw of walk(API_SRC)) {
+    const file = raw.split(sep).join("/");
+    const text = readFileSync(raw, "utf8");
+    const allowedImporter = STORE_IMPORTERS.some((prefix) => file.startsWith(prefix));
+    if (!allowedImporter) {
+      text.split("\n").forEach((line, i) => {
+        for (const match of line.matchAll(SPECIFIER)) {
+          const specifier = match[1];
+          if (!specifier.startsWith(".")) continue;
+          const resolved = normalize(join(dirname(file), specifier))
+            .split(sep)
+            .join("/")
+            .replace(/\.(js|ts)$/, "");
+          if (resolved === STORE) {
+            storeViolations.push(`    ${file}:${i + 1}  ${line.trim()}`);
+          }
+        }
+      });
+    }
+    if (
+      !AUTHORITY_HOMES.has(file) &&
+      text.includes("grantMembershipProjectionAuthority")
+    ) {
+      authorityViolations.push(`    ${file}`);
+    }
+  }
+  if (storeViolations.length > 0) {
+    failed = true;
+    process.stderr.write(
+      [
+        "",
+        "  ✗ A003-T52 — graph/store may be imported only from the graph, permission,",
+        "    mutations, protected, audience and jobs folders of services/api/src. Found:",
+        "",
+        ...storeViolations,
+        "",
+        "    Go through the mutation pipeline; nothing else writes the graph.",
+        "",
+      ].join("\n") + "\n",
+    );
+  }
+  if (authorityViolations.length > 0) {
+    failed = true;
+    process.stderr.write(
+      [
+        "",
+        "  ✗ F204 — grantMembershipProjectionAuthority may be named only in",
+        "    graph/store.ts and graph/membership-projection.ts. Found:",
+        "",
+        ...authorityViolations,
+        "",
+      ].join("\n") + "\n",
+    );
+  }
+  if (storeViolations.length === 0 && authorityViolations.length === 0) {
+    process.stdout.write(`  ✓ ${STORE} — import boundary holds\n`);
+  }
 }
 
-process.stdout.write(`  ✓ ${CROSS_TENANT_DIR} — A001-T08 isolation holds\n`);
-process.exit(0);
+process.exit(failed ? 1 : 0);
