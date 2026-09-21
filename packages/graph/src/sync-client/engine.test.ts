@@ -233,6 +233,39 @@ describe("replication into the cache", () => {
     expect(cursor).toEqual({ handle: "h1", o: "3_0" });
   });
 
+  it("a move-out removes rows whose only tag left, and keeps rows another tag still admits", async () => {
+    const h = await harness();
+    await h.engine.start();
+    const gone = uuid();
+    const kept = uuid();
+    await h.source("nodes").emit([
+      {
+        type: "changes",
+        changes: [
+          { ...nodeRow(gone), tags: ["1/aaa"] },
+          { ...nodeRow(kept), tags: ["1/aaa", "1/bbb"] },
+        ],
+        cursor: { handle: "h1", offset: "1_0" },
+      },
+      upToDate("1_0"),
+    ]);
+    await h.source("nodes").emit([
+      {
+        type: "changes",
+        changes: [{ operation: "move-out", patterns: [{ pos: 1, value: "aaa" }] }],
+        cursor: { handle: "h1", offset: "2_0" },
+      },
+    ]);
+    const ids = (await h.database.all("SELECT node_id FROM cache_nodes")).map(
+      (r) => r["node_id"],
+    );
+    expect(ids).toEqual([kept]);
+    const tags = (await h.database.all("SELECT tag FROM cache_tags")).map(
+      (r) => r["tag"],
+    );
+    expect(tags).toEqual(["1/bbb"]);
+  });
+
   it("resumes from the stored cursor after a restart", async () => {
     const database = await openTestDatabase();
     const first = await harness({ database });

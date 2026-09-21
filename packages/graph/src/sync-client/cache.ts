@@ -4,11 +4,22 @@ import type { SqlValue, SyncDatabase } from "./database";
 /** The two shape templates a device subscribes to, and nothing else (A003-T72). */
 export type ShapeTemplateName = "nodes" | "edges";
 
-export interface ShapeChange {
+export interface RowChange {
   readonly operation: "insert" | "update" | "delete";
   /** For an update, only the changed columns and the key. */
   readonly value: Readonly<Record<string, unknown>>;
+  /** The reasons this row is in the shape, added by this change. */
+  readonly tags?: readonly string[];
+  readonly removedTags?: readonly string[];
 }
+
+/** The rows admitted only by these audience entries have left the person's audience. */
+export interface MoveOut {
+  readonly operation: "move-out";
+  readonly patterns: readonly { readonly pos: number; readonly value: string }[];
+}
+
+export type ShapeChange = RowChange | MoveOut;
 
 export interface ShapeCursor {
   readonly handle: string | null;
@@ -161,8 +172,13 @@ export class SqliteCache implements OptimisticCache {
   ): Promise<void> {
     await this.database.transaction(async () => {
       for (const change of changes) {
+        if (change.operation === "move-out") {
+          await this.#applyMoveOut(template, change);
+          continue;
+        }
         if (template === "nodes") await this.#applyNode(change);
         else await this.#applyEdge(change);
+        await this.#applyTags(template, change);
       }
       await this.database.run(
         `INSERT INTO sync_cursor (template, handle, "offset") VALUES (?, ?, ?)
@@ -178,11 +194,65 @@ export class SqliteCache implements OptimisticCache {
       await this.database.run(
         template === "nodes" ? "DELETE FROM cache_nodes" : "DELETE FROM cache_edges",
       );
+      await this.database.run("DELETE FROM cache_tags WHERE template = ?", [template]);
       await this.database.run("DELETE FROM sync_cursor WHERE template = ?", [template]);
     });
   }
 
-  async #applyNode(change: ShapeChange) {
+  async #applyTags(template: ShapeTemplateName, change: RowChange): Promise<void> {
+    const id = String(
+      template === "nodes" ? change.value["node_id"] : change.value["edge_id"],
+    );
+    if (change.operation === "delete") {
+      await this.database.run(
+        "DELETE FROM cache_tags WHERE template = ? AND row_id = ?",
+        [template, id],
+      );
+      return;
+    }
+    for (const tag of change.removedTags ?? []) {
+      await this.database.run(
+        "DELETE FROM cache_tags WHERE template = ? AND row_id = ? AND tag = ?",
+        [template, id, tag],
+      );
+    }
+    for (const tag of change.tags ?? []) {
+      await this.database.run(
+        "INSERT OR IGNORE INTO cache_tags (template, row_id, tag) VALUES (?, ?, ?)",
+        [template, id, tag],
+      );
+    }
+  }
+
+  /**
+   * Removes the named tags, then every row left with none. A tag is `<pos>/<hash>`
+   * for this shape, whose one subquery is the audience.
+   */
+  async #applyMoveOut(template: ShapeTemplateName, change: MoveOut): Promise<void> {
+    for (const pattern of change.patterns) {
+      const tag = `${pattern.pos}/${pattern.value}`;
+      const rows = await this.database.all(
+        "SELECT row_id FROM cache_tags WHERE template = ? AND tag = ?",
+        [template, tag],
+      );
+      await this.database.run("DELETE FROM cache_tags WHERE template = ? AND tag = ?", [
+        template,
+        tag,
+      ]);
+      for (const { row_id } of rows) {
+        if (row_id === undefined) continue;
+        const remaining = await this.database.all(
+          "SELECT 1 AS one FROM cache_tags WHERE template = ? AND row_id = ? LIMIT 1",
+          [template, row_id],
+        );
+        if (remaining.length > 0) continue;
+        if (template === "nodes") await this.deleteNode(String(row_id));
+        else await this.deleteEdge(String(row_id));
+      }
+    }
+  }
+
+  async #applyNode(change: RowChange) {
     const value = change.value;
     const id = String(value["node_id"]);
     if (change.operation === "delete") {
@@ -210,7 +280,7 @@ export class SqliteCache implements OptimisticCache {
     });
   }
 
-  async #applyEdge(change: ShapeChange) {
+  async #applyEdge(change: RowChange) {
     const value = change.value;
     const id = String(value["edge_id"]);
     if (change.operation === "delete") {

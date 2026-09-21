@@ -118,8 +118,38 @@ export class SyncEngine {
       }
     });
     await this.#refreshState();
+    await this.promote();
+  }
+
+  /**
+   * A follower reads and writes the shared cache but does not replicate or
+   * upload; another tab's worker leads (dedicated-worker fallback only).
+   */
+  async startFollower(): Promise<void> {
+    const { database, workspaceId, userId } = this.#options;
+    await this.#exclusive(async () => {
+      await database.run(
+        `INSERT INTO session_hint (singleton, user_id, workspace_id) VALUES (1, ?, ?)
+         ON CONFLICT (singleton) DO UPDATE SET user_id = excluded.user_id, workspace_id = excluded.workspace_id`,
+        [userId, workspaceId],
+      );
+      for (const template of TEMPLATES) {
+        if ((await this.#cache.readCursor(template)).handle !== null)
+          this.#synced.add(template);
+      }
+    });
+    await this.#refreshState();
+  }
+
+  /** Becomes the tab that replicates and uploads. */
+  async promote(): Promise<void> {
+    if (this.#sources.size > 0) return;
+    await this.#exclusive(() => this.#outbox.requeueInflight());
+    // The proxy refuses a device it does not know, so this device is registered
+    // before its first shape request. Offline, this fails fast and replication
+    // starts from the cache regardless.
+    await this.#registerDevice();
     for (const template of TEMPLATES) await this.#startSource(template);
-    void this.#registerDevice();
     void this.drain();
   }
 
@@ -167,6 +197,7 @@ export class SyncEngine {
             event.changes.some(
               (c) =>
                 c.operation === "delete" ||
+                c.operation === "move-out" ||
                 (template === "nodes" &&
                   c.value["node_type"] === "WorkspaceMembership"),
             )

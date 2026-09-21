@@ -95,7 +95,8 @@ export async function openSyncDatabase(
     // Batch-atomic IndexedDB storage, safe across the tabs of one origin.
     vfs = new IDBBatchAtomicVFS(location.name) as never;
     sqlite.vfs_register(vfs as never, false);
-    handle = await sqlite.open_v2(location.name, undefined, vfs.name);
+    // The file name inside the VFS is fixed; the IndexedDB database carries the identity.
+    handle = await sqlite.open_v2("cache.db", undefined, vfs.name);
   } else {
     vfs = new MemoryVFS() as never;
     const name = `memory-${(vfsCounter += 1)}`;

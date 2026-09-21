@@ -44,7 +44,11 @@ export const FORWARDED_PARAMETERS = [
   "cursor",
   "expired_handle",
   "cache-buster",
+  "log",
 ] as const;
+
+/** Parameters that may only carry one value: `log=full` is the client's default and narrows nothing. */
+const FIXED_VALUES: Readonly<Record<string, string>> = { log: "full" };
 
 export const WORKSPACE_HEADER = "x-vulto-workspace-id";
 export const DEVICE_HEADER = "x-vulto-device-id";
@@ -204,7 +208,11 @@ export async function registerShapeProxy(
       for (const [name, value] of Object.entries(
         request.query as Record<string, unknown>,
       )) {
-        if (!allowed.has(name) || typeof value !== "string") {
+        if (
+          !allowed.has(name) ||
+          typeof value !== "string" ||
+          (Object.hasOwn(FIXED_VALUES, name) && FIXED_VALUES[name] !== value)
+        ) {
           return reply
             .code(400)
             .send({ code: "invalid-shape-parameter", parameter: name });

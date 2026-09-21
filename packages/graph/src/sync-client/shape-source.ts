@@ -124,7 +124,20 @@ export function createElectricSource(options: ElectricSourceOptions): ShapeSourc
               changes.push({
                 operation,
                 value: message.value as Record<string, unknown>,
+                ...(message.headers.tags ? { tags: message.headers.tags } : {}),
+                ...(message.headers.removed_tags
+                  ? { removedTags: message.headers.removed_tags }
+                  : {}),
               });
+            } else if ("event" in message.headers) {
+              // A subquery move-out: rows admitted only by these audience entries are gone.
+              const event = message.headers as {
+                event: string;
+                patterns?: { pos: number; value: string }[];
+              };
+              if (event.event === "move-out" && event.patterns) {
+                changes.push({ operation: "move-out", patterns: event.patterns });
+              }
             } else if (isControlMessage(message)) {
               if (message.headers.control === "must-refetch") {
                 changes.length = 0;

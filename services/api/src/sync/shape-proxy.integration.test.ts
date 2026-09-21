@@ -131,13 +131,18 @@ describe("A003-T72 — the proxy decides every shape parameter", () => {
       "&params=x",
       "&replica=full",
       "&subset__where=true",
-      "&log=full",
+      "&log=changes_only",
       "&secret=x",
     ]) {
       const response = await shape(person, "nodes", query);
       expect(response.statusCode, query).toBe(400);
       expect(JSON.parse(response.body).code).toBe("invalid-shape-parameter");
     }
+  });
+
+  it("accepts the client's default log=full and forwards it", async () => {
+    const person = await signedInMember();
+    expect((await shape(person, "nodes", "&log=full")).statusCode).toBe(200);
   });
 
   it("serves only the nodes and edges templates", async () => {

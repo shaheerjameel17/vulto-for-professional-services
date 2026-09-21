@@ -34,6 +34,17 @@ export const CREATE_CACHE_SCHEMA = `
   CREATE INDEX IF NOT EXISTS cache_edges_incoming
     ON cache_edges (edge_type, to_node_id, effective_from, effective_to, edge_id);
 
+  -- Why each row is in the shape: Electric tags a row with the audience entry that
+  -- admits it, and a move-out names the tags that no longer apply. A row with no
+  -- tag left is deleted. Identifiers only.
+  CREATE TABLE IF NOT EXISTS cache_tags (
+    template TEXT NOT NULL,
+    row_id TEXT NOT NULL,
+    tag TEXT NOT NULL,
+    PRIMARY KEY (template, row_id, tag)
+  );
+  CREATE INDEX IF NOT EXISTS cache_tags_by_tag ON cache_tags (template, tag);
+
   CREATE TABLE IF NOT EXISTS sync_cursor (
     template TEXT PRIMARY KEY,
     handle TEXT,
@@ -61,6 +72,7 @@ export const CREATE_CACHE_SCHEMA = `
 export const CACHE_TABLES = [
   "cache_nodes",
   "cache_edges",
+  "cache_tags",
   "sync_cursor",
   "outbox",
   "session_hint",
