@@ -152,6 +152,7 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 ## Amendments
 
 - **21 September 2026 — F203 closed.** GitHub Actions service containers cannot override the Postgres command. Decision: CI gets a tiny Postgres image of its own whose default command carries the replication flags, built and pinned exactly like the existing CI image. Implemented in Stage 6 item 0, because no CI suite needs replication before then. When merging Stage 1, update F203 to **Closed by founder-delegated decision, 21 September 2026 — CI Postgres image, built in Stage 6**, and move its detailed section so it follows F202.
+- **21 September 2026 — F204 closed.** A `User` is stored **once per workspace** it belongs to, under the same `node_id` (its Better Auth account id). `graph_nodes` gets a composite primary key `(workspace_id, node_id)`; every row has a non-null `workspace_id`; every other node type's `node_id` stays globally unique through a partial unique index; edges reference endpoints by `(workspace_id, node_id)`. Rejected: a null `workspace_id` for `User` rows, because a row outside every workspace breaks per-workspace residency (VPS-A008 P8), export and erasure, and would let one workspace's edits to a person's node appear in another's. Stage 2 and Stage 6 below are updated. When resuming Stage 2, update F204 to **Closed by founder-delegated decision, 21 September 2026 — one `User` row per workspace under a composite key; VPS-A002 and VPS-A003 amended on `main`**.
 - **21 September 2026 — pushing.** The founder has allowed `git push` to `origin` for `main`, `stage-*`, `archive/local-first-e2e` and `fdn-68-audit-wip`. A refused push is still a STOP condition.
 
 ---
@@ -214,15 +215,17 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 2. **One migration**, generated with `pnpm --filter @vulto/api db:generate`, then hand-appended with the SQL Drizzle cannot express. It creates:
    - `CREATE EXTENSION IF NOT EXISTS btree_gist;`
    - **`graph_nodes`**
-     - `node_id uuid primary key`, `workspace_id uuid not null`, `node_type text not null`, `lifecycle_status text not null`, `schema_version integer not null`, `version bigint not null default 1`
+     - `node_id uuid not null`, `workspace_id uuid not null`, **primary key `(workspace_id, node_id)`**, `node_type text not null`, `lifecycle_status text not null`, `schema_version integer not null`, `version bigint not null default 1`
      - `is_soft_deleted boolean not null default false`
      - `created_at timestamptz not null`, `created_by uuid`, `updated_at timestamptz`, `updated_by uuid`, `soft_deleted_at timestamptz`, `soft_deleted_by uuid`
      - `record jsonb not null`
      - check constraints: `record->>'node_id' = node_id::text`; `record->>'lifecycle_status' = lifecycle_status`
      - index `(workspace_id, node_type, lifecycle_status) where not is_soft_deleted`
+     - partial unique index on `(node_id) where node_type <> 'User'` — every node ID except a `User`'s is globally unique
+     - check `node_type <> 'Workspace' or workspace_id = node_id`
    - **`graph_edges`**
      - `edge_id uuid primary key`, `workspace_id uuid not null`, `edge_type text not null`
-     - `from_node_id uuid not null references graph_nodes(node_id)`, `to_node_id uuid not null references graph_nodes(node_id)`
+     - `from_node_id uuid not null`, `to_node_id uuid not null`, with foreign keys `(workspace_id, from_node_id)` and `(workspace_id, to_node_id)` referencing `graph_nodes(workspace_id, node_id)`, so an edge can never cross workspaces
      - `effective_from timestamptz`, `effective_to timestamptz`, `version bigint not null default 1`, `is_soft_deleted boolean not null default false`
      - the same created/updated/soft-deleted columns as `graph_nodes`
      - `record jsonb not null`, with check `record->>'edge_id' = edge_id::text`
@@ -230,6 +233,7 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
      - partial unique index `(edge_type, from_node_id) where effective_to is null and not is_soft_deleted and edge_type in ('managed_by','scoped_to_entity')`
      - exclusion constraint `exclude using gist (from_node_id with =, edge_type with =, tstzrange(effective_from, effective_to, '[)') with &&) where (not is_soft_deleted and edge_type in ('managed_by','scoped_to_entity'))`
    - **The Workspace node's `workspace_id` equals its own `node_id`.**
+   - **A `User` node is one row per workspace**, `node_id` = the Better Auth `user.id`, its `record` exactly as `records.ts` defines it (no `workspace_id` field). Only the membership projection writes `User` rows; the store refuses a `User` write from any other caller.
    - **No foreign key to Better Auth tables.** Consistency with them is enforced in code, in the same transaction.
 3. **What goes in `record`.** The complete Tier 0 partition record, validated by the existing Zod record schemas in `packages/schema/src/records.ts`:
    - for a node type whose registry tier is 0, the whole record;
@@ -239,7 +243,7 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 4. **Store module** `services/api/src/graph/store.ts` — internal, not an API. Every function takes a Drizzle transaction as its first argument:
    - `insertNode(tx, record)`, `updateNodeFields(tx, nodeId, expectedVersion | null, patch)` (increments `version`), `softDeleteNode(tx, nodeId, actor)`
    - `insertEdge(tx, record)`, `closeEdge(tx, edgeId, effectiveTo, actor)`
-   - `getNode(tx, nodeId)`, `getNodes(tx, workspaceId, filter)`
+   - `getNode(tx, workspaceId, nodeId)`, `getNodes(tx, workspaceId, filter)` — **every** read and write takes `workspaceId`; there is no workspace-less lookup
    - `outgoing(tx, nodeId, edgeType, at?)`, `incoming(...)`
    - `traverse(tx, startNodeId, edgeTypes, maxDepth)`, implemented with a recursive CTE
    - Every write validates against the registry: node type registered, edge triple registered, record passes its Zod schema. Invalid input throws a typed `GraphValidationError`, never a raw database error.
@@ -255,6 +259,8 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 - `updateNodeFields` with a stale `expectedVersion` → typed `StaleVersionError`, and `version` unchanged;
 - `workspace.create` rolls back graph rows if the Better Auth insert fails, and the reverse;
 - `traverse` returns correct depth-limited results on a five-level `managed_by` chain;
+- one person creating two workspaces produces two `User` rows with the same `node_id`, each in its own workspace, and an edge from workspace A to a node in workspace B is rejected by the foreign key;
+- inserting a non-`User` node whose `node_id` already exists in another workspace is rejected;
 - the arch-check rule fails when a file outside the allowed folders imports the store (a fixture file created in the test's temp directory).
 
 **Done criteria:**
@@ -428,7 +434,7 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 
 0. **CI Postgres image (F203).** Create `.docker/ci-postgres/Dockerfile`: `FROM` the same `postgres:17-alpine@sha256:742f40ea…` digest the workflows use today, with `CMD ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=10", "-c", "max_wal_senders=10"]`. Extend `.github/workflows/ci-image.yml` to build and publish it as `ghcr.io/<repo>/ci-postgres`, triggered by changes under `.docker/ci-postgres/**`, exactly as the CI image is. Add `CI_POSTGRES_IMAGE=<digest pin>` to `.github/workflows/ci-image-ref.env`, and have `slow-lane.yml`'s `resolve-image` job output it, so every Postgres `services:` entry uses `${{ needs.resolve-image.outputs.postgres_image }}` instead of the literal digest. Publishing needs a merge to `main` followed by a repin, as the CI image README describes: do the Dockerfile and workflow change first, stop and report so the founder can merge it, then repin once the digest exists. Until the repin, the Stage 6 browser suite runs locally only; say so in the report.
 
-1. **Audience tables:** `sync_node_audience (workspace_id uuid, user_id uuid, node_id uuid, primary key (user_id, node_id))` and `sync_edge_audience (workspace_id uuid, user_id uuid, edge_id uuid, primary key (user_id, edge_id))`, each with an index on `(workspace_id, user_id)`. Identifiers only.
+1. **Audience tables:** `sync_node_audience (workspace_id uuid, user_id uuid, node_id uuid, primary key (workspace_id, user_id, node_id))` and `sync_edge_audience (workspace_id uuid, user_id uuid, edge_id uuid, primary key (workspace_id, user_id, edge_id))`. Identifiers only. (Keyed by workspace because a `User` node's `node_id` repeats across workspaces, per F204.)
 2. **Materializer** — `services/api/src/audience/`:
    - implements `audience.onRowsChanged` from Stage 4: for each touched Tier 0 node or edge, and each active member of the workspace, insert or delete audience rows so they equal `interceptor.authorizeRead` for that member;
    - `recomputeWorkspace(tx, workspaceId)` — a full recompute, run as the `audience-recompute` system principal, called on every membership, role or `managed_by` change;
