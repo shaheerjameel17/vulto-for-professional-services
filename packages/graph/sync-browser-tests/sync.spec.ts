@@ -357,4 +357,27 @@ test("sign-out erases every workspace's cache on the origin, including one held 
   await expect.poll(caches, { timeout: 30_000 }).toEqual([]);
   // The device identity is deliberately kept: erasing it would let a revoked device re-register as a new one.
   expect((await scanBrowserStorage(page)).databases).toContain("vulto:device");
+  // ...and it holds exactly the device id and the pending-erase list, in one store, nothing else.
+  const device = await page.evaluate(
+    () =>
+      new Promise<{ stores: string[]; keys: string[] }>((resolve, reject) => {
+        const open = indexedDB.open("vulto:device");
+        open.onerror = () => reject(open.error);
+        open.onsuccess = () => {
+          const db = open.result;
+          const stores = Array.from(db.objectStoreNames);
+          const request = db.transaction("meta").objectStore("meta").getAllKeys();
+          request.onsuccess = () => {
+            db.close();
+            resolve({ stores, keys: request.result.map(String) });
+          };
+          request.onerror = () => reject(request.error);
+        };
+      }),
+  );
+  expect(device.stores).toEqual(["meta"]);
+  expect(device.keys.every((key) => ["device-id", "erase-pending"].includes(key))).toBe(
+    true,
+  );
+  expect(device.keys).toContain("device-id");
 });
