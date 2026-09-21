@@ -21,10 +21,7 @@ import { build } from "esbuild";
 // NOT external, so they are inlined into the single file: the first-party
 // TypeScript (`src/**`, `@vulto/schema`) and `zod` — which `@vulto/schema`
 // pulls but this package does not declare directly, and which bundles cleanly
-// (pure JS, no native binding). `loro-crdt` is listed because `@vulto/schema`
-// declares it; it is not imported at runtime today, so it never enters the
-// graph — if that changes, the build smoke test fails on a missing module and
-// it becomes a declared `@vulto/api` dependency.
+// (pure JS, no native binding).
 const external = [
   "fastify",
   "@fastify/cors",
@@ -33,7 +30,6 @@ const external = [
   "@better-auth/passkey",
   "drizzle-orm",
   "postgres",
-  "loro-crdt",
 ];
 
 await build({

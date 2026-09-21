@@ -1,16 +1,14 @@
 import { Readable } from "node:stream";
 import { DEVICE_HEADER, uuidV4Schema, WORKSPACE_HEADER } from "@vulto/schema";
-import { and, eq, isNotNull } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auth } from "../auth/config.js";
-import { parseDeviceId } from "../auth/device-unlock.js";
+import { touchDeviceActivity } from "../auth/device-registry.js";
 import {
-  device,
-  deviceUnlockSecret,
-  member,
-  organization,
-  user,
-} from "../auth/schema.js";
+  isDeviceRevokedInWorkspace,
+  parseDeviceId,
+} from "../auth/device-revocation-store.js";
+import { device, member, organization, user } from "../auth/schema.js";
 import { db } from "../db.js";
 
 /**
@@ -141,22 +139,15 @@ async function accessRevoked(input: {
     .where(and(eq(device.id, input.deviceId), eq(device.userId, input.userId)))
     .limit(1);
 
-  // An Owner's revoke of one device in one workspace is recorded here (F191).
-  // Stage 7 moves it to `device_workspace_revocation` (F210).
-  const [scoped] = await db
-    .select({ id: deviceUnlockSecret.deviceId })
-    .from(deviceUnlockSecret)
-    .where(
-      and(
-        eq(deviceUnlockSecret.deviceId, input.deviceId),
-        eq(deviceUnlockSecret.workspaceId, input.workspaceId),
-        eq(deviceUnlockSecret.userId, input.userId),
-        isNotNull(deviceUnlockSecret.revokedAt),
-      ),
-    )
-    .limit(1);
+  // An Owner's revoke of one device in one workspace, a removal and a
+  // suspension are all recorded in `device_workspace_revocation` (F191, F210).
+  const scoped = await isDeviceRevokedInWorkspace(
+    db,
+    input.workspaceId,
+    input.deviceId,
+  );
 
-  return !membership || !registered || registered.isRevoked || scoped !== undefined;
+  return !membership || !registered || registered.isRevoked || scoped;
 }
 
 function toHeaders(raw: FastifyRequest["headers"]): Headers {
@@ -242,6 +233,9 @@ export async function registerShapeProxy(
           .header("Content-Type", "application/json")
           .send(REVOKED_JSON);
       }
+
+      // The device is confirmed acceptable right now, which is what "active" means.
+      void touchDeviceActivity(deviceId).catch(() => undefined);
 
       const config = getConfig();
       if (!config) return reply.code(503).send({ code: "sync-unavailable" });

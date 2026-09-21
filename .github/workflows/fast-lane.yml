@@ -6,8 +6,8 @@
 #
 # Runs on EVERY push and every PR. Required for merge. Target: a few minutes.
 # Nothing here needs a service container — that is the whole point of the split.
-# The api integration suite, the browser suites, the multi-target Rust build and
-# the production build all live in slow-lane.yml.
+# The api integration suite, the browser suites and the production build all
+# live in slow-lane.yml.
 
 name: fast-lane
 

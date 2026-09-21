@@ -12,8 +12,9 @@ import prettier from "eslint-config-prettier";
  * Two rules VPS-A007's first gate also names are deliberately absent, each
  * because the boundary it would enforce does not exist yet:
  *
- *   - No direct-Loro-access rule, per A001-T06. FDN-77 creates the worker
- *     that the rule would draw a line around.
+ *   - No raw-storage-access rule for the device cache. The sync client in
+ *     `packages/graph/src/sync-client` is the only code that opens it, and the
+ *     storage prohibition above already bars the browser storage APIs elsewhere.
  *   - No vendor-SDK rule, per VPS-A006. `packages/schema` holds no service
  *     interfaces yet, so there is nothing to require imports go through.
  *
@@ -163,7 +164,7 @@ export default ts.config(
    * across every package — not specific to the graph — and FDN-46's own done
    * criteria already require it ("automated verification detects a
    * dependency-direction or boundary violation"). FDN-49 keeps *graph*
-   * access enforcement: raw Loro reads and raw SQL bypassing the typed query
+   * access enforcement: raw SQL bypassing the typed query
    * interface, per A001-T03 and A002-T05, which are graph-specific and stay
    * with the schema-conformance suite that already understands the registry.
    *
@@ -240,7 +241,7 @@ export default ts.config(
       /*
        * schema is the enforcement point for the graph, per A002's Schema
        * Evolution Protocol, and depends on nothing else in this repository —
-       * only loro-crdt, which A001-T02 pins. It is consumed by everything;
+       * only zod. It is consumed by everything;
        * it consumes nothing here.
        */
       "@typescript-eslint/no-restricted-imports": [
@@ -313,9 +314,8 @@ export default ts.config(
        * FDN-46's done criteria name.
        *
        * There is no private layer inside any package yet — nothing to
-       * bypass today. The rule is written now because FDN-48 and FDN-77 add
-       * materialization-worker internals shortly that must never be reached
-       * directly, per A002-T05, and retrofitting an import rule after a
+       * bypass today. The rule is written now because a private layer must never be
+       * reached directly, per A002-T05, and retrofitting an import rule after a
        * deep import already exists in a feature is the expensive direction.
        */
       "@typescript-eslint/no-restricted-imports": [

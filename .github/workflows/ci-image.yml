@@ -6,8 +6,8 @@
 #
 # The workflows that CONSUME the image (fast-lane.yml, slow-lane.yml) pin it by
 # digest through the shared `CI_IMAGE` value in .github/workflows/ci-image-ref.env.
-# Bumping that digest is a deliberate, reviewed PR — the same treatment the Loro
-# pin and the docker-compose base images get (A007-T16).
+# Bumping that digest is a deliberate, reviewed PR — the same treatment the
+# docker-compose base images get (A007-T16).
 #
 #   1. Change .docker/ci/** on a branch, open a PR.
 #   2. This workflow builds the image for the PR (does not push) and comments

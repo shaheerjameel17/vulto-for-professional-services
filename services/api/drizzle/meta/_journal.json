@@ -134,6 +134,13 @@
       "when": 1789982341265,
       "tag": "0018_electric_role_and_publication",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1790008734371,
+      "tag": "0019_device_workspace_revocation",
+      "breakpoints": true
     }
   ]
 }

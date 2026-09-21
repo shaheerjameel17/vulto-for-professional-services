@@ -1,11 +1,31 @@
 # `@vulto/graph`
 
-This package owns the browser's dedicated local-graph Worker boundary from VPS-A001-T06.
+The device-side half of Vulto's data architecture (`VPS-A003`, `VPS-A001`).
+PostgreSQL is the source of truth; this package is the fast, permission-filtered
+cache of it that runs in the browser, with optimistic writes that queue while
+offline.
 
-Its public surface is deliberately small: a lifecycle-managed client, the runtime-validated local message contract, availability outcomes, and structural typed-query plans. The private Worker runtime is the only browser-side TypeScript code allowed to import Loro or `wa-sqlite`. FDN-49 will enforce that import boundary automatically.
+Its public surface, exported from `@vulto/graph`:
 
-FDN-48 adds a disposable in-memory SQLite read model. It keeps protected node fragments distinct, stores edges as first-class temporal records, validates permission-significant single-active histories before commit, and reruns subscriptions only after an atomic generation change. There is deliberately no public query method yet: FDN-53 must put the permission interceptor in front of execution before an application may receive rows.
+- `createGraphClient({ workspaceId, userId, apiOrigin })` returning
+  `{ query, subscribe, mutate, protectedRead, prefetchProtected, syncStatus, signOut }`;
+- the typed query plans (`graphQuerySchema`, `parseGraphQuery`) and their results;
+- the optimistic mutators that mirror the server's named mutations.
 
-The index is not durable. FDN-50 owns canonical Loro persistence and extraction; FDN-52 owns session-derived local encryption and any future encrypted SQLite cache. Until both exist, a workspace rebuilds this index from validated records rather than leaving readable graph data on disk.
+Everything runs in a worker (a SharedWorker where available, a dedicated worker
+under a Web Lock otherwise), never on the main thread. Inside `src/sync-client/`:
 
-The local Worker protocol is not the TypeScript–Rust sync wire. FDN-51 owns that separate contract.
+| Piece                                  | What it does                                                                                                                                             |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `shape-source.ts`                      | Subscribes to the API's two shape endpoints through Electric's client and turns the stream, including audience move-outs, into cache changes             |
+| `cache.ts`, `database.ts`, `schema.ts` | The wa-sqlite database, one per `(workspace, person)`. Replicated tables are versioned apart from the outbox, which a cache version change never touches |
+| `outbox.ts`, `engine.ts`               | Named mutations queued while offline, uploaded in order, retried with backoff, reverted and surfaced if the server refuses them                          |
+| `query.ts`                             | The typed query layer, with recursive traversal as a recursive CTE                                                                                       |
+| `protected-store.ts`                   | Tier 1 and Tier 2 values, in memory only; nothing protected is ever written to the device                                                                |
+| `erasure.ts`                           | Sign-out and revocation erase every cache; a delete that cannot finish is finished before anything else opens                                            |
+
+The device holds Tier 0 rows only, exactly the rows the server's sync audience
+names for that person. Nothing here decides who may read what.
+
+The browser suite that exercises all of this against real Postgres and Electric
+is `sync-browser-tests/`, run with `pnpm test:sync-browser`.

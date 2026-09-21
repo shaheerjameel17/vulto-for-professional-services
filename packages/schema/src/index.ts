@@ -65,12 +65,6 @@ export {
 } from "./registry/protection";
 
 export {
-  GRAPH_DOCUMENT_SCHEMA_GENERATION,
-  MINIMUM_READABLE_GRAPH_DOCUMENT_SCHEMA_GENERATION,
-  isReadableGraphDocumentSchemaGeneration,
-} from "./document-generation";
-
-export {
   edgeRecordSchema,
   edgeTypeSchema,
   jsonValueSchema,

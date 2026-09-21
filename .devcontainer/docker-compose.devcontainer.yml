@@ -8,14 +8,9 @@ services:
     # and the development image is one of VPS-A007's three image roles. This
     # was a tag until F79 caught it.
     #
-    # trixie (Debian 13) matches services/sync-engine's build and runtime
-    # images, which pin rust:1.97.1-slim-trixie and debian:trixie-slim. That
-    # alignment is why the base stays trixie rather than moving to bookworm to
-    # dodge the Moby packaging gap — see the `moby` note in devcontainer.json.
-    #
-    # Honest provenance: trixie was not chosen for that reason. It followed the
-    # Dockerfile's choice with no comment justifying it. The alignment argument
-    # is real, and it was found afterwards rather than applied at the time.
+    # trixie (Debian 13) matches the CI image's base. The base stays trixie
+    # rather than moving to bookworm to dodge the Moby packaging gap — see the
+    # `moby` note in devcontainer.json.
     image: mcr.microsoft.com/devcontainers/base:trixie@sha256:025b74bb5f7ac53edd77e01aa7188c359aab100e23a2f6220bde50bbb9fd31dd
     volumes:
       # `.`, not `..`.

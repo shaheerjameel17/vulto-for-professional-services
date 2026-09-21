@@ -10,7 +10,12 @@ import { and, desc, eq, lt } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { recordTrustEvent } from "./device-trust-log.js";
-import { device, deviceTrustEvent, deviceUnlockSecret } from "./schema.js";
+import {
+  device,
+  deviceTrustEvent,
+  deviceWorkspaceRevocation,
+  member,
+} from "./schema.js";
 import {
   requireCurrentWorkspaceSession,
   UnauthorizedWorkspaceSessionError,
@@ -270,25 +275,30 @@ export async function listDevicesForWorkspace(
 
   const restrictToSelf = !current.roles.includes("owner");
 
+  // A workspace's devices are those of its members, each with this workspace's
+  // own revocation, if it has recorded one.
   const rows = await db
-    .select({ device, secretRevokedAt: deviceUnlockSecret.revokedAt })
-    .from(deviceUnlockSecret)
-    .innerJoin(device, eq(device.id, deviceUnlockSecret.deviceId))
-    .where(
-      restrictToSelf
-        ? and(
-            eq(deviceUnlockSecret.workspaceId, workspaceId),
-            eq(device.userId, current.userId),
-          )
-        : eq(deviceUnlockSecret.workspaceId, workspaceId),
+    .select({ device, revokedAt: deviceWorkspaceRevocation.revokedAt })
+    .from(device)
+    .innerJoin(
+      member,
+      and(eq(member.userId, device.userId), eq(member.organizationId, workspaceId)),
     )
+    .leftJoin(
+      deviceWorkspaceRevocation,
+      and(
+        eq(deviceWorkspaceRevocation.deviceId, device.id),
+        eq(deviceWorkspaceRevocation.workspaceId, workspaceId),
+      ),
+    )
+    .where(restrictToSelf ? eq(device.userId, current.userId) : undefined)
     .orderBy(desc(device.lastActiveAt));
 
   const now = Date.now();
   return {
     devices: rows.map((row) =>
       toDeviceRecord(row.device, {
-        revokedInWorkspace: row.secretRevokedAt !== null,
+        revokedInWorkspace: row.revokedAt !== null,
         now,
       }),
     ),
@@ -373,13 +383,6 @@ export async function retireOwnDevice(
       )
       .returning({ id: device.id });
 
-    // Every workspace, deliberately — this is what "global" means, and it is
-    // sound precisely because the acting user owns the device in all of them.
-    await tx
-      .update(deviceUnlockSecret)
-      .set({ revokedAt: new Date() })
-      .where(eq(deviceUnlockSecret.deviceId, deviceId));
-
     if (retired) {
       await recordTrustEvent(tx, {
         deviceId,
@@ -458,8 +461,8 @@ export function parseDeviceReapprovalRequest(value: unknown): DeviceReapprovalRe
  *   `stale-flagged`, so a device flagged stale and *then* explicitly revoked
  *   is not reversible.
  *
- * Workspace-scoped, exactly like the revoke it undoes (F191): it clears this
- * workspace's `device_unlock_secret.revokedAt` and nothing else. It cannot
+ * Workspace-scoped, exactly like the revoke it undoes (F191): it deletes this
+ * workspace's `device_workspace_revocation` row and nothing else. It cannot
  * clear `device.is_revoked` — an Owner has no authority to undo the device
  * owner's own global retirement — and refuses outright while that flag is
  * set, rather than appearing to succeed and leaving the device still locked
@@ -515,20 +518,24 @@ export async function reapproveStaleDevice(
 
   await db.transaction(async (tx) => {
     const [restored] = await tx
-      .update(deviceUnlockSecret)
-      .set({ revokedAt: null })
+      .delete(deviceWorkspaceRevocation)
       .where(
         and(
-          eq(deviceUnlockSecret.workspaceId, workspaceId),
-          eq(deviceUnlockSecret.deviceId, deviceId),
+          eq(deviceWorkspaceRevocation.workspaceId, workspaceId),
+          eq(deviceWorkspaceRevocation.deviceId, deviceId),
         ),
       )
-      .returning({ userId: deviceUnlockSecret.userId });
+      .returning({ deviceId: deviceWorkspaceRevocation.deviceId });
     if (!restored) throw new DeviceNotReapprovableError();
 
     await recordTrustEvent(tx, {
       deviceId,
-      userId: restored.userId,
+      userId: (
+        await tx
+          .select({ userId: device.userId })
+          .from(device)
+          .where(eq(device.id, deviceId))
+      )[0]!.userId,
       workspaceId,
       eventType: "re-approved",
       actorUserId: current.userId,

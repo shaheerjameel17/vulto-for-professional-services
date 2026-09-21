@@ -8,6 +8,10 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { recordTrustEvent } from "./device-trust-log.js";
+import {
+  revokeUserDevicesEverywhere,
+  revokeUserDevicesInWorkspace,
+} from "./device-revocation-store.js";
 import { audienceMaterializer } from "../audience/materializer.js";
 import { ensureWorkspaceKek, getKeyServices } from "../crypto/keys.js";
 import { writeFoundingRecords } from "../graph/founding.js";
@@ -16,14 +20,7 @@ import {
   projectMemberRemoval,
 } from "../graph/membership-changes.js";
 import { membershipInEdgeId, membershipOfEdgeId } from "./membership-edge-ids.js";
-import {
-  device,
-  deviceUnlockSecret,
-  member,
-  organization,
-  session,
-  user,
-} from "./schema.js";
+import { device, member, organization, session, user } from "./schema.js";
 
 export interface CurrentWorkspaceSession {
   sessionId: string;
@@ -216,11 +213,10 @@ export async function confirmWorkspaceAdmission(
 }
 
 /**
- * Deny centrally first. FDN-85 confirms the historical graph projection
- * later. This also revokes every device's sealed local-store unlock secret
- * for this user in this workspace (FDN-84): the device's own key half and
- * its ciphertext are untouched, but the server denies the next unlock
- * attempt at the cold-restart checkpoint before either half is combined.
+ * Removes a member. The central row, the graph copy of the membership, the
+ * audience, the person's sessions in the workspace and their devices'
+ * acceptance in the workspace all change in one transaction (F210): the
+ * server is the only writer, so there is no later step to confirm.
  */
 export async function revokeWorkspaceAdmission(
   membershipIdInput: string,
@@ -232,7 +228,7 @@ export async function revokeWorkspaceAdmission(
   await db.transaction(async (transaction) => {
     const [revoked] = await transaction
       .update(member)
-      .set({ status: "revoked", projectionState: "revocation-pending" })
+      .set({ status: "revoked", projectionState: "confirmed" })
       .where(eq(member.id, membershipId))
       .returning({ userId: member.userId, workspaceId: member.organizationId });
     if (!revoked) throw new Error("Workspace membership does not exist");
@@ -257,18 +253,16 @@ export async function revokeWorkspaceAdmission(
         ),
       );
 
-    await transaction
-      .update(deviceUnlockSecret)
-      .set({ revokedAt: new Date() })
-      .where(
-        and(
-          eq(deviceUnlockSecret.workspaceId, revoked.workspaceId),
-          eq(deviceUnlockSecret.userId, revoked.userId),
-        ),
-      );
+    // The person's devices are revoked in THIS workspace (F210).
+    await revokeUserDevicesInWorkspace(transaction, {
+      workspaceId: revoked.workspaceId,
+      userId: revoked.userId,
+      reason: "membership-revoked",
+      revokedBy: actorUserId,
+    });
 
     // FDN-63. Audit only. The cascade above is workspace-scoped — it revokes
-    // this user's unlock secrets IN THIS WORKSPACE — and per F191 it must
+    // this user's devices IN THIS WORKSPACE — and per F191 it must
     // stay that way: the canonical `device.is_revoked` flag spans workspaces,
     // so setting it here would let an offboarding from one client destroy the
     // same laptop's local data for another client. Only the device's own user
@@ -283,7 +277,7 @@ export async function revokeWorkspaceAdmission(
 
 /**
  * FDN-63 cascade helper. Writes one `revoked-membership` trust event per
- * device of `userId` that holds an unlock secret in `workspaceId`, so the
+ * registered device of `userId` for `workspaceId`, so the
  * audit trail records which devices this workspace-scoped revocation
  * actually reached. Writes no `device` state — see F191.
  *
@@ -298,15 +292,9 @@ async function recordMembershipRevocationEvents(
   userId: string,
 ): Promise<void> {
   const affected = await transaction
-    .select({ deviceId: deviceUnlockSecret.deviceId })
-    .from(deviceUnlockSecret)
-    .innerJoin(device, eq(device.id, deviceUnlockSecret.deviceId))
-    .where(
-      and(
-        eq(deviceUnlockSecret.workspaceId, workspaceId),
-        eq(deviceUnlockSecret.userId, userId),
-      ),
-    );
+    .select({ deviceId: device.id })
+    .from(device)
+    .where(eq(device.userId, userId));
 
   for (const row of affected) {
     await recordTrustEvent(transaction, {
@@ -315,27 +303,6 @@ async function recordMembershipRevocationEvents(
       workspaceId,
       eventType: "revoked-membership",
     });
-  }
-}
-
-export async function confirmWorkspaceRevocationProjection(
-  membershipIdInput: string,
-): Promise<void> {
-  const membershipId = uuidV4Schema.parse(membershipIdInput);
-  const [confirmed] = await db
-    .update(member)
-    .set({ projectionState: "confirmed" })
-    .where(
-      and(
-        eq(member.id, membershipId),
-        eq(member.status, "revoked"),
-        eq(member.projectionState, "revocation-pending"),
-      ),
-    )
-    .returning({ id: member.id });
-
-  if (!confirmed) {
-    throw new Error("Workspace revocation was not awaiting projection");
   }
 }
 
@@ -349,13 +316,13 @@ export async function suspendUserAndRevokeSessions(userIdInput: string): Promise
       .returning({ id: user.id });
     if (!suspended) throw new Error("Active user does not exist");
     await transaction.delete(session).where(eq(session.userId, userId));
-    await transaction
-      .update(deviceUnlockSecret)
-      .set({ revokedAt: new Date() })
-      .where(eq(deviceUnlockSecret.userId, userId));
+    await revokeUserDevicesEverywhere(transaction, {
+      userId,
+      reason: "user-suspended",
+    });
 
     // FDN-63. Audit only, for the same reason the membership cascade is
-    // (F191). Suspension already revokes every unlock secret this user holds
+    // (F191). Suspension already revokes every device this user holds
     // in every workspace, so access is blocked everywhere without touching
     // `device.is_revoked` — and leaving that flag alone keeps it meaning
     // exactly one thing: the device's own user retired it. This codebase
