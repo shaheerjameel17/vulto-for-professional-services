@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import {
   applyMutation,
+  device,
   eq,
   graphMutations,
   member,
@@ -301,4 +302,26 @@ test("without SharedWorker the dedicated-worker fallback replicates and answers 
   await expect(page.getByTestId("worker-kind")).toHaveText("dedicated");
   await untilSynced(page, 2);
   expect(await listEntities(page)).toEqual([...ids].sort());
+});
+
+test("revoking the device erases that workspace's local database", async ({
+  page,
+  context,
+}) => {
+  const userId = await signInNewUser(context);
+  const workspaceId = await createOwnedWorkspace(userId);
+  await seedEntities(workspaceId, userId, 1);
+  await openHarness(page, workspaceId, userId);
+  await untilSynced(page, 1);
+  expect((await scanBrowserStorage(page)).databases).toContain(
+    cacheName(workspaceId, userId),
+  );
+
+  await db.update(device).set({ isRevoked: true }).where(eq(device.userId, userId));
+  await expect(statusOf(page)).toHaveText("signed-out:access-revoked", {
+    timeout: 90_000,
+  });
+  await expect
+    .poll(async () => (await scanBrowserStorage(page)).databases)
+    .not.toContain(cacheName(workspaceId, userId));
 });

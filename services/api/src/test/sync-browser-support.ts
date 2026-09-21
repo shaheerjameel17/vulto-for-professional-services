@@ -6,7 +6,7 @@
  */
 export { eq, sql } from "drizzle-orm";
 export { audienceMaterializer } from "../audience/materializer.js";
-export { user, member, session } from "../auth/schema.js";
+export { user, member, session, device } from "../auth/schema.js";
 export {
   admitWorkspaceMember,
   confirmWorkspaceAdmission,
