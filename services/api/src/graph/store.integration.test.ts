@@ -113,16 +113,8 @@ describe("Stage 2 — the canonical graph store", () => {
   it("round-trips every registered node type", async () => {
     await db.transaction(async (tx) => {
       const workspaceId = await newWorkspace(tx);
-      const skipped: string[] = [];
       for (const { nodeType } of NODE_REGISTRY) {
         const record = nodeRecord(nodeType, workspaceId);
-        if (
-          NODE_REGISTRY.find((r) => r.nodeType === nodeType)!.universalFields ===
-          "anonymous-contribution"
-        ) {
-          skipped.push(nodeType);
-          continue;
-        }
         if (nodeType === "User") await writeMembershipUser(tx, workspaceId, record);
         else if (nodeType !== "Workspace") await insertNode(tx, record);
         const stored = await getNode(tx, workspaceId, record.node_id);
@@ -131,27 +123,55 @@ describe("Stage 2 — the canonical graph store", () => {
         expect(stored!.version).toBe(1);
         expect(stored!.record).toEqual(record);
       }
-      // The Workspace was written by newWorkspace; the two anonymity-protected
-      // types are covered by the F205 test below.
-      expect(skipped.sort()).toEqual([
-        "PulseAggregateContribution",
-        "WellnessAggregateContribution",
-      ]);
+      // The Workspace was written by newWorkspace; every other registered type,
+      // including the anonymity-protected contributions, went through the store.
+      const stored = await getNodes(tx, workspaceId, { includeSoftDeleted: true });
+      expect(new Set(stored.map((n) => n.nodeType))).toEqual(
+        new Set(NODE_REGISTRY.map((r) => r.nodeType)),
+      );
     });
   });
 
-  it("refuses the two anonymity-protected node types until F205 is decided", async () => {
+  it("stores the anonymity-protected contributions with no created_at (F205)", async () => {
     await db.transaction(async (tx) => {
       const workspaceId = await newWorkspace(tx);
       for (const type of [
         "PulseAggregateContribution",
         "WellnessAggregateContribution",
       ]) {
-        await expect(insertNode(tx, nodeRecord(type, workspaceId))).rejects.toThrow(
-          /F205/,
-        );
+        const record = nodeRecord(type, workspaceId);
+        const stored = await insertNode(tx, record);
+        expect(stored.record).not.toHaveProperty("created_at");
+        const [row] = await tx
+          .select({ createdAt: graphNodes.createdAt, createdBy: graphNodes.createdBy })
+          .from(graphNodes)
+          .where(
+            and(
+              eq(graphNodes.workspaceId, workspaceId),
+              eq(graphNodes.nodeId, record.node_id),
+            ),
+          );
+        expect(row).toEqual({ createdAt: null, createdBy: null });
       }
     });
+  });
+
+  it("refuses a null created_at for any other node type, at the database", async () => {
+    const code = await pgCode(
+      db.transaction(async (tx) => {
+        const workspaceId = await newWorkspace(tx);
+        const id = randomUUID();
+        await tx.insert(graphNodes).values({
+          nodeId: id,
+          workspaceId,
+          nodeType: "Employee",
+          lifecycleStatus: "Active",
+          schemaVersion: 1,
+          record: { node_id: id, lifecycle_status: "Active" },
+        });
+      }),
+    );
+    expect(code).toBe("23514");
   });
 
   it("stores only universal fields for a type with no Tier 0 partition", async () => {

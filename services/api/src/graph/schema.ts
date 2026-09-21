@@ -40,7 +40,9 @@ export const graphNodes = pgTable(
     schemaVersion: integer("schema_version").notNull(),
     version: bigint("version", { mode: "number" }).notNull().default(1),
     isSoftDeleted: boolean("is_soft_deleted").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+    // Null only for the two anonymity-protected contribution types (F205), whose
+    // omission of a creation time keeps a contribution uncorrelatable.
+    createdAt: timestamp("created_at", { withTimezone: true }),
     createdBy: uuid("created_by"),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
     updatedBy: uuid("updated_by"),
@@ -57,6 +59,10 @@ export const graphNodes = pgTable(
     check(
       "graph_nodes_record_lifecycle_check",
       sql`${table.record}->>'lifecycle_status' = ${table.lifecycleStatus}`,
+    ),
+    check(
+      "graph_nodes_created_at_check",
+      sql`${table.createdAt} is not null or ${table.nodeType} in ('PulseAggregateContribution', 'WellnessAggregateContribution')`,
     ),
     check(
       "graph_nodes_workspace_self_check",

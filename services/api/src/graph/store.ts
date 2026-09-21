@@ -244,14 +244,6 @@ async function writeNode(
   const full = record as Record<string, unknown>;
   const stored = keepsContent(nodeType) ? full : pickUniversal(full);
   const columns = nodeColumns(record, stored);
-  if (columns.createdAt === null) {
-    // F205: `graph_nodes.created_at` is `not null`, but the anonymity-protected
-    // node types omit it by design (VPS-A007 gate 3). Fail closed rather than
-    // invent a timestamp until the founder decides.
-    throw new GraphValidationError(
-      `${nodeType} carries no created_at, which graph_nodes requires (F205, open)`,
-    );
-  }
   const [row] = await tx
     .insert(graphNodes)
     .values({
@@ -259,7 +251,6 @@ async function writeNode(
       workspaceId,
       version: 1,
       ...columns,
-      createdAt: columns.createdAt,
     })
     .returning();
   return toStoredNode(row!);
