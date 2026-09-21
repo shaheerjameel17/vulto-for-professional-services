@@ -168,6 +168,12 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 - **21 September 2026 — key provider has no default (Stage 5 review).** `createKeyProvider` must **not** default an unset `VULTO_KEY_PROVIDER` to `local`. An unset or empty value is a startup error in every environment, and `local` is refused unless `NODE_ENV` is `development` or `test` (not merely "not production"), so a production server missing `NODE_ENV` cannot silently fall back to the development key. Update `.env.example`, CI env and the tests accordingly.
 - **21 September 2026 — noted, not required now.** KEK rotation (VPS-A003 "Rotation") has no issue yet; it is added to FDN-96's follow-up list rather than built in Stage 5. `protected.read` resolves each fragment's node and key one query at a time; that is acceptable at the 500-item cap and is revisited only if measured slow.
 - **21 September 2026 — pushing.** The founder has allowed `git push` to `origin` for `main`, `stage-*`, `archive/local-first-e2e` and `fdn-68-audit-wip`. A refused push is still a STOP condition.
+- **21 September 2026 — Stage 6 approved and merged (`961830d`). Stage 7 amendments:**
+  - **F210 (device revoke survives).** Before dropping `device_unlock_secret` (item 4), create the control-plane table `device_workspace_revocation (workspace_id, device_id, revoked_at, revoked_by, reason)`, primary key `(workspace_id, device_id)`, identifiers only, never synced. Backfill it from `device_unlock_secret` in the same migration, repoint every revoke check (session path and shape proxy) to it, then drop the old table. A test proves a device revoked before the migration is still revoked after it. "Keep the device registry, revoke and retire" in item 1 includes this.
+  - **F212 (retired browser job).** Delete the disabled `device-store-browser` job, its config and its suite together with the retired code. After Stage 7 no job in either lane may be disabled or skipped except `publish-artifacts` off `main`.
+  - **Accessibility smoke pass restored.** Disabling `device-store-browser` in Stage 6 stopped the accessibility smoke pass. Stage 7 moves it into a live slow-lane suite (the auth browser suite or the sync suite) against the current pages, and it must pass in CI.
+  - **Check the merge-commit run first.** Confirm the fast and slow lanes on `main` at `961830d` are green before branching. If red, stop and report.
+  - **Device-side rules carried from Stage 6, not to be undone:** `vulto:device` survives sign-out and holds only the device id and the pending-erase list; the outbox is versioned separately from the cache and is never wiped by a version change; every client API request carries `x-vulto-workspace-id`, and a mismatch is refused with nothing applied.
 
 ---
 
@@ -572,4 +578,4 @@ Stop. The next brief will cover the feature-spec sweep (FDN-104) and the first R
 
 ## Part 5 — What to do right now
 
-Begin **Stage 1**. When its report is written and Linear is updated, stop and wait for the founder.
+Stages 1–6 are merged. Begin **Stage 7** on the founder's "Stage 7 go", applying the Stage 7 amendments above. When its report is written and Linear is updated, stop and wait for the founder.
