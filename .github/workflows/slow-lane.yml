@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       image: ${{ steps.read.outputs.image }}
+      postgres_image: ${{ steps.read.outputs.postgres_image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +54,7 @@ jobs:
           set -euo pipefail
           source .github/workflows/ci-image-ref.env
           echo "image=${CI_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "postgres_image=${CI_POSTGRES_IMAGE}" >> "$GITHUB_OUTPUT"
           if [[ "${CI_IMAGE}" != *"@sha256:"* ]]; then
             echo "::warning title=CI image is not digest-pinned::${CI_IMAGE} — A007-T16 requires a digest. Bump .github/workflows/ci-image-ref.env once ci-image.yml has published the image."
           fi
@@ -68,7 +70,7 @@ jobs:
       options: --user root
     services:
       postgres:
-        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
         env:
           POSTGRES_USER: vulto
           POSTGRES_PASSWORD: vulto
@@ -105,7 +107,7 @@ jobs:
       options: --user root
     services:
       postgres:
-        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
         env:
           POSTGRES_USER: vulto
           POSTGRES_PASSWORD: vulto
