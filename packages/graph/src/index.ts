@@ -71,3 +71,4 @@ export type {
   MaterializedNodeFragment,
   MaterializedRecursiveNeighbor,
 } from "./worker/storage/sqlite-graph-index";
+export * from "./mutators";

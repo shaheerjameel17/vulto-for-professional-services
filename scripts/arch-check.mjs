@@ -19,6 +19,12 @@
 //      `graph/membership-projection.ts` may name the authority that lets a
 //      `User` row be written (F204).
 //
+//   4. Graph writes (Stage 4, A003-T52). Only the mutation pipeline
+//      (`services/api/src/mutations`) and the graph module's own founding and
+//      membership code may call the store's write functions, and nothing
+//      outside `services/api/src/graph` may write `graph_nodes` or
+//      `graph_edges` through Drizzle. Test files are exempt.
+//
 //   3. The audit journal table (Stage 3, F198). Only `services/api/src/audit`
 //      and `db.ts` may import `audit/schema`, so `appendAudit` is the one
 //      writer of an AuditEntry.
@@ -117,6 +123,8 @@ const STORE_IMPORTERS = [
   "audience",
   "jobs",
 ].map((folder) => `${API_SRC}/${folder}/`);
+const STORE_WRITES =
+  /\b(insertNode|insertUserNode|insertEdge|updateNodeFields|softDeleteNode|closeEdge)\b/;
 const SPECIFIER =
   /(?:from\s+|import\s*\(\s*|import\s+|require\s*\(\s*)["']([^"']+)["']/g;
 
@@ -128,6 +136,7 @@ if (!isDirectory(API_SRC)) {
   const storeViolations = [];
   const authorityViolations = [];
   const auditViolations = [];
+  const writeViolations = [];
   for (const raw of walk(API_SRC)) {
     const file = raw.split(sep).join("/");
     const text = readFileSync(raw, "utf8");
@@ -159,6 +168,18 @@ if (!isDirectory(API_SRC)) {
           if (resolved === AUDIT_SCHEMA) {
             auditViolations.push(`    ${file}:${i + 1}  ${line.trim()}`);
           }
+        }
+      });
+    }
+    const isTest = /\.test\.ts$/.test(file) || file.endsWith("/test-support.ts");
+    if (!isTest && !file.startsWith(`${API_SRC}/graph/`)) {
+      const inPipeline = file.startsWith(`${API_SRC}/mutations/`);
+      text.split("\n").forEach((line, i) => {
+        if (/^\s*(\/\/|\*|\/\*)/.test(line)) return;
+        if (/\.(insert|update|delete)\(\s*graph(Nodes|Edges)\b/.test(line)) {
+          writeViolations.push(`    ${file}:${i + 1}  ${line.trim()}`);
+        } else if (!inPipeline && STORE_WRITES.test(line)) {
+          writeViolations.push(`    ${file}:${i + 1}  ${line.trim()}`);
         }
       });
     }
@@ -197,6 +218,20 @@ if (!isDirectory(API_SRC)) {
       ].join("\n") + "\n",
     );
   }
+  if (writeViolations.length > 0) {
+    failed = true;
+    process.stderr.write(
+      [
+        "",
+        "  ✗ A003-T52 — the graph is written only by the mutation pipeline. Found:",
+        "",
+        ...writeViolations,
+        "",
+        "    Define a named mutation in packages/schema instead.",
+        "",
+      ].join("\n") + "\n",
+    );
+  }
   if (auditViolations.length > 0) {
     failed = true;
     process.stderr.write(
@@ -213,7 +248,8 @@ if (!isDirectory(API_SRC)) {
   if (
     storeViolations.length === 0 &&
     authorityViolations.length === 0 &&
-    auditViolations.length === 0
+    auditViolations.length === 0 &&
+    writeViolations.length === 0
   ) {
     process.stdout.write(`  ✓ ${STORE} — import boundary holds\n`);
   }

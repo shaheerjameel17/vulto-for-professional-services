@@ -105,6 +105,31 @@ describe("arch-check — the graph store import boundary", () => {
     expect(good.status, good.stderr).toBe(0);
   });
 
+  it("fails when anything but the pipeline writes the graph (A003-T52)", () => {
+    // Identifiers are assembled at runtime so this file does not match the rule itself.
+    const writer = ["insert", "Node"].join("");
+    const drizzleWrite = `db.${["insert"].join("")}(${["graph", "Nodes"].join("")})`;
+    const storeSource = `export const ${writer} = () => 1;\n`;
+    const viaStore = archCheck({
+      [STORE]: storeSource,
+      "services/api/src/permission/rogue.ts": `import { ${writer} } from "../graph/store.js";\nvoid ${writer};\n`,
+    });
+    expect(viaStore.status).toBe(1);
+    expect(viaStore.stderr).toContain("mutation pipeline");
+    const viaDrizzle = archCheck({
+      [STORE]: storeSource,
+      "services/api/src/routes/rogue.ts": `${drizzleWrite};\n`,
+    });
+    expect(viaDrizzle.status).toBe(1);
+    const allowed = archCheck({
+      [STORE]: storeSource,
+      "services/api/src/mutations/pipeline.ts": `import { ${writer} } from "../graph/store.js";\nvoid ${writer};\n`,
+      "services/api/src/graph/founding.ts": `import { ${writer} } from "./store.js";\nvoid ${writer};\n`,
+      "services/api/src/permission/reads.test.ts": `import { ${writer} } from "../graph/store.js";\nvoid ${writer};\n`,
+    });
+    expect(allowed.status, allowed.stderr).toBe(0);
+  });
+
   it("passes on the real repository", () => {
     const result = spawnSync(process.execPath, [SCRIPT], {
       cwd: fileURLToPath(new URL("../../../../", import.meta.url)),

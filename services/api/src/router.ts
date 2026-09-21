@@ -1,5 +1,12 @@
 import { sql } from "./db.js";
-import { protectedProcedure, publicProcedure, t } from "./trpc.js";
+import { applyMutationsInputSchema } from "@vulto/schema";
+import { applyMutations } from "./mutations/pipeline.js";
+import {
+  currentClientProcedure,
+  protectedProcedure,
+  publicProcedure,
+  t,
+} from "./trpc.js";
 
 /**
  * Render a timestamp the driver returned, whatever shape it chose.
@@ -122,6 +129,16 @@ export const appRouter = t.router({
         latencyMs: Date.now() - startedAt,
       };
     }),
+  }),
+  graph: t.router({
+    /**
+     * Applies queued mutations in order, each in its own transaction, stopping
+     * at the first rejection (A003-T53). The principal is the server's, from
+     * the session; nothing in the input can name one.
+     */
+    applyMutations: currentClientProcedure
+      .input(applyMutationsInputSchema)
+      .mutation(({ ctx, input }) => applyMutations(ctx.principal, input.mutations)),
   }),
   principal: t.router({
     /**

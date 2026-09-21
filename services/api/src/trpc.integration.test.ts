@@ -139,3 +139,87 @@ describe("tRPC context — the principal is decided on the server", () => {
     expect((await current(owner.cookie)).statusCode).toBe(401);
   });
 });
+
+async function applyMutations(
+  cookie: string | undefined,
+  body: unknown,
+  schemaVersion?: string,
+) {
+  return app.inject({
+    method: "POST",
+    url: "/trpc/graph.applyMutations",
+    headers: {
+      origin: ORIGIN,
+      "content-type": "application/json",
+      ...(cookie ? { cookie } : {}),
+      ...(schemaVersion === undefined
+        ? {}
+        : { "x-vulto-schema-version": schemaVersion }),
+    },
+    payload: JSON.stringify(body),
+  });
+}
+
+describe("graph.applyMutations over tRPC", () => {
+  const createEntity = (workspaceId: string) => ({
+    mutations: [
+      {
+        mutation_id: randomUUID(),
+        name: "graph.createNode",
+        args: {
+          node: {
+            node_id: randomUUID(),
+            node_type: "Entity",
+            schema_version: 1,
+            lifecycle_status: "Active",
+            workspace_id: workspaceId,
+          },
+        },
+      },
+    ],
+  });
+
+  it("refuses a client below the minimum schema version, or one that does not say, with client-outdated", async () => {
+    const owner = await signedInOwner();
+    for (const version of [undefined, "0", "not-a-number"]) {
+      const response = await applyMutations(
+        owner.cookie,
+        createEntity(owner.workspaceId),
+        version,
+      );
+      expect(response.statusCode, String(version)).toBe(412);
+      const error = JSON.parse(response.body).error;
+      expect(error.message).toBe("client-outdated");
+      expect(error.data.code).toBe("PRECONDITION_FAILED");
+    }
+  });
+
+  it("applies mutations for a current client, as the session's principal", async () => {
+    const owner = await signedInOwner();
+    const body = createEntity(owner.workspaceId);
+    const response = await applyMutations(owner.cookie, body, "1");
+    expect(response.statusCode, response.body).toBe(200);
+    const [result] = JSON.parse(response.body).result.data;
+    expect(result).toMatchObject({
+      mutation_id: body.mutations[0]!.mutation_id,
+      status: "applied",
+    });
+    const replay = await applyMutations(owner.cookie, body, "1");
+    expect(JSON.parse(replay.body).result.data[0].status).toBe("duplicate");
+  });
+
+  it("requires a session and caps a call at 100 mutations", async () => {
+    const owner = await signedInOwner();
+    expect(
+      (await applyMutations(undefined, createEntity(owner.workspaceId), "1"))
+        .statusCode,
+    ).toBe(401);
+    const many = {
+      mutations: Array.from(
+        { length: 101 },
+        () => createEntity(owner.workspaceId).mutations[0],
+      ),
+    };
+    expect((await applyMutations(owner.cookie, many, "1")).statusCode).toBe(400);
+  });
+});

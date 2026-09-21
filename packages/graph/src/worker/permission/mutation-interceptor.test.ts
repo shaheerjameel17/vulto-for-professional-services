@@ -230,15 +230,14 @@ describe("authorizeEdgeWrite — Gate 1 endpoint approximation, exhaustive over 
     }
   });
 
-  it("managed_by (Employee -> Employee): denied for every role — Employee is split and the registry declares no governing partition for it (F136 default)", () => {
+  it("managed_by (Employee -> Employee): governed by Employee/operational (F208), so only roles with Full there may write it", () => {
     for (const role of ALL_ROLES) {
       const authorization = authorizeEdgeWrite("managed_by", "Employee", "Employee", [
         role,
       ]);
-      expect(authorization.allowed).toBe(false);
-      if (!authorization.allowed) {
-        expect(authorization.reason).toContain("F136");
-      }
+      const mayWrite = role === "owner" || role === "hr-admin";
+      expect(authorization.allowed, role).toBe(mayWrite);
+      if (!authorization.allowed) expect(authorization.reason).not.toContain("F136");
     }
   });
 
