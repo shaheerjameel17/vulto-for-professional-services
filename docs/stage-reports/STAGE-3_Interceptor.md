@@ -1,7 +1,7 @@
 # Stage 3 — The server-side permission interceptor and audit journal
 
 **Status:** COMPLETE
-**Branch:** stage-3-interceptor @ PLACEHOLDER
+**Branch:** stage-3-interceptor @ a669871
 **Linear issues:** FDN-98, FDN-89 (partial), FDN-68 (server half)
 **Date:** 2026-09-21
 
