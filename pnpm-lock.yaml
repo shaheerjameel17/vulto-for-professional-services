@@ -62,9 +62,6 @@ importers:
       better-auth:
         specifier: 1.6.29
         version: 1.6.29(drizzle-kit@0.31.10)(drizzle-orm@0.45.2(kysely@0.29.5)(postgres@3.4.9))(next@15.1.6(@playwright/test@1.62.1)(react-dom@19.0.0(react@19.0.0))(react@19.0.0))(react-dom@19.0.0(react@19.0.0))(react@19.0.0)(vitest@4.1.10(@types/node@22.20.1)(vite@8.2.1(@types/node@22.20.1)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12)))
-      loro-crdt:
-        specifier: 1.14.1
-        version: 1.14.1
       lucide-react:
         specifier: ^0.474.0
         version: 0.474.0(react@19.0.0)
@@ -111,12 +108,6 @@ importers:
       canonicalize:
         specifier: 4.0.0
         version: 4.0.0
-      loro-crdt:
-        specifier: 1.14.1
-        version: 1.14.1
-      shamir-secret-sharing:
-        specifier: 0.0.3
-        version: 0.0.3
       wa-sqlite:
         specifier: 1.0.0
         version: 1.0.0
@@ -130,18 +121,12 @@ importers:
       '@types/node':
         specifier: 24.13.3
         version: 24.13.3
-      postgres:
-        specifier: 3.4.9
-        version: 3.4.9
       typescript:
         specifier: 5.9.3
         version: 5.9.3
 
   packages/schema:
     dependencies:
-      loro-crdt:
-        specifier: 1.14.1
-        version: 1.14.1
       zod:
         specifier: 4.4.3
         version: 4.4.3
@@ -2987,9 +2972,6 @@ packages:
   lodash@4.17.21:
     resolution: {integrity: sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg==}
 
-  loro-crdt@1.14.1:
-    resolution: {integrity: sha512-1BQ7neoQeJdCbD8gxlLHsy8tqCLYIJGrXSZic4s3t7toIsiFfks8Z0nGWvuEWr5miZ7giJx19x5ffkBaw+g9KQ==}
-
   lru-cache@5.1.1:
     resolution: {integrity: sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w==}
 
@@ -3290,9 +3272,6 @@ packages:
 
   set-cookie-parser@3.1.2:
     resolution: {integrity: sha512-5/r/lTwbJ3zQ+qwdUFZYeRNqda7P5HD8zQKqlSjdGt1/S0cjLAphHusj4Y58ahDtWn/g32xrIS58/ikOvwl0Lw==}
-
-  shamir-secret-sharing@0.0.3:
-    resolution: {integrity: sha512-GPIb+QZDyjwwKSlVXEjHoOaBeevmdWz2IM2tz07nQvd0L9eMfLhzEqr7imajjjXCAO/cWgzXCCj0yFNMx6+miQ==}
 
   sharp@0.33.5:
     resolution: {integrity: sha512-haPVm1EkS9pgvHrQ/F3Xy+hgcuMV0Wm9vfIBSiwZ05k+xgb0PkBQpGsAA/oWdDobNaZTH5ppvHtzCFbnSEwHVw==}
@@ -6213,8 +6192,6 @@ snapshots:
 
   lodash@4.17.21: {}
 
-  loro-crdt@1.14.1: {}
-
   lru-cache@5.1.1:
     dependencies:
       yallist: 3.1.1
@@ -6490,8 +6467,6 @@ snapshots:
   set-cookie-parser@2.7.2: {}
 
   set-cookie-parser@3.1.2: {}
-
-  shamir-secret-sharing@0.0.3: {}
 
   sharp@0.33.5:
     dependencies:

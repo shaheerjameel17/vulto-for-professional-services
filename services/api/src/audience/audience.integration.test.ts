@@ -441,7 +441,7 @@ describe("A003-T58 — the publication is an allowlist, and Electric's role cann
       "graph_protected_fragments",
       "protected_data_keys",
       "graph_mutations",
-      "device_unlock_secret",
+      "device_workspace_revocation",
     ]) {
       expect(await privilege(table, "SELECT"), table).toBe(false);
     }

@@ -3,15 +3,9 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { auth } from "./config.js";
 import {
   DeviceRevokeDeniedError,
-  DeviceRoleRefreshDeniedError,
-  DeviceUnlockDeniedError,
   parseDeviceRevokeRequest,
-  parseDeviceRoleRefreshRequest,
-  parseDeviceStoreUnlockRequest,
-  requestDeviceRoleRefresh,
-  requestDeviceUnlock,
   revokeDevice,
-} from "./device-unlock.js";
+} from "./device-revocation.js";
 import {
   DeviceListDeniedError,
   DeviceNotReapprovableError,
@@ -33,25 +27,11 @@ import {
   PasskeyRegistrationRateLimitError,
 } from "./passkey-registration.js";
 import {
-  mintSyncTicket,
-  parseSyncTicketRequest,
-  SyncTicketDeniedError,
-} from "./sync-ticket.js";
-import {
   changeWorkspaceRole,
-  confirmRevocationProjectionForActor,
-  confirmRoleChangeProjection,
-  confirmWorkspaceProjection,
-  consumeMembershipTransitionGrant,
-  consumeWorkspaceProjectionGrant,
-  createWorkspaceWithPendingOwner,
-  mintMembershipTransitionGrant,
+  createWorkspace,
   parseChangeRoleRequest,
-  parseConfirmProjectionRequest,
-  parseConfirmTransitionRequest,
   parseCreateWorkspaceRequest,
   parseRevokeMemberRequest,
-  parseTransitionGrantRequest,
   revokeMembershipForActor,
   WorkspaceProjectionDeniedError,
 } from "./workspace-projection.js";
@@ -238,85 +218,7 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post("/device-store/unlock", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    let parsed: { workspaceId: string; deviceId: string };
-    try {
-      parsed = parseDeviceStoreUnlockRequest(request.body);
-    } catch {
-      return reply
-        .code(401)
-        .send({ error: "This device is not authorized to unlock the local store" });
-    }
-
-    try {
-      const grant = await requestDeviceUnlock(
-        requestHeaders(request),
-        parsed.workspaceId,
-        parsed.deviceId,
-      );
-      return grant;
-    } catch (error) {
-      if (error instanceof DeviceUnlockDeniedError) {
-        return reply.code(401).send({ error: error.message });
-      }
-      request.log.error(error);
-      return reply
-        .code(401)
-        .send({ error: "This device is not authorized to unlock the local store" });
-    }
-  });
-
-  app.post("/device-store/roles", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    let parsed: { workspaceId: string; deviceId?: string };
-    try {
-      parsed = parseDeviceRoleRefreshRequest(request.body);
-    } catch {
-      return reply
-        .code(401)
-        .send({ error: "This device is not authorized to unlock the local store" });
-    }
-
-    try {
-      return await requestDeviceRoleRefresh(
-        requestHeaders(request),
-        parsed.workspaceId,
-        parsed.deviceId,
-      );
-    } catch (error) {
-      // F151. `reason` is the classified, enumerable signal — present only
-      // when a positive fact (this device's own secret, or the membership/
-      // account row) confirmed one of the two named revocation events.
-      // Absent for every other denial, which is reported exactly as before:
-      // a plain 401 with no `revocation` field, still locking (F148's
-      // tested default), never erasing.
-      if (error instanceof DeviceRoleRefreshDeniedError) {
-        return reply.code(401).send({
-          error: error.message,
-          ...(error.reason !== undefined ? { revocation: { kind: error.reason } } : {}),
-        });
-      }
-      if (error instanceof DeviceUnlockDeniedError) {
-        return reply.code(401).send({ error: error.message });
-      }
-      // F148. This route's answer is a DEVICE-FACING SECURITY DECISION: a
-      // 401 here locks the caller's sealed local store. So an error that is
-      // ours — a database outage, a driver failure, a bug — must never be
-      // reported as one about the caller's authorization. It previously
-      // was, which turned any infrastructure blip into a fleet-wide local
-      // lockout with silent data loss (F144).
-      //
-      // 503 says the only true thing: we could not answer. The device
-      // treats it as "try again," keeps its roles stale, and stays open.
-      request.log.error(error);
-      return reply
-        .code(503)
-        .send({ error: "The role refresh checkpoint is temporarily unavailable" });
-    }
-  });
-
-  app.post("/device-store/revoke", async (request, reply) => {
+  app.post("/devices/revoke", async (request, reply) => {
     reply.header("cache-control", "no-store");
     let parsed: { workspaceId: string; deviceId: string; reason?: "stale" };
     try {
@@ -343,49 +245,17 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
     }
   });
 
-  app.post("/sync/ticket", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    let parsed: { workspaceId: string; deviceId: string };
-    try {
-      parsed = parseSyncTicketRequest(request.body);
-    } catch {
-      return reply.code(401).send({
-        error: "This device is not authorized to synchronize this workspace",
-      });
-    }
-
-    try {
-      return await mintSyncTicket(
-        requestHeaders(request),
-        parsed.workspaceId,
-        parsed.deviceId,
-      );
-    } catch (error) {
-      if (error instanceof SyncTicketDeniedError) {
-        return reply.code(401).send({ error: error.message });
-      }
-      // Like the other device-facing checkpoints: an error that is ours must
-      // not be reported as one about the caller's authorization.
-      request.log.error(error);
-      return reply
-        .code(503)
-        .send({ error: "The sync ticket service is temporarily unavailable" });
-    }
-  });
-
-  // FDN-85 — the server half of the `workspace.create` matched pair. Records
-  // the pending owner admission and returns a single-use projection grant the
-  // caller's graph Worker consumes to write the five reserved-type records.
+  // Creates a workspace with its founding Owner, in one server transaction.
   app.post("/workspace/create", async (request, reply) => {
     reply.header("cache-control", "no-store");
-    let parsed: { workspaceName: string; deviceId: string };
+    let parsed: { workspaceName: string };
     try {
       parsed = parseCreateWorkspaceRequest(request.body);
     } catch {
       return reply.code(400).send({ error: "Invalid workspace creation request" });
     }
     try {
-      return await createWorkspaceWithPendingOwner(requestHeaders(request), parsed);
+      return await createWorkspace(requestHeaders(request), parsed);
     } catch (error) {
       if (error instanceof WorkspaceProjectionDeniedError) {
         return reply.code(401).send({ error: error.message });
@@ -397,87 +267,8 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // FDN-85 — mark a projection grant consumed and return its validated
-  // context. The client calls this immediately before running the projection
-  // command; the single-use CAS lives here.
-  app.post("/workspace/consume-projection-grant", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    const body = (request.body ?? {}) as Record<string, unknown>;
-    try {
-      const consumed = await consumeWorkspaceProjectionGrant(String(body.grant), {
-        workspaceId: String(body.workspaceId),
-        membershipId: String(body.membershipId),
-        deviceId: String(body.deviceId),
-      });
-      return consumed;
-    } catch (error) {
-      if (error instanceof WorkspaceProjectionDeniedError || error instanceof Error) {
-        return reply
-          .code(401)
-          .send({ error: "This projection grant is not valid for this write" });
-      }
-      request.log.error(error);
-      return reply
-        .code(503)
-        .send({ error: "The projection-grant service is temporarily unavailable" });
-    }
-  });
-
-  app.post("/workspace/consume-transition-grant", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    const body = (request.body ?? {}) as Record<string, unknown>;
-    if (body.kind !== "revocation" && body.kind !== "role-change") {
-      return reply.code(400).send({ error: "Invalid transition kind" });
-    }
-    try {
-      const consumed = await consumeMembershipTransitionGrant(String(body.grant), {
-        workspaceId: String(body.workspaceId),
-        membershipId: String(body.membershipId),
-        deviceId: String(body.deviceId),
-        kind: body.kind,
-      });
-      return consumed;
-    } catch (error) {
-      if (error instanceof Error) {
-        return reply
-          .code(401)
-          .send({ error: "This transition grant is not valid for this write" });
-      }
-      request.log.error(error);
-      return reply
-        .code(503)
-        .send({ error: "The transition-grant service is temporarily unavailable" });
-    }
-  });
-
-  // FDN-85 — the reconciler's confirmation call. The graph Worker invokes this
-  // once the projection delta is durably flushed locally; it flips the
-  // membership to active/confirmed via FDN-60's CAS.
-  app.post("/workspace/confirm-projection", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    let parsed: { workspaceId: string; membershipId: string };
-    try {
-      parsed = parseConfirmProjectionRequest(request.body);
-    } catch {
-      return reply.code(400).send({ error: "Invalid confirmation request" });
-    }
-    try {
-      await confirmWorkspaceProjection(requestHeaders(request), parsed);
-      return reply.code(200).send({ confirmed: true });
-    } catch (error) {
-      if (error instanceof WorkspaceProjectionDeniedError) {
-        return reply.code(401).send({ error: error.message });
-      }
-      request.log.error(error);
-      return reply.code(503).send({
-        error: "The projection confirmation service is temporarily unavailable",
-      });
-    }
-  });
-
-  // FDN-85 Stage 3 — an Owner denies a membership centrally. Thin wrapper over
-  // FDN-60's revokeWorkspaceAdmission (which owns the cascade); "deny centrally
-  // first" — returns before any graph write.
+  // An Owner removes a member. Thin wrapper over revokeWorkspaceAdmission, which
+  // owns the whole cascade in one transaction.
   app.post("/workspace/revoke-member", async (request, reply) => {
     reply.header("cache-control", "no-store");
     let parsed: { workspaceId: string; membershipId: string };
@@ -500,8 +291,7 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // FDN-85 Stage 3 — an Owner changes a membership's roles. narrow: central
-  // update first; widen: grant first, central update deferred to confirm.
+  // An Owner changes a membership's roles, widening or narrowing, in one transaction.
   app.post("/workspace/change-role", async (request, reply) => {
     reply.header("cache-control", "no-store");
     let parsed;
@@ -520,77 +310,6 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       return reply
         .code(503)
         .send({ error: "The role-change service is temporarily unavailable" });
-    }
-  });
-
-  // FDN-85 Stage 3 — mint a transition grant for reconciliation (a re-project
-  // of an already-decided revocation or role change).
-  app.post("/workspace/transition-grant", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    let parsed;
-    try {
-      parsed = parseTransitionGrantRequest(request.body);
-    } catch {
-      return reply.code(400).send({ error: "Invalid transition-grant request" });
-    }
-    try {
-      return await mintMembershipTransitionGrant(requestHeaders(request), parsed);
-    } catch (error) {
-      if (error instanceof WorkspaceProjectionDeniedError) {
-        return reply.code(401).send({ error: error.message });
-      }
-      request.log.error(error);
-      return reply
-        .code(503)
-        .send({ error: "The transition-grant service is temporarily unavailable" });
-    }
-  });
-
-  // FDN-85 Stage 3 — confirm a revocation history projection (Owner-gated
-  // wrapper over FDN-60's confirmWorkspaceRevocationProjection CAS).
-  app.post("/workspace/confirm-revocation-projection", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    let parsed;
-    try {
-      parsed = parseConfirmTransitionRequest(request.body);
-    } catch {
-      return reply.code(400).send({ error: "Invalid confirmation request" });
-    }
-    try {
-      await confirmRevocationProjectionForActor(requestHeaders(request), parsed);
-      return reply.code(200).send({ confirmed: true });
-    } catch (error) {
-      if (error instanceof WorkspaceProjectionDeniedError) {
-        return reply.code(401).send({ error: error.message });
-      }
-      request.log.error(error);
-      return reply.code(503).send({
-        error: "The revocation confirmation service is temporarily unavailable",
-      });
-    }
-  });
-
-  // FDN-85 Stage 3 — confirm a role-change history projection. For a widen,
-  // this is where member.role finally advances.
-  app.post("/workspace/confirm-role-change", async (request, reply) => {
-    reply.header("cache-control", "no-store");
-    let parsed;
-    try {
-      parsed = parseConfirmTransitionRequest(request.body);
-    } catch {
-      return reply.code(400).send({ error: "Invalid confirmation request" });
-    }
-    try {
-      await confirmRoleChangeProjection(requestHeaders(request), parsed);
-      return reply.code(200).send({ confirmed: true });
-    } catch (error) {
-      if (error instanceof WorkspaceProjectionDeniedError) {
-        return reply.code(401).send({ error: error.message });
-      }
-      request.log.error(error);
-      return reply.code(503).send({
-        error: "The role-change confirmation service is temporarily unavailable",
-      });
     }
   });
 

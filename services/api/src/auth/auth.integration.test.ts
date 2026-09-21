@@ -1,35 +1,24 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { verifyPassword } from "better-auth/crypto";
 import { sql } from "drizzle-orm";
 import type { LightMyRequestResponse } from "fastify";
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { DEVICE_HEADER, WORKSPACE_HEADER } from "@vulto/schema";
 import { db, closeDatabase } from "../db.js";
 import { buildServer } from "../server.js";
 import {
   account,
   device,
   deviceTrustEvent,
-  deviceUnlockSecret,
+  deviceWorkspaceRevocation,
   member,
-  organization,
   session,
-  syncTicket,
   user,
-  workspaceProjectionGrant,
 } from "./schema.js";
-import {
-  consumeMembershipTransitionGrant,
-  consumeWorkspaceProjectionGrant,
-  PROJECTION_GRANT_PREFIX,
-  membershipInEdgeId,
-  membershipOfEdgeId,
-  roleChangeDirection,
-} from "./workspace-projection.js";
-import { SYNC_TICKET_PREFIX, SYNC_TICKET_TTL_SECONDS } from "./sync-ticket.js";
+import { roleChangeDirection } from "./workspace-projection.js";
 import {
   admitWorkspaceMember,
   confirmWorkspaceAdmission,
-  confirmWorkspaceRevocationProjection,
   createPendingWorkspaceAdmission,
   requireCurrentWorkspaceSession,
   revokeWorkspaceAdmission,
@@ -143,6 +132,36 @@ async function injectRegisterDevice(cookie: string, deviceId: string): Promise<v
   expect(response.statusCode, response.body).toBe(200);
 }
 
+/**
+ * Asks the shape proxy whether this device is acceptable to this workspace right
+ * now: 200 when it is, 401 `access-revoked` when it is not. It is the one place
+ * a device's standing is decided, so it is what these tests probe. The upstream
+ * is a stand-in that always answers 200.
+ */
+async function probe(cookie: string, workspaceId: string, id: string) {
+  return app.inject({
+    method: "GET",
+    url: "/v1/shape/nodes?offset=-1",
+    headers: {
+      origin: ORIGIN,
+      cookie,
+      [WORKSPACE_HEADER]: workspaceId,
+      [DEVICE_HEADER]: id,
+    },
+  });
+}
+
+beforeAll(() => {
+  vi.stubGlobal(
+    "fetch",
+    async () =>
+      new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json", "electric-handle": "stub" },
+      }),
+  );
+});
+
 beforeEach(async () => {
   await db.execute(
     sql.raw(`
@@ -156,6 +175,7 @@ beforeEach(async () => {
 });
 
 afterAll(async () => {
+  vi.unstubAllGlobals();
   await app.close();
   await closeDatabase();
 });
@@ -324,10 +344,8 @@ describe("exact-workspace revocation guard", () => {
       .select({ status: member.status, projectionState: member.projectionState })
       .from(member)
       .where(sql`${member.id} = ${workspaceA.membershipId}`);
-    expect(revoked).toEqual({
-      status: "revoked",
-      projectionState: "revocation-pending",
-    });
+    // One transaction: nothing is left waiting on a device to confirm it.
+    expect(revoked).toEqual({ status: "revoked", projectionState: "confirmed" });
   });
 
   it("suspends the account, deletes every session, and refuses a new login", async () => {
@@ -466,157 +484,6 @@ describe("hostile request boundaries", () => {
       );
     }
     expect(passkeyStatuses).toEqual([200, 200, 200, 429]);
-  });
-});
-
-/**
- * F148 (S4). This route's answer is a device-facing SECURITY DECISION: a 401
- * here locks the caller's sealed local store, discarding anything still
- * inside its durability window (F144). So the route must never report a
- * failure OF ITS OWN as a statement about the caller's authorization.
- *
- * It used to. Any unexpected error — a database outage, a driver fault, a bug
- * — was logged and answered `401`, which every polling device read as
- * "revoked." One infrastructure blip locked every device in the workspace out
- * of its own local data, with no automatic recovery.
- *
- * The browser suite for F148 cannot cover this half: it intercepts the
- * response in the page, so the server is never reached. This is the only
- * place the server's own classification is exercised.
- */
-describe("F148 — the role-refresh checkpoint separates its failures from its denials", () => {
-  it("answers a healthy request with the caller's current roles", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId } = await addWorkspace(userId, `f148-ok-${randomUUID()}`);
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/device-store/roles",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId },
-    });
-
-    expect(response.statusCode).toBe(200);
-    expect(json(response).roles).toEqual(["team-member"]);
-  });
-
-  it("answers an internal failure with 503, never with 401", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId } = await addWorkspace(userId, `f148-fail-${randomUUID()}`);
-
-    // A genuine infrastructure failure rather than a simulated one: the
-    // admission query cannot run, so the route's own error path is what
-    // answers. Renamed rather than dropped, and restored in `finally`, so a
-    // failure here cannot leave the test database broken for later tests.
-    await db.execute(
-      sql.raw('ALTER TABLE "member" RENAME COLUMN "status" TO "status_f148"'),
-    );
-    let response;
-    try {
-      response = await app.inject({
-        method: "POST",
-        url: "/device-store/roles",
-        headers: { origin: ORIGIN, cookie },
-        payload: { workspaceId },
-      });
-    } finally {
-      await db.execute(
-        sql.raw('ALTER TABLE "member" RENAME COLUMN "status_f148" TO "status"'),
-      );
-    }
-
-    // 401 is the assertion that matters. It is what the device reads as a
-    // revocation, and it is what this route used to send here.
-    expect(response.statusCode).not.toBe(401);
-    expect(response.statusCode).toBe(503);
-  });
-
-  it("still answers a real revocation with 401", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId, membershipId } = await addWorkspace(
-      userId,
-      `f148-revoked-${randomUUID()}`,
-    );
-    await revokeWorkspaceAdmission(membershipId, randomUUID());
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/device-store/roles",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId },
-    });
-
-    // The counterweight to the test above: separating failures from denials
-    // must not weaken the denial itself.
-    expect(response.statusCode).toBe(401);
-  });
-});
-
-/**
- * F151. `device-revocation-signal.spec.ts`'s cascading-priority browser test
- * hand-constructs the "membership revoked, and every device secret went
- * with it" state with two raw SQL updates — deliberately, since the
- * Playwright suite has no HTTP endpoint that calls `revokeWorkspaceAdmission`
- * in production yet (membership removal is unbuilt feature work). That
- * proves the CLASSIFIER's priority logic against a state matching what the
- * cascade produces; it does not exercise the cascade itself.
- *
- * This closes that gap directly: `revokeWorkspaceAdmission` is called for
- * real, in the same process, on a real registered device — proving the
- * ACTUAL transaction (not a hand-built imitation of it) produces the
- * classification F151 relies on.
- */
-describe("F151 — the real revocation cascade classifies as membership-revoked", () => {
-  it("a real revokeWorkspaceAdmission cascades to the device secret, and the checkpoint reports membership-revoked", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId, membershipId } = await addWorkspace(
-      userId,
-      `f151-cascade-${randomUUID()}`,
-    );
-    const deviceId = `f151-cascade-device-${randomUUID()}`.replace(
-      /[^A-Za-z0-9_-]/g,
-      "",
-    );
-
-    await injectRegisterDevice(cookie, deviceId);
-    const unlockResponse = await app.inject({
-      method: "POST",
-      url: "/device-store/unlock",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, deviceId },
-    });
-    expect(unlockResponse.statusCode, "the device must unlock successfully").toBe(200);
-
-    // The real function, not a hand-simulated cascade.
-    await revokeWorkspaceAdmission(membershipId, randomUUID());
-
-    // The cascade's own effect, checked directly: this device's secret was
-    // revoked as a SIDE EFFECT of the membership revocation, not because
-    // anything targeted this device specifically.
-    const [secret] = await db
-      .select({ revokedAt: deviceUnlockSecret.revokedAt })
-      .from(deviceUnlockSecret)
-      .where(
-        sql`${deviceUnlockSecret.workspaceId} = ${workspaceId} and ${deviceUnlockSecret.deviceId} = ${deviceId}`,
-      );
-    expect(
-      secret?.revokedAt,
-      "revokeWorkspaceAdmission's own transaction must have revoked this device's secret",
-    ).not.toBeNull();
-
-    // The checkpoint's classification, against that REAL state.
-    const rolesResponse = await app.inject({
-      method: "POST",
-      url: "/device-store/roles",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, deviceId },
-    });
-    expect(rolesResponse.statusCode).toBe(401);
-    const body = JSON.parse(rolesResponse.body) as { revocation?: { kind?: string } };
-    expect(
-      body.revocation?.kind,
-      `must be classified membership-revoked against the real cascade: ${rolesResponse.body}`,
-    ).toBe("membership-revoked");
   });
 });
 
@@ -809,12 +676,7 @@ describe("FDN-63 — device registration and per-workspace listing", () => {
       [owner.cookie, ownerDevice],
       [member2.cookie, memberDevice],
     ] as const) {
-      const unlock = await app.inject({
-        method: "POST",
-        url: "/device-store/unlock",
-        headers: { origin: ORIGIN, cookie },
-        payload: { workspaceId: workspace.workspaceId, deviceId: id },
-      });
+      const unlock = await probe(cookie, workspace.workspaceId, id);
       expect(unlock.statusCode).toBe(200);
     }
 
@@ -857,14 +719,7 @@ describe("FDN-63 — device registration and per-workspace listing", () => {
 describe("FDN-63 — device trust gate and revocation cascade", () => {
   const deviceId = () => `fdn63s3-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
 
-  async function unlock(cookie: string, workspaceId: string, id: string) {
-    return app.inject({
-      method: "POST",
-      url: "/device-store/unlock",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, deviceId: id },
-    });
-  }
+  const unlock = probe;
 
   it("denies unlock for a device that never registered", async () => {
     const { cookie, userId } = await createSignedInAccount();
@@ -880,16 +735,16 @@ describe("FDN-63 — device trust gate and revocation cascade", () => {
     await injectRegisterDevice(cookie, id);
     expect((await unlock(cookie, workspaceId, id)).statusCode).toBe(200);
 
-    // The device identity is revoked; the per-workspace secret is left intact.
+    // The device identity is revoked; no workspace revocation row exists.
     await db
       .update(device)
       .set({ isRevoked: true })
       .where(sql`${device.id} = ${id}`);
-    const [secret] = await db
-      .select({ revokedAt: deviceUnlockSecret.revokedAt })
-      .from(deviceUnlockSecret)
-      .where(sql`${deviceUnlockSecret.deviceId} = ${id}`);
-    expect(secret?.revokedAt).toBeNull();
+    const rows = await db
+      .select()
+      .from(deviceWorkspaceRevocation)
+      .where(sql`${deviceWorkspaceRevocation.deviceId} = ${id}`);
+    expect(rows).toEqual([]);
 
     expect((await unlock(cookie, workspaceId, id)).statusCode).toBe(401);
   });
@@ -913,25 +768,26 @@ describe("FDN-63 — device trust gate and revocation cascade", () => {
 
     const first = await app.inject({
       method: "POST",
-      url: "/device-store/revoke",
+      url: "/devices/revoke",
       headers: { origin: ORIGIN, cookie: owner.cookie },
       payload: { workspaceId, deviceId: id },
     });
     expect(first.statusCode).toBe(200);
     const second = await app.inject({
       method: "POST",
-      url: "/device-store/revoke",
+      url: "/devices/revoke",
       headers: { origin: ORIGIN, cookie: owner.cookie },
       payload: { workspaceId, deviceId: id },
     });
     expect(second.statusCode).toBe(200);
 
-    // F191. The workspace secret is revoked; the GLOBAL identity row is not.
-    const [secret] = await db
-      .select({ revokedAt: deviceUnlockSecret.revokedAt })
-      .from(deviceUnlockSecret)
-      .where(sql`${deviceUnlockSecret.deviceId} = ${id}`);
-    expect(secret?.revokedAt).not.toBeNull();
+    // F191. The workspace's revocation is recorded; the GLOBAL identity row is not.
+    const [revocation] = await db
+      .select()
+      .from(deviceWorkspaceRevocation)
+      .where(sql`${deviceWorkspaceRevocation.deviceId} = ${id}`);
+    expect(revocation).toMatchObject({ workspaceId, deviceId: id, reason: "explicit" });
+    expect(revocation?.revokedBy).toBe(owner.userId);
 
     const [row] = await db
       .select()
@@ -979,7 +835,7 @@ describe("FDN-63 — device trust gate and revocation cascade", () => {
 
     const revoked = await app.inject({
       method: "POST",
-      url: "/device-store/revoke",
+      url: "/devices/revoke",
       headers: { origin: ORIGIN, cookie: owner.cookie },
       payload: { workspaceId: a.workspaceId, deviceId: id },
     });
@@ -1122,15 +978,18 @@ describe("FDN-63 — device trust gate and revocation cascade", () => {
 
     await suspendUserAndRevokeSessions(userId);
 
-    // Suspension already blocks unlock everywhere by revoking every secret,
-    // so it does not need — and per F191 does not take — the global
-    // `is_revoked` flag, which means one thing only: the owner retired it.
-    const secrets = await db
-      .select({ revokedAt: deviceUnlockSecret.revokedAt })
-      .from(deviceUnlockSecret)
-      .where(sql`${deviceUnlockSecret.deviceId} = ${id}`);
-    expect(secrets).toHaveLength(2);
-    expect(secrets.every((s) => s.revokedAt !== null)).toBe(true);
+    // Suspension revokes the device in every workspace the person belongs to, so
+    // it does not need — and per F191 does not take — the global `is_revoked`
+    // flag, which means one thing only: the owner retired it.
+    const revocations = await db
+      .select()
+      .from(deviceWorkspaceRevocation)
+      .where(sql`${deviceWorkspaceRevocation.deviceId} = ${id}`);
+    expect(revocations.map((r) => r.workspaceId).sort()).toEqual(
+      [a.workspaceId, b.workspaceId].sort(),
+    );
+    expect(revocations.every((r) => r.reason === "user-suspended")).toBe(true);
+    expect((await probe(cookie, a.workspaceId, id)).statusCode).toBe(401);
 
     const [row] = await db
       .select()
@@ -1164,12 +1023,7 @@ describe("FDN-63 — stale devices and re-approval", () => {
     );
     const id = deviceId();
     await injectRegisterDevice(owner.cookie, id);
-    const unlocked = await app.inject({
-      method: "POST",
-      url: "/device-store/unlock",
-      headers: { origin: ORIGIN, cookie: owner.cookie },
-      payload: { workspaceId, deviceId: id },
-    });
+    const unlocked = await probe(owner.cookie, workspaceId, id);
     expect(unlocked.statusCode).toBe(200);
     return { owner, workspaceId, id };
   }
@@ -1199,7 +1053,7 @@ describe("FDN-63 — stale devices and re-approval", () => {
   ) {
     return app.inject({
       method: "POST",
-      url: "/device-store/revoke",
+      url: "/devices/revoke",
       headers: { origin: ORIGIN, cookie },
       payload: { workspaceId, deviceId: id, ...(reason ? { reason } : {}) },
     });
@@ -1251,12 +1105,7 @@ describe("FDN-63 — stale devices and re-approval", () => {
       headers: { origin: ORIGIN, cookie: owner.cookie },
       payload: { deviceId: id, deviceName: "D", platform: "ios", pushToken: "secret" },
     });
-    await app.inject({
-      method: "POST",
-      url: "/device-store/unlock",
-      headers: { origin: ORIGIN, cookie: owner.cookie },
-      payload: { workspaceId, deviceId: id },
-    });
+    await probe(owner.cookie, workspaceId, id);
 
     const devices = await listDevices(owner.cookie, workspaceId);
     expect(devices).toHaveLength(1);
@@ -1273,23 +1122,13 @@ describe("FDN-63 — stale devices and re-approval", () => {
       .where(sql`${deviceTrustEvent.deviceId} = ${id}`);
     expect(events.some((e) => e.eventType === "stale-flagged")).toBe(true);
 
-    const denied = await app.inject({
-      method: "POST",
-      url: "/device-store/unlock",
-      headers: { origin: ORIGIN, cookie: owner.cookie },
-      payload: { workspaceId, deviceId: id },
-    });
+    const denied = await probe(owner.cookie, workspaceId, id);
     expect(denied.statusCode, "a stale-revoked device is denied while revoked").toBe(
       401,
     );
 
     expect((await reapprove(owner.cookie, workspaceId, id)).statusCode).toBe(200);
-    const restored = await app.inject({
-      method: "POST",
-      url: "/device-store/unlock",
-      headers: { origin: ORIGIN, cookie: owner.cookie },
-      payload: { workspaceId, deviceId: id },
-    });
+    const restored = await probe(owner.cookie, workspaceId, id);
     expect(restored.statusCode, "re-approval restores unlock in that workspace").toBe(
       200,
     );
@@ -1311,12 +1150,7 @@ describe("FDN-63 — stale devices and re-approval", () => {
     const attempt = await reapprove(owner.cookie, workspaceId, id);
     expect(attempt.statusCode, "revoked-explicit is irreversible").toBe(409);
 
-    const denied = await app.inject({
-      method: "POST",
-      url: "/device-store/unlock",
-      headers: { origin: ORIGIN, cookie: owner.cookie },
-      payload: { workspaceId, deviceId: id },
-    });
+    const denied = await probe(owner.cookie, workspaceId, id);
     expect(denied.statusCode).toBe(401);
   });
 
@@ -1374,624 +1208,214 @@ describe("FDN-63 — stale devices and re-approval", () => {
   });
 });
 
-describe("FDN-51 Stage 4a — POST /sync/ticket", () => {
-  const deviceId = () =>
-    `sync-ticket-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+async function post(cookie: string | undefined, url: string, payload: unknown) {
+  return app.inject({
+    method: "POST",
+    url,
+    headers: { origin: ORIGIN, ...(cookie ? { cookie } : {}) },
+    payload: payload as object,
+  });
+}
 
-  async function registerDevice(cookie: string, workspaceId: string, device: string) {
-    await injectRegisterDevice(cookie, device);
-    const response = await app.inject({
-      method: "POST",
-      url: "/device-store/unlock",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, deviceId: device },
+/** A person admitted to a workspace directly, as an invited member would be. */
+async function admit(
+  workspaceId: string,
+  roles: ("owner" | "hr-admin" | "finance-admin" | "team-member")[],
+) {
+  await db.execute(sql`delete from rate_limit`);
+  const person = await createSignedInAccount();
+  const membershipId = randomUUID();
+  await admitWorkspaceMember({
+    workspaceId,
+    membershipId,
+    userId: person.userId,
+    roles,
+    actorUserId: person.userId,
+  });
+  return { ...person, membershipId };
+}
+
+describe("Stage 7 — workspace creation is one server transaction (the dual write is gone)", () => {
+  it("creates the workspace, its founding Owner and the graph records, confirmed at once, with no grant and no device", async () => {
+    const owner = await createSignedInAccount();
+    const response = await post(owner.cookie, "/workspace/create", {
+      workspaceName: "Acme Advisory",
     });
     expect(response.statusCode, response.body).toBe(200);
-  }
+    const created = json(response) as { workspaceId: string; membershipId: string };
+    expect(Object.keys(created).sort()).toEqual(["membershipId", "workspaceId"]);
 
-  it("mints a prefixed ticket, stores only its hash, and never returns a session token", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId } = await addWorkspace(
-      userId,
-      `sync-ticket-ok-${randomUUID()}`,
-    );
-    const device = deviceId();
-    await registerDevice(cookie, workspaceId, device);
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/sync/ticket",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, deviceId: device },
-    });
-    expect(response.statusCode, response.body).toBe(200);
-    const grant = json(response) as {
-      ticket: string;
-      expiresAt: string;
-      ttlSeconds: number;
-    };
-
-    expect(grant.ticket.startsWith(SYNC_TICKET_PREFIX)).toBe(true);
-    expect(grant.ttlSeconds).toBe(SYNC_TICKET_TTL_SECONDS);
-    expect(sensitiveKeys(grant)).toEqual([]);
-    expect(response.headers["cache-control"]).toBe("no-store");
-
-    const rows = await db
-      .select({
-        tokenHash: syncTicket.tokenHash,
-        deviceId: syncTicket.deviceId,
-        userId: syncTicket.userId,
-        workspaceId: syncTicket.workspaceId,
-      })
-      .from(syncTicket)
-      .where(sql`${syncTicket.workspaceId} = ${workspaceId}`);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.tokenHash).toBe(
-      createHash("sha256").update(grant.ticket, "utf8").digest("hex"),
-    );
-    // The raw ticket is never stored.
-    expect(rows[0]!.tokenHash).not.toContain(grant.ticket);
-    expect(rows[0]!.deviceId).toBe(device);
-    expect(rows[0]!.userId).toBe(userId);
-
-    const expiresInMs = new Date(grant.expiresAt).getTime() - Date.now();
-    expect(expiresInMs).toBeGreaterThan((SYNC_TICKET_TTL_SECONDS - 60) * 1000);
-    expect(expiresInMs).toBeLessThanOrEqual(SYNC_TICKET_TTL_SECONDS * 1000);
-  });
-
-  it("replaces the device's previous ticket rather than accumulating them", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId } = await addWorkspace(
-      userId,
-      `sync-ticket-rotate-${randomUUID()}`,
-    );
-    const device = deviceId();
-    await registerDevice(cookie, workspaceId, device);
-
-    const mint = () =>
-      app.inject({
-        method: "POST",
-        url: "/sync/ticket",
-        headers: { origin: ORIGIN, cookie },
-        payload: { workspaceId, deviceId: device },
-      });
-    const first = json(await mint()) as { ticket: string };
-    const second = json(await mint()) as { ticket: string };
-    expect(first.ticket).not.toBe(second.ticket);
-
-    const rows = await db
-      .select({ tokenHash: syncTicket.tokenHash })
-      .from(syncTicket)
-      .where(sql`${syncTicket.deviceId} = ${device}`);
-    expect(rows).toHaveLength(1);
-    expect(rows[0]!.tokenHash).toBe(
-      createHash("sha256").update(second.ticket, "utf8").digest("hex"),
-    );
-  });
-
-  it("denies a device with no unlock secret", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId } = await addWorkspace(
-      userId,
-      `sync-ticket-nodev-${randomUUID()}`,
-    );
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/sync/ticket",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, deviceId: deviceId() },
-    });
-    expect(response.statusCode).toBe(401);
-    expect(sensitiveKeys(json(response))).toEqual([]);
-  });
-
-  it("denies a revoked device", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId } = await addWorkspace(
-      userId,
-      `sync-ticket-revoked-${randomUUID()}`,
-    );
-    const device = deviceId();
-    await registerDevice(cookie, workspaceId, device);
-
-    await db
-      .update(deviceUnlockSecret)
-      .set({ revokedAt: new Date() })
-      .where(
-        sql`${deviceUnlockSecret.workspaceId} = ${workspaceId} and ${deviceUnlockSecret.deviceId} = ${device}`,
-      );
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/sync/ticket",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, deviceId: device },
-    });
-    expect(response.statusCode).toBe(401);
-  });
-
-  it("denies an unauthenticated caller", async () => {
-    const { cookie, userId } = await createSignedInAccount();
-    const { workspaceId } = await addWorkspace(
-      userId,
-      `sync-ticket-anon-${randomUUID()}`,
-    );
-    const device = deviceId();
-    await registerDevice(cookie, workspaceId, device);
-
-    const response = await app.inject({
-      method: "POST",
-      url: "/sync/ticket",
-      headers: { origin: ORIGIN },
-      payload: { workspaceId, deviceId: device },
-    });
-    expect(response.statusCode).toBe(401);
-  });
-});
-
-describe("FDN-85 Stage 2 — the founding workspace-admission projection", () => {
-  const deviceId = () => `fdn85-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
-
-  async function createWorkspace(cookie: string, device: string, name = "Northwind") {
-    return app.inject({
-      method: "POST",
-      url: "/workspace/create",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceName: name, deviceId: device },
-    });
-  }
-
-  it("records a pending owner admission and returns a single-use grant with the server half and deterministic edge ids", async () => {
-    const { cookie } = await createSignedInAccount();
-    const device = deviceId();
-    await injectRegisterDevice(cookie, device);
-
-    const response = await createWorkspace(cookie, device);
-    expect(response.statusCode, response.body).toBe(200);
-    const grant = json(response) as Record<string, unknown>;
-
-    expect(String(grant.grant).startsWith(PROJECTION_GRANT_PREFIX)).toBe(true);
-    expect(typeof grant.serverHalf).toBe("string");
-    expect(grant.roles).toEqual(["owner"]);
-    expect(grant.membershipOfEdgeId).toBe(
-      membershipOfEdgeId(String(grant.membershipId)),
-    );
-    expect(grant.membershipInEdgeId).toBe(
-      membershipInEdgeId(String(grant.membershipId)),
-    );
-    expect(sensitiveKeys(grant)).toEqual([]);
-    expect(response.headers["cache-control"]).toBe("no-store");
-
-    // The membership is pending/pending — not yet admitting.
     const [row] = await db
       .select({ status: member.status, projectionState: member.projectionState })
       .from(member)
-      .where(sql`${member.id} = ${String(grant.membershipId)}`);
-    expect(row).toMatchObject({ status: "pending", projectionState: "pending" });
+      .where(sql`${member.id} = ${created.membershipId}`);
+    expect(row).toEqual({ status: "active", projectionState: "confirmed" });
+    await expect(
+      requireCurrentWorkspaceSession(headers(owner.cookie), created.workspaceId),
+    ).resolves.toMatchObject({ workspaceId: created.workspaceId, roles: ["owner"] });
 
-    const [org] = await db
-      .select({ status: organization.status })
-      .from(organization)
-      .where(sql`${organization.id} = ${String(grant.workspaceId)}`);
-    expect(org?.status).toBe("active");
-
-    // Stage 2: the five founding graph records were written in the same
-    // transaction — three nodes and two edges, all in this workspace.
-    const graphNodeRows = await db.execute(
-      sql`select node_type from graph_nodes where workspace_id = ${String(grant.workspaceId)} order by node_type`,
+    // The five founding records are in the Postgres graph, and the Owner's device-less audience exists.
+    const nodes = await db.execute(
+      sql`select node_type from graph_nodes where workspace_id = ${created.workspaceId} order by node_type`,
     );
     expect(
-      (graphNodeRows as unknown as { node_type: string }[]).map((r) => r.node_type),
-    ).toEqual(["User", "Workspace", "WorkspaceMembership"]);
-    const graphEdgeRows = await db.execute(
-      sql`select edge_id, edge_type from graph_edges where workspace_id = ${String(grant.workspaceId)} order by edge_type`,
+      (nodes as unknown as { node_type: string }[]).map((n) => n.node_type),
+    ).toEqual(expect.arrayContaining(["Workspace", "User", "WorkspaceMembership"]));
+    const audience = await db.execute(
+      sql`select count(*)::int as n from sync_node_audience where workspace_id = ${created.workspaceId} and user_id = ${owner.userId}`,
     );
+    expect((audience as unknown as { n: number }[])[0]!.n).toBeGreaterThan(0);
+  });
+
+  it("refuses an unauthenticated caller and a malformed name", async () => {
     expect(
-      graphEdgeRows as unknown as { edge_id: string; edge_type: string }[],
-    ).toEqual([
-      { edge_id: grant.membershipInEdgeId, edge_type: "membership_in" },
-      { edge_id: grant.membershipOfEdgeId, edge_type: "membership_of" },
-    ]);
-
-    // Only the grant's hash is stored, and it is unconsumed.
-    const [stored] = await db
-      .select({
-        tokenHash: workspaceProjectionGrant.tokenHash,
-        consumedAt: workspaceProjectionGrant.consumedAt,
-      })
-      .from(workspaceProjectionGrant)
-      .where(
-        sql`${workspaceProjectionGrant.membershipId} = ${String(grant.membershipId)}`,
-      );
-    expect(stored?.tokenHash).toBe(
-      createHash("sha256").update(String(grant.grant), "utf8").digest("hex"),
-    );
-    expect(stored?.consumedAt).toBeNull();
+      (await post(undefined, "/workspace/create", { workspaceName: "X" })).statusCode,
+    ).toBe(401);
+    const owner = await createSignedInAccount();
+    expect(
+      (await post(owner.cookie, "/workspace/create", { workspaceName: "  " }))
+        .statusCode,
+    ).toBe(400);
   });
 
-  it("requireCurrentWorkspaceSession refuses the pending membership until the projection is confirmed, then admits it", async () => {
-    const { cookie } = await createSignedInAccount();
-    const device = deviceId();
-    await injectRegisterDevice(cookie, device);
-    const grant = json(await createWorkspace(cookie, device)) as Record<
-      string,
-      unknown
-    >;
-    const workspaceId = String(grant.workspaceId);
-    const membershipId = String(grant.membershipId);
-
-    await expect(
-      requireCurrentWorkspaceSession(headers(cookie), workspaceId),
-    ).rejects.toBeInstanceOf(UnauthorizedWorkspaceSessionError);
-
-    const confirmed = await app.inject({
-      method: "POST",
-      url: "/workspace/confirm-projection",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, membershipId },
-    });
-    expect(confirmed.statusCode, confirmed.body).toBe(200);
-
-    const admitted = await requireCurrentWorkspaceSession(headers(cookie), workspaceId);
-    expect(admitted.roles).toEqual(["owner"]);
-    expect(admitted.membershipId).toBe(membershipId);
-  });
-
-  it("the projection grant is single-use — a second consume is denied", async () => {
-    const { cookie } = await createSignedInAccount();
-    const device = deviceId();
-    await injectRegisterDevice(cookie, device);
-    const grant = json(await createWorkspace(cookie, device)) as Record<
-      string,
-      unknown
-    >;
-    const bound = {
-      workspaceId: String(grant.workspaceId),
-      membershipId: String(grant.membershipId),
-      deviceId: device,
-    };
-
-    const first = await consumeWorkspaceProjectionGrant(String(grant.grant), bound);
-    expect(first.userId).toBeTruthy();
-    expect(first.roles).toEqual(["owner"]);
-
-    await expect(
-      consumeWorkspaceProjectionGrant(String(grant.grant), bound),
-    ).rejects.toThrow();
-  });
-
-  it("a grant bound to a different device cannot be consumed", async () => {
-    const { cookie } = await createSignedInAccount();
-    const device = deviceId();
-    await injectRegisterDevice(cookie, device);
-    const grant = json(await createWorkspace(cookie, device)) as Record<
-      string,
-      unknown
-    >;
-
-    await expect(
-      consumeWorkspaceProjectionGrant(String(grant.grant), {
-        workspaceId: String(grant.workspaceId),
-        membershipId: String(grant.membershipId),
-        deviceId: `${device}-other`,
-      }),
-    ).rejects.toThrow();
-  });
-
-  it("a membership revoked between mint and confirm cannot be projected — confirm and consume both fail closed", async () => {
-    const { cookie } = await createSignedInAccount();
-    const device = deviceId();
-    await injectRegisterDevice(cookie, device);
-    const grant = json(await createWorkspace(cookie, device)) as Record<
-      string,
-      unknown
-    >;
-    const workspaceId = String(grant.workspaceId);
-    const membershipId = String(grant.membershipId);
-
-    await revokeWorkspaceAdmission(membershipId, randomUUID());
-
-    await expect(
-      consumeWorkspaceProjectionGrant(String(grant.grant), {
-        workspaceId,
-        membershipId,
-        deviceId: device,
-      }),
-    ).rejects.toThrow();
-
-    const confirmed = await app.inject({
-      method: "POST",
-      url: "/workspace/confirm-projection",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, membershipId },
-    });
-    expect(confirmed.statusCode).toBe(401);
-  });
-
-  it("denies an unauthenticated workspace.create", async () => {
-    const response = await app.inject({
-      method: "POST",
-      url: "/workspace/create",
-      headers: { origin: ORIGIN },
-      payload: { workspaceName: "Nope", deviceId: deviceId() },
-    });
-    expect(response.statusCode).toBe(401);
-  });
-
-  it("denies workspace.create for a device with no registration row", async () => {
-    const { cookie } = await createSignedInAccount();
-    const response = await createWorkspace(cookie, deviceId());
-    expect(response.statusCode).toBe(401);
-  });
-});
-
-describe("FDN-85 Stage 3 — removal and role-change projection", () => {
-  const deviceId = () =>
-    `fdn85s3-device-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
-
-  /** A confirmed Owner of a fresh workspace, plus their device. */
-  async function ownerWithWorkspace() {
-    const { cookie, userId } = await createSignedInAccount();
-    const device = deviceId();
-    await injectRegisterDevice(cookie, device);
-    const created = json(
-      await app.inject({
-        method: "POST",
-        url: "/workspace/create",
-        headers: { origin: ORIGIN, cookie },
-        payload: { workspaceName: "Northwind", deviceId: device },
-      }),
-    ) as Record<string, unknown>;
-    const workspaceId = String(created.workspaceId);
-    const membershipId = String(created.membershipId);
-    const confirm = await app.inject({
-      method: "POST",
-      url: "/workspace/confirm-projection",
-      headers: { origin: ORIGIN, cookie },
-      payload: { workspaceId, membershipId },
-    });
-    expect(confirm.statusCode, confirm.body).toBe(200);
-    return { cookie, userId, device, workspaceId, ownerMembershipId: membershipId };
-  }
-
-  /** The graph's copy of a membership: its node, and its two edges' `effective_to`. */
-  async function graphMembership(membershipId: string) {
-    const nodes = (await db.execute(
-      sql`select lifecycle_status, record from graph_nodes where node_id = ${membershipId}`,
-    )) as unknown as { lifecycle_status: string; record: { role: string } }[];
-    const edges = (await db.execute(
-      sql`select edge_type, effective_to from graph_edges where from_node_id = ${membershipId} order by edge_type`,
-    )) as unknown as { edge_type: string; effective_to: Date | null }[];
-    return { node: nodes[0], edges };
-  }
-
-  /** A second, confirmed member of an EXISTING workspace (server-seeded —
-   * FDN-86 owns the real invitation flow). */
-  async function addConfirmedMember(workspaceId: string, roles: WorkspaceRoleName[]) {
-    const { userId } = await createSignedInAccount();
-    const membershipId = randomUUID();
-    await admitWorkspaceMember({
-      workspaceId,
-      membershipId,
-      userId,
-      roles,
-      actorUserId: randomUUID(),
-    });
-    return { userId, membershipId };
-  }
-
-  type WorkspaceRoleName = "owner" | "hr-admin" | "finance-admin" | "team-member";
-
-  async function post(
-    cookie: string,
-    url: string,
-    payload: Record<string, unknown>,
-  ): Promise<LightMyRequestResponse> {
-    return app.inject({
-      method: "POST",
-      url,
-      headers: { origin: ORIGIN, cookie },
-      payload,
-    });
-  }
-
-  it("revoke-member: Owner-gated, denies centrally first, then a transition grant projects the revocation and confirms it", async () => {
-    const owner = await ownerWithWorkspace();
-    const { membershipId } = await addConfirmedMember(owner.workspaceId, [
-      "team-member",
-    ]);
-
-    const revoked = await post(owner.cookie, "/workspace/revoke-member", {
-      workspaceId: owner.workspaceId,
-      membershipId,
-    });
-    expect(revoked.statusCode, revoked.body).toBe(200);
-
-    // The graph's copy changed in the same transaction: the membership is
-    // Revoked and both of its edges are closed, nothing deleted.
-    const revokedGraph = await graphMembership(membershipId);
-    expect(revokedGraph.node?.lifecycle_status).toBe("Revoked");
-    expect(revokedGraph.edges.map((e) => e.edge_type)).toEqual([
-      "membership_in",
-      "membership_of",
-    ]);
-    expect(revokedGraph.edges.every((e) => e.effective_to !== null)).toBe(true);
-
-    // Central denial is immediate — the member row is revoked/revocation-pending.
-    const [row] = await db
-      .select({ status: member.status, projectionState: member.projectionState })
-      .from(member)
-      .where(sql`${member.id} = ${membershipId}`);
-    expect(row).toMatchObject({
-      status: "revoked",
-      projectionState: "revocation-pending",
-    });
-
-    // A revocation transition grant is available for the Owner's device.
-    const grant = json(
-      await post(owner.cookie, "/workspace/transition-grant", {
-        workspaceId: owner.workspaceId,
-        membershipId,
-        deviceId: owner.device,
-        kind: "revocation",
-      }),
-    ) as Record<string, unknown>;
-    expect(grant.kind).toBe("revocation");
-    expect(String(grant.grant).startsWith(PROJECTION_GRANT_PREFIX)).toBe(true);
-
-    const consumed = await consumeMembershipTransitionGrant(String(grant.grant), {
-      workspaceId: owner.workspaceId,
-      membershipId,
-      deviceId: owner.device,
-      kind: "revocation",
-    });
-    expect(consumed.kind).toBe("revocation");
-
-    // ...then the history projection is confirmed.
-    const confirmed = await post(
-      owner.cookie,
+  it("the device-side grant, unlock, role-refresh and sync-ticket routes no longer exist", async () => {
+    const owner = await createSignedInAccount();
+    for (const url of [
+      "/device-store/unlock",
+      "/device-store/roles",
+      "/device-store/revoke",
+      "/sync/ticket",
+      "/workspace/consume-projection-grant",
+      "/workspace/consume-transition-grant",
+      "/workspace/confirm-projection",
+      "/workspace/transition-grant",
       "/workspace/confirm-revocation-projection",
-      {
-        workspaceId: owner.workspaceId,
-        membershipId,
-      },
-    );
-    expect(confirmed.statusCode, confirmed.body).toBe(200);
-    const [after] = await db
-      .select({ projectionState: member.projectionState })
-      .from(member)
-      .where(sql`${member.id} = ${membershipId}`);
-    expect(after?.projectionState).toBe("confirmed");
+      "/workspace/confirm-role-change",
+    ]) {
+      expect((await post(owner.cookie, url, {})).statusCode, url).toBe(404);
+    }
   });
+});
 
-  it("revoke-member: a non-Owner is denied, and an Owner cannot revoke their own membership", async () => {
-    const owner = await ownerWithWorkspace();
-    const other = await addConfirmedMember(owner.workspaceId, ["hr-admin"]);
-    // Sign the hr-admin in.
-    const [u] = await db
-      .select({ email: user.email })
-      .from(user)
-      .where(sql`${user.id} = ${other.userId}`);
-    const hrCookie = cookieHeader(await signIn(u!.email!));
-
-    const byNonOwner = await post(hrCookie, "/workspace/revoke-member", {
-      workspaceId: owner.workspaceId,
-      membershipId: owner.ownerMembershipId,
-    });
-    expect(byNonOwner.statusCode).toBe(401);
-
-    const selfRevoke = await post(owner.cookie, "/workspace/revoke-member", {
-      workspaceId: owner.workspaceId,
-      membershipId: owner.ownerMembershipId,
-    });
-    expect(selfRevoke.statusCode).toBe(401);
-  });
-
-  it("role change — NARROW: member.role is updated centrally immediately, before any graph projection", async () => {
-    const owner = await ownerWithWorkspace();
-    const { membershipId } = await addConfirmedMember(owner.workspaceId, [
-      "hr-admin",
-      "finance-admin",
-    ]);
-
-    const result = json(
-      await post(owner.cookie, "/workspace/change-role", {
-        workspaceId: owner.workspaceId,
-        membershipId,
-        deviceId: owner.device,
-        roles: ["hr-admin"],
+describe("Stage 7 — removal and role change are one server transaction", () => {
+  async function ownerWorkspace() {
+    const owner = await createSignedInAccount();
+    const created = json(
+      await post(owner.cookie, "/workspace/create", {
+        workspaceName: `Firm ${randomUUID()}`,
       }),
-    ) as Record<string, unknown>;
-    expect(result.direction).toBe("narrow");
+    ) as { workspaceId: string; membershipId: string };
+    return { owner, ...created };
+  }
 
-    // Central role already narrowed — the F127 poll will pick this up.
+  it("revoke-member is Owner-gated, an Owner cannot revoke their own membership, and one call finishes the removal", async () => {
+    const {
+      owner,
+      workspaceId,
+      membershipId: ownerMembership,
+    } = await ownerWorkspace();
+    const colleague = await admit(workspaceId, ["team-member"]);
+    const deviceId = `stage7-${randomUUID()}`.replace(/[^A-Za-z0-9_-]/g, "");
+    await injectRegisterDevice(colleague.cookie, deviceId);
+    expect((await probe(colleague.cookie, workspaceId, deviceId)).statusCode).toBe(200);
+
+    expect(
+      (
+        await post(colleague.cookie, "/workspace/revoke-member", {
+          workspaceId,
+          membershipId: colleague.membershipId,
+        })
+      ).statusCode,
+      "a non-Owner is denied",
+    ).toBe(401);
+    expect(
+      (
+        await post(owner.cookie, "/workspace/revoke-member", {
+          workspaceId,
+          membershipId: ownerMembership,
+        })
+      ).statusCode,
+      "an Owner cannot revoke their own membership",
+    ).toBe(401);
+
+    const removed = await post(owner.cookie, "/workspace/revoke-member", {
+      workspaceId,
+      membershipId: colleague.membershipId,
+    });
+    expect(removed.statusCode, removed.body).toBe(200);
     const [row] = await db
-      .select({ role: member.role })
+      .select({ status: member.status, projectionState: member.projectionState })
       .from(member)
-      .where(sql`${member.id} = ${membershipId}`);
-    expect(row?.role).toBe("hr-admin");
-    // ...and so is the graph's copy, in the same transaction.
-    expect((await graphMembership(membershipId)).node?.record.role).toBe("hr-admin");
-  });
-
-  it("role change — WIDEN: member.role is NOT updated until confirm-role-change, after the graph records it", async () => {
-    const owner = await ownerWithWorkspace();
-    const { membershipId } = await addConfirmedMember(owner.workspaceId, ["hr-admin"]);
-
-    const result = json(
-      await post(owner.cookie, "/workspace/change-role", {
-        workspaceId: owner.workspaceId,
-        membershipId,
-        deviceId: owner.device,
-        roles: ["hr-admin", "finance-admin"],
-      }),
-    ) as Record<string, unknown>;
-    expect(result.direction).toBe("widen");
-
-    // Central role unchanged so far — widen is graph-first.
-    const [before] = await db
-      .select({ role: member.role })
-      .from(member)
-      .where(sql`${member.id} = ${membershipId}`);
-    expect(before?.role).toBe("hr-admin");
-
-    const confirmed = await post(owner.cookie, "/workspace/confirm-role-change", {
-      workspaceId: owner.workspaceId,
-      membershipId,
-      roles: ["hr-admin", "finance-admin"],
-    });
-    expect(confirmed.statusCode, confirmed.body).toBe(200);
-
-    const [after] = await db
-      .select({ role: member.role })
-      .from(member)
-      .where(sql`${member.id} = ${membershipId}`);
-    expect(after?.role?.split(",").sort()).toEqual(["finance-admin", "hr-admin"]);
-    expect((await graphMembership(membershipId)).node?.record.role).toBe(
-      "finance-admin,hr-admin",
-    );
-  });
-
-  it("stale-state CAS: a revocation transition grant cannot be consumed while the membership is still active/confirmed", async () => {
-    const owner = await ownerWithWorkspace();
-    const { membershipId } = await addConfirmedMember(owner.workspaceId, [
-      "team-member",
+      .where(sql`${member.id} = ${colleague.membershipId}`);
+    expect(row).toEqual({ status: "revoked", projectionState: "confirmed" });
+    const revocations = await db
+      .select()
+      .from(deviceWorkspaceRevocation)
+      .where(sql`${deviceWorkspaceRevocation.deviceId} = ${deviceId}`);
+    expect(revocations).toMatchObject([
+      { workspaceId, reason: "membership-revoked", revokedBy: owner.userId },
     ]);
-
-    // No revoke has happened — the membership is active/confirmed.
-    const grant = await post(owner.cookie, "/workspace/transition-grant", {
-      workspaceId: owner.workspaceId,
-      membershipId,
-      deviceId: owner.device,
-      kind: "revocation",
-    });
-    expect(grant.statusCode).toBe(401);
+    expect((await probe(colleague.cookie, workspaceId, deviceId)).statusCode).toBe(401);
   });
 
-  it("stale-state CAS: confirm-revocation-projection fails once the membership is no longer revocation-pending", async () => {
-    const owner = await ownerWithWorkspace();
-    const { membershipId } = await addConfirmedMember(owner.workspaceId, [
-      "team-member",
-    ]);
-    await revokeWorkspaceAdmission(membershipId, randomUUID());
-    // First confirm succeeds.
-    await confirmWorkspaceRevocationProjection(membershipId);
-    // Second confirm — no longer revocation-pending.
-    const again = await post(owner.cookie, "/workspace/confirm-revocation-projection", {
-      workspaceId: owner.workspaceId,
-      membershipId,
+  it("change-role widens and narrows immediately, reports the direction, and caps Owners", async () => {
+    const { owner, workspaceId } = await ownerWorkspace();
+    const colleague = await admit(workspaceId, ["team-member"]);
+    const rolesOf = async () =>
+      (await requireCurrentWorkspaceSession(headers(colleague.cookie), workspaceId))
+        .roles;
+
+    const widen = await post(owner.cookie, "/workspace/change-role", {
+      workspaceId,
+      membershipId: colleague.membershipId,
+      roles: ["team-member", "hr-admin"],
     });
-    expect(again.statusCode).toBe(401);
+    expect(widen.statusCode, widen.body).toBe(200);
+    expect(json(widen)).toMatchObject({
+      direction: "widen",
+      after: ["team-member", "hr-admin"],
+    });
+    expect([...(await rolesOf())].sort()).toEqual(["hr-admin", "team-member"]);
+
+    const narrow = await post(owner.cookie, "/workspace/change-role", {
+      workspaceId,
+      membershipId: colleague.membershipId,
+      roles: ["team-member"],
+    });
+    expect(json(narrow)).toMatchObject({ direction: "narrow" });
+    expect(await rolesOf()).toEqual(["team-member"]);
+
+    expect(
+      (
+        await post(colleague.cookie, "/workspace/change-role", {
+          workspaceId,
+          membershipId: colleague.membershipId,
+          roles: ["owner"],
+        })
+      ).statusCode,
+      "a non-Owner cannot change roles",
+    ).toBe(401);
+    for (let i = 0; i < 2; i += 1) await admit(workspaceId, ["owner"]);
+    const fourth = await admit(workspaceId, ["team-member"]);
+    expect(
+      (
+        await post(owner.cookie, "/workspace/change-role", {
+          workspaceId,
+          membershipId: fourth.membershipId,
+          roles: ["owner"],
+        })
+      ).statusCode,
+      "the Owner cap holds",
+    ).toBe(401);
   });
 
   it("roleChangeDirection classifies widen, narrow and a mixed swap (mixed is narrow — fail-closed)", () => {
-    expect(roleChangeDirection(["hr-admin"], ["hr-admin", "finance-admin"])).toBe(
+    expect(roleChangeDirection(["team-member"], ["team-member", "hr-admin"])).toBe(
       "widen",
     );
-    expect(roleChangeDirection(["hr-admin", "finance-admin"], ["hr-admin"])).toBe(
+    expect(roleChangeDirection(["team-member", "hr-admin"], ["team-member"])).toBe(
       "narrow",
     );
-    expect(roleChangeDirection(["hr-admin"], ["finance-admin"])).toBe("narrow");
+    expect(roleChangeDirection(["team-member"], ["hr-admin"])).toBe("narrow");
   });
 });

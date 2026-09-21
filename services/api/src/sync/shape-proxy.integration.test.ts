@@ -7,7 +7,7 @@ import {
   admitWorkspaceMember,
   revokeWorkspaceAdmission,
 } from "../auth/workspace-session.js";
-import { device, deviceUnlockSecret, user } from "../auth/schema.js";
+import { device, deviceWorkspaceRevocation, user } from "../auth/schema.js";
 import { closeDatabase, db } from "../db.js";
 import { makeWorkspace } from "../permission/test-support.js";
 import { buildServer } from "../server.js";
@@ -264,13 +264,12 @@ describe("A003-T67 — a revoked device or a removed member is told to erase", (
       roles: ["hr-admin"],
       actorUserId: other.people.owner!.userId,
     });
-    await db.insert(deviceUnlockSecret).values({
+    await db.insert(deviceWorkspaceRevocation).values({
       workspaceId: person.workspaceId,
-      userId: person.userId,
       deviceId: person.deviceId,
-      serverHalf: "x",
-      revokedAt: new Date(),
-    } as never);
+      revokedBy: person.ownerUserId,
+      reason: "explicit",
+    });
     const revoked = await shape(person, "nodes");
     expect(revoked.statusCode).toBe(401);
     expect(revoked.body).toBe(JSON.stringify({ code: "access-revoked", erase: true }));

@@ -131,7 +131,7 @@ export function DevicesClient() {
     try {
       const response =
         pending.kind === "revoke"
-          ? await post("/device-store/revoke", {
+          ? await post("/devices/revoke", {
               workspaceId,
               deviceId: pending.device.deviceId,
               ...(pending.stale ? { reason: "stale" } : {}),

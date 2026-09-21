@@ -1,10 +1,8 @@
 import { relations, sql } from "drizzle-orm";
 import {
   check,
-  customType,
   pgTable,
   primaryKey,
-  smallint,
   text,
   bigint,
   timestamp,
@@ -14,13 +12,6 @@ import {
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-
-/** Postgres `bytea`. drizzle-orm has no first-class helper for it. */
-const bytea = customType<{ data: Buffer; notNull: true; default: false }>({
-  dataType() {
-    return "bytea";
-  },
-});
 
 export const user = pgTable(
   "user",
@@ -242,53 +233,48 @@ export const passkeyRegistrationContext = pgTable(
 );
 
 /**
- * The server-held half of a device's sealed local-store unlock secret
- * (FDN-84 / A003-T04). This is not the storage key itself and it decrypts
- * nothing by itself — it is combined on-device with a device-held half that
- * never leaves IndexedDB. Deleting/marking a row here is the revocation
- * kill switch: it denies the next unlock attempt for that device without
- * touching the device's own copy of the ciphertext.
+ * A workspace's revocation of one device (F191, F210). An Owner's revoke of a
+ * device in one workspace, a membership removal and an account suspension each
+ * record one row here; the session path and the shape proxy both refuse a
+ * device with a row for the workspace they are acting in. It is a control-plane
+ * table: identifiers only, never replicated to a device.
+ *
+ * Deliberately workspace-scoped: the canonical `device` row spans workspaces, so
+ * only the device's own user may revoke it globally (`device.is_revoked`, via
+ * `retireOwnDevice`). Deleting the row is what re-approval of a stale device
+ * does.
+ *
+ * Replaces `device_unlock_secret`, whose `revoked_at` was the only place this
+ * was recorded; the migration that created this table backfilled it from there.
  */
-export const deviceUnlockSecret = pgTable(
-  "device_unlock_secret",
+export const deviceWorkspaceRevocation = pgTable(
+  "device_workspace_revocation",
   {
-    id: uuid("id")
-      .default(sql`pg_catalog.gen_random_uuid()`)
-      .primaryKey(),
     workspaceId: uuid("workspace_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
     deviceId: text("device_id").notNull(),
-    keyEpoch: integer("key_epoch").default(1).notNull(),
-    serverHalf: text("server_half").notNull(),
-    createdAt: timestamp("created_at").defaultNow().notNull(),
-    revokedAt: timestamp("revoked_at"),
+    revokedAt: timestamp("revoked_at").defaultNow().notNull(),
+    /** Who revoked it; an identifier, not a reference, so the record outlives the person. */
+    revokedBy: uuid("revoked_by"),
+    reason: text("reason").notNull(),
   },
   (table) => [
-    uniqueIndex("device_unlock_secret_workspace_device_uidx").on(
-      table.workspaceId,
-      table.deviceId,
-    ),
-    index("device_unlock_secret_userId_idx").on(table.userId),
+    primaryKey({ columns: [table.workspaceId, table.deviceId] }),
+    index("device_workspace_revocation_device_idx").on(table.deviceId),
   ],
 );
 
 /**
  * FDN-63 / `VPS-F001` — the canonical Device identity record.
  *
- * Distinct from `deviceUnlockSecret` above: that is `VPS-A003`'s per-workspace
- * unlock half (one row per `(workspace, device)`), this is the device's own
- * identity (one row per `(user, application)`, `id` shared across every
- * workspace that device unlocks). It is a Better Auth control-plane row, not a
+ * This is the device's own identity (one row per `(user, application)`, `id`
+ * shared across every workspace the device is used in). It is a Better Auth control-plane row, not a
  * graph node — the `Device` node projection is deferred alongside
  * Workspace/WorkspaceMembership per F189. Carries exactly `VPS-F001`'s nine
  * fields; revocation *time* and *actor* live on `deviceTrustEvent`, not here.
  *
- * `id` is the device-generated identifier (`SealedStore.deviceId()`), the same
- * value `deviceUnlockSecret.deviceId` carries — not a UUID.
+ * `id` is the device-generated identifier — not a UUID.
  */
 export const device = pgTable(
   "device",
@@ -369,17 +355,6 @@ export const deviceTrustEventRelations = relations(deviceTrustEvent, ({ one }) =
   user: one(user, { fields: [deviceTrustEvent.userId], references: [user.id] }),
 }));
 
-export const deviceUnlockSecretRelations = relations(deviceUnlockSecret, ({ one }) => ({
-  organization: one(organization, {
-    fields: [deviceUnlockSecret.workspaceId],
-    references: [organization.id],
-  }),
-  user: one(user, {
-    fields: [deviceUnlockSecret.userId],
-    references: [user.id],
-  }),
-}));
-
 export const rateLimit = pgTable("rate_limit", {
   id: uuid("id")
     .default(sql`pg_catalog.gen_random_uuid()`)
@@ -444,180 +419,3 @@ export const passkeyRelations = relations(passkey, ({ one }) => ({
     references: [user.id],
   }),
 }));
-
-/**
- * FDN-51 sync-engine tables.
- *
- * These three tables are written and read **exclusively by `services/sync-engine`**
- * (the Rust relay), which reaches Postgres with `sqlx`. Drizzle owns their DDL
- * only, because the repo has one schema-management story and one migration
- * lineage against the shared database — nothing in TypeScript queries them.
- *
- * `sync_delta` holds the durable, opaque delta log; `sync_workspace_cursor` is
- * the per-workspace locked counter that assigns each delta its delivery cursor
- * at transaction commit (A003-T39); `sync_device_ack` is per-device
- * acknowledgement state with a SQL-level monotonic clamp.
- */
-
-export const syncWorkspaceCursor = pgTable(
-  "sync_workspace_cursor",
-  {
-    workspaceId: uuid("workspace_id")
-      .primaryKey()
-      .references(() => organization.id, { onDelete: "cascade" }),
-    lastCursor: bigint("last_cursor", { mode: "bigint" })
-      .default(sql`0`)
-      .notNull(),
-  },
-  (table) => [
-    check(
-      "sync_workspace_cursor_last_cursor_non_negative",
-      sql`${table.lastCursor} >= 0`,
-    ),
-  ],
-);
-
-export const syncDelta = pgTable(
-  "sync_delta",
-  {
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
-    cursor: bigint("cursor", { mode: "bigint" }).notNull(),
-    documentId: text("document_id").notNull(),
-    tierTag: smallint("tier_tag").notNull(),
-    payloadKind: smallint("payload_kind").notNull(),
-    originDeviceId: text("origin_device_id").notNull(),
-    // `clock_timestamp()`, not `now()`: `now()` is the transaction-start time,
-    // which under concurrent appends does not track the order the per-workspace
-    // cursor lock is acquired. `clock_timestamp()` is evaluated at insert time,
-    // after the `SELECT ... FOR UPDATE`, so committed_at order tracks cursor
-    // order (A003-T39).
-    committedAt: timestamp("committed_at", { withTimezone: true })
-      .default(sql`clock_timestamp()`)
-      .notNull(),
-    payload: bytea("payload").notNull(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.workspaceId, table.cursor] }),
-    index("sync_delta_workspace_document_cursor_idx").on(
-      table.workspaceId,
-      table.documentId,
-      table.cursor,
-    ),
-    check("sync_delta_cursor_positive", sql`${table.cursor} > 0`),
-    check("sync_delta_tier_tag_check", sql`${table.tierTag} in (0, 1)`),
-    check("sync_delta_payload_kind_check", sql`${table.payloadKind} in (0, 1)`),
-  ],
-);
-
-export const syncDeviceAck = pgTable(
-  "sync_device_ack",
-  {
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
-    deviceId: text("device_id").notNull(),
-    ackedCursor: bigint("acked_cursor", { mode: "bigint" })
-      .default(sql`0`)
-      .notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    primaryKey({ columns: [table.workspaceId, table.deviceId] }),
-    check("sync_device_ack_acked_cursor_non_negative", sql`${table.ackedCursor} >= 0`),
-  ],
-);
-
-/**
- * FDN-51 Stage 4a — short-lived sync-handshake tickets.
- *
- * The browser holds its Better Auth session only in an httpOnly cookie, so
- * neither the page nor the graph Worker can read the raw `session.token` the
- * relay's `Hello` needs. `POST /sync/ticket` (authenticated by the session
- * cookie, via `requireCurrentWorkspaceSession`) mints a random ticket bound to
- * one `(workspace, device)` with a ~10-minute TTL; the Worker puts it in
- * `Hello`; the relay validates it here instead of a session token.
- *
- * Only the SHA-256 hash of the ticket is stored — the raw ticket is a bearer
- * credential and is never persisted, mirroring how the relay keys on hashes
- * elsewhere. A leaked ticket buys sync for one workspace + one device until
- * `expires_at`, nothing more; the relay's periodic re-authorization (A003-T45)
- * still evicts a revoked device or removed member within one interval.
- *
- * Written by `services/api`, read by `services/sync-engine` (the Rust relay,
- * via `sqlx`). Like the other `sync_*` tables, Drizzle owns the DDL only.
- */
-export const syncTicket = pgTable(
-  "sync_ticket",
-  {
-    tokenHash: text("token_hash").primaryKey(),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    deviceId: text("device_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-  },
-  (table) => [
-    index("sync_ticket_workspace_device_idx").on(table.workspaceId, table.deviceId),
-    index("sync_ticket_expires_at_idx").on(table.expiresAt),
-  ],
-);
-
-/**
- * FDN-85 — the single-use, server-signed grant that authorizes one run of the
- * graph Worker's privileged workspace-projection command, and nothing else.
- *
- * The graph Worker cannot run an ordinary `mutate` against a membership whose
- * server row it must mirror: a brand-new membership is `pending` (refused by
- * `requireCurrentWorkspaceSession`), and a revoked one is refused too. This
- * grant is the one narrow way in — minted by a cookie-authenticated route
- * against a specific control-plane state, bound to exactly one
- * `(workspace, device, membership)`, hash-stored, consumed on first use.
- *
- * `grant_kind` says which state transition it projects and which membership
- * state it is valid against:
- *   - `admission`  — membership is `pending/pending`; carries the server
- *     unlock-secret half so the Worker can open a brand-new sealed store.
- *   - `revocation` — membership is `revoked/revocation-pending`.
- *   - `role-change` — membership is `active/confirmed`.
- *
- * It authorizes no other write shape: the command it unlocks constructs the
- * reserved-type records itself and accepts no arbitrary fragment input, and
- * the session opened with its unlock half is torn down after that one call.
- *
- * The raw grant string is returned to the caller once and never stored;
- * only its SHA-256 hash lands here.
- */
-export const workspaceProjectionGrant = pgTable(
-  "workspace_projection_grant",
-  {
-    tokenHash: text("token_hash").primaryKey(),
-    grantKind: text("grant_kind").notNull().default("admission"),
-    workspaceId: uuid("workspace_id")
-      .notNull()
-      .references(() => organization.id, { onDelete: "cascade" }),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
-    membershipId: uuid("membership_id")
-      .notNull()
-      .references(() => member.id, { onDelete: "cascade" }),
-    deviceId: text("device_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    consumedAt: timestamp("consumed_at", { withTimezone: true }),
-  },
-  (table) => [
-    check(
-      "workspace_projection_grant_kind_check",
-      sql`${table.grantKind} in ('admission', 'revocation', 'role-change')`,
-    ),
-    index("workspace_projection_grant_membership_idx").on(table.membershipId),
-    index("workspace_projection_grant_expires_at_idx").on(table.expiresAt),
-  ],
-);
