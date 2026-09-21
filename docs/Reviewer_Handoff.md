@@ -1,7 +1,7 @@
 # Reviewer Handoff — state for the founder's review chat
 
 **Purpose.** This file lets a fresh Claude chat (the *reviewer*, not Claude Code) resume reviewing the server-authoritative rebuild with no re-explanation. Keep it current: the reviewer updates it at each stage boundary.
-**Last updated:** 21 September 2026, after Stage 6 merged (`main` at `961830d`, plus the commit adding this file).
+**Last updated:** 22 September 2026, after the Stage 7 review (branch `stage-7-retire` at `d749c3c`, `main` still at `4d91705` pending the merge below).
 
 ---
 
@@ -53,8 +53,8 @@
 | What | Where |
 |---|---|
 | Staged brief + all rulings | `docs/Claude_Code_Build_Prompt.md` (Part 3 stages; "Amendments" = every ruling to date) |
-| Stage reports | `docs/stage-reports/STAGE-1…6_*.md` |
-| Findings (F54–F212) | `docs/Foundations_Findings.md` (the table is authoritative; the count paragraph is recounted programmatically) |
+| Stage reports | `docs/stage-reports/STAGE-1…7_*.md` |
+| Findings (F54–F213, one gap at F198) | `docs/Foundations_Findings.md` (the table is authoritative; the count paragraph is recounted programmatically) |
 | Specs | `docs/Vulto_Specs/` — A001–A008, F001/F004/F007, VPS-002/003, VRS-001 |
 | Agent rules | `CLAUDE.md` |
 | Linear | Team FDN. Stage 6 = FDN-99/100/101 (Done). Stage 7 = FDN-103, FDN-54. Deferred: FDN-104 (spec sweep), FDN-110 (pentest). Roster features start at RST-33 |
@@ -69,28 +69,28 @@
 | 4 Mutations | done (F208) | merged |
 | 5 Protected data | done (F209, no default key provider) | `8837556` |
 | 6 Sync | done, two review rounds (F210–F212) | `961830d` |
-| **7 Retire + harden CI** | **next — awaiting "Stage 7 go"** | — |
+| **7 Retire + harden CI** | **approved 22 September (F210 verified by direct read; F213 ruled — keep the column)** | **pending — merge `stage-7-retire` → `main`, `--no-ff`** |
 
-**Stage 6 facts to remember:**
-- CI Postgres image `ghcr.io/shaheerjameel17/vulto-for-professional-services/ci-postgres@sha256:eec77295062736b9aa8468fe3f370b5a9e89931e4887827ead61d1c0e5792cfe`.
-- Green slow lane: https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35623142491.
-- Rulings made in Stage 6: see Amendments dated 21 September (the proxy workspace header, F210, the device-side rules).
+**Stage 7 facts to remember:**
+- Branch `stage-7-retire` at `d749c3c`. Green slow lane: https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35637057091. `main` was green at `961830d`/`4d91705` before branching.
+- CI Postgres image (unchanged since Stage 6): `ghcr.io/shaheerjameel17/vulto-for-professional-services/ci-postgres@sha256:eec77295062736b9aa8468fe3f370b5a9e89931e4887827ead61d1c0e5792cfe`.
+- **After the merge:** the `ci-image` workflow republishes without Rust (the Dockerfile no longer installs it). Read the new digest from that run and repin `CI_IMAGE` in `.github/workflows/ci-image-ref.env` before trusting a fresh CI run's timing, per the report's section 10.
+- `device.revoke` intentionally does not gate `protected.read` or any tRPC mutation — only the shape proxy checks `device_workspace_revocation`. Confirmed against `VPS-F001`'s own contract (workspace-scoped cache/sync trust only). Not a gap; no code follows from it. See Amendments dated 22 September for the full reasoning.
+- Rulings made in the Stage 7 review: see Amendments dated 22 September (the merge verdict, the device-revoke scope confirmation, F213).
 
-## 6. What to check in the Stage 7 report
+## 6. Stage 7 review — closed, 22 September 2026
 
-1. Local `main` at `961830d` was green on GitHub before branching.
-2. **F210:** `device_workspace_revocation` is created, backfilled, and repointed before `device_unlock_secret` is dropped. A test proves a pre-migration revoke survives. Read the migration yourself.
-3. **F212:** the `device-store-browser` job, config and suite are deleted. No disabled or skipped jobs remain, except `publish-artifacts` off `main`.
-4. The accessibility smoke pass runs again in a live suite, green in CI.
-5. The done-criteria grep (`loro|sync-engine|sealed-store|shamir|tier1-envelope`) hits only historical docs. No Rust files remain. `loro-crdt` and `shamir-secret-sharing` are removed.
-6. The FDN-54 adversarial suite covers all seven cases in brief item 6. Spot-read two or three tests to confirm they assert the refusal and that nothing was written.
-7. Dropped tables are listed. Nothing Stage 6 imports was deleted (`sync-ticket.ts` in particular).
-8. The `CLAUDE.md` archive sentence was replaced. `Bootstrap.md` and `CONTRIBUTING.md` are rewritten. The findings recount is done.
-9. A green CI run link on the branch, then a `--no-ff` merge.
+Every checklist item from the Stage 7 brief was verified by direct code read, not just the report (F210's migration and its test, F212's CI job list, the accessibility gate, the done-criteria grep, the adversarial suite, the findings recount reproduced programmatically, `CLAUDE.md`/`Bootstrap.md`/`CONTRIBUTING.md`, the file/line diff stat). Full reasoning is in the Amendments entry dated 22 September. Nothing here blocks the merge. This section is retired until a Stage 8 brief exists — see section 7.
+
+**Immediately outstanding (mechanical, not review work):**
+1. Merge `stage-7-retire` into `main` with `--no-ff`.
+2. Update F213's row in `docs/Foundations_Findings.md` to the ruling in the 22 September Amendments entry, and fold it into the next programmatic recount.
+3. After the merge, read the new digest from the `ci-image` workflow run and repin `CI_IMAGE` in `.github/workflows/ci-image-ref.env`.
+4. Once merged, update this file's Stage status table (Merge column) and the "Last updated" line with the merge commit.
 
 ## 7. After Stage 7
 
-- The brief's Part 4 says stop. The next brief covers:
+- Once the three mechanical steps above are done, the brief's Part 4 stands: stop and wait for "Stage 8 go." The next brief covers:
   - the FDN-104 spec sweep (includes the Client-ownership disagreement from Stage 3);
   - the first Roster feature, RST-33 (canonical Employee profile). It unlocks Manager scope, subject exclusion and F130 (`resolveEmployeeForUser` returns null until then).
 - Open follow-ups:
@@ -98,4 +98,5 @@
   - k-anonymity enforcement when analytics features arrive;
   - F125 (backdated `managed_by`, decided in VRS-F037);
   - workspace switching (the client is fail-closed until it is designed);
-  - FDN-110 before the first real-data pilot.
+  - FDN-110 before the first real-data pilot;
+  - F213 (`member.projection_state`), scoped into the FDN-104 spec sweep per the 22 September ruling.
