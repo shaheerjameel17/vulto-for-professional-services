@@ -1,2 +1,0 @@
-ALTER TABLE "graph_nodes" ALTER COLUMN "created_at" DROP NOT NULL;--> statement-breakpoint
-ALTER TABLE "graph_nodes" ADD CONSTRAINT "graph_nodes_created_at_check" CHECK ("graph_nodes"."created_at" is not null or "graph_nodes"."node_type" in ('PulseAggregateContribution', 'WellnessAggregateContribution'));
