@@ -100,7 +100,7 @@ Four constraints produced this stack, and they are recorded because they are the
 | Component | Pin |
 |---|---|
 | Electric service | `electricsql/electric:1.8.1@sha256:efb6fa43859d67cb8c73439e0c8bc0f7a3daa467500fb06f2a924bcb2070c139`, pinned in `docker-compose.yml` on 21 September 2026 |
-| Electric client library (`@electric-sql/client`) | Pinned in the lockfile when Stage 6 first adds it, and recorded here in that commit |
+| Electric client library (`@electric-sql/client`) | `1.5.28`, pinned exactly in `packages/graph/package.json` and the lockfile, added 21 September 2026 |
 
 **Loro is retired.** `loro-crdt@1.14.1` was pinned in `packages/schema` for the previous architecture; it is removed with that architecture. `wa-sqlite` stays: the device cache is still SQLite-WASM, now fed by replication rather than by CRDT materialization. The reporting hierarchy no longer needs a Movable Tree because [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s single writer validates moves transactionally, and [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] is corrected accordingly.
 

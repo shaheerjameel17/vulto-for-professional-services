@@ -42,6 +42,7 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       image: ${{ steps.read.outputs.image }}
+      postgres_image: ${{ steps.read.outputs.postgres_image }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,6 +54,7 @@ jobs:
           set -euo pipefail
           source .github/workflows/ci-image-ref.env
           echo "image=${CI_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "postgres_image=${CI_POSTGRES_IMAGE}" >> "$GITHUB_OUTPUT"
           if [[ "${CI_IMAGE}" != *"@sha256:"* ]]; then
             echo "::warning title=CI image is not digest-pinned::${CI_IMAGE} — A007-T16 requires a digest. Bump .github/workflows/ci-image-ref.env once ci-image.yml has published the image."
           fi
@@ -68,7 +70,10 @@ jobs:
       options: --user root
     services:
       postgres:
-        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: vulto
           POSTGRES_PASSWORD: vulto
@@ -105,7 +110,10 @@ jobs:
       options: --user root
     services:
       postgres:
-        image: postgres:17-alpine@sha256:742f40ea20b9ff2ff31db5458d127452988a2164df9e17441e191f3b72252193
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
         env:
           POSTGRES_USER: vulto
           POSTGRES_PASSWORD: vulto
@@ -131,23 +139,8 @@ jobs:
             db: vulto_fdn77_browser
             shard: 1
             total: 1
-          # device-store also carries the a11y smoke pass (a11y-smoke.spec.ts,
-          # ruling 9a) — same 3-server harness, no separate job.
-          #
-          # grep_invert matches the Playwright tag `@large-backlog-replay`, NOT
-          # a test title — the excluded shape is "one device flushes a
-          # local-write backlog larger than one relay page (MAX_DELTA_PAGE =
-          # 500)", which exceeds the free 2-vCPU runner's throughput. Two tests
-          # carry the tag today (graph-sync.spec.ts, FDN-51 Stage 4b); a new
-          # test with the same shape is excluded by adding the tag, not by
-          # editing this line. They all still run in a local
-          # `pnpm test:device-store-browser`. Real fix: FDN-93 (sidecar split).
-          - suite: device-store-browser
-            fdn: FDN84
-            db: vulto_fdn84_browser
-            shard: 1
-            total: 1
-            grep_invert: "@large-backlog-replay"
+          # device-store-browser is disabled: see the `device-store-browser` job
+          # below (F212). It was a row here until Stage 6.
     name: browser-suites (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
     steps:
       - uses: actions/checkout@v4
@@ -192,6 +185,120 @@ jobs:
           path: |
             services/api/test-results/**
             packages/graph/test-results/**
+          if-no-files-found: ignore
+
+  # DISABLED (F212). device-store-browser tests the retired local-first stack
+  # (services/sync-engine, the Loro worker runtime, the sealed store), which the
+  # server-authoritative re-foundation replaced (F199). It has been red since the
+  # Stage 4 merge and is not a check anyone can act on. It is deleted, with its
+  # Playwright config, its suite and the retired code, in Stage 7 (FDN-103).
+  # Do not re-enable it and do not add it back to the browser-suites matrix.
+  device-store-browser:
+    if: false
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    services:
+      postgres:
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+      - name: Run device-store-browser
+        shell: bash
+        run: |
+          export FDN84_ADMIN_DATABASE_URL="${PG_ADMIN_URL}"
+          export FDN84_BROWSER_DATABASE_URL="postgres://vulto:vulto@postgres:5432/vulto_fdn84_browser"
+          pnpm test:device-store-browser --grep-invert "@large-backlog-replay"
+
+  # Stage 6 (FDN-99/FDN-101): the sync client's browser suite, against real
+  # Postgres and real Electric. Electric connects as the `vulto_electric` role,
+  # which the migration creates and set-electric-password.mjs gives a password,
+  # so it cannot be an ordinary `services:` entry (it would start before the
+  # role exists). The job runs on the host: Postgres is a service, the migration
+  # and the suite run inside the CI image on the host network, and Electric is
+  # started between them.
+  sync-browser:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CI_IMAGE: ${{ needs.resolve-image.outputs.image }}
+      ELECTRIC_IMAGE: electricsql/electric:1.8.1@sha256:efb6fa43859d67cb8c73439e0c8bc0f7a3daa467500fb06f2a924bcb2070c139
+      DATABASE_URL: postgres://vulto:vulto@localhost:5432/vulto
+      ELECTRIC_DB_PASSWORD: sync-browser-ci-electric-password
+      ELECTRIC_SECRET: sync-browser-ci-electric-secret
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull the CI image
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "${CI_IMAGE}"
+      - name: Install and migrate (creates the vulto_electric role and sets its password)
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e DATABASE_URL -e ELECTRIC_DB_PASSWORD "${CI_IMAGE}" \
+            bash -lc "pnpm install --frozen-lockfile && pnpm --filter @vulto/api db:migrate"
+      - name: Start Electric
+        run: |
+          docker run -d --name electric --network host \
+            -e DATABASE_URL="postgres://vulto_electric:${ELECTRIC_DB_PASSWORD}@localhost:5432/vulto" \
+            -e ELECTRIC_SECRET -e ELECTRIC_MANUAL_TABLE_PUBLISHING=true -e ELECTRIC_PORT=5133 \
+            "${ELECTRIC_IMAGE}"
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:5133/v1/health && exit 0
+            sleep 3
+          done
+          docker logs electric
+          exit 1
+      - name: Shape proxy against real Electric
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e DATABASE_URL -e ELECTRIC_LIVE_TESTS=1 \
+            -e ELECTRIC_URL=http://localhost:5133 -e ELECTRIC_SECRET \
+            "${CI_IMAGE}" bash -lc "pnpm --filter @vulto/api exec vitest run src/sync/shape-proxy.integration.test.ts"
+      - name: Sync browser suite
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e SYNC_BROWSER_DATABASE_URL="${DATABASE_URL}" \
+            -e ELECTRIC_URL=http://localhost:5133 -e ELECTRIC_SECRET \
+            "${CI_IMAGE}" bash -lc "pnpm install --frozen-lockfile && pnpm test:sync-browser"
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-sync-browser
+          path: packages/graph/test-results/**
           if-no-files-found: ignore
 
   rust-multitarget:
@@ -278,6 +385,7 @@ jobs:
       - resolve-image
       - api-integration
       - browser-suites
+      - sync-browser
       - rust-multitarget
       - production-build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'

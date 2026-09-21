@@ -5,7 +5,11 @@ import {
   requireCurrentWorkspaceSession,
   UnauthorizedWorkspaceSessionError,
 } from "./auth/workspace-session.js";
-import { MIN_CLIENT_SCHEMA_VERSION, SCHEMA_VERSION_HEADER } from "@vulto/schema";
+import {
+  MIN_CLIENT_SCHEMA_VERSION,
+  SCHEMA_VERSION_HEADER,
+  WORKSPACE_HEADER,
+} from "@vulto/schema";
 import type { MemberPrincipal } from "./permission/principal.js";
 
 /**
@@ -21,6 +25,8 @@ export interface Context {
   readonly principal: MemberPrincipal | null;
   /** The client's schema version from `x-vulto-schema-version`, or `null` if absent or malformed. */
   readonly schemaVersion: number | null;
+  /** The workspace the client says it is acting in (`x-vulto-workspace-id`), lowercased, or `null` if absent. */
+  readonly claimedWorkspaceId: string | null;
   /** The reply, so a procedure can set headers. */
   readonly res: { header(name: string, value: string): unknown };
 }
@@ -42,16 +48,20 @@ export async function createContext({
   const rawVersion = headers.get(SCHEMA_VERSION_HEADER);
   const schemaVersion =
     rawVersion !== null && /^\d+$/.test(rawVersion) ? Number(rawVersion) : null;
+  const claimed = headers.get(WORKSPACE_HEADER);
+  const claimedWorkspaceId = claimed === null ? null : claimed.trim().toLowerCase();
   const current = await auth.api.getSession({
     headers,
     query: { disableCookieCache: true },
   });
   const workspaceId = current?.session.activeOrganizationId;
-  if (!current || !workspaceId) return { principal: null, schemaVersion, res };
+  if (!current || !workspaceId)
+    return { principal: null, schemaVersion, claimedWorkspaceId, res };
   try {
     const admission = await requireCurrentWorkspaceSession(headers, workspaceId);
     return {
       schemaVersion,
+      claimedWorkspaceId,
       res,
       principal: {
         kind: "member",
@@ -63,7 +73,7 @@ export async function createContext({
     };
   } catch (error) {
     if (error instanceof UnauthorizedWorkspaceSessionError)
-      return { principal: null, schemaVersion, res };
+      return { principal: null, schemaVersion, claimedWorkspaceId, res };
     throw error;
   }
 }
@@ -75,6 +85,14 @@ export const publicProcedure = t.procedure;
 /** A procedure that requires a member principal built by `createContext`. */
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (ctx.principal === null) throw new TRPCError({ code: "UNAUTHORIZED" });
+  // A client that names a workspace must mean the session's. Nothing is applied,
+  // read or audited for a request acting in a workspace its session is not in.
+  if (
+    ctx.claimedWorkspaceId !== null &&
+    ctx.claimedWorkspaceId !== ctx.principal.workspaceId.toLowerCase()
+  ) {
+    throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
+  }
   return next({ ctx: { principal: ctx.principal } });
 });
 

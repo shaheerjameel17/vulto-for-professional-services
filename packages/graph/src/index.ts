@@ -72,3 +72,4 @@ export type {
   MaterializedRecursiveNeighbor,
 } from "./worker/storage/sqlite-graph-index";
 export * from "./mutators";
+export * from "./sync-client";

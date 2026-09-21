@@ -10,7 +10,7 @@
   },
   "scripts": {
     "db:generate": "drizzle-kit generate --config drizzle.config.ts",
-    "db:migrate": "drizzle-kit migrate --config drizzle.config.ts",
+    "db:migrate": "drizzle-kit migrate --config drizzle.config.ts && node scripts/set-electric-password.mjs",
     "dev": "tsx watch src/server.ts",
     "start": "tsx src/server.ts",
     "build": "node build.mjs",

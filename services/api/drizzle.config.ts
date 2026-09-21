@@ -18,6 +18,7 @@ export default defineConfig({
     "./src/graph/schema.ts",
     "./src/audit/schema.ts",
     "./src/protected/schema.ts",
+    "./src/audience/schema.ts",
   ],
   out: "./drizzle",
   dbCredentials: { url: databaseUrl },

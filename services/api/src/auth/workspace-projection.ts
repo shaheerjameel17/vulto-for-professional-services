@@ -9,6 +9,7 @@ import {
 import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
+import { audienceMaterializer } from "../audience/materializer.js";
 import { projectRoleChange } from "../graph/membership-changes.js";
 import { parseDeviceId } from "./device-unlock.js";
 import { membershipInEdgeId, membershipOfEdgeId } from "./membership-edge-ids.js";
@@ -794,6 +795,7 @@ export async function changeWorkspaceRole(
         actorUserId,
         occurredAt: new Date().toISOString(),
       });
+      await audienceMaterializer.recomputeWorkspace(transaction, workspaceId);
     });
   }
 
@@ -894,6 +896,7 @@ export async function confirmRoleChangeProjection(
       actorUserId,
       occurredAt: new Date().toISOString(),
     });
+    await audienceMaterializer.recomputeWorkspace(transaction, workspaceId);
   });
 }
 

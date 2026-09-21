@@ -120,6 +120,20 @@
       "when": 1789982106493,
       "tag": "0016_thin_iron_lad",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789982340886,
+      "tag": "0017_striped_chameleon",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789982341265,
+      "tag": "0018_electric_role_and_publication",
+      "breakpoints": true
     }
   ]
 }

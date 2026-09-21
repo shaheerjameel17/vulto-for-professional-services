@@ -22,6 +22,7 @@ const nextConfig: NextConfig = {
         "./graph-persistence-diagnostics-client$": false,
         "./graph-sync-diagnostics-client$": false,
         "./worker-diagnostics-client$": false,
+        "./sync-harness-client$": false,
       };
     }
     return config;

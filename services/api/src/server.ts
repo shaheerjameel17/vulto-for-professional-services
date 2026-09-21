@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { assertKeyProviderConfigured } from "./crypto/keys.js";
+import { registerShapeProxy } from "./sync/shape-proxy.js";
 import { createContext } from "./trpc.js";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import cors from "@fastify/cors";
@@ -57,9 +58,19 @@ export async function buildServer(
   await app.register(cors, {
     origin: [...env.AUTH_TRUSTED_ORIGINS],
     credentials: true,
+    // The sync client reads Electric's protocol headers off the proxy's reply.
+    exposedHeaders: [
+      "electric-handle",
+      "electric-offset",
+      "electric-schema",
+      "electric-cursor",
+      "electric-up-to-date",
+      "electric-chunk-last-offset",
+    ],
   });
 
   await registerAuthHttp(app);
+  await registerShapeProxy(app);
 
   await app.register(fastifyTRPCPlugin, {
     prefix: "/trpc",

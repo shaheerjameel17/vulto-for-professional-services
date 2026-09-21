@@ -4,6 +4,8 @@ export {
   applyMutationsInputSchema,
   mutationEnvelopeSchema,
   SCHEMA_VERSION_HEADER,
+  WORKSPACE_HEADER,
+  DEVICE_HEADER,
   defineMutation,
   type MutationDefinition,
 } from "./define";

@@ -4,11 +4,9 @@ import {
   type JsonValue,
   type MutationName,
 } from "@vulto/schema";
-import { eq } from "drizzle-orm";
-import {
-  noopAudienceMaterializer,
-  type AudienceMaterializer,
-} from "../audience/index.js";
+import { and, eq } from "drizzle-orm";
+import type { AudienceMaterializer } from "../audience/index.js";
+import { audienceMaterializer } from "../audience/materializer.js";
 import { db } from "../db.js";
 import { graphMutations } from "../graph/schema.js";
 import type { GraphTx } from "../graph/tx.js";
@@ -135,7 +133,7 @@ export async function applyMutation(
   envelope: MutationEnvelope,
   dependencies: PipelineDependencies = {},
 ): Promise<MutationResult> {
-  const audience = dependencies.audience ?? noopAudienceMaterializer;
+  const audience = dependencies.audience ?? audienceMaterializer;
   const clock = dependencies.now ?? (() => new Date().toISOString());
   const digest = argsDigest(envelope.args);
   const definition = getMutationDefinition(envelope.name);
@@ -228,6 +226,23 @@ export async function applyMutation(
         attempt < MAX_ATTEMPTS
       ) {
         continue;
+      }
+      // A unique violation may be the losing side of a concurrent attempt at the
+      // SAME mutation (both wrote the same new row). Only if the winner has
+      // recorded this exact mutation id for this workspace do we start over and
+      // replay it as a duplicate; any other violation is a real one and is
+      // handled below, never swallowed.
+      if (pgCode(error)?.startsWith("23") && attempt < MAX_ATTEMPTS) {
+        const [recorded] = await db
+          .select({ id: graphMutations.mutationId })
+          .from(graphMutations)
+          .where(
+            and(
+              eq(graphMutations.mutationId, mutationId),
+              eq(graphMutations.workspaceId, principal.workspaceId),
+            ),
+          );
+        if (recorded) continue;
       }
       const reason =
         error instanceof MutationRejection

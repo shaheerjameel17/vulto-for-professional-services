@@ -1,6 +1,7 @@
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as auditSchema from "./audit/schema.js";
+import * as audienceSchema from "./audience/schema.js";
 import * as authSchema from "./auth/schema.js";
 import * as graphSchema from "./graph/schema.js";
 import * as protectedSchema from "./protected/schema.js";
@@ -15,7 +16,13 @@ import { env } from "./env.js";
  */
 export const sql = postgres(env.DATABASE_URL, { max: 4, onnotice: () => {} });
 export const db = drizzle(sql, {
-  schema: { ...authSchema, ...graphSchema, ...auditSchema, ...protectedSchema },
+  schema: {
+    ...authSchema,
+    ...graphSchema,
+    ...auditSchema,
+    ...protectedSchema,
+    ...audienceSchema,
+  },
 });
 
 export async function closeDatabase(): Promise<void> {
