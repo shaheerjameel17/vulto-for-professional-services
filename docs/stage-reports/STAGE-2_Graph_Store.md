@@ -1,7 +1,7 @@
 # Stage 2 — The canonical PostgreSQL graph store
 
 **Status:** BLOCKED
-**Branch:** stage-2-graph-store @ PLACEHOLDER
+**Branch:** stage-2-graph-store @ 4d1e826
 **Linear issues:** FDN-94
 **Date:** 2026-09-21
 
