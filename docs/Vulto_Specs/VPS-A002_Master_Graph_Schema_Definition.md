@@ -605,7 +605,7 @@ Several node types are not exclusively one application's to own. This table stat
 |---|---|---|---|
 | Employee, Assignment, Entity | Vulto Roster, permanent | Projects, Accounts, Payroll, Legal, [[Vulto Network]] | Roster only |
 | WorkingCalendar, Holiday, WorkingPattern | Vulto Roster, permanent | Projects, Payroll, Accounts | Roster only |
-| Client | [[Vulto Sales]] permanent owner; **Projects bootstrap** | Roster, Projects, Accounts, Legal, Pitch | Projects until Sales activates; Sales thereafter |
+| Client | [[Vulto Sales]] | Roster, Projects, Accounts, Legal, Pitch | **Not applicable.** Roster was never authorized to write it, so there is no authority to hand off ([[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]]; F207) |
 | Project | [[Vulto Projects]] once activated. Roster creates stubs ahead of it | Roster, Accounts, Legal, Pitch | Projects owns status lifecycle once activated; Roster writes capacity fields only |
 | TimesheetEntry | Roster, bootstrap | Projects, Accounts | Projects becomes primary entry surface once activated; Roster's Speed-Run remains available regardless |
 | Contract | Roster bootstrap; [[Vulto Legal]] once activated | Legal | Roster until Legal activates; Legal owns signature and archival status from the start |
@@ -750,6 +750,8 @@ Node and edge properties are stored as `jsonb`, which is schema-flexible at the 
 ## Decisions recorded
 
 **The graph moves from device-canonical CRDT documents to PostgreSQL as the source of truth — F199, 20 September 2026.** The node and edge registry, privacy classes, tier assignments and standing rules are unchanged; what changes is where the graph lives and what each tier means for storage. Tier 1 is field-level encrypted and server-readable within audited requests rather than end-to-end encrypted; Tier 3 remains end-to-end as a deferred module. The Movable Tree, the Loro edge-fragment container and the tier retention window are retired. Decisions below that describe Loro storage — F104, F124, F132's container — are retained as history.
+
+**The `Client` ownership row now matches [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] — F207, 22 September 2026.** The Cross-Suite Node Ownership table said Vulto Sales owns `Client` permanently with Projects as a bootstrap writer until Sales activates; `VPS-F008`'s write-authority policy says `Client` is not applicable, because Roster was never authorized to write it and Sales has no activation record, so there is no authority to hand off. The two tables now state one answer, `VPS-F008`'s, and the `OWNERSHIP_REGISTRY` entry in `packages/schema` says the same. The node-registration table's lifecycle-owner column (which still names the Projects bootstrap) describes who defines the lifecycle, not who may write, and is unchanged. Recorded as part of the FDN-104 priority slice.
 
 **The reconciliation notes are retired.** They documented merging two superseded drafts and carried one item marked *needs CTO confirmation*, which is an open question in a document that may not contain one. The two outcomes that still matter — `belongs_to` versus `scoped_to_entity`, and SubVendor's scope — are stated as decisions in Context above.
 

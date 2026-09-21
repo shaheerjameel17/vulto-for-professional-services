@@ -8,7 +8,7 @@ import {
 import { and, eq, sql } from "drizzle-orm";
 import { member, organization, user } from "../auth/schema.js";
 import { outgoing, type GraphTx } from "../graph/store.js";
-import { resolveEmployeeForUser } from "./employee-link.js";
+import { resolveEmployeeForUser, resolveUserForEmployee } from "./employee-link.js";
 
 /**
  * FDN-89 (partial) — one concrete, canonically ordered set of people who may
@@ -92,7 +92,21 @@ export async function resolveReaderSet(
     const cell = resolvePolicyCell(role, input.nodeType, input.partitionKey);
     if (cell.outcome !== "full" && cell.outcome !== "read") continue;
     // A grant that depends on the row, or on a derived Manager, needs the link.
-    if (cell.scope !== "any" || role === "manager") return UNRESOLVABLE;
+    // `own` is decided from it: the only reader such a grant adds is the person
+    // the record concerns, if they hold the role and have a login. Every other
+    // row-dependent scope, and a derived Manager, is still unresolvable.
+    if (role === "manager") return UNRESOLVABLE;
+    if (cell.scope === "own" && input.subjectEmployeeId !== null) {
+      const owner = await resolveUserForEmployee(
+        tx,
+        input.workspaceId,
+        input.subjectEmployeeId,
+      );
+      const holders = await activeMembersWithRole(tx, input.workspaceId, role);
+      if (owner !== null && holders.includes(owner)) readers.add(owner);
+      continue;
+    }
+    if (cell.scope !== "any") return UNRESOLVABLE;
     for (const userId of await activeMembersWithRole(tx, input.workspaceId, role)) {
       readers.add(userId);
     }

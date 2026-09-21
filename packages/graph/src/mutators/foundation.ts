@@ -1,5 +1,8 @@
 import {
   MUTATIONS,
+  employeeOperationalRecord,
+  employeeTransitionOutcome,
+  FEATURE_LIFECYCLE_NODE_TYPES,
   getMutationDefinition,
   isNodeType,
   isTier0Only,
@@ -193,6 +196,8 @@ const closeEdge: OptimisticMutator = async (c, raw) => {
 const transitionLifecycle: OptimisticMutator = async (c, raw) => {
   const args = parse("graph.transitionLifecycle", raw);
   const node = await liveNode(c.cache, args.node_id);
+  if (FEATURE_LIFECYCLE_NODE_TYPES.has(node.nodeType))
+    throw new OptimisticRejection("requires-feature-mutation");
   if (args.expected_version !== node.version)
     throw new OptimisticRejection("stale-state");
   return [
@@ -254,7 +259,120 @@ const moveEmployee: OptimisticMutator = async (c, raw) => {
   return undo;
 };
 
+// ── Employee (RST-33) ───────────────────────────────────────────────────────
+
+const liveEmployee = async (cache: OptimisticCache, id: string) => {
+  const node = await liveNode(cache, id);
+  if (node.nodeType !== "Employee") throw new OptimisticRejection("invalid-args");
+  return node;
+};
+
+const employeeCreate: OptimisticMutator = async (c, raw) => {
+  const args = parse("employee.create", raw);
+  if (await c.cache.getNode(args.employee_id))
+    throw new OptimisticRejection("invalid-args");
+  const entity = await c.cache.getNode(args.entity_id);
+  if (!entity || entity.nodeType !== "Entity" || entity.isSoftDeleted)
+    throw new OptimisticRejection("invalid-args");
+  const node = stampNewNode(
+    {
+      node_id: args.employee_id,
+      node_type: "Employee",
+      schema_version: 1,
+      lifecycle_status: "Active",
+      ...employeeOperationalRecord(args.fields),
+    },
+    "Employee",
+    provenance(c),
+  );
+  await c.cache.putNode(toCachedNode(node, 1));
+  const edgeId = moveEmployeeEdgeId(c.mutationId);
+  await c.cache.putEdge(
+    toCachedEdge(
+      stampNewEdge(
+        {
+          edge_id: edgeId,
+          edge_type: "scoped_to_entity",
+          from_node_id: args.employee_id,
+          to_node_id: args.entity_id,
+          effective_from: args.effective_from,
+          effective_to: null,
+        },
+        provenance(c),
+      ),
+      1,
+    ),
+  );
+  return [
+    { kind: "node", id: args.employee_id, before: null },
+    { kind: "edge", id: edgeId, before: null },
+  ];
+};
+
+const employeeUpdate: OptimisticMutator = async (c, raw) => {
+  const args = parse("employee.update", raw);
+  const node = await liveEmployee(c.cache, args.employee_id);
+  if (args.expected_version !== node.version)
+    throw new OptimisticRejection("stale-state");
+  const patch = { ...args.patch } as Record<string, unknown>;
+  if (typeof patch["email"] === "string") patch["email"] = patch["email"].toLowerCase();
+  return [
+    await writeNode(c.cache, node, {
+      ...node.record,
+      ...patch,
+      ...updateStamp("Employee", provenance(c)),
+    }),
+  ];
+};
+
+const employeeTransitionStatus: OptimisticMutator = async (c, raw) => {
+  const args = parse("employee.transitionStatus", raw);
+  const node = await liveEmployee(c.cache, args.employee_id);
+  if (args.expected_version !== node.version)
+    throw new OptimisticRejection("stale-state");
+  const outcome = employeeTransitionOutcome(
+    node.lifecycleStatus,
+    args.to_status,
+    args.end_date,
+    (node.record["end_date"] as string | null | undefined) ?? null,
+  );
+  if (!outcome.ok) throw new OptimisticRejection(outcome.reason);
+  return [
+    await writeNode(c.cache, node, {
+      ...node.record,
+      lifecycle_status: args.to_status,
+      end_date: outcome.endDate,
+      ...updateStamp("Employee", provenance(c)),
+    }),
+  ];
+};
+
+const employeeLinkUser: OptimisticMutator = async (c, raw) => {
+  const args = parse("employee.linkUser", raw);
+  const node = await liveEmployee(c.cache, args.employee_id);
+  if (args.expected_version !== node.version)
+    throw new OptimisticRejection("stale-state");
+  return [
+    await writeNode(c.cache, node, {
+      ...node.record,
+      user_id: args.user_id,
+      ...updateStamp("Employee", provenance(c)),
+    }),
+  ];
+};
+
+/** Tier 1: never applied to the cache, because a protected value never reaches one. */
+const employeeSetCompensation: OptimisticMutator = async (_c, raw) => {
+  parse("employee.setCompensation", raw);
+  return [];
+};
+
 export const OPTIMISTIC_MUTATORS: Readonly<Record<MutationName, OptimisticMutator>> = {
+  "employee.create": employeeCreate,
+  "employee.update": employeeUpdate,
+  "employee.transitionStatus": employeeTransitionStatus,
+  "employee.linkUser": employeeLinkUser,
+  "employee.setCompensation": employeeSetCompensation,
   "graph.createNode": createNode,
   "graph.updateNodeFields": updateNodeFields,
   "graph.softDeleteNode": softDeleteNode,

@@ -22,6 +22,7 @@ import {
   type GraphTx,
   type StoredNode,
 } from "../graph/store.js";
+import { resolveEmployeeForUser } from "./employee-link.js";
 import type { RoleDependencies } from "./roles.js";
 import { effectiveRoles } from "./roles.js";
 import type { Principal, SupportPrincipal } from "./principal.js";
@@ -56,16 +57,59 @@ const RANK: Readonly<Record<PermissionOutcome, number>> = {
 
 // ── Row scope ───────────────────────────────────────────────────────────────
 
+/** What a row-qualified grant is judged against: the row, and who is asking. */
+interface RowScopeContext {
+  readonly tx: GraphTx;
+  readonly principal: Principal;
+  readonly nodeType: NodeType;
+  readonly nodeId: string | null;
+  readonly context: InterceptorContext;
+}
+
 /**
  * Whether a row-qualified grant ("own only", "direct reports"...) holds for a
- * specific row. Every such scope needs the row's Employee and the caller's
- * Employee, and the User-to-Employee link does not exist yet (RST-33), so
- * none can be honored: they resolve to `none`, exactly as the device-side
- * policy table did under F128. This is the one seam that changes when the
- * link lands.
+ * specific row. It needs the row's Employee and the caller's Employee, which
+ * the User-to-Employee link (RST-33) now provides, so the scopes that can be
+ * decided from that link are honored for an Employee row:
+ *
+ *  - `own`: the row is the caller's own Employee.
+ *  - `direct-reports`: the caller is the row's active manager.
+ *  - `own-plus-team`: `own`, or the row shares the caller's active manager.
+ *
+ * Every other scope, and every row that is not an Employee, still resolves to
+ * unsatisfied: those need a subject path this function does not follow yet, and
+ * "cannot tell" is answered conservatively, never by guessing.
  */
-function rowScopeSatisfied(scope: PolicyScope): boolean {
-  return scope === "any";
+async function rowScopeSatisfied(
+  scope: PolicyScope,
+  row?: RowScopeContext,
+): Promise<boolean> {
+  if (scope === "any") return true;
+  if (
+    row === undefined ||
+    row.principal.kind !== "member" ||
+    row.nodeType !== "Employee" ||
+    row.nodeId === null
+  ) {
+    return false;
+  }
+  const { tx, principal, nodeId, context } = row;
+  const resolve =
+    context.roleDependencies?.resolveEmployeeForUser ?? resolveEmployeeForUser;
+  const me = await resolve(tx, principal.workspaceId, principal.userId);
+  if (me === null) return false;
+  if (scope === "own") return me === nodeId;
+  const asOf = (context.now ?? nowIso)();
+  const managerOf = async (employeeId: string) =>
+    (await outgoing(tx, principal.workspaceId, employeeId, "managed_by", asOf))[0]
+      ?.toNodeId ?? null;
+  if (scope === "direct-reports") return (await managerOf(nodeId)) === me;
+  if (scope === "own-plus-team") {
+    if (me === nodeId) return true;
+    const theirs = await managerOf(nodeId);
+    return theirs !== null && theirs === (await managerOf(me));
+  }
+  return false;
 }
 
 // ── Targets and decisions ───────────────────────────────────────────────────
@@ -162,18 +206,19 @@ async function decisionRoles(
   return { roles: [], readOnly: true };
 }
 
-function bestCell(
+async function bestCell(
   roles: readonly PolicyRole[],
   nodeType: NodeType,
   partitionKey: string,
-): { outcome: PermissionOutcome; role: PolicyRole | null; label?: string } {
+  row?: RowScopeContext,
+): Promise<{ outcome: PermissionOutcome; role: PolicyRole | null; label?: string }> {
   let best: { outcome: PermissionOutcome; role: PolicyRole | null; label?: string } = {
     outcome: "none",
     role: null,
   };
   for (const role of roles) {
     const cell = resolvePolicyCell(role, nodeType, partitionKey);
-    const outcome = rowScopeSatisfied(cell.scope) ? cell.outcome : "none";
+    const outcome = (await rowScopeSatisfied(cell.scope, row)) ? cell.outcome : "none";
     if (RANK[outcome] > RANK[best.outcome]) {
       best = {
         outcome,
@@ -204,8 +249,44 @@ export async function decideRead(
     "read",
     context,
   );
-  const best = bestCell(roles, target.nodeType, partitionKey);
+  const best = await bestCell(roles, target.nodeType, partitionKey, {
+    tx,
+    principal,
+    nodeType: target.nodeType,
+    nodeId: target.nodeId,
+    context,
+  });
   if (readOnly && best.outcome === "full") best.outcome = "read";
+  // Subject exclusion (A004-T16): the person a record concerns is removed from
+  // its readers, whatever role would otherwise grant it. The same decision feeds
+  // `protected.read` and the materialized audience. A reader with no Employee
+  // record is not any Employee's login and so cannot be the subject.
+  if (
+    (best.outcome === "full" || best.outcome === "read") &&
+    principal.kind === "member" &&
+    target.nodeId !== null &&
+    getSubjectExclusion(target.nodeType) !== undefined
+  ) {
+    const subject = await resolveSubjectEmployee(
+      tx,
+      principal.workspaceId,
+      target.nodeType,
+      target.nodeId,
+    );
+    if (subject !== null) {
+      const resolve =
+        context.roleDependencies?.resolveEmployeeForUser ?? resolveEmployeeForUser;
+      const me = await resolve(tx, principal.workspaceId, principal.userId);
+      if (me !== null && me === subject) {
+        return {
+          access: "restricted",
+          label: "Restricted — this record concerns you.",
+          tier,
+          partitionKey,
+        };
+      }
+    }
+  }
   if (best.outcome === "full" || best.outcome === "read") {
     return { access: best.outcome, role: best.role!, tier, partitionKey };
   }
@@ -605,10 +686,10 @@ const RESERVED_PROJECTION_EDGE_TYPES: ReadonlySet<string> = new Set([
 ]);
 
 /** Gate 1 for an edge: Full on both endpoint node types, through each governing partition. */
-function edgeRoleDecision(
+async function edgeRoleDecision(
   roles: readonly PolicyRole[],
   target: Extract<WriteTarget, { kind: "edge" }>,
-): "role" | "unregistered-relationship" | null {
+): Promise<"role" | "unregistered-relationship" | null> {
   let registration;
   try {
     registration = assertRegisteredRelationship(
@@ -633,7 +714,9 @@ function edgeRoleDecision(
     } else {
       return "role";
     }
-    if (bestCell(roles, nodeType, partitionKey).outcome !== "full") return "role";
+    // No row is named here, so a row-qualified grant never authorizes an edge write.
+    if ((await bestCell(roles, nodeType, partitionKey)).outcome !== "full")
+      return "role";
   }
   return null;
 }
@@ -746,11 +829,17 @@ export async function authorizeWrite(
         : [];
   let role: PolicyRole | null = null;
   if (target.kind === "node") {
-    const best = bestCell(gateRoles, target.nodeType, partitionKey);
+    const best = await bestCell(gateRoles, target.nodeType, partitionKey, {
+      tx,
+      principal,
+      nodeType: target.nodeType,
+      nodeId: target.nodeId,
+      context,
+    });
     if (best.outcome !== "full") return refuse("role");
     role = best.role;
   } else {
-    const failure = edgeRoleDecision(gateRoles, target);
+    const failure = await edgeRoleDecision(gateRoles, target);
     if (failure === "unregistered-relationship") return refuse(failure);
     if (failure !== null) return refuse("role");
   }

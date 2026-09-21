@@ -454,6 +454,37 @@ export async function getNodes(
   return rows.map(toStoredNode);
 }
 
+/**
+ * The live node of a type whose Tier 0 record holds `value` in `field`, or
+ * `null`. For the identity link (`user_id`) and the workspace-scoped
+ * uniqueness rules (`email`, `employee_code`); a field compared here is never a
+ * protected one, because the record holds Tier 0 only.
+ */
+export async function findNodeByRecordField(
+  tx: GraphTx,
+  workspaceId: string,
+  nodeType: NodeType,
+  field: string,
+  value: string,
+  options: { readonly excludeNodeId?: string } = {},
+): Promise<StoredNode | null> {
+  const conditions = [
+    eq(graphNodes.workspaceId, workspaceId),
+    eq(graphNodes.nodeType, nodeType),
+    eq(graphNodes.isSoftDeleted, false),
+    sql`lower(${graphNodes.record}->>${field}) = lower(${value})`,
+  ];
+  if (options.excludeNodeId !== undefined) {
+    conditions.push(sql`${graphNodes.nodeId} <> ${options.excludeNodeId}`);
+  }
+  const [row] = await tx
+    .select()
+    .from(graphNodes)
+    .where(and(...conditions))
+    .limit(1);
+  return row ? toStoredNode(row) : null;
+}
+
 // ── Edges ───────────────────────────────────────────────────────────────────
 
 /**

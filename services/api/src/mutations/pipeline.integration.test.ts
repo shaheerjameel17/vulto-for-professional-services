@@ -183,8 +183,13 @@ describe("stale state (A003-T54)", () => {
     const race = (to: string) =>
       applyMutation(owner, {
         mutation_id: randomUUID(),
-        name: "graph.transitionLifecycle",
-        args: { node_id: employee, to_status: to, expected_version: 1 },
+        name: "employee.transitionStatus",
+        args: {
+          employee_id: employee,
+          to_status: to,
+          expected_version: 1,
+          ...(to === "Inactive" ? { end_date: "2026-10-31" } : {}),
+        },
       });
     const results = await Promise.all([race("Inactive"), race("Converted")]);
     expect(results.map((r) => r.status).sort()).toEqual(["applied", "rejected"]);

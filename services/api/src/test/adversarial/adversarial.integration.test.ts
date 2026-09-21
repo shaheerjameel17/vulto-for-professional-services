@@ -401,8 +401,13 @@ describe("5 — a stale transition after reconnect", () => {
 
     const transition = (to: string, version: number) => ({
       mutation_id: randomUUID(),
-      name: "graph.transitionLifecycle",
-      args: { node_id: nodeId, to_status: to, expected_version: version },
+      name: "employee.transitionStatus",
+      args: {
+        employee_id: nodeId,
+        to_status: to,
+        expected_version: version,
+        ...(to === "Inactive" ? { end_date: "2026-10-31" } : {}),
+      },
     });
     // Another device moved the node on while this one was offline.
     expect(

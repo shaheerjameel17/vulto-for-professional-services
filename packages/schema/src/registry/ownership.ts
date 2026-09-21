@@ -42,8 +42,12 @@ export const OWNERSHIP_REGISTRY = [
       "Vulto Legal",
       "Vulto Pitch",
     ],
-    writePolicy:
-      "Vulto Projects writes until Vulto Sales activates; Vulto Sales thereafter",
+    // `VPS-F008` and `VPS-A002` agree (F207): write authority for Client is not
+    // applicable, because Roster was never authorized to write it and Sales has
+    // no activation record, so there is nothing to hand off. The mode stays
+    // `activation-handoff` only because the write-authority gate treats an owner
+    // outside the four activatable applications as imposing no restriction.
+    writePolicy: "Not applicable: no write authority to hand off (VPS-F008, F207)",
   },
   {
     nodeTypes: ["Project"],

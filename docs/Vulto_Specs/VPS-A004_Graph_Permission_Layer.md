@@ -139,6 +139,8 @@ A reader set names roles. For most node types that is sufficient. For a record *
 | Recipient-only | Own only | Own only | Own only | Own only | Own only |
 | Inherited | Follows the referenced or parent node's Privacy Class | | | | |
 
+**"Team" in `Read (own + team)` means the people who share the caller's active manager,** derived the same way Manager status is ([[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] G06): from the active `managed_by` edges, never from a stored team or a role assignment. A Team Member with no manager therefore reads only their own record. Defined by F215, 22 September 2026, where the interceptor first had to evaluate the scope; until then this document used the phrase without defining it.
+
 **Three recurring override patterns** account for nearly every row in the matrix below, and are named here so that a new feature applies them on sight rather than rediscovering them:
 
 **The self-service pattern.** Standard's `Read (own + team)` for Team Member is wrong for any record an employee creates about themselves. TimesheetEntry, LeaveRequest, Expense, DevelopmentGoal, TrainingRecord and Invoice all grant Team Member `Full (own only)`. A new node type an employee submits takes this grant automatically.

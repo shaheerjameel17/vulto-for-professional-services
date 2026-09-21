@@ -152,32 +152,34 @@ Every Inbox item is actionable in place. Approving leave, dismissing a bench ale
 
 ---
 
-## The locked shell
+## The reconnect state
 
-A whole-application condition, distinct from the three region-level states below. Those describe a piece of content inside an already-rendered shell; this describes the shell being unable to render anything yet, because the local store [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s F106 ruling requires stays sealed until a server-authorized online unlock succeeds.
+A whole-application condition, distinct from the three region-level states below. Those describe a piece of content inside an already-rendered shell; this describes the shell being unable to show a workspace because the server has refused a session that had been accepted. It replaces the previous *locked shell*, which gated the application on a sealed local store and an online unlock; the store, the unlock and the role-refresh checkpoint were retired with [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s F199 revision, and this state carries forward the one property that design protected (F214, ruled 22 September 2026).
 
-**When it renders.** Immediately on cold start — including a Worker restart from a tab reload, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s current-process clarification — before the sidebar, page header, panel or any content mounts, whenever that unlock has not yet succeeded in this process. Nothing else on screen: no skeleton, no Empty state, no Restricted placeholder, because nothing has been fetched yet to be empty or restricted.
+**Trigger.** Exactly two things, and only these:
 
-**What it shows.** Full-bleed, centered, no illustration, `body` text stating plainly what is happening and why — *"Reconnect to continue. Vulto needs to verify your session before opening your workspace."* Not a spinner: a spinner implies imminent completion, and the wait is indefinite while offline. A `primary` **Retry** action, and, only when the device is offline, that fact named directly rather than implied by the retry failing silently.
+- a `401`/`UNAUTHORIZED` answer to an authenticated call, or
+- an `access-revoked` answer from the shape proxy.
 
-**Locked and Offline are different conditions.** A device can be Offline while already unlocked — full product, the `Offline` SyncStatus state, no interruption. An already-unlocked device that later loses connectivity never shows Locked.
+A network failure, a timeout, a 5xx response or a rate limit is **never** a trigger. Those leave the shell exactly as it is and resolve on the next answer the server can give; rendering an outage as *Reconnect* would tell a user their access had been withdrawn every time a server had a bad minute (F148).
 
-**Locked has two entries, not one.** *Cold-start locked* is the case above: no unlock has completed in this process yet, and nothing has mounted. *Mid-session locked* is a store that was unlocked in this process and has since been sealed again — which happens when the role-refresh checkpoint returns an authoritative denial, per F127. This document originally defined Locked as "no unlock has completed in this process yet," which excluded the second case by wording rather than by decision: when this section was written nothing could seal a live store, and F127's live role refresh introduced that afterwards. Recorded as F146.
+**A call with no session goes to sign-in, not here.** A visitor who never authenticated on this device, or who has already signed out, is sent to sign-in. *Reconnect* is reserved for a call that *had* a session and was refused. This does not weaken non-enumeration: whether a device ever held a session says nothing about any workspace or person, and every never-authenticated visitor sees the same sign-in screen whatever happened to anyone else.
 
-**What mid-session locked shows.** The same full-bleed treatment, and deliberately not a variant of it — the store is sealed, so every region behind it is unreadable and there is nothing legitimate left to render around. Two differences from cold start, both because content was already on screen:
+**Rendering.** Full-bleed, centered, no illustration, one sentence in `body` text that names neither a cause nor a person, and a `primary` **Retry**: *"Reconnect to continue. Vulto needs to verify your session before opening your workspace."* Not a spinner: a spinner implies imminent completion, and the wait has no end while access is refused. There is one wording for every case, because there is no longer a difference in what was on screen that a sealed store would need to protect.
 
-- **Unsaved work in progress is not silently discarded by the transition.** Anything the shell holds that has not reached the local store is the shell's to preserve or to tell the user about; the locked shell must not be the first thing a user learns about losing it.
-- **The copy names the transition rather than implying a fresh start.** *"Vulto has locked. Your session needs to be verified again before your workspace reopens."* The cold-start wording — *"before opening your workspace"* — reads as a startup step and is wrong for a workspace the user already had open.
+**What Retry does.** It re-issues the call that was refused. If the call now succeeds the shell mounts; if it is refused the same way, the same state remains. It never says why.
 
-**Only an authoritative denial produces this.** A server that cannot answer — a timeout, a 500-series response, a rate limit, an unreachable network — is not a lock and must not render as one, per F148. Those keep the shell exactly as it is and resolve on the next answer the server can give. Rendering an outage as Locked would tell a user their access had been withdrawn every time a server had a bad minute.
+**Data.** On `access-revoked` the client has already erased that workspace's cache, so nothing readable is behind the screen. On a plain `401` (an expired or missing-but-once-held session) nothing is erased and the cached rows stay, but they are not rendered until a call succeeds or the person signs out. This is acceptable only because of what the cache can hold: Tier 0 only, by the tier system's own design ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]), so a session that lapses on a shared device exposes nothing beyond what that design already decided is safe to leave there.
 
-**A denied revocation and an unreachable server render identically.** The workspace-session guard's failure is non-enumerating by design — telling a specifically revoked user that they were revoked, rather than showing the same retry state as any other failure, would leak exactly the fact non-enumeration exists to protect.
+**Kept.**
+- **A refused session and an unreachable server render identically.** The workspace-session guard's failure is non-enumerating by design: it does not distinguish no session, wrong workspace or revoked membership, so neither does the client. Telling a specifically revoked user that they were revoked would leak exactly the fact non-enumeration exists to protect.
+- **Non-enumeration governs what is rendered, never what the client concludes.** The client must distinguish a refusal from a failure to decide whether the state applies at all, and to erase a workspace's cache on `access-revoked`; it still renders both the same way (the defect F148 recorded was the opposite, treating every failure as a revocation).
+- ***Reconnect* and *Offline* are different.** A device that is offline but already open keeps its cache and shows the `Offline` SyncStatus with no interruption. *Reconnect* is only ever a refusal.
+- **No feature may invent a fifth state, or use this treatment for anything but this exact condition.** This section governs the shell before content mounts; the three system states that follow continue to govern regions once content is streaming in.
 
-**Non-enumeration governs what is rendered, never what the client concludes.** These are different questions, and conflating them produced a real defect (F148): the client treated every unreachable-server answer as a revocation because both render the same. A device may distinguish a denial from a failure precisely enough to decide whether to seal its own store, while still rendering both identically when it does show Locked.
+**Removed.** The unlock step, the cold-start and mid-session variants (nothing can be sealed, so the two are one), the wording that named a transition ("Vulto has locked"), and the premise that a local store stays sealed. Unsaved work is the outbox's: queued Tier 0 changes are kept until sent and are erased only by a revocation or a sign-out (Stage 6), not by this state.
 
-**A denied revocation and an unreachable server render identically.** The workspace-session guard's failure is non-enumerating by design — telling a specifically revoked user that they were revoked, rather than showing the same retry state as any other failure, would leak exactly the fact non-enumeration exists to protect.
-
-**No feature may invent a fifth state, or use this treatment for anything but this exact condition.** This section governs the shell before content mounts; the three system states that follow continue to govern regions once content is streaming in.
+**A note for any stage that widens the device cache.** The decision that a plain `401` erases nothing rests on the cache holding Tier 0 only. If a future stage ever widens what the device cache holds, this decision must be revisited.
 
 ---
 
@@ -195,11 +197,13 @@ Rendered as a Skeleton per [[VPS-D002_Component_Library|VPS-D002]]: a static `bg
 
 **Never accompanied by explanatory text.** Text implies a condition worth understanding. This one resolves before it is read.
 
-### Aged out — dashed border, actionable
+### Requires connection — dashed border, actionable
 
-Data outside the local retention window: real, readable, present on the server, and simply not cached here. Most commonly Tier 1 financial records beyond the rolling window defined in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
+A protected value the current user may read, that this device does not have because it cannot reach the server right now.
 
-Rendered with a 1px dashed `border-strong`, `bg-subtle`, and a `secondary` button reading **Fetch**. Copy states the fact plainly: *"Outside your local history window."* On fetch, the content replaces the container and remains locally cached for the retention period.
+Tier 1 and Tier 2 data is never cached on a device ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]); every render of a protected field is a live `protected.read` call, so this is a question of connectivity, never of cache age. It is the client's `requires-connection` availability outcome, distinct from `permission-absence` (the person may never read it) and `mid-sync` (the audience-filtered cache has not caught up).
+
+Rendered with a 1px dashed `border-strong`, `bg-subtle`, and a `secondary` button reading **Retry**. Copy states the fact plainly: *"Needs a connection to load."* It is shown whenever a protected field's fetch is pending on a connection that is not there, or has failed for lack of one. When the fetch succeeds the content replaces the container; this document makes no claim about the value afterwards, because the value is held in memory only, for the session, and is never written to the device.
 
 This uses the dashed-border rule from [[VPS-D001_Design_Foundations|VPS-D001]] — a placeholder for something not present — which is the same convention Ghost Resources use, and correctly so: both mean *expected, not here yet*.
 
@@ -228,7 +232,7 @@ Every restricted render, of either kind, writes to [[VPS-F004_Silent_Audit_Log|V
 | State | Border | Fill | Text | Action | Resolves by |
 |---|---|---|---|---|---|
 | Syncing | none | `bg-subtle` | none | none | Waiting |
-| Aged out | 1px dashed `border-strong` | `bg-subtle` | *"Outside your local history window."* | **Fetch** | Fetching |
+| Requires connection | 1px dashed `border-strong` | `bg-subtle` | *"Needs a connection to load."* | **Retry** | Reconnecting |
 | Restricted | 1px solid `border-default` | `bg-subtle` | *"Visible to {role}."* | none | Role change |
 | Restricted, subject-excluded | 1px solid `border-default` | `bg-subtle` | *"Restricted — this record concerns you."* | none | Never, while they are the subject |
 | Restricted, sensitive | — | — | — | — | Nothing rendered |
@@ -256,6 +260,16 @@ This is recorded because the prototype's placeholder destinations were specified
 Errors do not apologize and are never vague. Every error names what happened, why, and what to do. They are written in the interface's voice, not a person's: *"Assignment overlaps an existing commitment"*, never *"Sorry, we couldn't save that"*.
 
 Where an error has a remedy the user can take, the remedy is a button beside the message. Where it does not, the error says so and gives whatever the user needs in order to ask someone who can — a record identifier, a role name, a timestamp.
+
+---
+
+## Decisions Recorded
+
+**"Aged out" is now "Requires connection" (F199, 22 September 2026).** The previous state described data outside a local retention window: present on the server, not cached here, fetched on demand, then cached for the retention period. Under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s server-authoritative revision Tier 1 and Tier 2 data is never on a device, so there is no retention window and no cache age; the only reason a permitted protected value is missing is that the server cannot be reached. The state, its copy and its action (**Fetch** became **Retry**) are corrected, and the comparison table with them. Recorded as part of the FDN-104 priority slice.
+
+**The locked shell is replaced by the reconnect state — F214, ruled 22 September 2026.** The previous section gated the whole application on a sealed local store and a server-authorized online unlock, with cold-start and mid-session variants keyed to a role-refresh checkpoint. All of that was retired by the F199 revision, so the section described a condition that can no longer occur. The ruling: one *Reconnect* state, triggered only by a `401`/`UNAUTHORIZED` on an authenticated call or an `access-revoked` from the shape proxy, never by a network failure, timeout, 5xx or rate limit; a call carrying no session at all goes to sign-in instead; one **Retry**; the same wording for cold start and mid-session; no erase on a plain `401`, which is acceptable only while the device cache holds Tier 0 only. The non-enumeration property the old design protected is preserved. This section is the record of that ruling; the component and its wiring are built in Stage 9.
+
+**Syncing and Restricted are unchanged.** They describe the audience-filtered cache and the permission interceptor, neither of which the revision changed.
 
 ---
 

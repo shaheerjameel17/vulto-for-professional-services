@@ -23,7 +23,7 @@ This document is the single source of truth for this feature.
 
 ## What It Is
 
-A single command palette, `Cmd+K` from anywhere, searching every nameable entity in the graph entirely from the local index with no network round-trip.
+A single command palette, `Cmd+K` from anywhere, searching every nameable **Tier 0** entity in the graph entirely from the local index with no network round-trip. An entity whose name is itself Tier 1, Tier 2 or Tier 3 is not on the device, cannot be in the local index, and is searched on the server instead — see *Search beyond Tier 0* below.
 
 When a query matches a Skill by name, the palette also shows [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]]'s ranked-by-availability matches for that skill alongside any direct name matches. **Two kinds of result, one box, one keystroke.**
 
@@ -35,7 +35,7 @@ This feature owns the keystroke and the palette. [[VRS-F013_Skill-to-Project_Mat
 
 Finding one specific thing — a particular person, a project by name, a document filed against a profile — otherwise means knowing which section of the product it lives in and navigating there through a list. Tolerable occasionally, genuinely slow as a daily habit.
 
-One instant, always-available search collapses that to a keystroke and a few characters. And because it is local-first it works exactly as fast offline as connected: no spinner, no *searching* state, no difference the user can perceive between the two.
+One instant, always-available search collapses that to a keystroke and a few characters. And because the Tier 0 half is local-first it works exactly as fast offline as connected: no spinner, no *searching* state, no difference the user can perceive between the two. That guarantee is scoped to what the device holds; the server-backed half is slower, online-only and is described in its own section rather than pretended away.
 
 ---
 
@@ -81,7 +81,7 @@ Each row shows the entity name at `body-medium`, its type as a `subtle` Badge, a
 
 Skill-match rows show name, matched skill with proficiency, and availability, visually distinguished from a direct name match by their group header alone. Ghost results carry the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]].
 
-There is no result count, no *searching* state, and no shimmer. At a 30ms budget the results are simply present.
+There is no result count, no *searching* state, and no shimmer on the local results. At a 30ms budget they are simply present. Server-backed results (below) are a separate group that arrives when the server answers, and never delay or reorder what is already on screen.
 
 ### Keyboard
 
@@ -102,7 +102,8 @@ The palette is entirely keyboard-operable and never requires a mouse to reach an
 | Syncing | Results render from whatever is indexed. The palette never blocks on sync |
 | Restricted | A restricted entity does not appear. There is no indication it exists |
 | Empty | *No matches for "{query}".* Nothing more |
-| Error | Not applicable — a local index query does not fail in a way a user can act on |
+| Error | Not applicable to local results — a local index query does not fail in a way a user can act on |
+| Server-backed group, offline or unreachable | The `requires-connection` state from [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], with its **Retry** action, in place of that group only. The local results are unaffected |
 
 ### Responsive
 
@@ -138,15 +139,25 @@ These tables are maintained by triggers on the same content tables [[VPS-A001_Te
 
 Tier 1 and Tier 3 fields are **never written to an FTS table at all** — not filtered at query time, never present.
 
-Two reasons stack. Tier 1 and Tier 3 data is never materialized on a device whose user lacks access, so on most devices there is nothing to index regardless. And even on an authorized device, indexing document or contract body content is a materially harder problem than this feature takes on. Name and title search is what is built.
+Two reasons stack. Tier 1, Tier 2 and Tier 3 data is never on a device at all ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): the device cache holds only the Tier 0 rows the person's sync audience names, so there is nothing to index regardless of the person's role. And even on the server, indexing document or contract body content is a materially harder problem than this feature takes on. Name and title search is what is built.
 
 This is a stronger guarantee than permission filtering: there is no code path in which a Tier 1 plaintext value reaches a search index.
 
 ### Permission filtering
 
-The index covers Tier 0 and Tier 2 identifying fields, both of which sync broadly and are filtered by role at query time.
+The local index covers Tier 0 identifying fields only, which is all a device holds. They reach the device already filtered by the person's sync audience and are filtered again by role at query time.
 
 Results pass through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor — the same discipline [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s intelligence panel states for itself. **This feature constructs no permission logic of its own.** An engineer adding a searchable node type registers it here and relies on the interceptor, rather than writing a bespoke visibility check for search.
+
+### Search beyond Tier 0
+
+A query that could match an entity whose identifying fields are Tier 1, Tier 2 or Tier 3 cannot be answered from the device, because that entity is not there. Those matches come from a **server-backed search call**:
+
+- **It is slower and online-only.** It is a network round-trip, not a 30ms local query, and it has no offline answer.
+- **It is itself an access.** The server runs it through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor like any other read, so a person sees only matches they may read, and where a matched type is Tier 1 or Tier 3 the access is recorded by [[VPS-F004_Silent_Audit_Log|VPS-F004]] the way a direct read of that record would be.
+- **It degrades, it does not block.** Offline, the server-backed group renders [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s `requires-connection` state with **Retry**; the local results are unaffected.
+- **The empty-state rule still holds.** A restricted match is indistinguishable from no match, whether the answer came from the device or the server.
+- **`AuditEntry` is still never searched, by either path** (VPS-F004 G07).
 
 ### Skill delegation
 
@@ -162,7 +173,14 @@ search.query(text, limit?) -> {
     // Present only when text matches a Skill name. Exactly
     // skillMatcher.adHocSearch's return shape, passed through unmodified
 }
-  // Entirely from the local index. No network request
+  // Entirely from the local index. No network request.
+  // Tier 0 entities only: what the device cache holds.
+
+search.queryProtected(text, limit?) -> {
+  entityMatches: [{ nodeType, nodeId, label, secondaryLabel }]
+}
+  // A server call. Online only. Runs through the interceptor; audited per
+  // VPS-F004 where the matched type is Tier 1 or Tier 3
 ```
 
 ---
@@ -177,6 +195,8 @@ search.query(text, limit?) -> {
 | G04 | A skill-shaped query delegates to [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]] unmodified. Ghost inclusion and availability ranking are not duplicated here |
 | G05 | A newly registered Tier 0 node type becomes searchable by adding an FTS table. The indexed list is open, not closed |
 | G06 | A person's context line shows availability and next rolloff, resolved from [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s computation |
+| G07 | The local index holds Tier 0 identifying fields only. A match on an entity whose identifying fields are Tier 1, 2 or 3 is a server-backed call, online only, run through the interceptor and audited under VPS-F004 where the matched type is Tier 1 or Tier 3 |
+| G08 | `AuditEntry` is excluded from both the local index and the server-backed search |
 
 ---
 
@@ -232,7 +252,13 @@ search.query(text, limit?) -> {
 
 **GIVEN** the device is offline
 **WHEN** the palette is used
-**THEN** entity search, skill delegation and commands all resolve from the local index with no degradation and no network attempt
+**THEN** Tier 0 entity search, skill delegation and commands all resolve from the local index with no degradation and no network attempt, and any server-backed group shows the `requires-connection` state with **Retry**
+
+---
+
+**GIVEN** a query that could match an entity whose name is Tier 1, 2 or 3, and the device is online
+**WHEN** the server answers
+**THEN** the matches the person may read appear in their own group after the local results, none they may not appear, and the access is audited where the matched type is Tier 1 or Tier 3
 
 ---
 
@@ -246,7 +272,7 @@ search.query(text, limit?) -> {
 
 - Results return within 30ms of the third character typed, per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]
 - The palette opens, focuses and is ready within 50ms
-- Full functionality offline for all three result kinds
+- Full functionality offline for Tier 0 entity search, skill delegation and commands; server-backed results require a connection and degrade to `requires-connection`
 - No perceptible lag between a node's creation or rename and its appearance in results, since FTS maintenance rides the same materialization pipeline as every other read
 
 ---
@@ -255,6 +281,7 @@ search.query(text, limit?) -> {
 
 - **This feature constructs no permission logic of its own.** An engineer adding a searchable node type registers it here and relies on [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor.
 - **Tier 1 and Tier 3 content is structurally never indexed**, not filtered post-query. There is no code path where a Tier 1 plaintext value is written into a search index at all.
+- **The server-backed path is an access, not a lookup table.** It is governed by the interceptor and audited like a direct read, so searching cannot be used to learn what reading would refuse.
 - **Search is a common exfiltration surface and is audited accordingly.** Query text is not logged per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s redaction policy, but a permission denial encountered during a search writes to [[VPS-F004_Silent_Audit_Log|VPS-F004]] like any other, so a pattern of probing for restricted records is visible after the fact.
 - **The empty state must be identical whether a result was filtered or genuinely absent.** A different message for *nothing matched* and *matches exist but you may not see them* would turn the palette into an oracle for restricted data.
 
@@ -281,6 +308,8 @@ search.query(text, limit?) -> {
 **A person's context line shows availability**, not email or department. It is the question behind nearly every search in this product, and answering it in the row often ends the task.
 
 **Policy is added to the indexed set**, following the open-list rule now stated in G05, so that a future Tier 0 node type does not require amending this document to become findable.
+
+**Search is local for Tier 0 and server-backed beyond it (F199, 22 September 2026).** The body previously claimed every nameable entity was searched entirely from a local index with no network round-trip, and framed the whole feature as indistinguishable offline and online. Under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s server-authoritative revision a device holds Tier 0 rows only, so that guarantee is true of Tier 0 and not of anything else. It is scoped accordingly wherever it appears (the opening, the problem statement, the layout and system states, the index and permission-filtering sections, the API contract, the acceptance criteria and the non-functional requirements). A query that could match a Tier 1, 2 or 3 entity is a server-backed call: slower, online-only, itself an interceptor-governed and audited access, and degrading to `requires-connection` ([[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]) when offline. Tier 2 is also no longer described as syncing broadly; it does not reach a device. The total exclusion of `AuditEntry` (VPS-F004 G07) is unchanged. Recorded as part of the FDN-104 priority slice.
 
 ---
 

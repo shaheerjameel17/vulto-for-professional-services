@@ -1,7 +1,13 @@
 import { sql } from "./db.js";
-import { applyMutationsInputSchema, protectedReadInputSchema } from "@vulto/schema";
+import {
+  applyMutationsInputSchema,
+  employeeGetInputSchema,
+  employeeListInputSchema,
+  protectedReadInputSchema,
+} from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
+import { getEmployee, listEmployees } from "./permission/employee-queries.js";
 import { readProtected } from "./protected/read.js";
 import { applyMutations } from "./mutations/pipeline.js";
 import {
@@ -159,6 +165,27 @@ export const appRouter = t.router({
             nodeIds: input.node_ids,
             partitions: input.partitions,
           }),
+        );
+      }),
+  }),
+  employee: t.router({
+    /** The People directory: every Employee the caller may see (Tier 0 half). */
+    list: protectedProcedure.input(employeeListInputSchema).query(({ ctx, input }) =>
+      db.transaction((tx) =>
+        listEmployees(tx, ctx.principal, {
+          ...(input.lifecycle_status === undefined
+            ? {}
+            : { lifecycleStatus: input.lifecycle_status }),
+        }),
+      ),
+    ),
+    /** One profile: the Tier 0 half, and the Tier 1 half through the audited read path. */
+    get: protectedProcedure
+      .input(employeeGetInputSchema)
+      .query(async ({ ctx, input }) => {
+        ctx.res.header("Cache-Control", "no-store");
+        return db.transaction((tx) =>
+          getEmployee(tx, getKeyServices(), ctx.principal, input.employee_id),
         );
       }),
   }),
