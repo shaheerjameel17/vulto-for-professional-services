@@ -9,7 +9,7 @@ import {
   type MutationEnvelope,
   type MutationOutcome,
 } from "./api";
-import type { ShapeChange, ShapeTemplateName } from "./cache";
+import type { RowChange, ShapeTemplateName } from "./cache";
 import { SyncEngine, type EngineOptions } from "./engine";
 import { backoffDelayMs } from "./outbox";
 import type { ProtectedItem } from "./protected-store";
@@ -134,7 +134,7 @@ async function harness(overrides: Partial<EngineOptions> = {}) {
   return { engine, api, database: guarded, sources, source, timers, erased };
 }
 
-const nodeRow = (nodeId: string, over: Record<string, unknown> = {}): ShapeChange => ({
+const nodeRow = (nodeId: string, over: Record<string, unknown> = {}): RowChange => ({
   operation: "insert",
   value: {
     node_id: nodeId,
@@ -319,7 +319,7 @@ describe("the query layer over the cache", () => {
   it("lists with paging, and walks edges as of a date, including a recursive walk that survives a cycle", async () => {
     const h = await harness();
     const ids = [uuid(), uuid(), uuid(), uuid()];
-    const employee = (id: string): ShapeChange =>
+    const employee = (id: string): RowChange =>
       nodeRow(id, {
         node_type: "Employee",
         record: { node_id: id, node_type: "Employee", lifecycle_status: "Active" },
@@ -330,7 +330,7 @@ describe("the query layer over the cache", () => {
       to: string,
       effectiveFrom: string | null,
       effectiveTo: string | null,
-    ): ShapeChange => ({
+    ): RowChange => ({
       operation: "insert",
       value: {
         edge_id: id,

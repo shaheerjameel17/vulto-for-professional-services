@@ -268,7 +268,8 @@ describe("A003-T67 — a revoked device or a removed member is told to erase", (
 /**
  * Electric replicates one database (`vulto`, the one the local stack and CI
  * migrate), so these run only when the suite is pointed at it:
- * `DATABASE_URL=postgres://vulto:vulto@localhost:5432/vulto pnpm --filter @vulto/api test`.
+ * `ELECTRIC_LIVE_TESTS=1 DATABASE_URL=postgres://vulto:vulto@localhost:5432/vulto pnpm --filter @vulto/api test`
+ * with Electric running (`pnpm stack:up`). CI runs them in the `sync-browser` job.
  */
 const databaseName = (
   (await db.execute(sql`select current_database() as name`)) as unknown as {
@@ -276,38 +277,43 @@ const databaseName = (
   }[]
 )[0]?.name;
 
-describe.skipIf(databaseName !== "vulto")("the proxy against real Electric", () => {
-  it("streams exactly the person's audience rows, and none they may not hold", async () => {
-    const person = await signedInMember();
-    const audience = (
-      await db
-        .select({ id: syncNodeAudience.nodeId })
-        .from(syncNodeAudience)
-        .where(eq(syncNodeAudience.userId, person.userId))
-    ).map((r) => r.id);
-    expect(audience.length).toBeGreaterThan(0);
+describe.skipIf(databaseName !== "vulto" || process.env["ELECTRIC_LIVE_TESTS"] !== "1")(
+  "the proxy against real Electric",
+  () => {
+    it("streams exactly the person's audience rows, and none they may not hold", async () => {
+      const person = await signedInMember();
+      const audience = (
+        await db
+          .select({ id: syncNodeAudience.nodeId })
+          .from(syncNodeAudience)
+          .where(eq(syncNodeAudience.userId, person.userId))
+      ).map((r) => r.id);
+      expect(audience.length).toBeGreaterThan(0);
 
-    const response = await shape(person, "nodes");
-    expect(response.statusCode, response.body).toBe(200);
-    expect(response.headers["cache-control"]).toBe("private, no-store");
-    expect(response.headers["electric-handle"]).toBeDefined();
-    const rows = (
-      JSON.parse(response.body) as {
-        value?: { node_id: string; workspace_id: string };
-      }[]
-    ).filter((m) => m.value);
-    expect(rows.map((r) => r.value!.node_id).sort()).toEqual([...audience].sort());
-    expect(rows.every((r) => r.value!.workspace_id === person.workspaceId)).toBe(true);
-  });
+      const response = await shape(person, "nodes");
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.headers["cache-control"]).toBe("private, no-store");
+      expect(response.headers["electric-handle"]).toBeDefined();
+      const rows = (
+        JSON.parse(response.body) as {
+          value?: { node_id: string; workspace_id: string };
+        }[]
+      ).filter((m) => m.value);
+      expect(rows.map((r) => r.value!.node_id).sort()).toEqual([...audience].sort());
+      expect(rows.every((r) => r.value!.workspace_id === person.workspaceId)).toBe(
+        true,
+      );
+    });
 
-  it("streams edges through the same audience", async () => {
-    const person = await signedInMember();
-    const response = await shape(person, "edges");
-    expect(response.statusCode, response.body).toBe(200);
-    for (const message of JSON.parse(response.body) as {
-      value?: { workspace_id: string };
-    }[]) {
-      if (message.value) expect(message.value.workspace_id).toBe(person.workspaceId);
-    }
-  });
-});
+    it("streams edges through the same audience", async () => {
+      const person = await signedInMember();
+      const response = await shape(person, "edges");
+      expect(response.statusCode, response.body).toBe(200);
+      for (const message of JSON.parse(response.body) as {
+        value?: { workspace_id: string };
+      }[]) {
+        if (message.value) expect(message.value.workspace_id).toBe(person.workspaceId);
+      }
+    });
+  },
+);

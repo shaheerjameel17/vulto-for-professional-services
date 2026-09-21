@@ -196,6 +196,77 @@ jobs:
             packages/graph/test-results/**
           if-no-files-found: ignore
 
+  # Stage 6 (FDN-99/FDN-101): the sync client's browser suite, against real
+  # Postgres and real Electric. Electric connects as the `vulto_electric` role,
+  # which the migration creates and set-electric-password.mjs gives a password,
+  # so it cannot be an ordinary `services:` entry (it would start before the
+  # role exists). The job runs on the host: Postgres is a service, the migration
+  # and the suite run inside the CI image on the host network, and Electric is
+  # started between them.
+  sync-browser:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CI_IMAGE: ${{ needs.resolve-image.outputs.image }}
+      ELECTRIC_IMAGE: electricsql/electric:1.8.1@sha256:efb6fa43859d67cb8c73439e0c8bc0f7a3daa467500fb06f2a924bcb2070c139
+      DATABASE_URL: postgres://vulto:vulto@localhost:5432/vulto
+      ELECTRIC_DB_PASSWORD: sync-browser-ci-electric-password
+      ELECTRIC_SECRET: sync-browser-ci-electric-secret
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull the CI image
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "${CI_IMAGE}"
+      - name: Install and migrate (creates the vulto_electric role and sets its password)
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e DATABASE_URL -e ELECTRIC_DB_PASSWORD "${CI_IMAGE}" \
+            bash -lc "pnpm install --frozen-lockfile && pnpm --filter @vulto/api db:migrate"
+      - name: Start Electric
+        run: |
+          docker run -d --name electric --network host \
+            -e DATABASE_URL="postgres://vulto_electric:${ELECTRIC_DB_PASSWORD}@localhost:5432/vulto" \
+            -e ELECTRIC_SECRET -e ELECTRIC_MANUAL_TABLE_PUBLISHING=true -e ELECTRIC_PORT=5133 \
+            "${ELECTRIC_IMAGE}"
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:5133/v1/health && exit 0
+            sleep 3
+          done
+          docker logs electric
+          exit 1
+      - name: Shape proxy against real Electric
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e DATABASE_URL -e ELECTRIC_LIVE_TESTS=1 \
+            -e ELECTRIC_URL=http://localhost:5133 -e ELECTRIC_SECRET \
+            "${CI_IMAGE}" bash -lc "pnpm --filter @vulto/api exec vitest run src/sync/shape-proxy.integration.test.ts"
+      - name: Sync browser suite
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e SYNC_BROWSER_DATABASE_URL="${DATABASE_URL}" \
+            -e ELECTRIC_URL=http://localhost:5133 -e ELECTRIC_SECRET \
+            "${CI_IMAGE}" bash -lc "pnpm install --frozen-lockfile && pnpm test:sync-browser"
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-sync-browser
+          path: packages/graph/test-results/**
+          if-no-files-found: ignore
+
   rust-multitarget:
     needs: resolve-image
     runs-on: ubuntu-24.04

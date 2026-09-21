@@ -41,8 +41,16 @@ export function SyncHarnessClient() {
   return (
     <div>
       <p data-testid="worker-kind">{workerKind}</p>
-      <p data-testid="sync-status">{state ? (state.signedOut ? `signed-out:${state.reason}` : state.status) : "starting"}</p>
-      <p data-testid="sync-attention">{state ? JSON.stringify(state.attention) : "[]"}</p>
+      <p data-testid="sync-status">
+        {state
+          ? state.signedOut
+            ? `signed-out:${state.reason}`
+            : state.status
+          : "starting"}
+      </p>
+      <p data-testid="sync-attention">
+        {state ? JSON.stringify(state.attention) : "[]"}
+      </p>
       {error ? <p data-testid="sync-error">{error}</p> : null}
     </div>
   );

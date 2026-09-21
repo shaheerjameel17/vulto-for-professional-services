@@ -408,7 +408,7 @@ export class SyncEngine {
 
   /** Returns false when an upload failed and the rest should wait for a retry. */
   async #drainOnce(): Promise<boolean> {
-    try {
+    {
       for (;;) {
         const rows = await this.#exclusive(async () => {
           const next = await this.#outbox.nextPending(UPLOAD_BATCH);
@@ -460,8 +460,6 @@ export class SyncEngine {
         await this.#changed(true);
       }
       return true;
-    } catch (error) {
-      throw error;
     }
   }
 

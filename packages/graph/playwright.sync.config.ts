@@ -3,10 +3,13 @@ import { defineConfig } from "@playwright/test";
 
 const repositoryRoot = path.resolve(import.meta.dirname, "../..");
 // The database Electric replicates: the local stack's `vulto`, migrated by `db:migrate`.
-const databaseUrl = process.env.SYNC_BROWSER_DATABASE_URL ?? "postgres://vulto:vulto@localhost:5432/vulto";
+const databaseUrl =
+  process.env.SYNC_BROWSER_DATABASE_URL ??
+  "postgres://vulto:vulto@localhost:5432/vulto";
 const secret = "sync-browser-only-secret-longer-than-thirty-two-characters";
 const electricUrl = process.env.ELECTRIC_URL ?? "http://localhost:5133";
-const electricSecret = process.env.ELECTRIC_SECRET ?? "7410a5d35c4ace6ceceb2de9e5c0ac32";
+const electricSecret =
+  process.env.ELECTRIC_SECRET ?? "7410a5d35c4ace6ceceb2de9e5c0ac32";
 const certificates = "/tmp/vulto-sync-browser";
 
 // The tests import API internals to seed the database, so they need the same environment.

@@ -2,7 +2,7 @@
 //
 // FDN-91 — the production-artifact check.
 //
-// Every browser-only diagnostics harness under apps/roster-web/src/app must
+// Every browser-only diagnostics (or `-harness`, Stage 6) harness under apps/roster-web/src/app must
 // stay OUT of the shipped bundle. next.config.ts does that by aliasing each
 // route's `./<route>-client` import to nothing in the optimized build. That
 // list is hand-maintained, and a missing fourth entry (graph-sync) shipped a
@@ -57,7 +57,7 @@ const fail = (lines) => {
 // ── 1. Which routes are diagnostics routes, and what does each import ─────────
 
 const diagnosticsRoutes = readdirSync(APP_DIR, { withFileTypes: true })
-  .filter((e) => e.isDirectory() && /diagnostics/.test(e.name))
+  .filter((e) => e.isDirectory() && /diagnostics|harness/.test(e.name))
   .map((e) => e.name)
   .sort();
 
