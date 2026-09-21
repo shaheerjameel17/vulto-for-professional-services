@@ -1,7 +1,7 @@
 # Reviewer Handoff — state for the founder's review chat
 
 **Purpose.** This file lets a fresh Claude chat (the *reviewer*, not Claude Code) resume reviewing the server-authoritative rebuild with no re-explanation. Keep it current: the reviewer updates it at each stage boundary.
-**Last updated:** 22 September 2026, after reviewing and ruling on the Stage 8 report. Stage 7 is merged into `main` as `dec4eb3`; F213 closed in `906d7fa`; CI image repinned in `397f38b`, both lanes green on it. Stage 8 (`c733763` on `stage-8-employee-profile`) is reviewed and ruled — F130 confirmed closed, F215 confirmed, F214 ruled (design accepted, build deferred to Stage 9) — and awaiting Claude Code's merge; the merge commit still needs to be recorded here once reported.
+**Last updated:** 22 September 2026, after reviewing and ruling on the Stage 8 report. Stage 7 is merged into `main` as `dec4eb3`; F213 closed in `906d7fa`; CI image repinned in `397f38b`, both lanes green on it. Stage 8 is merged into `main` as `5897b7b` (from `c3a5b59` on `stage-8-employee-profile`; both lanes green on the branch), and was reviewed and ruled — F130 confirmed closed, F215 confirmed, F214 ruled (design accepted, build deferred to Stage 9) — and the review fixes (the reconnect state in `VPS-D004`, "team" defined in `VPS-A004`, the F214/F215 rows and the recount to 147 closed, 8 open) are in.
 
 ---
 
@@ -70,7 +70,7 @@
 | 5 Protected data | done (F209, no default key provider) | `8837556` |
 | 6 Sync | done, two review rounds (F210–F212) | `961830d` |
 | **7 Retire + harden CI** | **approved 22 September (F210 verified by direct read; F213 ruled — keep the column)** | **`dec4eb3`** (merged `--no-ff`, 22 September) |
-| **8 Spec sweep (priority slice) + RST-33** | **reviewed 22 September (F130 closure confirmed; F215 confirmed; F214 ruled — design accepted, build deferred to Stage 9)** | pending — awaiting merge |
+| **8 Spec sweep (priority slice) + RST-33** | **reviewed 22 September (F130 closure confirmed; F215 confirmed; F214 ruled — design accepted, build deferred to Stage 9)** | **`5897b7b`** (merged `--no-ff`, 22 September) |
 
 **Stage 7 facts to remember:**
 - Branch `stage-7-retire` at `d749c3c`. Green slow lane: https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35637057091. `main` was green at `961830d`/`4d91705` before branching.
