@@ -154,6 +154,8 @@ Every Inbox item is actionable in place. Approving leave, dismissing a bench ale
 
 ## The locked shell
 
+> **Under review — F214 (`docs/Foundations_Findings.md`).** This section describes a store that stays sealed until a server-authorized online unlock succeeds. That store, the unlock endpoint and the role-refresh checkpoint were retired with [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s F199 revision; there is nothing left to seal. What replaces this state is a design question, proposed in F214 and awaiting a ruling. Until it is ruled, the text below is the *historical* design, kept so the properties it protected (in particular non-enumeration, F148) can be carried into the replacement rather than lost with it. Do not build to it.
+
 A whole-application condition, distinct from the three region-level states below. Those describe a piece of content inside an already-rendered shell; this describes the shell being unable to render anything yet, because the local store [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s F106 ruling requires stays sealed until a server-authorized online unlock succeeds.
 
 **When it renders.** Immediately on cold start — including a Worker restart from a tab reload, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s current-process clarification — before the sidebar, page header, panel or any content mounts, whenever that unlock has not yet succeeded in this process. Nothing else on screen: no skeleton, no Empty state, no Restricted placeholder, because nothing has been fetched yet to be empty or restricted.
@@ -195,11 +197,13 @@ Rendered as a Skeleton per [[VPS-D002_Component_Library|VPS-D002]]: a static `bg
 
 **Never accompanied by explanatory text.** Text implies a condition worth understanding. This one resolves before it is read.
 
-### Aged out — dashed border, actionable
+### Requires connection — dashed border, actionable
 
-Data outside the local retention window: real, readable, present on the server, and simply not cached here. Most commonly Tier 1 financial records beyond the rolling window defined in [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
+A protected value the current user may read, that this device does not have because it cannot reach the server right now.
 
-Rendered with a 1px dashed `border-strong`, `bg-subtle`, and a `secondary` button reading **Fetch**. Copy states the fact plainly: *"Outside your local history window."* On fetch, the content replaces the container and remains locally cached for the retention period.
+Tier 1 and Tier 2 data is never cached on a device ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]); every render of a protected field is a live `protected.read` call, so this is a question of connectivity, never of cache age. It is the client's `requires-connection` availability outcome, distinct from `permission-absence` (the person may never read it) and `mid-sync` (the audience-filtered cache has not caught up).
+
+Rendered with a 1px dashed `border-strong`, `bg-subtle`, and a `secondary` button reading **Retry**. Copy states the fact plainly: *"Needs a connection to load."* It is shown whenever a protected field's fetch is pending on a connection that is not there, or has failed for lack of one. When the fetch succeeds the content replaces the container; this document makes no claim about the value afterwards, because the value is held in memory only, for the session, and is never written to the device.
 
 This uses the dashed-border rule from [[VPS-D001_Design_Foundations|VPS-D001]] — a placeholder for something not present — which is the same convention Ghost Resources use, and correctly so: both mean *expected, not here yet*.
 
@@ -228,7 +232,7 @@ Every restricted render, of either kind, writes to [[VPS-F004_Silent_Audit_Log|V
 | State | Border | Fill | Text | Action | Resolves by |
 |---|---|---|---|---|---|
 | Syncing | none | `bg-subtle` | none | none | Waiting |
-| Aged out | 1px dashed `border-strong` | `bg-subtle` | *"Outside your local history window."* | **Fetch** | Fetching |
+| Requires connection | 1px dashed `border-strong` | `bg-subtle` | *"Needs a connection to load."* | **Retry** | Reconnecting |
 | Restricted | 1px solid `border-default` | `bg-subtle` | *"Visible to {role}."* | none | Role change |
 | Restricted, subject-excluded | 1px solid `border-default` | `bg-subtle` | *"Restricted — this record concerns you."* | none | Never, while they are the subject |
 | Restricted, sensitive | — | — | — | — | Nothing rendered |
@@ -256,6 +260,16 @@ This is recorded because the prototype's placeholder destinations were specified
 Errors do not apologize and are never vague. Every error names what happened, why, and what to do. They are written in the interface's voice, not a person's: *"Assignment overlaps an existing commitment"*, never *"Sorry, we couldn't save that"*.
 
 Where an error has a remedy the user can take, the remedy is a button beside the message. Where it does not, the error says so and gives whatever the user needs in order to ask someone who can — a record identifier, a role name, a timestamp.
+
+---
+
+## Decisions Recorded
+
+**"Aged out" is now "Requires connection" (F199, 22 September 2026).** The previous state described data outside a local retention window: present on the server, not cached here, fetched on demand, then cached for the retention period. Under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s server-authoritative revision Tier 1 and Tier 2 data is never on a device, so there is no retention window and no cache age; the only reason a permitted protected value is missing is that the server cannot be reached. The state, its copy and its action (**Fetch** became **Retry**) are corrected, and the comparison table with them. Recorded as part of the FDN-104 priority slice.
+
+**The locked shell is not yet corrected, deliberately (F214).** Its premise, a local store sealed until an online unlock, was retired by the same F199 revision. The replacement is a design decision about what a denied session and an unreachable server render, so it is raised as a finding for a ruling rather than reworded here. The section carries a marker to that effect.
+
+**Syncing and Restricted are unchanged.** They describe the audience-filtered cache and the permission interceptor, neither of which the revision changed.
 
 ---
 

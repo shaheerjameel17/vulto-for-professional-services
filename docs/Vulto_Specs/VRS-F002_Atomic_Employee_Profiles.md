@@ -45,7 +45,7 @@ The specific moment this feature exists for: an HR Admin or founder sits down on
 
 An HR Admin or Owner creates an Employee from the People directory. Required: full name, email, job title, employment type, start date, entity. Optional and addable later: seniority, department, phone, timezone, location, billing rate, working pattern, notes.
 
-On save the node writes locally and syncs immediately. **The node exists whether or not the person has ever logged in** — employment and system access are two separate facts, and a product that conflates them cannot represent a person hired next month.
+On save a named server mutation creates the node, and its Tier 0 fields reach the device cache of every person who may read them through the ordinary shape sync, within a second. **The node exists whether or not the person has ever logged in** — employment and system access are two separate facts, and a product that conflates them cannot represent a person hired next month.
 
 ### Linking to a user account
 
@@ -57,7 +57,7 @@ The profile is a single page: identity, employment, reporting line, skills, cert
 
 ### Offboarding
 
-Setting an end date and confirming offboarding is one deliberate action. It sets status Inactive, records the end date, and flags rather than silently closes every loose end: active Assignments for manual resolution, allocated Assets for return, any active Departure record marked Completed, and the local store wipe queued for the linked User node via [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]]'s revocation mechanism.
+Setting an end date and confirming offboarding is one deliberate action. It sets status Inactive, records the end date, and flags rather than silently closes every loose end: active Assignments for manual resolution, allocated Assets for return, any active Departure record marked Completed, and the linked person's access ended through [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]]'s revocation mechanism: their membership is revoked, their devices are revoked for the workspace, and their sync audience is recomputed, so the next connection removes every row they held. Nothing is wiped by the profile itself; Tier 1 never reached a device, so there is nothing of it to wipe.
 
 **Nothing is auto-closed.** An unresolved assignment and an outstanding laptop are the same shape of problem, and both deserve a person's attention rather than a silent state change.
 
@@ -77,7 +77,7 @@ Setting an end date and confirming offboarding is one deliberate action. It sets
 
 **People directory** is a Table per [[VPS-D002_Component_Library|VPS-D002]]: avatar, name, job title, department, employment type Badge, status Badge, entity. Row selection opens the Panel with a profile summary; `Enter` opens the full profile. Filters sit above the table as a Toggle Group for status and Selects for department and entity. Primary action is **Add person**.
 
-The directory must render 150 employees within 200ms from the local graph, which requires virtualization above 100 rows per [[VPS-D002_Component_Library|VPS-D002]].
+The directory must render 150 employees within 200ms from the device cache, which holds the Tier 0 half of every profile the reader may see and therefore needs no network, and which requires virtualization above 100 rows per [[VPS-D002_Component_Library|VPS-D002]].
 
 **Employee profile** uses Tabs — Overview, Skills, Documents, Activity — with identity fixed above them: avatar at 48px, name at `h1`, job title and department at `small` in `text-secondary`, status Badge, and the actions menu right-aligned. The avatar height matches the combined identity block so the two read as one unit.
 
@@ -107,7 +107,7 @@ Compensation fields render as a distinct Section with a lock affordance, visible
 | Syncing | Skeleton rows in the directory; skeleton Sections in the profile |
 | Restricted, sensitive | Compensation Section absent entirely for unauthorized roles |
 | Restricted, visible | Not used on this surface |
-| Aged out | Superseded compensation values outside [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s window render dashed with **Fetch** |
+| Requires connection | Compensation values, current or superseded, render dashed with **Retry** whenever their `protected.read` is pending or has failed for lack of a connection, per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] |
 | Empty | *No one here yet.* with **Add person**, or **Import your team** where [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] is available |
 | Error | Duplicate email states the conflict and links to the existing person |
 
@@ -156,7 +156,7 @@ timezone:                    IANA string, nullable
 location:                    string, nullable
 notes:                       rich_text, nullable
 
-— Tier 1, end-to-end encrypted, per VPS-A003 —
+— Tier 1, field-encrypted on the server, per VPS-A003; never on a device —
 base_compensation_amount:    decimal, nullable
 compensation_frequency:      enum: Annual, Monthly, Hourly — nullable
 compensation_currency:       ISO 4217, nullable — defaults to the scoped Entity's
@@ -171,7 +171,7 @@ This distinction is the one most easily broken in either direction, so it is sta
 
 `billing_rate_default` is **what the agency charges a client** for this person's time. It is operational data a Manager needs to calculate margin, and it is Tier 0. It is a **daily** figure. It is explicitly not the compensation record.
 
-`base_compensation_amount` is **what the agency pays**. It is Tier 1, end-to-end encrypted, readable by Owner, Finance Admin, HR Admin and the employee themselves.
+`base_compensation_amount` is **what the agency pays**. It is Tier 1, field-encrypted on the server and never stored on a device, readable by Owner, Finance Admin, HR Admin and the employee themselves.
 
 Where the two are used together, [[VRS-F006_Rate_Card_Engine|VRS-F006]]'s hourly rates convert at 8 hours per day. Locking down billing rate as though it were salary breaks margin calculation; treating salary as casually as billing rate breaks confidentiality. Both failures have shipped in real HR products.
 
@@ -188,6 +188,8 @@ Candidate-to-Employee and GhostResource-to-Employee follow [[VPS-A002_Master_Gra
 ### API contracts
 
 ```
+// Every write is a named server mutation (VPS-A002, VPS-A003); the server is
+// the only writer and validates before it commits.
 employee.create(fields)                          -> { employeeId }
 employee.update(employeeId, fields)              -> { success }
 employee.get(employeeId)                         -> Employee
@@ -206,9 +208,9 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 2. Every active Assignment flagged `pending manual resolution`, never silently closed
 3. Every allocated Asset flagged for return
 4. Any Active Departure record marked Completed
-5. Local store wipe queued for the linked User node via [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]]
-6. Any Tier 1 access held by this person revoked per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
-7. Change syncs to all connected devices within 1 second
+5. The linked User's access ended via [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]]: membership revoked, the person's devices revoked for the workspace (`device_workspace_revocation`) and their sync audience recomputed, in the same transaction
+6. Tier 1 access held by this person ends with that revocation: `protected.read` denies from the next request, and nothing protected was ever on a device to remove
+7. The Tier 0 change reaches the device cache of every person who may read it within 1 second
 
 ---
 
@@ -221,7 +223,7 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 | G03 | `has_skill` carries proficiency_level, verified, verified_by, verified_at. At most one edge per Skill; a duplicate attachment replaces proficiency rather than creating a second edge |
 | G04 | `holds_certification` carries issue_date, expiry_date, issuing_body. Expiry is computed at query time, never stored |
 | G05 | `managed_by` follows the single-active-edge-with-history pattern. Changing a reporting line closes the prior edge with `effective_to` and creates a new one, full history preserved |
-| G06 | Valid status transitions: Active→Inactive, Inactive→Active, Active→Converted. Invalid transitions are rejected before reaching the local store, not caught after |
+| G06 | Valid status transitions: Active→Inactive, Inactive→Active, Active→Converted. Invalid transitions are rejected by the server before the mutation commits, not caught after; the device's optimistic copy is reverted and surfaced if the server refuses |
 | G07 | `contracted_hours` defaults to 40 for FullTime; other employment types are prompted rather than defaulted. Zero is valid and excludes the employee from [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]]'s agency aggregate |
 | G08 | `working_pattern_id` null means the employee follows their Entity's WorkingCalendar per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. No feature MUST infer working days from `employment_type` |
 
@@ -244,7 +246,7 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 
 **GIVEN** an HR Admin creates an Employee with all required fields
 **WHEN** it is saved
-**THEN** the node exists with status Active, appears in the directory immediately, and syncs to all connected devices within 1 second
+**THEN** the node exists with status Active, appears in the directory immediately (optimistically on the creating device, authoritatively once the server commits), and reaches all other connected devices within 1 second
 
 ---
 
@@ -256,7 +258,7 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 
 **GIVEN** a directory of 150 active employees on a device with no network connection
 **WHEN** the directory loads
-**THEN** it renders within 200ms from the local graph, no network request is made, and nothing is degraded relative to the online state
+**THEN** it renders its Tier 0 fields within 200ms from the device cache, no network request is made, and nothing is degraded relative to the online state
 
 ---
 
@@ -274,7 +276,7 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 
 **GIVEN** an HR Admin initiates offboarding
 **WHEN** it is confirmed
-**THEN** status becomes Inactive, end date is recorded, every active Assignment and allocated Asset is flagged for resolution rather than closed, the local wipe is queued, Tier 1 access is revoked, and the change syncs within 1 second
+**THEN** status becomes Inactive, end date is recorded, every active Assignment and allocated Asset is flagged for resolution rather than closed, the person's access is revoked (membership, devices for the workspace, audience), Tier 1 access ends with it, and the Tier 0 change reaches connected devices within 1 second
 
 ---
 
@@ -286,19 +288,20 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 
 ## Non-Functional Requirements
 
-- Directory renders under 200ms for 150 active employees from the local graph
+- Directory renders under 200ms for 150 active employees from the device cache
 - Profile detail renders under 200ms for any permitted role
 - `J`/`K` navigation between profiles completes within 100ms
-- Changes sync to all connected devices within 1 second
-- Full profile and directory readable offline with no degradation; writes queue and sync on reconnection
-- Status transitions validated before reaching the local store
-- Tier 0 fields resolve conflicts by last-write-wins per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. `billing_rate_default` is Tier 0 and follows this rule; it is not server-authoritative
+- Tier 0 changes reach all connected devices within 1 second
+- The Tier 0 half of the profile and the directory are readable offline with no degradation; Tier 0 writes queue and upload on reconnection. Compensation (Tier 1) needs a connection, both to read and to write, and degrades to `requires-connection`
+- Status transitions are validated on the server before the mutation commits
+- Conflicts are decided by the server: a mutation carries the version it was decided against, and a stale one is rejected (`stale-state`) rather than overwriting. `billing_rate_default` is Tier 0 and follows the same rule
 
 ---
 
 ## Security Considerations
 
 - **Wellness data is structurally absent from every surface this feature renders**, enforced by [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 3 encryption, not by conditional rendering here. This feature must never attempt to display it, even behind a permission check. A permanent constraint, not a phase deferral.
+- **Compensation is fetched, never cached.** Tier 1 values are held in memory for the session and are never written to the device; every read is an audited `protected.read`.
 - **Compensation access failing correctly matters as much as succeeding.** An unauthorized query must receive a response structurally identical to the field not existing — never an error that confirms the field's presence while denying its value.
 - **Email uniqueness is workspace-scoped, not global.** A contractor working with two agencies on Vulto is one User with two Employee records, and enforcing global uniqueness would prevent that entirely.
 
@@ -329,6 +332,8 @@ employee.transitionStatus(employeeId, newStatus) -> { success }
 **Tier 1 revocation is added to the offboarding sequence.** [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] requires revocation on any Tier 1 access change; offboarding is the most consequential instance, and the sequence previously stopped at the device wipe.
 
 **The Overview layout sentence is corrected to match this document's own keyboard table.** It previously read *"every field is an inline-editable Input that commits on blur,"* which describes a permanent Input with no read state — and the same document's keyboard table assigns `E` to open an edit and `Escape` to discard one, both of which presuppose a state to open and close. The two could not both be true. The keyboard model is kept: it is consistent with [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s model everywhere else in the product, and it is also the one that avoids thirty permanently bordered boxes on a screen that should read as a record.
+
+**The write path and the offboarding wipe describe the retired architecture, and are corrected (F199, 22 September 2026).** The body was written throughout as if the local store were canonical: a profile saved locally then synced outward, status transitions rejected by client-side validation before reaching the local store, Tier 1 end-to-end encrypted on the device, and a Tier 1 local wipe on offboarding. Under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s server-authoritative revision, and per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s rule that a named mutation is the only writer: a named server mutation writes and validates status transitions before it commits (G06); Tier 0 fields then reach devices through the shape sync, which is why the 200ms offline directory claim survives, scoped explicitly to the Tier 0 half; Tier 1 (`base_compensation_amount` and the rest) is field-encrypted on the server and was never on a device, so offboarding's "Tier 1 access revoked" step is the `device_workspace_revocation` and audience-recompute machinery, not a wipe. The "aged out" system state is now `requires-connection` ([[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]), and last-write-wins conflict resolution is replaced by the server's stale-state rejection. The original clauses are corrected in place above; this entry is the record of what they said and why they changed. Recorded as part of the FDN-104 priority slice.
 
 ---
 

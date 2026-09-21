@@ -159,7 +159,7 @@ An audit log that a compromised or malicious Owner account could edit or erase i
 
 ### Volume
 
-A workspace of 150 people running payroll generates on the order of tens of thousands of entries per year. The table is indexed on `occurred_at`, `actor_user_id` and `target_node_type`, and entries older than the local retention window are not materialized on device, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] — they render as the aged-out state and fetch on demand, exactly as Tier 1 records do.
+A workspace of 150 people running payroll generates on the order of tens of thousands of entries per year. The table is indexed on `occurred_at`, `actor_user_id` and `target_node_type`, and the log lives in PostgreSQL only. Audit history is never Tier 0, so it is never eligible for the device cache ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): reviewing it, whether the history of a Tier 1 or Tier 3 record or the log itself, is always a server call, gated the same way the record it concerns is. Offline it degrades to the `requires-connection` state ([[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]).
 
 ### Retention and erasure
 
@@ -262,7 +262,7 @@ auditLog.query(workspaceId, filters?: {
 
 - Logging adds no more than 10ms to any interceptor decision. This feature must never become a bottleneck in the one mechanism every other feature depends on
 - No code path anywhere updates or deletes an existing entry, verified as a structural property of the API surface rather than a policy
-- Review functions from local cache for entries inside the retention window; older entries render as the aged-out state and fetch on demand
+- Review is a server call for every entry, never served from a device cache; offline it renders the `requires-connection` state per [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]
 - The table remains responsive across a year of entries for a workspace of 150 people
 
 ---
@@ -294,6 +294,8 @@ auditLog.query(workspaceId, filters?: {
 **AuditEntry is excluded from search.** Not previously stated, and a real leak — indexing the log would let someone discover that a restricted record type exists by searching for it, which is the inference the interceptor prevents everywhere else.
 
 **The exemption from Universal Node Conventions is stated explicitly.** The previous specification noted the absent fields were deliberate; [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] did not record the exemption, which would have surfaced as a schema-conformance failure in review.
+
+**Audit review is a server call, not a cached read (F199, 22 September 2026).** The body previously said entries inside a local retention window were reviewed from the device cache and older ones rendered as the aged-out state and were fetched on demand. Under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s server-authoritative revision there is no retention window and audit history was never Tier 0, so it was never eligible for the device cache; the two clauses (Volume and Non-Functional Requirements) are corrected, and the aged-out state they cited is now `requires-connection` in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]. The append-only design, the every-denial and every-Tier-1/3-access rules and the exclusion from search are unchanged. Recorded as part of the FDN-104 priority slice.
 
 ---
 
