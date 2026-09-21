@@ -1,7 +1,7 @@
 # Reviewer Handoff — state for the founder's review chat
 
 **Purpose.** This file lets a fresh Claude chat (the *reviewer*, not Claude Code) resume reviewing the server-authoritative rebuild with no re-explanation. Keep it current: the reviewer updates it at each stage boundary.
-**Last updated:** 22 September 2026, after the Stage 7 merge (`stage-7-retire` merged into `main` as `dec4eb3`; F213 closed in `906d7fa`; CI image repinned in `397f38b`, both lanes green on it).
+**Last updated:** 22 September 2026, after writing the Stage 8 brief (`docs/Claude_Code_Build_Prompt.md` Part 3) and awaiting "Stage 8 go." Stage 7 is merged into `main` as `dec4eb3`; F213 closed in `906d7fa`; CI image repinned in `397f38b`, both lanes green on it.
 
 ---
 
@@ -57,7 +57,7 @@
 | Findings (F54–F213, one gap at F198) | `docs/Foundations_Findings.md` (the table is authoritative; the count paragraph is recounted programmatically) |
 | Specs | `docs/Vulto_Specs/` — A001–A008, F001/F004/F007, VPS-002/003, VRS-001 |
 | Agent rules | `CLAUDE.md` |
-| Linear | Team FDN. Stage 6 = FDN-99/100/101 (Done). Stage 7 = FDN-103, FDN-54. Deferred: FDN-104 (spec sweep), FDN-110 (pentest). Roster features start at RST-33 |
+| Linear | Team FDN. Stage 6 = FDN-99/100/101 (Done). Stage 7 = FDN-103, FDN-54 (Done). Stage 8 = FDN-104 (priority slice only), RST-33. FDN-104's remaining specs correct just-in-time per later feature. Deferred: FDN-110 (pentest) |
 
 ## 5. Stage status
 
@@ -70,6 +70,7 @@
 | 5 Protected data | done (F209, no default key provider) | `8837556` |
 | 6 Sync | done, two review rounds (F210–F212) | `961830d` |
 | **7 Retire + harden CI** | **approved 22 September (F210 verified by direct read; F213 ruled — keep the column)** | **`dec4eb3`** (merged `--no-ff`, 22 September) |
+| **8 Spec sweep (priority slice) + RST-33** | **brief written, awaiting "Stage 8 go"** | — |
 
 **Stage 7 facts to remember:**
 - Branch `stage-7-retire` at `d749c3c`. Green slow lane: https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35637057091. `main` was green at `961830d`/`4d91705` before branching.
@@ -80,19 +81,22 @@
 
 ## 6. Stage 7 review — closed, 22 September 2026
 
-Every checklist item from the Stage 7 brief was verified by direct code read, not just the report (F210's migration and its test, F212's CI job list, the accessibility gate, the done-criteria grep, the adversarial suite, the findings recount reproduced programmatically, `CLAUDE.md`/`Bootstrap.md`/`CONTRIBUTING.md`, the file/line diff stat). Full reasoning is in the Amendments entry dated 22 September. Nothing here blocks the merge. This section is retired until a Stage 8 brief exists — see section 7.
+Every checklist item from the Stage 7 brief was verified by direct code read, not just the report (F210's migration and its test, F212's CI job list, the accessibility gate, the done-criteria grep, the adversarial suite, the findings recount reproduced programmatically, `CLAUDE.md`/`Bootstrap.md`/`CONTRIBUTING.md`, the file/line diff stat). Full reasoning is in the Amendments entry dated 22 September. Merge completed cleanly (verified: the net diff from the merge commit to the final head touches only the three intended files — a stray 602-file commit from the reviewer's own worktree cleanup was caught and fully reverted the same day, confirmed by diff, not by trusting the report).
 
-**Immediately outstanding (mechanical, not review work):**
-1. Merge `stage-7-retire` into `main` with `--no-ff`.
-2. Update F213's row in `docs/Foundations_Findings.md` to the ruling in the 22 September Amendments entry, and fold it into the next programmatic recount.
-3. After the merge, read the new digest from the `ci-image` workflow run and repin `CI_IMAGE` in `.github/workflows/ci-image-ref.env`.
-4. Once merged, update this file's Stage status table (Merge column) and the "Last updated" line with the merge commit.
+## 7. Stage 8 — brief written, 22 September 2026, awaiting "Stage 8 go"
 
-## 7. After Stage 7
+Full brief in `docs/Claude_Code_Build_Prompt.md` Part 3. Scope, in order: correct `VPS-D004` (the "Locked shell" section describes the retired sealed-store/online-unlock mechanism and needs a real design replacement — flagged to come back as a numbered finding, not a silent rewrite; the "Aged out — Fetch" state becomes `requires-connection` + Retry), `VPS-F004`, `VPS-F002` (Tier-0-only local search), `VPS-A002`'s Client ownership row (F207), `VRS-F002`; then implement RST-33 — register `Employee`, its mutations and lifecycle, wire `resolveEmployeeForUser` (closes F130, lights up Manager-scope derivation and subject exclusion for the first time — watch for the same class of seam defect Stage 2/3 and Stage 4 caught: code that compiles against a non-null id versus code that is actually tested to enforce the boundary). This is a priority slice of FDN-104's 44 specs, not the whole sweep — the rest correct just-in-time before their own stages, per FDN-104 itself.
 
-- Once the three mechanical steps above are done, the brief's Part 4 stands: stop and wait for "Stage 8 go." The next brief covers:
-  - the FDN-104 spec sweep (includes the Client-ownership disagreement from Stage 3);
-  - the first Roster feature, RST-33 (canonical Employee profile). It unlocks Manager scope, subject exclusion and F130 (`resolveEmployeeForUser` returns null until then).
+**What to check in the Stage 8 report:**
+1. The Locked-shell replacement arrived as a numbered finding with a recommendation, not a decision baked into the diff.
+2. `VPS-D004`, `VPS-F004`, `VPS-F002`, `VRS-F002` each have a Decisions Recorded entry pointing to F199; the four-document grep for "local store" / "authorized device" / "retention window" / "client-side" returns only those entries.
+3. `Employee`'s registry entry matches `VPS-A002`'s existing tier-split documentation for it exactly — this stage wires the schema, it does not redesign it.
+4. `resolveEmployeeForUser` is real, and there are paired tests proving subject exclusion and Manager-scope derivation actually fire (not just that the function returns non-null). Read `reader-set.ts` and `roles.ts` yourself.
+5. Import and manual Employee creation produce equivalent records, or there's a finding explaining why not yet (likely `VPS-F006` not being corrected in this slice).
+
+## 8. After Stage 8
+
+- The next brief covers whichever `VRS-001` MVP-order feature follows RST-33, correcting that feature's own FDN-104 specs just-in-time.
 - Open follow-ups:
   - KEK rotation (FDN-96 follow-up list);
   - k-anonymity enforcement when analytics features arrive;

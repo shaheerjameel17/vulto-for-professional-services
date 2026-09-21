@@ -577,12 +577,52 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 
 ---
 
+### Stage 8 — Spec sweep (priority slice) and the canonical Employee profile
+
+**Linear:** FDN-104 (the priority slice below only — not all 44 specs, per FDN-104's own "not in one large pass"), RST-33.
+**Branch:** `stage-8-employee-profile`
+
+**Do:**
+
+1. **Correct `VPS-D004` (Application Shell Navigation and System States) first — everything else in this slice, and RST-33 itself, renders through it.**
+   - **The "Locked shell" section describes retired architecture, not a wording fix.** It gates on "the local store... stays sealed until a server-authorized online unlock succeeds" (F106), with Cold-start and Mid-session variants keyed to a role-refresh checkpoint (F127) sealing a live Worker store. None of that exists after Stage 7: there is no local store to seal, no unlock endpoint, no Worker. Read the whole section before touching it. **This is a design question, not a find-and-replace — raise it as a numbered finding with your recommended replacement; do not decide it unilaterally.** The replacement must preserve the property the old design protected: a denied session and an unreachable server render identically (non-enumeration, per F148) — `requireCurrentWorkspaceSession`'s `UnauthorizedWorkspaceSessionError` still does not distinguish "no session," "wrong workspace" or "revoked membership," so the client still cannot either. A plausible shape: one full-bleed "reconnect" state triggered by any `401`/`UNAUTHORIZED` response, same Retry action, same refusal to say why — propose it with the tradeoffs, don't assume it's right.
+   - **The "Aged out — Fetch" state no longer describes what happens.** It reads "data outside the local retention window... present on the server, simply not cached here," dashed border, a **Fetch** action, "remains locally cached for the retention period" afterward. Tier 1 and Tier 2 data is never cached on a device at all now — every render of a protected field is a live `protected.read` call, not a cache-age question. Correct this to a `requires-connection` state with a **Retry** action (FDN-104's own wording), shown whenever a protected field's fetch is pending or has failed for lack of connectivity, with no claim about caching once it succeeds. Update the state-comparison table at the end of the section.
+   - Leave Syncing and Restricted alone — they describe the audience-filtered Electric cache and the permission interceptor, both unchanged by Stage 7.
+
+2. **Correct `VPS-F004` (Silent Audit Log).** Its core design — append-only, every denial at every tier, every successful Tier 1/3 access, excluded from search — is architecture-agnostic and stays. Remove the "entries older than the local retention window are not materialized on device... render as the aged-out state and fetch on demand" language (two places): audit history was never Tier 0, so it was never eligible for the local cache under the current architecture either. State instead that reviewing Tier 1/3 access history is always a server call, gated the same way the record itself is, rendering through whatever item 1's ruling produces.
+
+3. **Correct `VPS-F002` (Local-First Search).** It claims to index "every nameable entity in the graph entirely from the local index with no network round-trip." Per FDN-104: scope the always-local, always-offline guarantee to Tier 0 entities only — what the device cache actually holds. A query that could match a Tier 1/2/3 entity is a server-backed search call: slower, online-only, itself an access the interceptor and (where the matched type is Tier 1/3) the audit log govern, and it degrades on item 1's `requires-connection` state when offline. `AuditEntry`'s total exclusion from the index (G07) is unaffected. Re-read the whole document — the "no spinner, no *searching* state, no difference the user can perceive" framing is only true for Tier 0 now and needs qualifying everywhere it appears, not once.
+
+4. **Correct `VPS-A002`'s Client ownership row**, per F207's closure: reconcile the Cross-Suite Node Ownership table's `Client` row with `VPS-F008`'s "not applicable" so the two tables state one answer. This is the only outstanding correction in `VPS-A002` — the rest is already updated for F199 (`managed_by`'s single-writer mutation, the retired-Loro history, the deprecated retention-window field are all already correct; do not re-touch them).
+
+5. **Correct `VRS-F002` (Atomic Employee Profiles).** It is written throughout as writing to "the local store" first and syncing outward, with client-side validation ("rejected before reaching the local store") and a Tier 1 "local wipe" on offboarding. Correct to: a named server mutation is the only writer (per `VPS-A002`'s already-updated rule); status-transition validation happens server-side before the mutation commits; Tier 0 fields then reach the device cache through the ordinary Electric shape sync, so the 200ms-offline-directory claim stays true, scoped explicitly to the Tier 0 half; Tier 1 (`base_compensation_amount` and the rest) was never on a device, so offboarding's "Tier 1 access revoked" step is the `device_workspace_revocation`/audience-recompute machinery Stage 6/7 already built, not a wipe. Update each corrected clause's Decisions Recorded section with a pointer to F199 — don't silently reword the body text.
+
+6. **Implement RST-33 on the corrected specs.**
+   - Register `Employee` as a real node type in `packages/schema/src/registry.ts`: the Tier 0 identifying half and the Tier 1 compensation half, exactly as `VPS-A002` already documents them (it uses Employee as its running example for the tier-split pattern throughout — read that document's Employee entries directly rather than re-deriving the field list). Both halves' privacy classes and the tier split are already specified; this stage wires the registry entry, it does not redesign the schema.
+   - Named mutations for create, update, and the lifecycle transition (Active → Inactive → Converted, `VRS-F002` G06's transition table, validated server-side per item 5). Employee is tier-split, so update needs its own named mutations, not `graph.updateNodeFields` — Stage 4's rule restricts the generic mutations to Tier-0-only node types.
+   - Relationships: `managed_by` already carries `governingPartitions: { Employee: "operational" }` from F208's closure — confirm the mutation that moves a report honors it; don't re-decide it. `scoped_to_entity` the same way. Link to `User`/`WorkspaceMembership` for workspace, role and identity rather than duplicating those facts on Employee.
+   - Wire `services/api/src/permission/employee-link.ts`'s `resolveEmployeeForUser` to a real lookup. Its two callers (`reader-set.ts`'s subject exclusion, `roles.ts`'s Manager derivation) already treat `null` as "cannot tell, resolve conservatively" and need no changes themselves — once this returns a real Employee id, both go live for the first time. This is exactly the kind of seam this project's review process has caught before (Stage 2/3's membership-graph gap, Stage 4's generic-mutation leak): write paired tests proving subject exclusion actually excludes the subject now, and a Manager's derived scope actually widens to their reports and nowhere else — not only that the code compiles with a non-null id.
+   - Permission-aware typed queries for view/directory: Tier 0 fields through the ordinary graph read path, Tier 1 fields through `protected.read`, both filtered by the reader-set logic subject exclusion now participates in.
+   - Import and manual creation must produce equivalent canonical records (RST-33's own done criterion). If `VPS-F006` (Workspace Setup and Data Import) isn't corrected yet, route its Employee-shaped import rows through the same named mutation as manual creation rather than a separate path; raise a finding if that isn't achievable without also touching `VPS-F006`.
+
+**Done criteria:**
+- `VPS-D004`, `VPS-F004`, `VPS-F002`, `VRS-F002` each have their Decisions Recorded section updated with a pointer to F199; a grep for "local store", "authorized device", "retention window" and "client-side" across these four documents returns only historical Decisions Recorded entries.
+- `VPS-A002`'s Client row matches `VPS-F008`.
+- The Locked-shell replacement is a ruled finding, not a silent decision.
+- `Employee` is registered, with create/update/lifecycle mutations, `managed_by`/`scoped_to_entity` wired through the existing governing-partitions and mutation machinery, and permission-aware queries.
+- F130 is closeable: paired tests prove subject exclusion and Manager-scope both fire correctly once `resolveEmployeeForUser` is real, not merely that it returns non-null.
+- Import and manual creation produce equivalent canonical records, or a finding says why not yet.
+
+**Gates:** the standard four (format, lint, typecheck, `pnpm verify`), plus `pnpm verify:full`, the arch-check rules, and a green CI run on the branch (link it in the report). Name the subject-exclusion and Manager-scope tests individually in the report, the way Stage 7 named its gates.
+
+---
+
 ## Part 4 — After Stage 7
 
-Stop. The next brief will cover the feature-spec sweep (FDN-104) and the first Roster features, starting with the canonical Employee profile (RST-33), which unlocks Manager scope, subject exclusion and F130.
+Stage 8, above, is that next brief: the priority slice of the feature-spec sweep (FDN-104) and the first Roster feature, the canonical Employee profile (RST-33), which unlocks Manager scope, subject exclusion and F130. When its report is written and Linear is updated, stop and wait for the founder. The remaining 40-odd FDN-104 specs are corrected just-in-time, before each one's own implementation stage — never in one large pass, per FDN-104 itself.
 
 ---
 
 ## Part 5 — What to do right now
 
-Stages 1–6 are merged. Begin **Stage 7** on the founder's "Stage 7 go", applying the Stage 7 amendments above. When its report is written and Linear is updated, stop and wait for the founder.
+Stages 1–7 are merged. Begin **Stage 8** on the founder's "Stage 8 go", applying the Stage 8 amendments above. When its report is written and Linear is updated, stop and wait for the founder.
