@@ -106,7 +106,7 @@ VPS-A003's acceptance criteria:
 - **Workspace header on the proxy (ruled).** The proxy reads `x-vulto-workspace-id` as a lookup key only, validates it as a UUID and checks it against the session user's membership on every request. Every non-active case returns the identical `access-revoked` reply with `erase: true`, and all three checks (membership, device, workspace-scoped revoke) always run so nothing branches on whether a workspace exists.
 - **Device registration precedes the first shape request.** The proxy refuses an unregistered device as revoked, so the client registers before it starts replication (found by the first browser run). Offline, registration fails fast and replication starts from the cache anyway.
 - **F211:** move-out events over row tags are applied in the cache; the proxy also forwards `expired_handle`, `cache-buster` and `log=full` (only that value).
-- **The tRPC procedures act in the session's active workspace** (existing Stage 3 behavior), while the proxy takes the workspace from the header. The browser tests set the session's active workspace directly, as `trpc.integration.test.ts` does. The sync client cannot yet be used for two workspaces at once against the mutation path; that needs a decision when workspace switching is built.
+- **The tRPC procedures act in the session's active workspace** (existing Stage 3 behavior); since the review, every API request also carries `x-vulto-workspace-id` and is refused unless it equals it (review fix 1). The browser tests set the session's active workspace directly, as `trpc.integration.test.ts` does.
 - **Status precedence:** `NeedsAttention` > `PendingChanges` > `Offline` > `Syncing` > `Synced`. Queued changes show as pending even while offline, because that is what the person can act on.
 - **Availability mapping:** queries are `mid-sync` until both shapes have caught up, then `ready`; `protectedRead` is `requires-connection`, `permission-absence` or `ready`. `protectedRead` always tries the request rather than trusting a remembered offline state.
 - **wa-sqlite** (`1.0.0`, async build) allows one call at a time, so the engine serializes every database use with one mutex. Inside the cache the file is named `cache.db`; the IndexedDB database carries the `vulto:<workspaceId>:<userId>` identity.
@@ -131,11 +131,54 @@ VPS-A003's acceptance criteria:
 - **The `sync-browser` CI job has never run on GitHub.** Everything in it was written against the same commands that pass locally, but the `docker run` steps, the CI image's ability to run Chromium with the shared-worker flag, and the host-network wiring are unverified until the repin lands.
 - **Tag format.** Move-out handling relies on the observed `<pos>/<hash>` tag format of Electric 1.8.1 (F211). Two tests fail loudly if an upgrade changes it.
 - **Proxy still reads `device_unlock_secret`** until Stage 7 (F210).
-- **Active workspace.** The proxy honors the workspace header, but mutations and protected reads use the session's active workspace; a person with two workspaces open at once is not supported until workspace switching is designed.
+- **A client whose workspace differs from its session's fails closed** (review fix 1): the API refuses the request with `workspace-mismatch`, nothing is applied, read or audited, and the client keeps its queued work and shows `NeedsAttention`. There is no multi-workspace-at-once support; a client for workspace A cannot act in workspace B.
 - **No real sign-in UI drives the client yet.** The harness route and the tests set the session directly; the product pages do not create a client until a feature needs one.
 - **Live revocation latency.** A revoked device learns at its next request; the long-poll is up to about 20 seconds, so the device-revocation browser test takes about 21 seconds.
-- **The cache database has no schema-version guard.** Adding `cache_tags` needed none because no device holds an older cache, but the next change to the cache tables needs a version check.
 - The two Tier 1 and Tier 2 store checks scan the browser; no test inspects the server's Electric shape log storage, which holds Tier 0 rows only by construction (the shapes' tables never contain a protected value).
 
 ## 11. Readiness for the next stage
 Yes for Stage 7 once the CI image repin lands (the retirement of the archived code and the CI hardening both depend on a green slow lane). Stage 7 must carry the F210 amendment: `device_workspace_revocation` before `device_unlock_secret` is dropped.
+
+## Review fixes
+The Stage 6 review was approved with conditions. Status of each, on `stage-6-sync` (commit `83f1763` for items 1–5 and the race fix below).
+
+### 1. Workspace mismatch on the write path — done
+- **What:** every API request the sync client makes (mutations, protected reads, device registration) now carries `x-vulto-workspace-id`. The API refuses any request whose header differs from the session's active workspace with `workspace-mismatch` (HTTP 403): for tRPC in `protectedProcedure`, before the procedure body, so nothing is applied, decrypted or audited; for `/devices/register` before anything is registered. The engine treats it as retryable later: the mutation stays queued and applied locally, a backoff retry is scheduled, and status is `NeedsAttention` with the reason `workspace-mismatch`; it clears when the next upload succeeds.
+- **Files:** `packages/schema/src/mutations/define.ts` (shared `WORKSPACE_HEADER`, `DEVICE_HEADER`), `services/api/src/trpc.ts`, `services/api/src/auth/http.ts`, `services/api/src/sync/shape-proxy.ts`, `packages/graph/src/sync-client/{api,engine,host,shape-source}.ts`.
+- **Tests:** `services/api/src/trpc.integration.test.ts::review — a workspace claim that is not the session's is refused (fail closed)` (three tests: `applyMutations` applies nothing and the matching claim, in any case, is served; `protected.read` returns no value and writes no audit entry; `/devices/register` registers nothing). `engine.test.ts::review — a workspace mismatch fails closed` (a queued mutation survives, is not reverted, shows `NeedsAttention` with the reason, and is delivered once the mismatch clears).
+- **Report:** the "not supported until workspace switching" limitation is removed and replaced by this fail-closed behavior (section 10). One side effect to know: a mismatched `/devices/register` is swallowed by the client, and an unregistered device is then reported by the shape proxy as revoked, which erases that workspace's cache. That only happens to a client already acting in the wrong workspace.
+
+### 2. Protected-read fallback — done
+- **What:** `engine.protectedRead` falls back to worker memory only on a network error. `access-revoked` runs the revocation path (wipe, signed out) and returns nothing; `forbidden` and `workspace-mismatch` remove those nodes' items and return `permission-absence`; `unauthenticated`, `client-outdated` and server faults remove them and return `requires-connection` with no items. A successful read also replaces, not merges with, what was held for the asked nodes. `ApiClient` now distinguishes `workspace-mismatch`, `forbidden` and `access-revoked` from `unauthenticated`.
+- **Files:** `engine.ts`, `protected-store.ts` (`removeNodes`), `api.ts`.
+- **Tests:** `engine.test.ts::review — protectedRead falls back to memory only on a network error` (six tests, one per branch, plus one that other nodes' items are kept).
+
+### 3. Erasure completeness — done
+- **What:** sign-out erases every `vulto:<workspaceId>:<userId>` IndexedDB database on the origin, found with `indexedDB.databases()`; where the browser cannot list them (older engines) only the current database is erased, and this is the stated fallback. Revocation erases only the revoked workspace's cache. `deleteIdbDatabase` no longer treats an error as success and no longer resolves on `onblocked`: it waits for `onsuccess` (other sessions are told to close their databases over a `BroadcastChannel`) for at most ten seconds, then fails. On failure the engine stays stopped and signed out; the names still to delete are recorded (identifiers only) before any delete starts, and the next start retries them **before** it opens the cache or reads `session_hint`, and fails to start if it still cannot.
+- **Decision to confirm:** the device-identity database `vulto:device` is **not** erased by sign-out, although its name starts with `vulto:`. It holds one random device id and the pending-erase list, no user data. Erasing it would let a device that has been revoked sign in again as a brand-new device and shed its revocation. Everything that holds data (a database named `vulto:<workspaceId>:<userId>`) is erased.
+- **Files:** `packages/graph/src/sync-client/{erasure,database,device-identity,host,engine}.ts`.
+- **Tests:** `erasure.test.ts` (six: cache-name recognition, sign-out erases all caches and only caches, the no-`databases()` fallback, the intent is recorded before deleting and a failed delete is retried at the next start, a start with nothing pending does nothing, a start that still cannot delete fails); `engine.test.ts::review — an erase that cannot finish leaves the engine stopped and signed out` (two); browser `sign-out erases every workspace's cache on the origin, including one held open by another tab`.
+
+### 4. Cache schema version — done
+- **What:** the cache database carries `PRAGMA user_version` (now `2`, for `cache_tags`). At open, a database at any other version, or one with tables and no version, has its tables dropped and is recreated, and replication refills it. The drop is in place rather than deleting the IndexedDB database; the result is the same empty cache. One consequence to be aware of: a version bump also drops the outbox, so a bump discards queued offline changes; any future bump has to weigh that.
+- **Files:** `schema.ts`, `database.ts` (`prepareCacheSchema`).
+- **Tests:** `database.test.ts::the cache schema version` (two: a fresh database is stamped and a current one untouched; another version and a pre-versioning database are rebuilt empty).
+
+### 5. F211 specification correction — done
+- `VPS-A003` T72 now lists the forwarded parameters (`offset`, `handle`, `live`, `cursor`, `expired_handle`, `cache-buster`, and `log` only as `full`) and "Reads" describes move-out over row tags and the cache tracking tags. F211 is marked applied in `docs/Foundations_Findings.md`.
+
+### Also fixed: a race in the mutation pipeline
+While re-running the gates, `pipeline.integration.test.ts::applies exactly once when the same mutation arrives twice at the same instant` failed about half the time (also on the previous commit). The losing side of two simultaneous identical mutations hit the unique index on the new row and was recorded as `constraint-violation` instead of replayed as a `duplicate`. The pipeline now retries when a unique violation coincides with the winner having recorded the mutation id. Eight consecutive runs pass.
+
+### 6. CI — not done, waiting on you
+- PR #4 (the CI Postgres image) is still open. Until it merges, `ci-image.yml` cannot publish `ci-postgres`, so I cannot read its digest or repin `CI_POSTGRES_IMAGE`.
+- What the branch's slow lane showed on the last run (run 35612618624): the new `sync-browser` job gets through pulling the CI image, installing and migrating, and fails at "Start Electric" against the plain Postgres image (no logical replication). That is the expected failure and the repin is what fixes it.
+- **`browser-suites (device-store-browser)` has been red on `main` since the Stage 4 merge** (runs 35580319641, 35582423261) and is red on this branch. It runs the retired local-first stack that Stage 7 deletes. So "merge only when the slow lane is green" cannot be met by the Stage 6 work alone. I have not changed that required check; see the questions at the end of the report.
+
+### Gates after the fixes (local)
+- `pnpm verify` — exit 0; `@vulto/graph`: 27 files, 330 tests passed.
+- `pnpm verify:full` — exit 0; `@vulto/api`: `Test Files  12 passed (12)`, `Tests  221 passed | 2 skipped (223)`.
+- `pnpm arch:check` — exit 0.
+- `pnpm --filter roster-web build` + `node scripts/artifact-check.mjs` — 72 production chunks clean, `__vultoSync` guarded.
+- Live-Electric proxy tests — `Tests  11 passed (11)`.
+- `pnpm test:sync-browser` — `11 passed (37.0s)`.
