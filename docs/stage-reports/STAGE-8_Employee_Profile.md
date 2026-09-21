@@ -111,3 +111,12 @@ None. Employee fields live in the existing `graph_nodes.record` (Tier 0) and `gr
 
 ## 11. Readiness for the next stage
 Yes, once F214 is ruled and F215 and F130's closure are confirmed. `VPS-D004`'s locked shell is the one correction still owed from this slice; the remaining specs in FDN-104 are corrected just in time, per the brief.
+
+## Review follow-up (22 September 2026)
+The reviewer approved Stage 8 for merge (ruling at `## Amendments`, "Stage 8 reviewed") and asked for the following, all documentation.
+
+- **CI confirmed:** `stage-8-employee-profile` at `c733763` is green in both lanes; `main` was green at `636e75d` before the merge (the ruling commit `042e6fe` is documentation only).
+- **`VPS-D004`:** the "Locked shell" section is replaced by "The reconnect state", with Trigger, Rendering, What Retry does, Data, Kept and Removed as F214 proposed and the ruling accepted (a call with no session goes to sign-in; nothing is erased on a plain `401`, which holds only while the device cache is Tier 0 only, with a note to revisit if a stage widens it). The F214 marker is gone and the Decisions Recorded entry records the ruling and its date. The component, its `401`/`access-revoked` wiring and its tests are not built here; that is Stage 9.
+- **`VPS-A004`:** one paragraph after the Privacy Class table defines "team" in `Read (own + team)` as those who share the caller's active manager, derived the same way Manager status is (`VPS-F001` G06), citing F215.
+- **Findings:** F214 is closed by founder-delegated decision (with the ruling recorded in its section), F215's row records that all three decisions were confirmed, and the table is recounted programmatically: 161 rows, F54–F215 with one gap (F198), **147 closed, 8 open (F70, F71, F73, F85, F91, F118, F125, F129)**, 6 recorded.
+- **Merge and housekeeping:** merged with `--no-ff` (commit in `docs/Reviewer_Handoff.md`); `RST-33` is Done; `FDN-104` stays In Progress with a comment that its priority slice is complete. The reviewer's leftover worktree `.wt-stage8-review` was removed, and a stray empty ref file (`.git/refs/heads/main.lock.bak2`) that broke `git fetch` and `git push` was deleted. Files were staged by name.
