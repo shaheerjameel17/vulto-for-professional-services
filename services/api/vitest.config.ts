@@ -16,6 +16,9 @@ export default defineConfig({
       WEB_ORIGIN: process.env.WEB_ORIGIN ?? "http://localhost:3100",
       AUTH_TRUSTED_ORIGINS: process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:3100",
       PASSKEY_RP_ID: process.env.PASSKEY_RP_ID ?? "localhost",
+      // Local-only key provider for tests; never used in production (A003-T73).
+      VULTO_KEY_PROVIDER: "local",
+      VULTO_LOCAL_ROOT_KEY: "D6QVNEsijEoJKnNdcu+/ez0N8rkLsdewyxeCwTYX7LA=",
       LOG_LEVEL: "silent",
     },
   },

@@ -25,6 +25,12 @@
 //      outside `services/api/src/graph` may write `graph_nodes` or
 //      `graph_edges` through Drizzle. Test files are exempt.
 //
+//   5. Cryptography (Stage 5, A003-T73, A007-T08). Only
+//      `crypto/aws-kms-key-provider.ts` may import the AWS KMS SDK, and the
+//      field-decryption function (`crypto/decrypt`) may be imported only from
+//      `protected/read.ts`, `jobs/principal.ts`, `protected/erasure.ts` and the
+//      `crypto` folder itself.
+//
 //   3. The audit journal table (Stage 3, F198). Only `services/api/src/audit`
 //      and `db.ts` may import `audit/schema`, so `appendAudit` is the one
 //      writer of an AuditEntry.
@@ -110,6 +116,13 @@ if (!isDirectory(CROSS_TENANT_DIR)) {
 
 const API_SRC = "services/api/src";
 const STORE = `${API_SRC}/graph/store`;
+const KMS_HOME = `${API_SRC}/crypto/aws-kms-key-provider.ts`;
+const DECRYPT = `${API_SRC}/crypto/decrypt`;
+const DECRYPT_IMPORTERS = new Set([
+  `${API_SRC}/protected/read.ts`,
+  `${API_SRC}/jobs/principal.ts`,
+  `${API_SRC}/protected/erasure.ts`,
+]);
 const AUDIT_SCHEMA = `${API_SRC}/audit/schema`;
 const AUTHORITY_HOMES = new Set([
   `${API_SRC}/graph/store.ts`,
@@ -137,6 +150,7 @@ if (!isDirectory(API_SRC)) {
   const authorityViolations = [];
   const auditViolations = [];
   const writeViolations = [];
+  const cryptoViolations = [];
   for (const raw of walk(API_SRC)) {
     const file = raw.split(sep).join("/");
     const text = readFileSync(raw, "utf8");
@@ -171,6 +185,26 @@ if (!isDirectory(API_SRC)) {
         }
       });
     }
+    text.split("\n").forEach((line, i) => {
+      for (const match of line.matchAll(SPECIFIER)) {
+        const specifier = match[1];
+        if (specifier.startsWith("@aws-sdk/client-kms") && file !== KMS_HOME) {
+          cryptoViolations.push(`    ${file}:${i + 1}  ${line.trim()}`);
+        }
+        if (!specifier.startsWith(".")) continue;
+        const resolved = normalize(join(dirname(file), specifier))
+          .split(sep)
+          .join("/")
+          .replace(/\.(js|ts)$/, "");
+        if (
+          resolved === DECRYPT &&
+          !DECRYPT_IMPORTERS.has(file) &&
+          !file.startsWith(`${API_SRC}/crypto/`)
+        ) {
+          cryptoViolations.push(`    ${file}:${i + 1}  ${line.trim()}`);
+        }
+      }
+    });
     const isTest = /\.test\.ts$/.test(file) || file.endsWith("/test-support.ts");
     if (!isTest && !file.startsWith(`${API_SRC}/graph/`)) {
       const inPipeline = file.startsWith(`${API_SRC}/mutations/`);
@@ -232,6 +266,19 @@ if (!isDirectory(API_SRC)) {
       ].join("\n") + "\n",
     );
   }
+  if (cryptoViolations.length > 0) {
+    failed = true;
+    process.stderr.write(
+      [
+        "",
+        "  ✗ A003-T73 / A007-T08 — only crypto/aws-kms-key-provider.ts may import the KMS SDK, and",
+        "    crypto/decrypt only protected/read.ts, jobs/principal.ts and protected/erasure.ts. Found:",
+        "",
+        ...cryptoViolations,
+        "",
+      ].join("\n") + "\n",
+    );
+  }
   if (auditViolations.length > 0) {
     failed = true;
     process.stderr.write(
@@ -249,7 +296,8 @@ if (!isDirectory(API_SRC)) {
     storeViolations.length === 0 &&
     authorityViolations.length === 0 &&
     auditViolations.length === 0 &&
-    writeViolations.length === 0
+    writeViolations.length === 0 &&
+    cryptoViolations.length === 0
   ) {
     process.stdout.write(`  ✓ ${STORE} — import boundary holds\n`);
   }

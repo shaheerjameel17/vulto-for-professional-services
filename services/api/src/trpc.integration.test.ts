@@ -4,7 +4,9 @@ import type { LightMyRequestResponse } from "fastify";
 import { afterAll, describe, expect, it } from "vitest";
 import { member, session, user } from "./auth/schema.js";
 import { closeDatabase, db } from "./db.js";
-import { makeWorkspace } from "./permission/test-support.js";
+import { getKeyServices } from "./crypto/keys.js";
+import { writeProtected } from "./protected/write.js";
+import { addNode, makeWorkspace } from "./permission/test-support.js";
 import { buildServer } from "./server.js";
 
 const ORIGIN = "http://localhost:3100";
@@ -221,5 +223,84 @@ describe("graph.applyMutations over tRPC", () => {
       ),
     };
     expect((await applyMutations(owner.cookie, many, "1")).statusCode).toBe(400);
+  });
+});
+
+describe("protected.read over tRPC", () => {
+  const SECRET = "SENTINEL-over-http-9271";
+
+  async function ownerWithSalary() {
+    const owner = await signedInOwner();
+    const nodeId = await db.transaction(async (tx) => {
+      const id = await addNode(tx, owner.workspaceId, "Employee");
+      await writeProtected(
+        tx,
+        getKeyServices(),
+        { workspaceId: owner.workspaceId, nodeId: id, nodeType: "Employee" },
+        "compensation",
+        { salary: SECRET },
+      );
+      return id;
+    });
+    return { ...owner, nodeId };
+  }
+
+  const call = (cookie: string | undefined, body: unknown, server = app) =>
+    server.inject({
+      method: "POST",
+      url: "/trpc/protected.read",
+      headers: {
+        origin: ORIGIN,
+        "content-type": "application/json",
+        ...(cookie ? { cookie } : {}),
+      },
+      payload: JSON.stringify(body),
+    });
+
+  it("returns the value, marks the response uncacheable, and requires a session", async () => {
+    const owner = await ownerWithSalary();
+    const response = await call(owner.cookie, { node_ids: [owner.nodeId] });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.headers["cache-control"]).toBe("no-store");
+    expect(JSON.parse(response.body).result.data).toEqual([
+      {
+        node_id: owner.nodeId,
+        partition: "compensation",
+        state: "available",
+        value: { salary: SECRET },
+      },
+    ]);
+    expect((await call(undefined, { node_ids: [owner.nodeId] })).statusCode).toBe(401);
+  });
+
+  it("caps a call at 500 nodes", async () => {
+    const owner = await ownerWithSalary();
+    const many = Array.from({ length: 501 }, () => randomUUID());
+    expect((await call(owner.cookie, { node_ids: many })).statusCode).toBe(400);
+  });
+
+  it("never lets a protected value or a session cookie reach the application log (A006-T12)", async () => {
+    const owner = await ownerWithSalary();
+    const chunks: string[] = [];
+    const { Writable } = await import("node:stream");
+    const stream = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(chunk.toString());
+        callback();
+      },
+    });
+    const logged = await buildServer({ logger: { level: "trace", stream } });
+    try {
+      const ok = await call(owner.cookie, { node_ids: [owner.nodeId] }, logged);
+      expect(ok.statusCode, ok.body).toBe(200);
+      // A failing call is logged too, and must not carry the value either.
+      await call(owner.cookie, { node_ids: ["not-a-uuid"] }, logged);
+    } finally {
+      await logged.close();
+    }
+    const log = chunks.join("");
+    expect(log.length).toBeGreaterThan(0);
+    expect(log).not.toContain(SECRET);
+    expect(log).not.toContain("better-auth.session_token");
   });
 });

@@ -130,6 +130,30 @@ describe("arch-check — the graph store import boundary", () => {
     expect(allowed.status, allowed.stderr).toBe(0);
   });
 
+  it("fails when anything but the KMS provider imports the AWS SDK, or an unlisted module reaches decrypt", () => {
+    // Specifiers are assembled at runtime so this file does not match the rule itself.
+    const sdk = ["@aws-sdk", "client-kms"].join("/");
+    const decrypt = ["../crypto", "decrypt.js"].join("/");
+    const sdkBad = archCheck({
+      "services/api/src/routes/rogue.ts": `import { KMSClient } from "${sdk}";\nvoid KMSClient;\n`,
+    });
+    expect(sdkBad.status).toBe(1);
+    expect(sdkBad.stderr).toContain("A007-T08");
+    const decryptBad = archCheck({
+      "services/api/src/crypto/decrypt.ts": "export const decryptFragment = () => 1;\n",
+      "services/api/src/routes/rogue.ts": `import { decryptFragment } from "${decrypt}";\nvoid decryptFragment;\n`,
+    });
+    expect(decryptBad.status).toBe(1);
+    const good = archCheck({
+      "services/api/src/crypto/decrypt.ts": "export const decryptFragment = () => 1;\n",
+      "services/api/src/crypto/aws-kms-key-provider.ts": `import { KMSClient } from "${sdk}";\nvoid KMSClient;\n`,
+      "services/api/src/protected/read.ts": `import { decryptFragment } from "${decrypt}";\nvoid decryptFragment;\n`,
+      "services/api/src/protected/erasure.ts": `import { decryptFragment } from "${decrypt}";\nvoid decryptFragment;\n`,
+      "services/api/src/jobs/principal.ts": `import { decryptFragment } from "${decrypt}";\nvoid decryptFragment;\n`,
+    });
+    expect(good.status, good.stderr).toBe(0);
+  });
+
   it("passes on the real repository", () => {
     const result = spawnSync(process.execPath, [SCRIPT], {
       cwd: fileURLToPath(new URL("../../../../", import.meta.url)),

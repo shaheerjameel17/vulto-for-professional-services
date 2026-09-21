@@ -23,4 +23,8 @@ export {
   type SystemOperation,
   type SystemPrincipalName,
 } from "./principal-policy";
-export { SUBJECT_EXCLUSIONS, getSubjectExclusion } from "./subject-exclusion";
+export {
+  ERASURE_DOMAIN_OVERRIDES,
+  SUBJECT_EXCLUSIONS,
+  getSubjectExclusion,
+} from "./subject-exclusion";

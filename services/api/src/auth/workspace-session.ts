@@ -8,6 +8,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { recordTrustEvent } from "./device-trust-log.js";
+import { ensureWorkspaceKek, getKeyServices } from "../crypto/keys.js";
 import { writeFoundingRecords } from "../graph/founding.js";
 import {
   projectMemberAdmission,
@@ -126,6 +127,9 @@ export async function createPendingWorkspaceAdmission(
       membershipInEdgeId: membershipInEdgeId(membershipId),
       occurredAt: new Date().toISOString(),
     });
+    // The workspace's key-encryption key, created with the workspace and shown
+    // to nobody (VPS-A003).
+    await ensureWorkspaceKek(transaction, getKeyServices(), workspaceId);
     await transaction.insert(member).values({
       id: membershipId,
       organizationId: workspaceId,

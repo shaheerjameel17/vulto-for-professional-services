@@ -17,7 +17,10 @@ export const SYSTEM_PRINCIPAL_NAMES = [
 
 export type SystemPrincipalName = (typeof SYSTEM_PRINCIPAL_NAMES)[number];
 
-export const SYSTEM_OPERATIONS = ["audit.pseudonymize-actor"] as const;
+export const SYSTEM_OPERATIONS = [
+  "audit.pseudonymize-actor",
+  "protected.destroy-key",
+] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
 
@@ -28,7 +31,9 @@ export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
   "retention-sweep": [],
   // VPS-F004 G06: actor pseudonymization on erasure is the one narrow
   // in-place change the audit journal permits.
-  erasure: ["audit.pseudonymize-actor"],
+  // Destroying a Tier 1 erasure domain's data key is cryptographic erasure
+  // (A003-T62). Key rotation has no operation yet: its job is not built.
+  erasure: ["audit.pseudonymize-actor", "protected.destroy-key"],
   "key-rotation": [],
 };
 

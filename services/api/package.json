@@ -19,11 +19,13 @@
     "test": "node ../../scripts/db-preflight.mjs && vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@aws-sdk/client-kms": "3.1136.0",
     "@better-auth/passkey": "1.6.29",
     "@fastify/cors": "11.3.0",
     "@trpc/server": "11.18.0",
     "@vulto/schema": "workspace:*",
     "better-auth": "1.6.29",
+    "canonicalize": "4.0.0",
     "drizzle-orm": "0.45.2",
     "fastify": "5.11.3",
     "postgres": "3.4.9"
