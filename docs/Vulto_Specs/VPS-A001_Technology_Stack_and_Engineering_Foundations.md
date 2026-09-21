@@ -95,7 +95,12 @@ Four constraints produced this stack, and they are recorded because they are the
 
 **What a device holds is materialized by the interceptor, never hand-written.** Every device uses the same two shapes, filtered by the sync audience the interceptor writes, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (F202). The rows a device holds and the rows the interceptor permits therefore cannot drift apart.
 
-**Versions are pinned exactly** — the Electric service by image digest, its client library in the lockfile — and recorded here in the same commit, per A001-T02.
+**Versions are pinned exactly**, per A001-T02:
+
+| Component | Pin |
+|---|---|
+| Electric service | `electricsql/electric:1.8.1@sha256:efb6fa43859d67cb8c73439e0c8bc0f7a3daa467500fb06f2a924bcb2070c139`, pinned in `docker-compose.yml` on 21 September 2026 |
+| Electric client library (`@electric-sql/client`) | Pinned in the lockfile when Stage 6 first adds it, and recorded here in that commit |
 
 **Loro is retired.** `loro-crdt@1.14.1` was pinned in `packages/schema` for the previous architecture; it is removed with that architecture. `wa-sqlite` stays: the device cache is still SQLite-WASM, now fed by replication rather than by CRDT materialization. The reporting hierarchy no longer needs a Movable Tree because [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s single writer validates moves transactionally, and [[VRS-F037_Dynamic_Org_Chart|VRS-F037]] is corrected accordingly.
 
