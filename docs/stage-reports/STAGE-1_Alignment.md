@@ -1,20 +1,20 @@
 # Stage 1 — Alignment, baseline and local stack
 
-**Status:** BLOCKED
-**Branch:** stage-1-alignment @ 84d4356 (local only; not pushed)
+**Status:** COMPLETE
+**Branch:** stage-1-alignment @ 0cfe953
 **Linear issues:** FDN-102 (comment only)
 **Date:** 2026-09-21
 
 ## 1. Summary
-The local stack now runs Postgres with logical replication, Redis and Electric, and the Rust relay no longer builds by default. The baseline and the post-change results are identical and green. Two things stopped the stage. Pushing the three history branches to GitHub was refused by the permission system, so they are not on origin yet. And GitHub Actions cannot start Postgres with the replication flags as specified, so the CI half of step 3 is not done (finding F203). Neither blocks Stage 2 technically, but the brief says to stop.
+The local stack now runs Postgres with logical replication, Redis and Electric, and the Rust relay no longer builds by default. The baseline and the post-change results are identical and green. The history branches are now on GitHub. The CI Postgres change moved to Stage 6 by amendment (F203 closed).
 
 ## 2. Done-criteria checklist
-- [ ] `main`, `archive/local-first-e2e` and `fdn-68-audit-wip` exist on origin — `git push` was denied by the permission classifier. `git ls-remote` shows origin `main` at `60c2745` and neither archive branch; local `main` is 5 commits ahead.
+- [x] `main`, `archive/local-first-e2e` and `fdn-68-audit-wip` exist on origin — evidence: `git ls-remote --heads origin` lists all three (pushed after the founder allowed it; the first attempt was refused).
 - [x] `pnpm stack:up` starts Postgres, Redis and Electric, and does not build Rust — evidence: `pnpm stack:up` exit 0; `docker compose ps` lists electric, postgres, redis, all healthy; no sync-engine container.
 - [x] `SHOW wal_level` returns `logical` — evidence: `docker compose exec postgres psql -U vulto -c "SHOW wal_level"` printed `logical`.
 - [x] Electric's `/v1/health` responds from the host on port 5133 — evidence: `curl localhost:5133/v1/health` returned HTTP 200, `{"status":"active"}`.
 - [x] Baseline of `pnpm verify` and `pnpm verify:full` recorded; neither worse — see section 6.
-- [ ] Step 3, CI mirror of the Postgres settings — not done; see F203.
+- [x] Step 3, CI mirror — not applicable: the amended brief removes it from Stage 1 and moves it to Stage 6 item 0 (F203 closed).
 
 ## 3. Spec clauses implemented
 | Spec ID | Where implemented | Test proving it |
@@ -57,19 +57,18 @@ After the change (`stage-1-alignment`):
 - Vars were also appended to the gitignored local `.env`, since compose reads it.
 
 ## 8. Findings raised
-- F203 — CI Postgres service container cannot take the replication flags. **Open.**
+- F203 — CI Postgres service container cannot take the replication flags. **Closed** by the 21 September amendment; built in Stage 6 item 0.
 
 ## 9. Deviations from this brief
-- Step 1 (push) not completed: denied by the permission classifier, not by credentials.
-- Step 3 CI half not done, per F203.
+- Step 1 was first refused by the permission classifier and completed after the founder allowed pushes.
+- Step 3's CI half is not done, per the brief's amendment (F203).
 - The `electric` service does not yet use the `vulto_electric` role or manual publication; the brief specifies `DATABASE_URL` with the `vulto` user for Stage 1, and Stage 6 changes it.
 
 ## 10. Known limitations and risks
 - `pnpm stack:up` on a fresh clone needs `.env` copied from `.env.example` first, or `ELECTRIC_SECRET` is blank. The compose header says so.
 - Electric connects as the superuser `vulto` for now.
-- Origin has no copy of the archive branches. The retired implementation and FDN-68's audit work exist only on this machine until pushed.
 - The `@electric-sql/client` pin is not yet recorded in VPS-A001; it is added in Stage 6 when the package is first installed.
 - Baseline `verify` was cached, so its counts come from cache. The post-change run is a genuine execution with the same counts.
 
 ## 11. Readiness for the next stage
-Technically yes: Stage 2 needs only Postgres and the repo as they are. Before "Stage 1 approved" I need the founder to (a) push the three branches, or allow me to, and (b) decide F203, which is needed before Stage 6, not Stage 2.
+Yes. Stage 2 needs only Postgres and the repo as they are. Stage 6 item 0 builds the CI Postgres image.
