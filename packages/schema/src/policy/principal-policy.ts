@@ -20,6 +20,7 @@ export type SystemPrincipalName = (typeof SYSTEM_PRINCIPAL_NAMES)[number];
 export const SYSTEM_OPERATIONS = [
   "audit.pseudonymize-actor",
   "protected.destroy-key",
+  "audience.recompute",
 ] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
@@ -27,7 +28,10 @@ export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
 export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
   Record<SystemPrincipalName, readonly SystemOperation[]>
 > = {
-  "audience-recompute": [],
+  // Keeping each person's sync audience equal to what the interceptor permits
+  // (A003-T57). It decides with the side-effect-free `decide*` functions and
+  // writes only the two audience tables.
+  "audience-recompute": ["audience.recompute"],
   "retention-sweep": [],
   // VPS-F004 G06: actor pseudonymization on erasure is the one narrow
   // in-place change the audit journal permits.

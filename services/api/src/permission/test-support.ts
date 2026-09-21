@@ -73,6 +73,16 @@ export function nodeRecord(
       : "Active";
   const actor = randomUUID();
   const scoped = nodeType !== "Workspace" && nodeType !== "User";
+  if (registration.universalFields === "anonymous-contribution") {
+    return {
+      node_id: nodeId,
+      node_type: nodeType,
+      schema_version: 1,
+      lifecycle_status: lifecycle,
+      workspace_id: workspaceId,
+      is_soft_deleted: false,
+    } as never;
+  }
   return {
     node_id: nodeId,
     node_type: nodeType,

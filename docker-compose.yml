@@ -75,8 +75,11 @@ services:
   electric:
     image: electricsql/electric:1.8.1@sha256:efb6fa43859d67cb8c73439e0c8bc0f7a3daa467500fb06f2a924bcb2070c139
     environment:
-      DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto
+      # A read-only role that can see exactly four tables (A003-T58), and a
+      # publication created by a migration rather than by Electric.
+      DATABASE_URL: postgres://vulto_electric:${ELECTRIC_DB_PASSWORD}@postgres:5432/vulto
       ELECTRIC_SECRET: ${ELECTRIC_SECRET}
+      ELECTRIC_MANUAL_TABLE_PUBLISHING: "true"
     ports:
       - "5133:3000"
     depends_on:

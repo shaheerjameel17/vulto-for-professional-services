@@ -8,6 +8,7 @@ import { and, eq, gt } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { recordTrustEvent } from "./device-trust-log.js";
+import { audienceMaterializer } from "../audience/materializer.js";
 import { ensureWorkspaceKek, getKeyServices } from "../crypto/keys.js";
 import { writeFoundingRecords } from "../graph/founding.js";
 import {
@@ -185,6 +186,7 @@ export async function admitWorkspaceMember(
       status: "active",
       projectionState: "confirmed",
     });
+    await audienceMaterializer.recomputeWorkspace(transaction, workspaceId);
   });
 }
 
@@ -192,21 +194,25 @@ export async function confirmWorkspaceAdmission(
   membershipIdInput: string,
 ): Promise<void> {
   const membershipId = uuidV4Schema.parse(membershipIdInput);
-  const [confirmed] = await db
-    .update(member)
-    .set({ status: "active", projectionState: "confirmed" })
-    .where(
-      and(
-        eq(member.id, membershipId),
-        eq(member.status, "pending"),
-        eq(member.projectionState, "pending"),
-      ),
-    )
-    .returning({ id: member.id });
+  await db.transaction(async (transaction) => {
+    const [confirmed] = await transaction
+      .update(member)
+      .set({ status: "active", projectionState: "confirmed" })
+      .where(
+        and(
+          eq(member.id, membershipId),
+          eq(member.status, "pending"),
+          eq(member.projectionState, "pending"),
+        ),
+      )
+      .returning({ id: member.id, workspaceId: member.organizationId });
 
-  if (!confirmed) {
-    throw new Error("Workspace admission was not pending confirmation");
-  }
+    if (!confirmed) {
+      throw new Error("Workspace admission was not pending confirmation");
+    }
+    // A confirmed member is now someone the audience is computed for.
+    await audienceMaterializer.recomputeWorkspace(transaction, confirmed.workspaceId);
+  });
 }
 
 /**
@@ -238,6 +244,8 @@ export async function revokeWorkspaceAdmission(
       actorUserId,
       occurredAt: new Date().toISOString(),
     });
+    // A removed member's audience rows go with the membership.
+    await audienceMaterializer.recomputeWorkspace(transaction, revoked.workspaceId);
 
     await transaction
       .update(session)

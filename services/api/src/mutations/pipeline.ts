@@ -5,10 +5,8 @@ import {
   type MutationName,
 } from "@vulto/schema";
 import { eq } from "drizzle-orm";
-import {
-  noopAudienceMaterializer,
-  type AudienceMaterializer,
-} from "../audience/index.js";
+import type { AudienceMaterializer } from "../audience/index.js";
+import { audienceMaterializer } from "../audience/materializer.js";
 import { db } from "../db.js";
 import { graphMutations } from "../graph/schema.js";
 import type { GraphTx } from "../graph/tx.js";
@@ -135,7 +133,7 @@ export async function applyMutation(
   envelope: MutationEnvelope,
   dependencies: PipelineDependencies = {},
 ): Promise<MutationResult> {
-  const audience = dependencies.audience ?? noopAudienceMaterializer;
+  const audience = dependencies.audience ?? audienceMaterializer;
   const clock = dependencies.now ?? (() => new Date().toISOString());
   const digest = argsDigest(envelope.args);
   const definition = getMutationDefinition(envelope.name);

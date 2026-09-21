@@ -19,6 +19,10 @@ export default defineConfig({
       // Local-only key provider for tests; never used in production (A003-T73).
       VULTO_KEY_PROVIDER: "local",
       VULTO_LOCAL_ROOT_KEY: "D6QVNEsijEoJKnNdcu+/ez0N8rkLsdewyxeCwTYX7LA=",
+      // Electric, for the shape proxy: the local stack's values (`pnpm stack:up`).
+      ELECTRIC_URL: process.env.ELECTRIC_URL ?? "http://localhost:5133",
+      ELECTRIC_SECRET:
+        process.env.ELECTRIC_SECRET ?? "7410a5d35c4ace6ceceb2de9e5c0ac32",
       LOG_LEVEL: "silent",
     },
   },
