@@ -10,6 +10,25 @@ const STORE = "meta";
 const KEY = "device-id";
 const PENDING_ERASE = "erase-pending";
 
+/**
+ * Everything this database may ever hold, and nothing else: the random device
+ * id, and the names of cache databases still to delete. It survives sign-out
+ * because a revocation must not be shed by signing in again as a new device, so
+ * it must never hold anything about a person or their data. Every write goes
+ * through `assertAllowedKey`, and a test pins this list.
+ */
+export const DEVICE_DATABASE = {
+  name: DATABASE,
+  stores: [STORE],
+  keys: [KEY, PENDING_ERASE],
+} as const;
+
+export function assertAllowedKey(key: string): void {
+  if (!(DEVICE_DATABASE.keys as readonly string[]).includes(key)) {
+    throw new Error(`The device database may not hold "${key}"`);
+  }
+}
+
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DATABASE, 1);
@@ -32,6 +51,7 @@ export async function getOrCreateDeviceId(): Promise<string> {
     const created = crypto.randomUUID().replaceAll("-", "");
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(STORE, "readwrite");
+      assertAllowedKey(KEY);
       transaction.objectStore(STORE).put(created, KEY);
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
@@ -62,7 +82,10 @@ export async function writePendingErase(names: readonly string[]): Promise<void>
     await new Promise<void>((resolve, reject) => {
       const transaction = database.transaction(STORE, "readwrite");
       if (names.length === 0) transaction.objectStore(STORE).delete(PENDING_ERASE);
-      else transaction.objectStore(STORE).put([...names], PENDING_ERASE);
+      else {
+        assertAllowedKey(PENDING_ERASE);
+        transaction.objectStore(STORE).put([...names], PENDING_ERASE);
+      }
       transaction.oncomplete = () => resolve();
       transaction.onerror = () => reject(transaction.error);
     });

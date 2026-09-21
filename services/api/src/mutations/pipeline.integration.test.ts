@@ -141,6 +141,41 @@ describe("idempotency (A003-T53)", () => {
   });
 });
 
+describe("a genuine constraint violation is not swallowed as a duplicate", () => {
+  const create = (workspaceId: string, nodeId: ReturnType<typeof randomUUID>) => ({
+    mutation_id: randomUUID(),
+    name: "graph.createNode",
+    args: { node: entityNode(workspaceId, nodeId) },
+  });
+
+  it("a different mutation id creating a node that already exists is rejected, in sequence", async () => {
+    const { fixture, owner } = await setup();
+    const nodeId = randomUUID();
+    expect(
+      await applyMutation(owner, create(fixture.workspaceId, nodeId)),
+    ).toMatchObject({
+      status: "applied",
+    });
+    const second = await applyMutation(owner, create(fixture.workspaceId, nodeId));
+    expect(second.status).toBe("rejected");
+    expect(second.status).not.toBe("duplicate");
+    expect(await nodeRows(nodeId)).toHaveLength(1);
+  });
+
+  it("two different mutation ids racing for one new node end with one applied and one rejected, never a duplicate", async () => {
+    const { fixture, owner } = await setup();
+    for (let i = 0; i < 5; i += 1) {
+      const nodeId = randomUUID();
+      const results = await Promise.all([
+        applyMutation(owner, create(fixture.workspaceId, nodeId)),
+        applyMutation(owner, create(fixture.workspaceId, nodeId)),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual(["applied", "rejected"]);
+      expect(await nodeRows(nodeId)).toHaveLength(1);
+    }
+  });
+});
+
 describe("stale state (A003-T54)", () => {
   it("an approve/reject race ends with exactly one applied and one stale-state", async () => {
     const { fixture, owner } = await setup();

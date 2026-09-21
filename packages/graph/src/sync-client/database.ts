@@ -2,7 +2,13 @@ import * as SQLite from "wa-sqlite";
 import SQLiteAsyncESMFactory from "wa-sqlite/dist/wa-sqlite-async.mjs";
 import { IDBBatchAtomicVFS } from "wa-sqlite/src/examples/IDBBatchAtomicVFS.js";
 import { MemoryVFS } from "wa-sqlite/src/examples/MemoryVFS.js";
-import { CACHE_SCHEMA_VERSION, CREATE_CACHE_SCHEMA } from "./schema";
+import {
+  CACHE_SCHEMA_VERSION,
+  CREATE_CACHE_SCHEMA,
+  OUTBOX_MIGRATIONS,
+  OUTBOX_SCHEMA_VERSION,
+  REPLICATED_TABLES,
+} from "./schema";
 
 /**
  * The cache database as the sync client sees it: SQL in, rows out. The real one
@@ -80,13 +86,45 @@ class WaSqliteDatabase implements SyncDatabase {
   }
 }
 
+/** Stops the client rather than guess: an outbox at a version this build cannot migrate is never wiped. */
+export class OutboxVersionError extends Error {
+  constructor(found: number) {
+    super(
+      `The outbox is at version ${found}; this build has no migration to ${OUTBOX_SCHEMA_VERSION}`,
+    );
+    this.name = "OutboxVersionError";
+  }
+}
+
+/** Every version below the current one must have a migration; a test enforces it at build time. */
+export function missingOutboxMigrations(
+  current: number = OUTBOX_SCHEMA_VERSION,
+  migrations: Readonly<Record<number, unknown>> = OUTBOX_MIGRATIONS,
+): number[] {
+  const missing: number[] = [];
+  for (let from = 1; from < current; from += 1)
+    if (!(from in migrations)) missing.push(from);
+  return missing;
+}
+
 /**
- * Brings the schema to the current version. A database at another version, or
- * one with tables but no version (from before versioning), is emptied and
- * rebuilt: everything in it is replicated again from the server.
- * Returns true when it had to start over.
+ * Brings the schema to the current versions.
+ *
+ * - Replicated tables: a database at another cache version, or with tables and
+ *   no version (from before versioning), has only `cache_nodes`, `cache_edges`,
+ *   `cache_tags` and `sync_cursor` dropped, and replication refills them.
+ * - Outbox: never dropped. An older version is migrated by the explicit
+ *   migrations; a newer or unmigratable one throws `OutboxVersionError`.
+ *
+ * Returns true when the replicated tables had to start over.
  */
-export async function prepareCacheSchema(database: SyncDatabase): Promise<boolean> {
+export async function prepareCacheSchema(
+  database: SyncDatabase,
+  migrations: Readonly<
+    Record<number, (exec: (sql: string) => Promise<void>) => Promise<void>>
+  > = OUTBOX_MIGRATIONS,
+  outboxVersion: number = OUTBOX_SCHEMA_VERSION,
+): Promise<boolean> {
   const [{ user_version: version } = { user_version: 0 }] =
     await database.all("PRAGMA user_version");
   const existing = await database.all(
@@ -95,12 +133,31 @@ export async function prepareCacheSchema(database: SyncDatabase): Promise<boolea
   const stale =
     version !== CACHE_SCHEMA_VERSION && (Number(version) !== 0 || existing.length > 0);
   if (stale) {
-    for (const table of existing) {
-      await database.run(`DROP TABLE IF EXISTS "${String(table["name"])}"`);
+    for (const table of REPLICATED_TABLES) {
+      await database.run(`DROP TABLE IF EXISTS "${table}"`);
     }
   }
   await database.exec(CREATE_CACHE_SCHEMA);
   await database.run(`PRAGMA user_version = ${CACHE_SCHEMA_VERSION}`);
+
+  // An outbox with no recorded version is version 1 (the shape before versioning).
+  const [row] = await database.all(
+    "SELECT value FROM schema_meta WHERE key = 'outbox_version'",
+  );
+  let found = row ? Number(row["value"]) : 1;
+  if (found > outboxVersion) throw new OutboxVersionError(found);
+  while (found < outboxVersion) {
+    const migrate = migrations[found];
+    if (!migrate) throw new OutboxVersionError(found);
+    await database.transaction(async () => {
+      await migrate((sql) => database.exec(sql));
+    });
+    found += 1;
+  }
+  await database.run(
+    "INSERT INTO schema_meta (key, value) VALUES ('outbox_version', ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+    [outboxVersion],
+  );
   return stale;
 }
 

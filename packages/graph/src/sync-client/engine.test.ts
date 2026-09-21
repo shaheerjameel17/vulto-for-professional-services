@@ -14,6 +14,7 @@ import { SyncEngine, type EngineOptions } from "./engine";
 import { backoffDelayMs } from "./outbox";
 import type { ProtectedItem } from "./protected-store";
 import type { ShapeEvent, ShapeFailure, ShapeSource } from "./shape-source";
+import { prepareCacheSchema } from "./database";
 import { openTestDatabase } from "./test-database";
 
 const WORKSPACE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -980,5 +981,35 @@ describe("review — an erase that cannot finish leaves the engine stopped and s
     b.source("nodes").fail({ kind: "access-revoked" });
     await new Promise((r) => setTimeout(r, 20));
     expect(scopes).toEqual(["all", "workspace"]);
+  });
+});
+
+describe("review — a cache version change never discards queued offline changes", () => {
+  it("keeps three queued mutations and uploads each exactly once", async () => {
+    const database = await openTestDatabase();
+    const first = await harness({ database });
+    first.api.offline = true;
+    const ids: string[] = [];
+    for (let i = 0; i < 3; i += 1) {
+      const node = entityNode();
+      ids.push(node.node_id);
+      expect((await first.engine.mutate("graph.createNode", { node })).accepted).toBe(
+        true,
+      );
+    }
+    await first.engine.stop();
+
+    // The cache version moves on; the replicated tables are rebuilt, the outbox is not.
+    const rebuilt = await first.engine.withDatabase(async (d) => {
+      await d.run("PRAGMA user_version = 1");
+      return prepareCacheSchema(d);
+    });
+    expect(rebuilt).toBe(true);
+
+    const second = await harness({ database });
+    await second.engine.drain();
+    expect(second.api.applied.size).toBe(3);
+    expect(second.api.calls.flat().map((m) => m.mutation_id)).toHaveLength(3);
+    expect(await second.database.all("SELECT * FROM outbox")).toEqual([]);
   });
 });

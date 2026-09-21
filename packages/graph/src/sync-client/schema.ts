@@ -5,13 +5,28 @@
  * (`protected-store.ts`). `session_hint` holds identifiers, never a token.
  */
 /**
- * Bumped whenever a cache table changes. A database at any other version (or a
- * pre-versioning one) is dropped and rebuilt by resyncing: the cache is
- * disposable, replicated from the server. 2: `cache_tags` added (F211).
+ * Bumped whenever a replicated table changes. A database at any other version (or
+ * a pre-versioning one) has only its replicated tables dropped and refilled by
+ * resync: they are disposable, replicated from the server. The outbox is not
+ * touched (see `OUTBOX_SCHEMA_VERSION`). 2: `cache_tags` added (F211).
  */
 export const CACHE_SCHEMA_VERSION = 2;
 
-export const CREATE_CACHE_SCHEMA = `
+/**
+ * The outbox is the person's own queued work, not a copy of anything on the
+ * server, so it is versioned separately from the replicated tables and is never
+ * dropped by a cache version change. A change to its shape needs an explicit
+ * migration in `OUTBOX_MIGRATIONS`; there is no fallback that wipes it.
+ */
+export const OUTBOX_SCHEMA_VERSION = 1;
+
+/** `OUTBOX_MIGRATIONS[n]` migrates an outbox at version n to n + 1. */
+export const OUTBOX_MIGRATIONS: Readonly<
+  Record<number, (exec: (sql: string) => Promise<void>) => Promise<void>>
+> = {};
+
+/** The replicated tables: dropped and refilled by resync whenever the cache version changes. */
+export const CREATE_REPLICATED_SCHEMA = `
   CREATE TABLE IF NOT EXISTS cache_nodes (
     node_id TEXT PRIMARY KEY,
     node_type TEXT NOT NULL,
@@ -55,6 +70,14 @@ export const CREATE_CACHE_SCHEMA = `
     handle TEXT,
     "offset" TEXT
   );
+`;
+
+/** The person's own state: kept across cache version changes, erased only by sign-out or revocation. */
+export const CREATE_LOCAL_SCHEMA = `
+  CREATE TABLE IF NOT EXISTS schema_meta (
+    key TEXT PRIMARY KEY,
+    value INTEGER NOT NULL
+  );
 
   CREATE TABLE IF NOT EXISTS outbox (
     seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,11 +97,18 @@ export const CREATE_CACHE_SCHEMA = `
   );
 `;
 
-export const CACHE_TABLES = [
+export const CREATE_CACHE_SCHEMA = CREATE_REPLICATED_SCHEMA + CREATE_LOCAL_SCHEMA;
+
+export const REPLICATED_TABLES = [
   "cache_nodes",
   "cache_edges",
   "cache_tags",
   "sync_cursor",
+] as const;
+
+export const CACHE_TABLES = [
+  ...REPLICATED_TABLES,
+  "schema_meta",
   "outbox",
   "session_hint",
 ] as const;

@@ -4,7 +4,7 @@ import {
   type JsonValue,
   type MutationName,
 } from "@vulto/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { AudienceMaterializer } from "../audience/index.js";
 import { audienceMaterializer } from "../audience/materializer.js";
 import { db } from "../db.js";
@@ -228,13 +228,20 @@ export async function applyMutation(
         continue;
       }
       // A unique violation may be the losing side of a concurrent attempt at the
-      // same mutation (both wrote the same new row). If the winner has recorded
-      // the mutation id by now, start over: this attempt replays it as a duplicate.
+      // SAME mutation (both wrote the same new row). Only if the winner has
+      // recorded this exact mutation id for this workspace do we start over and
+      // replay it as a duplicate; any other violation is a real one and is
+      // handled below, never swallowed.
       if (pgCode(error)?.startsWith("23") && attempt < MAX_ATTEMPTS) {
         const [recorded] = await db
           .select({ id: graphMutations.mutationId })
           .from(graphMutations)
-          .where(eq(graphMutations.mutationId, mutationId));
+          .where(
+            and(
+              eq(graphMutations.mutationId, mutationId),
+              eq(graphMutations.workspaceId, principal.workspaceId),
+            ),
+          );
         if (recorded) continue;
       }
       const reason =
