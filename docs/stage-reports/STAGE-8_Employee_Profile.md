@@ -71,10 +71,10 @@ tests adjusted where they used the generic transition on an Employee (pipeline, 
 None. Employee fields live in the existing `graph_nodes.record` (Tier 0) and `graph_protected_fragments` (Tier 1); the `scoped_to_entity` edge is an ordinary `graph_edges` row. No migration.
 
 ## 6. Tests and gates
-- `pnpm verify:full` — exit 0; `@vulto/api`: `Tests  237 passed | 2 skipped (239)`; `@vulto/graph`: 66 tests; `@vulto/schema`: 73 + new.
+- `pnpm verify:full` — exit 0; `@vulto/api`: `Tests  237 passed | 2 skipped (239)`; `@vulto/graph`: 63 tests; `@vulto/schema`: 74 tests.
 - `pnpm arch:check` — exit 0. `pnpm --filter roster-web build` + artifact check — clean.
 - Live-Electric proxy tests — `Tests  11 passed (11)`. `pnpm test:sync-browser` — `11 passed (38.0s)`. `pnpm test:auth-browser` — `6 passed (12.1s)`.
-- GitHub run: see the report's last commit; the link is added in section 10 once the run completes.
+- GitHub slow lane, all jobs green (`api-integration`, `sync-browser`, `auth-browser`, `production-build`): https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35658951785 (commit `d61f0cd`; fast lane green on the same commit).
 
 ## 7. Micro-decisions
 - **`employment_status` is not stored.** `VRS-F002`'s field list has it, but it is the node's `lifecycle_status`; storing it twice would be a second answer. `end_date` is set and cleared by the transition.
