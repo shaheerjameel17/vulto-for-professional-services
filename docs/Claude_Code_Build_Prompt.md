@@ -625,12 +625,39 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 
 ---
 
+### Stage 9 — the Reconnect shell state
+
+**Linear:** file a new focused issue under Team FDN (the pattern `FDN-103`/`FDN-104` set: a narrow, stage-sized issue, not the broad `FDN-69` shell backlog item) titled something like "Build the Reconnect shell state (F214)", linked to `FDN-69`'s milestone and citing F214. Set it **In Progress** when you start.
+
+**Source of truth for the design — read it, do not re-derive it.** `docs/Vulto_Specs/VPS-D004_Application_Shell_Navigation_and_System_States.md`, section **"The reconnect state"** (just above "## The three system states"), is the ruled design: F214, closed 22 September 2026. Every rule below is already written there in full — Trigger, Rendering, What Retry does, Data, Kept, Removed, and the note about revisiting if a future stage widens the device cache. Build exactly that, nothing more, nothing reinterpreted.
+
+**Do:**
+1. Find the current shell entry point (`apps/roster-web/src/app/(shell)/layout.tsx` is where earlier stages put shell-level concerns; confirm this yourself rather than trusting it blind) and the client's tRPC/session error handling (`packages/graph/src/sync-client/api.ts` is where the sync client's API surface lives; the shape proxy's client-side consumer is somewhere in the sync client too — find it). Understand how a `401`/`UNAUTHORIZED` and an `access-revoked` shape-proxy response currently surface to the UI, if at all, before writing anything.
+2. Build the `Reconnect` component per the spec's **Rendering** section: full-bleed, centered, no illustration, the exact copy given, one **Retry** action.
+3. Wire the trigger exactly as specified: only a `401`/`UNAUTHORIZED` from an authenticated call, or `access-revoked` from the shape proxy, ever shows it. A network failure, timeout, 5xx or rate limit must leave the shell exactly as it is (the existing `Offline` treatment already covers connectivity loss from Stage 6 — do not touch that path).
+4. Wire the sign-in split: a call carrying no session at all (never authenticated on this device, or already signed out) routes to sign-in, never to `Reconnect`. Only a call that *had* a session and was refused shows `Reconnect`.
+5. Wire **Retry** to re-issue the exact call that was refused, nothing more — no full page reload, no re-fetching unrelated state.
+6. Confirm the **Data** behavior: `access-revoked` already erases that workspace's cache (Stage 6's existing machinery) — verify this still fires, don't rebuild it. A plain `401` erases nothing; cached Tier 0 rows stay but are not rendered until a call succeeds or the person signs out.
+7. Guard against reuse: nothing else in the codebase may trigger this treatment. If you add any check or flag that could let a future feature reuse it, that's a deviation from the brief — don't.
+
+**Done criteria:**
+- The four building blocks above (trigger, rendering, Retry, sign-in split) exist and are exercised by tests, not just present in the diff.
+- A cold-start refusal and a mid-session refusal render identically — same component, same copy, no branch on which one it was.
+- `Offline` (already built) and `Reconnect` (this stage) are visibly distinct and never triggered by the same condition.
+- A network failure, timeout, 5xx, or rate limit never shows `Reconnect`.
+
+**Gates:** the standard four (`pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, `pnpm verify:full`), plus a real browser test (Playwright, following the pattern of the existing auth-browser or sync-browser suites) that proves: (a) a `401` on an authenticated call with no prior session goes to sign-in; (b) a `401` with a prior session shows `Reconnect`, and Retry re-issuing a now-successful call mounts the shell; (c) `access-revoked` shows `Reconnect` and the workspace's cache is gone when it does; (d) a simulated network failure or 5xx does not show `Reconnect` and leaves the existing state alone.
+
+**What to check in the Stage 9 report:** that no code path outside the one trigger can show `Reconnect`; that the sign-in-vs-Reconnect branch was tested with an actual no-session call, not asserted from reading the code; that `Offline` was not modified beyond what distinguishing it from `Reconnect` required; and that the report explains, if the shell entry point or tRPC error handling turned out to live somewhere other than the two files named above, where they actually were.
+
+---
+
 ## Part 4 — After Stage 7
 
-Stage 8, above, is that next brief: the priority slice of the feature-spec sweep (FDN-104) and the first Roster feature, the canonical Employee profile (RST-33), which unlocks Manager scope, subject exclusion and F130. When its report is written and Linear is updated, stop and wait for the founder. The remaining 40-odd FDN-104 specs are corrected just-in-time, before each one's own implementation stage — never in one large pass, per FDN-104 itself.
+Stage 8 was the priority slice of the feature-spec sweep (FDN-104) and the first Roster feature, the canonical Employee profile (RST-33); it merged as `5897b7b`, F130 closed, F215 confirmed, F214 ruled. Stage 9, above, is that ruling's build: the Reconnect shell state. When its report is written and Linear is updated, stop and wait for the founder. The remaining 40-odd FDN-104 specs are corrected just-in-time, before each one's own implementation stage — never in one large pass, per FDN-104 itself.
 
 ---
 
 ## Part 5 — What to do right now
 
-Stages 1–7 are merged. Begin **Stage 8** on the founder's "Stage 8 go", applying the Stage 8 amendments above. When its report is written and Linear is updated, stop and wait for the founder.
+Stages 1–8 are merged. Begin **Stage 9** on the founder's "Stage 9 go", building the Reconnect shell state exactly as F214 ruled it and `VPS-D004` now documents it. When its report is written and Linear is updated, stop and wait for the founder.
