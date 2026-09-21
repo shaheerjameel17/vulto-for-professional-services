@@ -9,8 +9,8 @@ import {
   type NodeType,
 } from "@vulto/schema";
 import { and, eq, inArray, sql } from "drizzle-orm";
-import type { db } from "../db.js";
 import { graphEdges, graphNodes } from "./schema.js";
+import type { GraphTx } from "./tx.js";
 
 /**
  * The canonical graph store (VPS-A003 "The canonical store", Stage 2).
@@ -22,7 +22,7 @@ import { graphEdges, graphNodes } from "./schema.js";
  * read and write takes the workspace — there is no workspace-less lookup (F204).
  */
 
-export type GraphTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type { GraphTx };
 
 export class GraphValidationError extends Error {
   constructor(message: string) {
@@ -67,6 +67,17 @@ export function grantMembershipProjectionAuthority(): MembershipProjectionAuthor
   const authority: MembershipProjectionAuthority = { kind: "membership-projection" };
   issuedAuthorities.add(authority);
   return authority;
+}
+
+/**
+ * F198: AuditEntry is never a graph node written through the store. Its one
+ * writer is `audit/journal.ts::appendAudit`, and the only later change is the
+ * actor pseudonymization in `audit/pseudonymizer.ts`.
+ */
+function refuseAuditEntry(nodeType: string): void {
+  if (nodeType === "AuditEntry") {
+    throw new GraphValidationError("AuditEntry is written only by appendAudit (F198)");
+  }
 }
 
 function requireAuthority(authority: MembershipProjectionAuthority | undefined): void {
@@ -263,6 +274,7 @@ async function writeNode(
  */
 export async function insertNode(tx: GraphTx, record: unknown): Promise<StoredNode> {
   const parsed = parseNode(record);
+  refuseAuditEntry(parsed.node_type);
   if (parsed.node_type === "User") {
     throw new GraphValidationError(
       "A User node is written only by the membership projection",
@@ -355,6 +367,7 @@ export async function updateNodeFields(
   authority?: MembershipProjectionAuthority,
 ): Promise<StoredNode> {
   const row = await lockNode(tx, workspaceId, nodeId);
+  refuseAuditEntry(row.nodeType);
   if (row.nodeType === "User") requireAuthority(authority);
   if (expectedVersion !== null && row.version !== expectedVersion) {
     throw new StaleVersionError(expectedVersion, row.version);
@@ -388,6 +401,7 @@ export async function softDeleteNode(
   authority?: MembershipProjectionAuthority,
 ): Promise<StoredNode> {
   const row = await lockNode(tx, workspaceId, nodeId);
+  refuseAuditEntry(row.nodeType);
   if (row.nodeType === "User") requireAuthority(authority);
   const policy = getNodeRegistration(row.nodeType as NodeType).universalFields;
   const deletion =

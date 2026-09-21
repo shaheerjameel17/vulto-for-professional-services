@@ -9,6 +9,7 @@ import {
 import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
+import { projectRoleChange } from "../graph/membership-changes.js";
 import { parseDeviceId } from "./device-unlock.js";
 import { membershipInEdgeId, membershipOfEdgeId } from "./membership-edge-ids.js";
 import {
@@ -739,7 +740,7 @@ export async function changeWorkspaceRole(
 ): Promise<RoleChangeResult> {
   const workspaceId = uuidV4Schema.parse(request.workspaceId);
   const membershipId = uuidV4Schema.parse(request.membershipId);
-  await requireConfirmedOwner(headers, workspaceId);
+  const { actorUserId } = await requireConfirmedOwner(headers, workspaceId);
 
   const [target] = await db
     .select({ roles: member.role })
@@ -774,16 +775,26 @@ export async function changeWorkspaceRole(
   }
 
   if (direction === "narrow") {
-    await db
-      .update(member)
-      .set({ role: serializeWorkspaceRoles(after) })
-      .where(
-        and(
-          eq(member.id, membershipId),
-          eq(member.status, "active"),
-          eq(member.projectionState, "confirmed"),
-        ),
-      );
+    // The graph copy changes in the same transaction as the central row.
+    await db.transaction(async (transaction) => {
+      await transaction
+        .update(member)
+        .set({ role: serializeWorkspaceRoles(after) })
+        .where(
+          and(
+            eq(member.id, membershipId),
+            eq(member.status, "active"),
+            eq(member.projectionState, "confirmed"),
+          ),
+        );
+      await projectRoleChange(transaction, {
+        workspaceId,
+        membershipId,
+        roles: after,
+        actorUserId,
+        occurredAt: new Date().toISOString(),
+      });
+    });
   }
 
   const grant = await mintMembershipTransitionGrant(headers, {
@@ -857,23 +868,33 @@ export async function confirmRoleChangeProjection(
 ): Promise<void> {
   const workspaceId = uuidV4Schema.parse(request.workspaceId);
   const membershipId = uuidV4Schema.parse(request.membershipId);
-  await requireConfirmedOwner(headers, workspaceId);
+  const { actorUserId } = await requireConfirmedOwner(headers, workspaceId);
   if (!request.roles || request.roles.length === 0) {
     throw new WorkspaceProjectionDeniedError();
   }
-  const [updated] = await db
-    .update(member)
-    .set({ role: serializeWorkspaceRoles([...new Set(request.roles)]) })
-    .where(
-      and(
-        eq(member.id, membershipId),
-        eq(member.organizationId, workspaceId),
-        eq(member.status, "active"),
-        eq(member.projectionState, "confirmed"),
-      ),
-    )
-    .returning({ id: member.id });
-  if (!updated) throw new WorkspaceProjectionDeniedError();
+  const roles = [...new Set(request.roles)];
+  await db.transaction(async (transaction) => {
+    const [updated] = await transaction
+      .update(member)
+      .set({ role: serializeWorkspaceRoles(roles) })
+      .where(
+        and(
+          eq(member.id, membershipId),
+          eq(member.organizationId, workspaceId),
+          eq(member.status, "active"),
+          eq(member.projectionState, "confirmed"),
+        ),
+      )
+      .returning({ id: member.id });
+    if (!updated) throw new WorkspaceProjectionDeniedError();
+    await projectRoleChange(transaction, {
+      workspaceId,
+      membershipId,
+      roles,
+      actorUserId,
+      occurredAt: new Date().toISOString(),
+    });
+  });
 }
 
 export interface RevokeMemberRequest {
@@ -916,5 +937,5 @@ export async function revokeMembershipForActor(
   // The founding Owner's own membership can never be revoked (VPS-F001).
   if (target.userId === actorUserId) throw new WorkspaceProjectionDeniedError();
 
-  await revokeWorkspaceAdmission(membershipId);
+  await revokeWorkspaceAdmission(membershipId, actorUserId);
 }

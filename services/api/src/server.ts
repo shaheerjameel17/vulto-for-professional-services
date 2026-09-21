@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { createContext } from "./trpc.js";
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -33,7 +34,7 @@ export async function buildServer(): Promise<FastifyInstance> {
 
   await app.register(fastifyTRPCPlugin, {
     prefix: "/trpc",
-    trpcOptions: { router: appRouter },
+    trpcOptions: { router: appRouter, createContext },
   });
 
   app.get("/health", async () => ({ api: "ok" }));

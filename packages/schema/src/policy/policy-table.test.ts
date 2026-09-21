@@ -1,4 +1,5 @@
-import { getProtectionPartitions, NODE_TYPES } from "@vulto/schema";
+import { NODE_TYPES } from "../registry/nodes";
+import { getProtectionPartitions } from "../registry/protection";
 import { describe, expect, it } from "vitest";
 import { POLICY_ROLES, resolvePermission, type PolicyRole } from "./policy-table";
 
