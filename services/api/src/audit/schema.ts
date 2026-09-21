@@ -83,7 +83,7 @@ export const auditJournal = pgTable(
     ),
     check(
       "audit_journal_event_type_check",
-      sql`${table.eventType} in ('PermissionDenied', 'SensitiveAccessGranted', 'AuthorizedOperationFailed', 'PrivilegedProjectionAuthorized')`,
+      sql`${table.eventType} in ('PermissionDenied', 'SensitiveAccessGranted', 'AuthorizedOperationFailed', 'PrivilegedProjectionAuthorized', 'CryptographicErasureExecuted')`,
     ),
     index("audit_journal_workspace_actor_kind_idx").on(
       table.workspaceId,
@@ -108,7 +108,7 @@ export const auditJournal = pgTable(
     ),
     check(
       "audit_journal_target_kind_check",
-      sql`${table.targetKind} in ('NodeTarget', 'EdgeTarget', 'QueryTarget')`,
+      sql`${table.targetKind} in ('NodeTarget', 'EdgeTarget', 'QueryTarget', 'ErasureTarget')`,
     ),
     check(
       "audit_journal_target_tier_check",

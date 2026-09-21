@@ -21,6 +21,8 @@ export interface Context {
   readonly principal: MemberPrincipal | null;
   /** The client's schema version from `x-vulto-schema-version`, or `null` if absent or malformed. */
   readonly schemaVersion: number | null;
+  /** The reply, so a procedure can set headers. */
+  readonly res: { header(name: string, value: string): unknown };
 }
 
 function toHeaders(raw: CreateFastifyContextOptions["req"]["headers"]): Headers {
@@ -34,6 +36,7 @@ function toHeaders(raw: CreateFastifyContextOptions["req"]["headers"]): Headers 
 
 export async function createContext({
   req,
+  res,
 }: CreateFastifyContextOptions): Promise<Context> {
   const headers = toHeaders(req.headers);
   const rawVersion = headers.get(SCHEMA_VERSION_HEADER);
@@ -44,11 +47,12 @@ export async function createContext({
     query: { disableCookieCache: true },
   });
   const workspaceId = current?.session.activeOrganizationId;
-  if (!current || !workspaceId) return { principal: null, schemaVersion };
+  if (!current || !workspaceId) return { principal: null, schemaVersion, res };
   try {
     const admission = await requireCurrentWorkspaceSession(headers, workspaceId);
     return {
       schemaVersion,
+      res,
       principal: {
         kind: "member",
         userId: admission.userId,
@@ -59,7 +63,7 @@ export async function createContext({
     };
   } catch (error) {
     if (error instanceof UnauthorizedWorkspaceSessionError)
-      return { principal: null, schemaVersion };
+      return { principal: null, schemaVersion, res };
     throw error;
   }
 }

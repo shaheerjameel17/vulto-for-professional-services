@@ -106,6 +106,20 @@
       "when": 1789980061789,
       "tag": "0014_ancient_sentry",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789981104612,
+      "tag": "0015_curved_carlie_cooper",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1789982106493,
+      "tag": "0016_thin_iron_lad",
+      "breakpoints": true
     }
   ]
 }

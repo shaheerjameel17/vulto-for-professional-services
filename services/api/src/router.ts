@@ -1,5 +1,8 @@
 import { sql } from "./db.js";
-import { applyMutationsInputSchema } from "@vulto/schema";
+import { applyMutationsInputSchema, protectedReadInputSchema } from "@vulto/schema";
+import { getKeyServices } from "./crypto/keys.js";
+import { db } from "./db.js";
+import { readProtected } from "./protected/read.js";
 import { applyMutations } from "./mutations/pipeline.js";
 import {
   currentClientProcedure,
@@ -139,6 +142,25 @@ export const appRouter = t.router({
     applyMutations: currentClientProcedure
       .input(applyMutationsInputSchema)
       .mutation(({ ctx, input }) => applyMutations(ctx.principal, input.mutations)),
+  }),
+  protected: t.router({
+    /**
+     * Returns the decrypted Tier 1 and Tier 2 partitions the interceptor
+     * permits for the named nodes (A003-T59): decide, audit, decrypt, respond.
+     * A mutation only because up to 500 ids do not fit a URL; it reads and
+     * changes nothing but the audit journal. The response is uncacheable.
+     */
+    read: protectedProcedure
+      .input(protectedReadInputSchema)
+      .mutation(async ({ ctx, input }) => {
+        ctx.res.header("Cache-Control", "no-store");
+        return db.transaction((tx) =>
+          readProtected(tx, getKeyServices(), ctx.principal, {
+            nodeIds: input.node_ids,
+            partitions: input.partitions,
+          }),
+        );
+      }),
   }),
   principal: t.router({
     /**

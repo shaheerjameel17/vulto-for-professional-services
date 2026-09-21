@@ -23,3 +23,12 @@ export function getSubjectExclusion(
 ): { readonly subjectPath: readonly EdgeType[] } | undefined {
   return SUBJECT_EXCLUSIONS[nodeType];
 }
+
+/**
+ * VPS-F007 / A003: where a node's erasure domain is a subject other than the
+ * node itself, the path from the node to that subject. Empty today: a feature
+ * adds an entry when it is built, and the default is the node itself.
+ */
+export const ERASURE_DOMAIN_OVERRIDES: Readonly<
+  Partial<Record<NodeType, { readonly subjectPath: readonly EdgeType[] }>>
+> = {};

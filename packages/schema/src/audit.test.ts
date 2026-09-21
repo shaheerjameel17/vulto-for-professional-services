@@ -173,3 +173,74 @@ describe("F206 — the audit actor", () => {
     ).toThrow();
   });
 });
+
+describe("F209 — the cryptographic erasure event", () => {
+  const erasure = {
+    ...validEntry,
+    event_type: "CryptographicErasureExecuted",
+    operation: "KeyDestroy",
+    outcome: "Granted",
+    actor_kind: "system",
+    actor_system_name: "erasure",
+    actor_user_id: undefined,
+    actor_membership_id: undefined,
+    actor_role: null,
+    actor_roles: [],
+    target: {
+      kind: "ErasureTarget",
+      erasure_domain_id: ID,
+      tier: 1,
+      destroyed_key_count: 2,
+      erasure_request_id: null,
+    },
+    metadata: {},
+  };
+
+  it("accepts an erasure by the erasure system principal, with or without a request id", () => {
+    expect(auditEntrySchema.parse(erasure).target).toMatchObject({
+      kind: "ErasureTarget",
+      destroyed_key_count: 2,
+    });
+    expect(
+      auditEntrySchema.parse({
+        ...erasure,
+        target: { ...erasure.target, erasure_request_id: OTHER_ID },
+      }).target,
+    ).toMatchObject({ erasure_request_id: OTHER_ID });
+  });
+
+  it("refuses any other actor, operation or target, and any content in the target", () => {
+    expect(() =>
+      auditEntrySchema.parse({ ...erasure, actor_system_name: "key-rotation" }),
+    ).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({
+        ...erasure,
+        actor_kind: "member",
+        actor_system_name: undefined,
+      }),
+    ).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({ ...erasure, operation: "NodeUpdate" }),
+    ).toThrow();
+    expect(() => auditEntrySchema.parse({ ...erasure, outcome: "Denied" })).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({ ...erasure, target: { ...erasure.target, salary: 1 } }),
+    ).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({
+        ...erasure,
+        target: { ...erasure.target, erasure_request_id: undefined },
+      }),
+    ).toThrow();
+  });
+
+  it("keeps KeyDestroy and ErasureTarget for the erasure event alone", () => {
+    expect(() =>
+      auditEntrySchema.parse({ ...validEntry, operation: "KeyDestroy" }),
+    ).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({ ...validEntry, target: erasure.target }),
+    ).toThrow();
+  });
+});

@@ -22,6 +22,7 @@ export const AUDIT_EVENT_TYPES = [
   "SensitiveAccessGranted",
   "AuthorizedOperationFailed",
   "PrivilegedProjectionAuthorized",
+  "CryptographicErasureExecuted",
 ] as const;
 export const auditEventTypeSchema = z.enum(AUDIT_EVENT_TYPES);
 export type AuditEventType = z.infer<typeof auditEventTypeSchema>;
@@ -37,6 +38,7 @@ export const AUDIT_OPERATIONS = [
   "EdgeCreate",
   "EdgeUpdate",
   "EdgeRemoveAttempt",
+  "KeyDestroy",
 ] as const;
 export const auditOperationSchema = z.enum(AUDIT_OPERATIONS);
 export type AuditOperation = z.infer<typeof auditOperationSchema>;
@@ -73,6 +75,21 @@ export const auditEdgeTargetSchema = z
   })
   .strict();
 
+/**
+ * F209: the target of a cryptographic erasure. Identifiers and a count only,
+ * never content. `erasure_request_id` is null until VPS-F007's ErasureRequest
+ * exists, and required from then on.
+ */
+export const auditErasureTargetSchema = z
+  .object({
+    kind: z.literal("ErasureTarget"),
+    erasure_domain_id: uuidV4Schema,
+    tier: z.union([z.literal(1), z.literal(2)]),
+    destroyed_key_count: z.int().nonnegative(),
+    erasure_request_id: uuidV4Schema.nullable(),
+  })
+  .strict();
+
 export const AUDIT_QUERY_KINDS = [
   "node-get",
   "node-list",
@@ -93,6 +110,7 @@ export const auditTargetReferenceSchema = z.discriminatedUnion("kind", [
   auditNodeTargetSchema,
   auditEdgeTargetSchema,
   auditQueryTargetSchema,
+  auditErasureTargetSchema,
 ]);
 export type AuditTargetReference = z.infer<typeof auditTargetReferenceSchema>;
 
@@ -160,6 +178,8 @@ export const auditEntryEventFields = {
 
 function addAuditCoherenceIssues(
   entry: {
+    operation?: AuditOperation;
+    target?: { kind: string };
     actor_kind: AuditActorKind;
     actor_user_id?: string | undefined;
     actor_membership_id?: string | undefined;
@@ -178,6 +198,7 @@ function addAuditCoherenceIssues(
     SensitiveAccessGranted: "Granted",
     AuthorizedOperationFailed: "Failed",
     PrivilegedProjectionAuthorized: "Granted",
+    CryptographicErasureExecuted: "Granted",
   };
   if (entry.outcome !== expectedOutcome[entry.event_type]) {
     context.addIssue({
@@ -241,6 +262,34 @@ function addAuditCoherenceIssues(
       code: "custom",
       path: ["actor_roles"],
       message: "Only a member holds roles; a support grant or system job names none",
+    });
+  }
+  const isErasure = entry.event_type === "CryptographicErasureExecuted";
+  if (isErasure) {
+    if (entry.actor_kind !== "system" || entry.actor_system_name !== "erasure") {
+      context.addIssue({
+        code: "custom",
+        path: ["actor_kind"],
+        message:
+          "A cryptographic erasure is written only by the erasure system principal",
+      });
+    }
+    if (entry.operation !== "KeyDestroy" || entry.target?.kind !== "ErasureTarget") {
+      context.addIssue({
+        code: "custom",
+        path: ["target"],
+        message:
+          "A cryptographic erasure has operation KeyDestroy and an ErasureTarget",
+      });
+    }
+  } else if (
+    entry.operation === "KeyDestroy" ||
+    entry.target?.kind === "ErasureTarget"
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["target"],
+      message: "KeyDestroy and ErasureTarget belong only to a cryptographic erasure",
     });
   }
   const suppliedRoles = new Set(entry.actor_roles);
