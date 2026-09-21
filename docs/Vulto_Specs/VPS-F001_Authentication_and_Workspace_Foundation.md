@@ -61,7 +61,7 @@ Manager is never assigned as a membership role. It is derived automatically from
 
 ### Device registration and multi-device sync
 
-Every device authenticating into a workspace for the first time registers as a Device and initializes its local cache. When an authenticated user opens Roster on a second device, their authorized slice of the Tier 0 graph — filtered by their role through [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s generated sync shapes — begins replicating before any data surface is interactive. The user sees the syncing state defined in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], never a blank or broken screen.
+Every device authenticating into a workspace for the first time registers as a Device and initializes its local cache. When an authenticated user opens Roster on a second device, their authorized slice of the Tier 0 graph — filtered by their role through [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s sync audience — begins replicating before any data surface is interactive. The user sees the syncing state defined in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]], never a blank or broken screen.
 
 Device registration is scoped by `application`, because the same physical laptop running Roster and [[Vulto Accounts]] presents two separate web origins and needs two independently synced, independently revocable local caches.
 
@@ -305,7 +305,7 @@ device.listForWorkspace(workspaceId)
 - **Device trust has no silent auto-approval.** Every device explicitly registers and appears in the device management view. No path grants access without `device.register`.
 - **Invitation links expire** after 7 days and are single-use. An accepted or expired link returns an identical response, so a link cannot be used to probe whether an address is already a member.
 - **Narrowing fires on any access change**, not only offboarding, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]. A demotion removing Finance Admin denies protected reads immediately and removes newly forbidden rows from the person's devices on next connection.
-- **Role changes take effect immediately.** The server-side interceptor resolves roles on every request, per [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s A004-T06, so a narrowing change denies protected reads at once; the person's sync shapes narrow and their devices remove newly forbidden rows within 60 seconds while online, or on next connection. An offline device cannot learn of a server-side change without a connection; what it retains meanwhile is Tier 0 data it could read a moment earlier. This closes F127's question of which channel delivers live role changes: the sync connection does.
+- **Role changes take effect immediately.** The server-side interceptor resolves roles on every request, per [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s A004-T06, so a narrowing change denies protected reads at once; the person's sync audience narrows and their devices remove newly forbidden rows within 60 seconds while online, or on next connection. An offline device cannot learn of a server-side change without a connection; what it retains meanwhile is Tier 0 data it could read a moment earlier. This closes F127's question of which channel delivers live role changes: the sync connection does.
 
 ---
 

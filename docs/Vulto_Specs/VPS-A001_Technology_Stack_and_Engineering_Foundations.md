@@ -32,8 +32,8 @@ This document is the single source of truth for what [[Vulto for Professional Se
 | Mobile | React Native, sharing `packages/schema`, per [[VPS-F011_Mobile-Native_Experience|VPS-F011]] |
 | Styling | Tailwind CSS, consuming [[VPS-D001_Design_Foundations|VPS-D001]]'s tokens exclusively |
 | Component primitives | Radix UI, wrapped in `packages/ui` per [[VPS-D002_Component_Library|VPS-D002]] |
-| Read replication | Electric (Apache-2.0), self-hosted in front of PostgreSQL, streaming each person's permitted rows to their device over HTTP as sync shapes |
-| Device cache and outbox | Vulto's own sync client in `packages/graph`: SQLite-WASM on the web (OPFS-backed), native SQLite on React Native, plus the queued-write outbox |
+| Read replication | Electric (Apache-2.0), self-hosted in front of PostgreSQL, streaming each person's permitted rows to their device over HTTP through two fixed shapes filtered by the sync audience |
+| Device cache and outbox | Vulto's own sync client in `packages/graph`: `wa-sqlite` with its IndexedDB VFS (`IDBBatchAtomicVFS`) on the web, running in a SharedWorker shared by every tab (a dedicated Worker holding a `navigator.locks` lease where SharedWorker is unavailable); native SQLite on React Native; plus the queued-write outbox |
 | Local query layer | `packages/graph`'s typed query layer over that SQLite cache, in the sync worker |
 | API and business logic | Node.js and TypeScript, tRPC over Fastify — the only writer to the canonical graph |
 | Server persistence | PostgreSQL via Drizzle ORM — the single source of truth |
@@ -66,7 +66,7 @@ Four constraints produced this stack, and they are recorded because they are the
 
 **Every surface is TypeScript.** `apps/*`, `services/api`, `services/jobs`, `services/render` and every package share one language, one toolchain and one set of Zod schemas.
 
-**The Electric sync service is infrastructure, not code we write.** It is deployed from its published image, needs nothing but PostgreSQL with logical replication, holds read-only database access, and is configured entirely by the sync shapes generated from `packages/schema`. Nothing in this repository extends it. **The device cache and the outbox are ours**, in `packages/graph`, in TypeScript.
+**The Electric sync service is infrastructure, not code we write.** It is deployed from its published image, needs nothing but PostgreSQL with logical replication, holds read-only database access, and serves only the two shape templates the API's shape proxy requests, filtered by the sync audience. Nothing in this repository extends it. **The device cache and the outbox are ours**, in `packages/graph`, in TypeScript.
 
 **Consequence for hiring:** every engineering hire can work anywhere in the codebase.
 
@@ -93,7 +93,7 @@ Four constraints produced this stack, and they are recorded because they are the
 
 **What Vulto builds, because Electric does not:** the SQLite cache and its schema, shape subscription and application into that cache, the outbox with idempotent retry, optimistic application and rollback, and SyncStatus. Roughly two weeks of TypeScript we own, against a dependency we cannot be surprised by. The alternative saved that work and cost a second datastore and a license argument.
 
-**Sync shapes are generated, never hand-written.** They are produced from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table in `packages/schema`, so the rows a device holds and the rows the interceptor permits cannot drift apart.
+**What a device holds is materialized by the interceptor, never hand-written.** Every device uses the same two shapes, filtered by the sync audience the interceptor writes, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (F202). The rows a device holds and the rows the interceptor permits therefore cannot drift apart.
 
 **Versions are pinned exactly** — the Electric service by image digest, its client library in the lockfile — and recorded here in the same commit, per A001-T02.
 
@@ -106,7 +106,7 @@ Four constraints produced this stack, and they are recorded because they are the
 
 **Decision:** `packages/graph`'s typed query layer runs against the Electric SQLite cache, inside the sync client's worker, never on the main thread. Recursive CTEs serve multi-hop traversal. The cache holds Tier 0 data only; Tier 1 and Tier 2 values are fetched through the API and joined in memory for authorized readers, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]].
 
-**Permission is decided on the server.** The cache contains only what the person may read, because sync shapes are generated from the policy table. The client-side query layer never decides access; it may hide an action a person cannot take, but the server refuses it regardless.
+**Permission is decided on the server.** The cache contains only what the person may read, because the sync audience is materialized by the interceptor. The client-side query layer never decides access; it may hide an action a person cannot take, but the server refuses it regardless.
 
 **Availability is separate from row data.** The query layer reports one availability outcome for a query or subscription: `mid-sync`, `requires-connection`, `permission-absence` or `ready`. `ready` is the normal condition and may contain zero rows; zero rows means genuinely empty. A permission-absence result carries no node or edge instance metadata. When [[VPS-A004_Graph_Permission_Layer|VPS-A004]] requires a visibly restricted render, the client derives it from the node type's schema under A004-T19.
 
@@ -234,7 +234,7 @@ Hetzner was considered earlier for data sovereignty. That reasoning rested on a 
 | A001-T10 | No feature MUST compute working days, weekends or holidays independently. All such arithmetic MUST call [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] |
 | A001-T11 | Authentication MUST support passkeys. WebAuthn PRF MUST be supported before any Tier 3 node type is implemented, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] |
 | A001-T12 | Backend infrastructure MUST run on DigitalOcean, key management on AWS KMS, and the frontend MUST deploy to Vercel unless superseded |
-| A001-T13 | Sync shapes MUST be generated from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table in `packages/schema` and MUST NOT be edited by hand |
+| A001-T13 | The sync audience MUST be materialized by the interceptor from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table; no shape other than the two templates of A003-T72 MAY exist |
 
 ---
 
@@ -249,7 +249,7 @@ Hetzner was considered earlier for data sovereignty. That reasoning rested on a 
 
 **GIVEN** a feature needs new data on devices
 **WHEN** it is implemented
-**THEN** it registers node types and permissions in `packages/schema`, the generated sync shapes change accordingly, and no shape is edited by hand
+**THEN** it registers node types and permissions in `packages/schema`, the materialized sync audience changes accordingly, and no shape is added or edited
 
 ---
 

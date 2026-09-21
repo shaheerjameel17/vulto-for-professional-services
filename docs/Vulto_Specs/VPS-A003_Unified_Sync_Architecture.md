@@ -71,7 +71,7 @@ The previous architecture made every device a canonical copy of the graph, merge
          PostgreSQL — canonical graph, protected field store, audit journal
                                         │  logical replication
                                         ▼
-         Electric sync service — evaluates sync shapes, streams each device its slice
+         Electric sync service — serves each person's two fixed shapes, filtered by the sync audience
 ```
 
 **There is exactly one writer to the canonical graph: `services/api`.** The replication service reads from PostgreSQL and never writes to it. Jobs write through the same mutation path as people do.
@@ -128,8 +128,9 @@ The graph's shape is unchanged — typed nodes and first-class edges per [[VPS-A
 | `graph_protected_fragments` | One row per protected partition of a node or edge: `tier`, `schema_partition`, `erasure_domain_id`, `data_key_id`, ciphertext, nonce, authenticated header | **Never** |
 | `protected_data_keys` | Data keys, each wrapped by the workspace key-encryption key | **Never** |
 | `graph_mutations` | The accepted mutation log: client mutation ID, actor, base versions, outcome | **Never** |
+| `sync_node_audience`, `sync_edge_audience` | The **sync audience**: which person may hold which Tier 0 node or edge on a device. Identifiers only — `workspace_id`, `user_id`, `node_id` or `edge_id` — never content | Yes, as the subquery source of each person's shapes |
 
-**The replication publication is an allowlist.** Only `graph_nodes` and `graph_edges` are published to the replication service, and a CI gate (A003-T58) fails the build if any other table, or any column holding protected content, becomes reachable from a sync shape.
+**The replication publication is an allowlist.** Only `graph_nodes`, `graph_edges`, `sync_node_audience` and `sync_edge_audience` are published to the replication service, and a CI gate (A003-T58) fails the build if any other table, or any column holding protected content, becomes reachable from a sync shape.
 
 **`managed_by` is a server-validated temporal edge.** The reporting hierarchy was previously a CRDT Movable Tree so that concurrent offline moves could not create a cycle. With one writer, a move is a single mutation, `org.moveEmployee`, executed in a serializable transaction that rejects a cycle and closes the prior edge's `effective_to` while opening the new one's `effective_from`. The effective date is supplied by the caller and never defaulted to the wall clock.
 
@@ -141,7 +142,9 @@ The graph's shape is unchanged — typed nodes and first-class edges per [[VPS-A
 
 **Tier 0 reads are local.** The device cache is a SQLite database maintained by the sync client. `packages/graph`'s typed query layer runs against it inside the sync client's worker, never on the main thread, and meets [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s budgets because no read waits for the network.
 
-**What reaches a device is decided by sync shapes generated from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table, never written by hand.** A stream is parameterized by the authenticated user, their workspace, their roles and their resolved scope (own record, direct reports, participants). Generation from one source is what keeps "what may this person read" and "what does this person's device hold" from disagreeing. A conformance test (A003-T57) asserts, for every role and privacy class, that the rows a stream delivers are a subset of what the interceptor permits.
+**What reaches a device is decided by the sync audience, materialized from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table, never written by hand.** The audience materializer in `services/api` evaluates the interceptor for every member of a workspace and writes one row into `sync_node_audience` or `sync_edge_audience` for each Tier 0 node or edge that member may read. It runs inside the transaction of every mutation for the rows that mutation touched, and recomputes a whole workspace's audience whenever a membership, role or `managed_by` edge changes, because those change scope for many rows at once.
+
+**Every device subscribes to exactly two fixed shapes**, through the API's authenticated shape proxy: `graph_nodes` where `workspace_id` is the session's workspace and `node_id` is in the person's `sync_node_audience` rows, and the same for `graph_edges`. The proxy sets the table, the where clause and its parameters from the verified session; a client supplies none of them. Electric tracks the subquery, so a row entering or leaving a person's audience appears on or disappears from their device without any further mechanism. One source — the interceptor — decides both what a person may query and what their device holds, and a conformance test (A003-T57) asserts, for every role and privacy class, that every audience row is one the interceptor permits.
 
 **Tier 1 and Tier 2 reads are fetched.** `protected.read` returns the decrypted protected partitions the interceptor permits for the requested nodes, writes an audit event before responding, and marks the response uncacheable. The client holds the result in memory for the session and discards it on sign-out, workspace switch, role change or tab close. Screens that need protected values — the Bench Forecast's cost figures for an Owner, a profile's compensation tab — **prefetch** them when the session starts, so an authorized person rarely sees them load.
 
@@ -225,6 +228,8 @@ Every protected fragment authenticates a canonical header — format version, wo
 
 **Rotation.** Workspace KEKs rotate annually and on demand, which re-wraps data keys without re-encrypting content. A data key is rotated by re-encrypting its domain's fragments, performed by a system job when a key is suspected compromised.
 
+**Local development and CI** use a `LocalKeyProvider` behind the same `KeyProvider` interface, with its root key supplied by the environment; production refuses to start with it (A003-T73).
+
 **Standard primitives only.** AWS KMS, Web Crypto and Node's `crypto` module implementing AES-256-GCM and HKDF-SHA-256. No bespoke cryptography.
 
 ### Cryptographic erasure
@@ -235,7 +240,7 @@ Every protected fragment authenticates a canonical header — format version, wo
 
 ### Revocation
 
-**Revocation is immediate at the server** and needs no key rotation, because no device holds a key. When a person loses access — offboarding, a role change, becoming the subject of a record — the interceptor denies their next request, their sync shapes narrow, and the replication service instructs their devices to remove rows they may no longer hold. An explicitly revoked device is told to erase its cache entirely on its next connection.
+**Revocation is immediate at the server** and needs no key rotation, because no device holds a key. When a person loses access — offboarding, a role change, becoming the subject of a record — the interceptor denies their next request, their sync audience narrows, and the replication service instructs their devices to remove rows they may no longer hold. An explicitly revoked device is told to erase its cache entirely on its next connection.
 
 **Stated honestly:** revocation cannot make someone un-see data they already viewed, and a device offline since revocation keeps its Tier 0 cache until it reconnects. Tier 1 and Tier 2 data were never on the device, which is the point of keeping them memory-only.
 
@@ -273,8 +278,8 @@ The construction previously implemented for this under FDN-52 (`tier3-root.ts`, 
 | A003-T54 | Every state-transition mutation MUST carry the base `version` it was decided against, and the server MUST reject it with `stale-state` if the record's version has changed |
 | A003-T55 | Tier 1 and Tier 2 content MUST be stored only in `graph_protected_fragments`, encrypted with AES-256-GCM under a data key wrapped by the workspace KEK, which is wrapped by a KMS root key. Each fragment MUST authenticate its RFC 8785 canonical header as AAD |
 | A003-T56 | Tier 1 and Tier 2 content MUST NOT be persisted on any device — not in the SQLite cache, IndexedDB, OPFS, the upload queue, service-worker caches or any browser storage. It MAY be held in memory for the session and MUST be discarded on sign-out, workspace switch and role change |
-| A003-T57 | Sync shapes MUST be generated from [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s policy table. A conformance suite MUST assert, for every role and privacy class, that the rows each stream delivers are a subset of what the interceptor permits for that person |
-| A003-T58 | The replication publication MUST contain only `graph_nodes` and `graph_edges`. CI MUST fail if any other table, or any Tier 1 or Tier 2 value, is reachable from a sync shape. The sync service MUST hold read-only database access and MUST require no datastore other than PostgreSQL |
+| A003-T57 | The sync audience MUST be written only by the audience materializer, which MUST evaluate [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor. A conformance suite MUST assert, for every role and privacy class, that the rows each stream delivers are a subset of what the interceptor permits for that person |
+| A003-T58 | The replication publication MUST contain only `graph_nodes`, `graph_edges`, `sync_node_audience` and `sync_edge_audience`, and the audience tables MUST hold identifiers only. CI MUST fail if any other table, or any Tier 1 or Tier 2 value, is reachable from a shape. The sync service MUST hold read-only database access and MUST require no datastore other than PostgreSQL |
 | A003-T59 | Every `protected.read` response and every job's protected read MUST write an audit event per [[VPS-F004_Silent_Audit_Log|VPS-F004]] before the data is returned or used. A failure to write the event MUST withhold the data |
 | A003-T60 | Decrypted Tier 1 and Tier 2 values MUST NOT enter logs, metrics, traces, analytics, error reports, email bodies or any storage outside the process handling the authorized operation |
 | A003-T61 | Unwrapped KEKs and DEKs MAY be cached in process memory for at most five minutes and MUST NOT be written to any storage, log or response |
@@ -288,6 +293,8 @@ The construction previously implemented for this under FDN-52 (`tier3-root.ts`, 
 | A003-T69 | `managed_by` changes MUST go through `org.moveEmployee`, which MUST run in a serializable transaction, reject a cycle, and take its effective date from the caller |
 | A003-T70 | No Tier 3 node type MAY be implemented before the Tier 3 module exists. Tier 3 plaintext and usable Tier 3 keys MUST NOT reach any server |
 | A003-T71 | Schema compatibility MUST be enforced at upload: a client below the server's minimum schema version MUST reload before its queued mutations are accepted |
+| A003-T72 | Devices MUST reach Electric only through the API's authenticated shape proxy, which MUST set table, where clause and parameters server-side from the verified session and MUST reject any client-supplied table, where or column parameter. Exactly two shape templates exist — nodes and edges filtered by the sync audience — and no other shape MAY be served |
+| A003-T73 | Local development and CI MUST use a `LocalKeyProvider` whose root key comes from the environment; production MUST use AWS KMS and MUST refuse to start with the local provider. Both implement one `KeyProvider` interface, and no other code calls KMS directly |
 
 ---
 
@@ -359,9 +366,9 @@ The construction previously implemented for this under FDN-52 (`tier3-root.ts`, 
 
 ---
 
-**GIVEN** a sync shape definition is changed so that a Standard stream would include a Tier 2 node type
+**GIVEN** a policy change would put a Tier 2 node, or a Standard node a person may not read, into that person's sync audience
 **WHEN** CI runs
-**THEN** the shape conformance gate fails the build
+**THEN** the audience conformance gate fails the build
 
 ---
 
@@ -377,6 +384,8 @@ The construction previously implemented for this under FDN-52 (`tier3-root.ts`, 
 ---
 
 ## Decisions recorded
+
+**The sync audience replaces generated shapes — F202, 21 September 2026.** Electric shapes are single-table with a where clause, and Electric supports subqueries that it tracks for changes. Rather than generating a different shape per role and scope — which would mean re-expressing "direct reports" or "own record" as SQL in a second place — the interceptor writes an explicit audience of identifiers, and every device uses the same two shapes filtered by it. One evaluator decides access; the audience is its recorded output; Electric only delivers it.
 
 **The local-first, device-canonical architecture is reversed — F199, 20 September 2026.** Founder decision after the six-week foundation build and a review of its cost to feature development, user experience and business continuity, summarized in Context. The previous text of this document, the Rust sync engine, the Loro graph, the sealed device store and the Tier 1 envelope and recovery implementation are preserved on the archive branch named in F199, not deleted, so the decision can be revisited with the evidence intact.
 
@@ -396,7 +405,7 @@ The construction previously implemented for this under FDN-52 (`tier3-root.ts`, 
 
 - [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] — the stack this document builds on
 - [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] — the node registry and tier assignments
-- [[VPS-A004_Graph_Permission_Layer|VPS-A004]] — the interceptor and the policy table sync shapes are generated from
+- [[VPS-A004_Graph_Permission_Layer|VPS-A004]] — the interceptor and the policy table the sync audience is materialized from
 - [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] — the reference protocol, which depends on edge tier inheritance
 - [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] — the infrastructure hosting each service
 - [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]] — the customer-facing trust controls built on this architecture

@@ -42,7 +42,7 @@ The governing specifications are **`VPS-A003`** (the data architecture), **`VPS-
 2. **The server interceptor** — `packages/graph`'s policy table moved to `packages/schema`, evaluated in `services/api` for every read, mutation and job
 3. **Named mutations** — the typed mutator pipeline with idempotency and stale-state rejection
 4. **Field-level encryption** — the KMS key hierarchy and `protected.read`, with audit-before-release
-5. **The sync layer** — the Electric sync service in front of Postgres, our own device cache and outbox in `packages/graph`, sync shapes generated from the policy table, and the shape conformance gate
+5. **The sync layer** — the Electric sync service in front of Postgres, our own device cache and outbox in `packages/graph`, the sync audience materialized by the interceptor, the authenticated shape proxy, and the audience conformance gate
 6. **The audit journal on the server**, hash-chained per `VPS-A008`
 
 Then one thin end-to-end workflow a design partner can use, before any broad feature work.
@@ -67,7 +67,7 @@ The retired implementation — `services/sync-engine`, the Loro Worker runtime, 
 
 **Never let Tier 1 or Tier 2 data reach device storage, and never decrypt it outside the audited path.** Protected values come from `protected.read` or an audited job principal, live in memory, and never touch the device cache, browser storage, logs or analytics. Tier 3 plaintext never reaches a server.
 
-**Never hand-write a sync shape.** Streams are generated from the policy table. A hand-written stream is a second answer to "who may read this".
+**Never write the sync audience outside the materializer, and never add a shape.** Devices use exactly two shapes filtered by the audience the interceptor writes. Anything else is a second answer to "who may read this".
 
 **Never write to the graph except through a named mutation.** `services/api` is the only writer. State transitions carry the base version they were decided against.
 
