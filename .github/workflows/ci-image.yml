@@ -16,6 +16,10 @@
 #      the job summary.
 #   4. Open a follow-up PR updating CI_IMAGE in ci-image-ref.env to that digest.
 #      The consumers only move once that PR is reviewed and merged.
+#
+# The `postgres` job does the same for `.docker/ci-postgres/Dockerfile` — the
+# Postgres service container with logical replication on (F203) — published as
+# `ghcr.io/<repo>/ci-postgres` and pinned through `CI_POSTGRES_IMAGE`.
 
 name: ci-image
 
@@ -24,10 +28,12 @@ on:
     branches: [main]
     paths:
       - ".docker/ci/**"
+      - ".docker/ci-postgres/**"
       - ".github/workflows/ci-image.yml"
   pull_request:
     paths:
       - ".docker/ci/**"
+      - ".docker/ci-postgres/**"
       - ".github/workflows/ci-image.yml"
   # Manual rebuild/repin path — run it, then paste the digest from the job
   # summary into .github/workflows/ci-image-ref.env.
@@ -79,4 +85,41 @@ jobs:
             echo "Pin \`CI_IMAGE\` in \`.github/workflows/ci-image-ref.env\` to this"
             echo "digest. After the bootstrap, a change here is a reviewed PR and the"
             echo "fast/slow lanes move only once it merges."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  postgres:
+    runs-on: ubuntu-24.04
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}/ci-postgres
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build (and push on main)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .docker/ci-postgres
+          file: .docker/ci-postgres/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ env.IMAGE }}:main
+          provenance: false
+
+      - name: Report digest
+        run: |
+          {
+            echo "### Vulto CI Postgres image"
+            echo
+            echo '```'
+            echo "${IMAGE}@${{ steps.build.outputs.digest }}"
+            echo '```'
+            echo
+            echo "Pin \`CI_POSTGRES_IMAGE\` in \`.github/workflows/ci-image-ref.env\` to this digest."
           } >> "$GITHUB_STEP_SUMMARY"
