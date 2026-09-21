@@ -16,10 +16,9 @@
 
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "24.18.0" },
-    "ghcr.io/devcontainers/features/rust:1": { "version": "1.97.1" },
     // docker-outside-of-docker, not docker-in-docker. The workspace container
     // needs to run `docker compose` against the SAME daemon that already runs
-    // its siblings — postgres, redis, sync-engine, brought up by the outer
+    // its siblings — postgres, redis, electric, brought up by the outer
     // compose file this devcontainer extends. docker-in-docker would start a
     // second, isolated daemon inside the workspace container that cannot see
     // those siblings at all: `docker compose ps` from a terminal in the
@@ -48,28 +47,20 @@
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": { "moby": false }
   },
 
-  // Rust is present here and absent from a contributor's laptop, and that is
-  // the point rather than an inconsistency. A007-T19 makes the development
-  // image the thing that satisfies A001-T04: someone working on the sync engine
-  // gets a toolchain without every TypeScript contributor needing one.
   "postCreateCommand": "corepack enable && pnpm install --frozen-lockfile",
 
-  "forwardPorts": [3100, 3101, 5432, 6379, 8080],
+  "forwardPorts": [3100, 3101, 5432, 6379, 5133],
   "portsAttributes": {
     "3100": { "label": "roster-web" },
     "3101": { "label": "api" },
     "5432": { "label": "postgres" },
     "6379": { "label": "redis" },
-    "8080": { "label": "sync-engine (placeholder)" }
+    "5133": { "label": "electric" }
   },
 
   "customizations": {
     "vscode": {
-      "extensions": [
-        "esbenp.prettier-vscode",
-        "dbaeumer.vscode-eslint",
-        "rust-lang.rust-analyzer"
-      ],
+      "extensions": ["esbenp.prettier-vscode", "dbaeumer.vscode-eslint"],
       "settings": {
         "editor.formatOnSave": true,
         "editor.defaultFormatter": "esbenp.prettier-vscode"

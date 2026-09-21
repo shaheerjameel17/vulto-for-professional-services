@@ -1,20 +1,21 @@
-# FDN-55 Stage 3 — the slow lane.
+# The slow lane (FDN-55, rewritten in Stage 7 for the server-authoritative stack).
 #
-# Everything the fast lane deliberately leaves out: the Postgres-backed api
-# integration suite, the three browser suites, the multi-target Rust build, the
-# accessibility smoke pass, and the production build + artifact check.
+# Everything the fast lane deliberately leaves out, against real services:
 #
-# Runs on every push (any branch, `main` included) and on every PR (ruling 6 —
-# not only once before merge). Required for merge.
+#   api-integration — `pnpm verify:full` (the fast gate plus the Postgres-backed
+#                     api suite), then the named gates one by one so a failure
+#                     says which contract broke: audience conformance (A003-T57),
+#                     the publication allowlist (A003-T58), the shape proxy
+#                     (A003-T72), the adversarial suite (FDN-54) and arch-check.
+#   sync-browser    — the sync client in real Chromium against real Postgres and
+#                     real Electric, including the no-protected-data-on-device
+#                     scan (A003-T56).
+#   auth-browser    — sign-in, passkeys and the accessibility smoke pass.
+#   production-build — the production build and its artifact check.
 #
-# Sharding (ruling 7): the browser suites are expressed as an `include:` matrix
-# so a suite that crosses ~8 minutes of wall-clock gets split by raising its
-# `shardTotal` here — no structural change. On the CI runner device-store is
-# ~14 min (worker ~2, auth ~2); it is a candidate to shard, but the cost is
-# one relay/next-dev/api start-up per shard, so it stays single until the
-# per-shard time is the bigger problem. The `@large-backlog-replay` device-store
-# tests are excluded from the CI gate — see the `grep_invert` note below and
-# FDN-93 (the real fix: a sidecar-container split).
+# Runs on every push (any branch, `main` included) and on every PR. Required for
+# merge. No job here is disabled or skipped; the one conditional job is
+# `publish-artifacts`, which runs only on pushes to `main`.
 
 name: slow-lane
 
@@ -95,11 +96,33 @@ jobs:
         shell: bash
         run: pnpm --dir services/api exec drizzle-kit migrate --config drizzle.config.ts
 
-      - name: api integration suite (real Postgres)
+      - name: pnpm verify:full (fast gate, then the api suite against real Postgres)
         shell: bash
-        run: pnpm --filter @vulto/api test
+        run: pnpm verify:full
 
-  browser-suites:
+      # The same tests run inside verify:full; naming them here makes a failure
+      # read as the contract it broke (VPS-A007).
+      - name: Gate — audience conformance (A003-T57)
+        shell: bash
+        run: pnpm --filter @vulto/api exec vitest run src/audience/audience.integration.test.ts -t "A003-T57"
+
+      - name: Gate — publication allowlist (A003-T58)
+        shell: bash
+        run: pnpm --filter @vulto/api exec vitest run src/audience/audience.integration.test.ts -t "A003-T58"
+
+      - name: Gate — shape proxy (A003-T72)
+        shell: bash
+        run: pnpm --filter @vulto/api exec vitest run src/sync/shape-proxy.integration.test.ts
+
+      - name: Gate — adversarial suite (FDN-54)
+        shell: bash
+        run: pnpm --filter @vulto/api exec vitest run src/test/adversarial
+
+      - name: Gate — architecture rules (Stages 2, 4 and 5)
+        shell: bash
+        run: pnpm arch:check
+
+  auth-browser:
     needs: resolve-image
     runs-on: ubuntu-24.04
     container:
@@ -121,111 +144,27 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U vulto -d vulto"
           --health-interval 5s --health-timeout 5s --health-retries 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # suite       — the pnpm script (its pretest: hook migrates + seeds)
-          # fdn         — the FDN{NN}_{ADMIN,BROWSER}_DATABASE_URL prefix the suite reads
-          # db          — that suite's database name
-          # shard/total — raise `total` (and add rows) when a suite passes ~8 min
-          - suite: auth-browser
-            fdn: FDN60
-            db: vulto_fdn60_browser
-            shard: 1
-            total: 1
-          - suite: worker-browser
-            fdn: FDN77
-            db: vulto_fdn77_browser
-            shard: 1
-            total: 1
-          # device-store-browser is disabled: see the `device-store-browser` job
-          # below (F212). It was a row here until Stage 6.
-    name: browser-suites (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
     steps:
       - uses: actions/checkout@v4
       - run: pnpm install --frozen-lockfile
         shell: bash
 
-      - name: Run ${{ matrix.suite }}
+      # The setup script creates, migrates and truncates its own database off the admin URL.
+      - name: Auth browser suite (sign-in, passkeys, accessibility smoke pass)
         shell: bash
-        env:
-          PLAYWRIGHT_SHARD: ${{ matrix.shard }}/${{ matrix.total }}
-          GREP_INVERT: ${{ matrix.grep_invert }}
         run: |
           set -euo pipefail
-          export ${{ matrix.fdn }}_ADMIN_DATABASE_URL="${PG_ADMIN_URL}"
-          export ${{ matrix.fdn }}_BROWSER_DATABASE_URL="postgres://vulto:vulto@postgres:5432/${{ matrix.db }}"
-
-          invert=()
-          if [ -n "${GREP_INVERT:-}" ]; then
-            invert=(--grep-invert "${GREP_INVERT}")
-            excluded=$(pnpm exec playwright test --config services/api/playwright.device-store.config.ts --grep "${GREP_INVERT}" --list 2>/dev/null | grep -c '›' || true)
-            total=$(pnpm exec playwright test --config services/api/playwright.device-store.config.ts --list 2>/dev/null | grep -c '›' || true)
-            {
-              echo "### ${{ matrix.suite }} — ${excluded} test(s) excluded from the CI gate"
-              echo
-              echo "Not run here: tests tagged \`${GREP_INVERT}\` — one device flushing a"
-              echo "local-write backlog larger than one relay page (see FDN-93). They still"
-              echo "run in a local \`pnpm test:device-store-browser\`."
-              echo
-              echo "**$((total - excluded)) of ${total} device-store tests gate merge; ${excluded} excluded — see FDN-93.**"
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::warning title=${excluded} device-store test(s) excluded from the CI gate (FDN-93)::tag ${GREP_INVERT} — runs locally via pnpm test:device-store-browser, not on the shared CI runner"
-          fi
-
-          # Playwright's own --shard / --grep-invert, passed through the pnpm script.
-          pnpm test:${{ matrix.suite }} --shard="${PLAYWRIGHT_SHARD}" "${invert[@]}"
+          export FDN60_ADMIN_DATABASE_URL="${PG_ADMIN_URL}"
+          export FDN60_BROWSER_DATABASE_URL="postgres://vulto:vulto@postgres:5432/vulto_fdn60_browser"
+          pnpm test:auth-browser
 
       - name: Upload traces on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-traces-${{ matrix.suite }}
-          path: |
-            services/api/test-results/**
-            packages/graph/test-results/**
+          name: playwright-traces-auth-browser
+          path: services/api/test-results/**
           if-no-files-found: ignore
-
-  # DISABLED (F212). device-store-browser tests the retired local-first stack
-  # (services/sync-engine, the Loro worker runtime, the sealed store), which the
-  # server-authoritative re-foundation replaced (F199). It has been red since the
-  # Stage 4 merge and is not a check anyone can act on. It is deleted, with its
-  # Playwright config, its suite and the retired code, in Stage 7 (FDN-103).
-  # Do not re-enable it and do not add it back to the browser-suites matrix.
-  device-store-browser:
-    if: false
-    needs: resolve-image
-    runs-on: ubuntu-24.04
-    container:
-      image: ${{ needs.resolve-image.outputs.image }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
-    services:
-      postgres:
-        image: ${{ needs.resolve-image.outputs.postgres_image }}
-        credentials:
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          POSTGRES_USER: vulto
-          POSTGRES_PASSWORD: vulto
-          POSTGRES_DB: vulto
-        options: >-
-          --health-cmd "pg_isready -U vulto -d vulto"
-          --health-interval 5s --health-timeout 5s --health-retries 20
-    steps:
-      - uses: actions/checkout@v4
-      - run: pnpm install --frozen-lockfile
-        shell: bash
-      - name: Run device-store-browser
-        shell: bash
-        run: |
-          export FDN84_ADMIN_DATABASE_URL="${PG_ADMIN_URL}"
-          export FDN84_BROWSER_DATABASE_URL="postgres://vulto:vulto@postgres:5432/vulto_fdn84_browser"
-          pnpm test:device-store-browser --grep-invert "@large-backlog-replay"
 
   # Stage 6 (FDN-99/FDN-101): the sync client's browser suite, against real
   # Postgres and real Electric. Electric connects as the `vulto_electric` role,
@@ -287,6 +226,12 @@ jobs:
             -e DATABASE_URL -e ELECTRIC_LIVE_TESTS=1 \
             -e ELECTRIC_URL=http://localhost:5133 -e ELECTRIC_SECRET \
             "${CI_IMAGE}" bash -lc "pnpm --filter @vulto/api exec vitest run src/sync/shape-proxy.integration.test.ts"
+      - name: Gate — no protected data on the device (A003-T56)
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e SYNC_BROWSER_DATABASE_URL="${DATABASE_URL}" \
+            -e ELECTRIC_URL=http://localhost:5133 -e ELECTRIC_SECRET \
+            "${CI_IMAGE}" bash -lc "pnpm install --frozen-lockfile && pnpm test:sync-browser --grep 'no Tier 1 or Tier 2'"
       - name: Sync browser suite
         run: |
           docker run --rm --network host --user root -v "$PWD:/work" -w /work \
@@ -300,21 +245,6 @@ jobs:
           name: playwright-traces-sync-browser
           path: packages/graph/test-results/**
           if-no-files-found: ignore
-
-  rust-multitarget:
-    needs: resolve-image
-    runs-on: ubuntu-24.04
-    container:
-      image: ${{ needs.resolve-image.outputs.image }}
-      credentials:
-        username: ${{ github.actor }}
-        password: ${{ secrets.GITHUB_TOKEN }}
-      options: --user root
-    steps:
-      - uses: actions/checkout@v4
-      - name: native + wasm32 build, cargo test (A007-T03 as corrected by F193)
-        shell: bash
-        run: bash scripts/rust-multitarget.sh
 
   production-build:
     needs: resolve-image
@@ -384,9 +314,8 @@ jobs:
     needs:
       - resolve-image
       - api-integration
-      - browser-suites
+      - auth-browser
       - sync-browser
-      - rust-multitarget
       - production-build
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
@@ -442,16 +371,6 @@ jobs:
           tags: ${{ env.REGISTRY }}/api:${{ env.SHA }}
           provenance: false
 
-      - name: Build and push the sync-engine image
-        id: sync
-        uses: docker/build-push-action@v6
-        with:
-          context: services/sync-engine
-          file: services/sync-engine/Dockerfile
-          push: true
-          tags: ${{ env.REGISTRY }}/sync-engine:${{ env.SHA }}
-          provenance: false
-
       - name: Emit the deploy manifest
         shell: bash
         run: |
@@ -475,11 +394,6 @@ jobs:
                 "image": "${REGISTRY}/api",
                 "tag": "${SHA}",
                 "digest": "${{ steps.api.outputs.digest }}"
-              },
-              "sync_engine": {
-                "image": "${REGISTRY}/sync-engine",
-                "tag": "${SHA}",
-                "digest": "${{ steps.sync.outputs.digest }}"
               },
               "roster_web": {
                 "form": "next-build",

@@ -55,7 +55,7 @@ Then one thin end-to-end workflow a design partner can use, before any broad fea
 
 ### The archive
 
-The retired implementation — `services/sync-engine`, the Loro Worker runtime, the sealed store, Tier 1 envelopes and recovery — is preserved on the branch `archive/local-first-e2e` and removed from `main` by a tracked Linear issue. **Do not delete archived code outside that issue, and do not revive it without a superseding decision.**
+The retired implementation — `services/sync-engine`, the Loro Worker runtime, the sealed store, Tier 1 envelopes and recovery — was removed from `main` in Stage 7 (FDN-103); it is preserved on the branch `archive/local-first-e2e`. **Do not revive it without a superseding decision.**
 
 ---
 
