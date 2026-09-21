@@ -7,7 +7,7 @@ import {
   admitWorkspaceMember,
   revokeWorkspaceAdmission,
 } from "../auth/workspace-session.js";
-import { device, user } from "../auth/schema.js";
+import { device, deviceUnlockSecret, user } from "../auth/schema.js";
 import { closeDatabase, db } from "../db.js";
 import { makeWorkspace } from "../permission/test-support.js";
 import { buildServer } from "../server.js";
@@ -147,7 +147,7 @@ describe("A003-T72 — the proxy decides every shape parameter", () => {
     }
   });
 
-  it("requires a session, and both identity headers", async () => {
+  it("requires a session", async () => {
     const person = await signedInMember();
     const anonymous = await app.inject({
       method: "GET",
@@ -155,13 +155,7 @@ describe("A003-T72 — the proxy decides every shape parameter", () => {
     });
     expect(anonymous.statusCode).toBe(401);
     expect(JSON.parse(anonymous.body)).toEqual({ code: "unauthenticated" });
-    expect(
-      (await shape(person, "nodes", "", { [WORKSPACE_HEADER]: "not-a-uuid" }))
-        .statusCode,
-    ).toBe(400);
-    expect(
-      (await shape(person, "nodes", "", { [DEVICE_HEADER]: "x" })).statusCode,
-    ).toBe(400);
+    expect((await shape(person, "nodes")).statusCode).toBe(200);
   });
 });
 
@@ -175,26 +169,94 @@ describe("A003-T67 — a revoked device or a removed member is told to erase", (
     expect(JSON.parse(response.body)).toEqual({ code: "access-revoked", erase: true });
   });
 
-  it("returns access-revoked for a revoked, unregistered or someone else's device, and for a workspace they never joined", async () => {
+  it("gives byte-identical bodies for every way of not being an active member", async () => {
     const person = await signedInMember();
+    const stranger = await makeWorkspace();
+    const suspended = await signedInMember();
+    await db
+      .update(user)
+      .set({ status: "suspended" })
+      .where(eq(user.id, suspended.userId));
+    const removed = await signedInMember();
+    await revokeWorkspaceAdmission(removed.membershipId, removed.ownerUserId);
+    const cases: [string, LightMyRequestResponse][] = [
+      [
+        "never a member",
+        await shape(person, "nodes", "", { [WORKSPACE_HEADER]: stranger.workspaceId }),
+      ],
+      [
+        "nonexistent workspace",
+        await shape(person, "nodes", "", { [WORKSPACE_HEADER]: randomUUID() }),
+      ],
+      [
+        "malformed workspace id",
+        await shape(person, "nodes", "", { [WORKSPACE_HEADER]: "not-a-uuid" }),
+      ],
+      [
+        "missing workspace id",
+        await shape(person, "nodes", "", { [WORKSPACE_HEADER]: "" }),
+      ],
+      ["suspended member", await shape(suspended, "nodes")],
+      ["removed member", await shape(removed, "nodes")],
+    ];
+    for (const [label, response] of cases) {
+      expect(response.statusCode, label).toBe(401);
+      expect(response.body, label).toBe(cases[0]![1].body);
+      expect(response.headers["content-type"], label).toBe(
+        cases[0]![1].headers["content-type"],
+      );
+    }
+    expect(JSON.parse(cases[0]![1].body)).toEqual({
+      code: "access-revoked",
+      erase: true,
+    });
+    // The workspace header is a lookup key, not authorization: a real workspace is still refused.
+    expect((await shape(person, "nodes")).statusCode).toBe(200);
+  });
+
+  it("returns the same reply for a revoked, unregistered or malformed device", async () => {
+    const person = await signedInMember();
+    const before = await shape(person, "nodes", "", { [DEVICE_HEADER]: "x" });
+    const unregistered = await shape(person, "nodes", "", {
+      [DEVICE_HEADER]: `unregistered${randomUUID().replaceAll("-", "")}`,
+    });
     await db
       .update(device)
       .set({ isRevoked: true })
       .where(eq(device.id, person.deviceId));
-    for (const response of [
-      await shape(person, "nodes"),
-      await shape(person, "edges"),
-      await shape(person, "nodes", "", {
-        [DEVICE_HEADER]: `unregistered${randomUUID().replaceAll("-", "")}`,
-      }),
-      await shape(person, "nodes", "", { [WORKSPACE_HEADER]: randomUUID() }),
-    ]) {
+    const revoked = await shape(person, "nodes");
+    const revokedEdges = await shape(person, "edges");
+    for (const response of [before, unregistered, revoked, revokedEdges]) {
       expect(response.statusCode).toBe(401);
-      expect(JSON.parse(response.body)).toEqual({
-        code: "access-revoked",
-        erase: true,
-      });
+      expect(response.body).toBe(revoked.body);
     }
+    expect(JSON.parse(revoked.body)).toEqual({ code: "access-revoked", erase: true });
+  });
+
+  it("returns the same reply for a device revoked for this workspace only, and leaves other workspaces served", async () => {
+    const person = await signedInMember();
+    const other = await makeWorkspace();
+    await admitWorkspaceMember({
+      workspaceId: other.workspaceId,
+      membershipId: randomUUID(),
+      userId: person.userId,
+      roles: ["hr-admin"],
+      actorUserId: other.people.owner!.userId,
+    });
+    await db.insert(deviceUnlockSecret).values({
+      workspaceId: person.workspaceId,
+      userId: person.userId,
+      deviceId: person.deviceId,
+      serverHalf: "x",
+      revokedAt: new Date(),
+    } as never);
+    const revoked = await shape(person, "nodes");
+    expect(revoked.statusCode).toBe(401);
+    expect(revoked.body).toBe(JSON.stringify({ code: "access-revoked", erase: true }));
+    expect(
+      (await shape(person, "nodes", "", { [WORKSPACE_HEADER]: other.workspaceId }))
+        .statusCode,
+    ).toBe(200);
   });
 });
 

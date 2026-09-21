@@ -85,9 +85,31 @@ const HOP_BY_HOP = new Set([
   "set-cookie",
 ]);
 
-const REVOKED_BODY = { code: "access-revoked", erase: true } as const;
+/** The one reply for every kind of lost access. Byte-identical by construction. */
+const REVOKED_JSON = JSON.stringify({ code: "access-revoked", erase: true });
 
-/** The person's device is revoked, or the person no longer holds the membership. */
+const NIL_UUID = "00000000-0000-4000-8000-000000000000";
+const NIL_DEVICE = "0".repeat(32);
+
+/** A malformed key becomes one that matches nothing, so it takes the same path as an unknown one. */
+function asWorkspaceKey(value: string | null): string {
+  return uuidV4Schema.safeParse(value).success ? (value as string) : NIL_UUID;
+}
+
+function asDeviceKey(value: string | null): string {
+  try {
+    return parseDeviceId(value);
+  } catch {
+    return NIL_DEVICE;
+  }
+}
+
+/**
+ * True unless the person holds an active membership in the workspace AND the
+ * device is registered to them and not revoked, globally or for this workspace.
+ * All three checks always run, so the work done does not depend on which one
+ * fails.
+ */
 async function accessRevoked(input: {
   readonly userId: string;
   readonly workspaceId: string;
@@ -109,16 +131,15 @@ async function accessRevoked(input: {
       ),
     )
     .limit(1);
-  if (!membership) return true;
 
   const [registered] = await db
     .select({ isRevoked: device.isRevoked })
     .from(device)
     .where(and(eq(device.id, input.deviceId), eq(device.userId, input.userId)))
     .limit(1);
-  if (!registered || registered.isRevoked) return true;
 
   // An Owner's revoke of one device in one workspace is recorded here (F191).
+  // Stage 7 moves it to `device_workspace_revocation` (F210).
   const [scoped] = await db
     .select({ id: deviceUnlockSecret.deviceId })
     .from(deviceUnlockSecret)
@@ -131,7 +152,8 @@ async function accessRevoked(input: {
       ),
     )
     .limit(1);
-  return scoped !== undefined;
+
+  return !membership || !registered || registered.isRevoked || scoped !== undefined;
 }
 
 function toHeaders(raw: FastifyRequest["headers"]): Headers {
@@ -197,18 +219,20 @@ export async function registerShapeProxy(
       });
       if (!current) return reply.code(401).send({ code: "unauthenticated" });
 
-      let workspaceId: string;
-      let deviceId: string;
-      try {
-        workspaceId = uuidV4Schema.parse(headers.get(WORKSPACE_HEADER));
-        deviceId = parseDeviceId(headers.get(DEVICE_HEADER));
-      } catch {
-        return reply.code(400).send({ code: "invalid-request" });
-      }
-
+      // The workspace header is a lookup key, never authorization. Whatever it
+      // holds is checked against the session user's membership on every request,
+      // and every way of not being an active member (removed, suspended, never a
+      // member, no such workspace, a malformed id) gets the identical reply. The
+      // same queries run in every case, so nothing branches on whether the
+      // workspace exists.
       const userId = current.user.id;
+      const workspaceId = asWorkspaceKey(headers.get(WORKSPACE_HEADER));
+      const deviceId = asDeviceKey(headers.get(DEVICE_HEADER));
       if (await accessRevoked({ userId, workspaceId, deviceId })) {
-        return reply.code(401).send(REVOKED_BODY);
+        return reply
+          .code(401)
+          .header("Content-Type", "application/json")
+          .send(REVOKED_JSON);
       }
 
       const config = getConfig();
