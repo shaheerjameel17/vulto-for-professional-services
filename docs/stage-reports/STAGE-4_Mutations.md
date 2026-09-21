@@ -1,19 +1,19 @@
 # Stage 4 — The named-mutation pipeline
 
-**Status:** BLOCKED
-**Branch:** stage-4-mutations @ dce6310
+**Status:** COMPLETE
+**Branch:** stage-4-mutations @ PLACEHOLDER
 **Linear issues:** FDN-95
 **Date:** 2026-09-21
 
 ## 1. Summary
-Every write to the graph now goes through one pipeline: a client-generated mutation ID makes retries safe, the permission gates run before anything is written, and a state change decided against an old version is rejected rather than merged. The seven foundation mutations are defined once in the shared schema package, with an optimistic version for the device and an authoritative one on the server, and a new architecture check fails the build if anything else writes the graph. One piece is blocked: the reporting-line move cannot be authorized by anyone, because the graph registry never says which half of an Employee an org-chart edge belongs to (finding F208). I built and verified the move with that declaration added temporarily, restored the registry, and skipped six tests until you rule on it.
+Every write to the graph now goes through one pipeline: a client-generated mutation ID makes retries safe, the permission gates run before anything is written, and a state change decided against an old version is rejected rather than merged. The seven foundation mutations are defined once in the shared schema package, with an optimistic version for the device and an authoritative one on the server, and a new architecture check fails the build if anything else writes the graph. The reporting-line move is now authorized too: the registry declares that an org-chart edge belongs to an Employee's operational half (finding F208, closed), and all six tests that waited on it pass.
 
 ## 2. Done-criteria checklist
 - [x] Replaying a mutation applies it once and returns `duplicate` — evidence: `services/api/src/mutations/pipeline.integration.test.ts::applies a replayed mutation once and returns the stored outcome as a duplicate`, `::applies exactly once when the same mutation arrives twice at the same instant`.
 - [x] Same id with different args → `mutation-id-conflict` — evidence: `::refuses the same id with different arguments, and never reveals another workspace's outcome`.
 - [x] An approve/reject race on one node via `graph.transitionLifecycle` gives exactly one `applied` and one `stale-state` — evidence: `::an approve/reject race ends with exactly one applied and one stale-state` (two concurrent calls).
 - [x] Every successful update increments `version`; a stale expected version changes nothing — evidence: `::increments version on every successful update and rejects a stale expected_version without a change`.
-- [ ] `org.moveEmployee` rejects A→B→A and a longer cycle and keeps history half-open and non-overlapping — blocked by F208. Verified with the declaration added temporarily (all 19 pipeline tests passed); the four move tests are skipped: `::org.moveEmployee (A003-T69)` (`itF208`).
+- [x] `org.moveEmployee` rejects A→B→A and a longer cycle and keeps history half-open and non-overlapping — evidence: `pipeline.integration.test.ts::org.moveEmployee (A003-T69)` (`rejects a direct loop A->B->A and a longer loop`, `closes the prior edge and opens the new one at the same instant, half-open and never overlapping`, `takes the effective date from the caller...`, `settles two moves that would each become the other's manager`).
 - [x] A mutation denied by the interceptor writes an audit row and no graph change — evidence: `::a denied mutation writes an audit row and a rejection, and changes nothing in the graph`.
 - [x] An ordered batch stops at the first rejection with the specified statuses — evidence: `::stops at the first rejection and returns the rest as blocked, in order`.
 - [x] `client-outdated` is returned below the minimum version — evidence: `services/api/src/trpc.integration.test.ts::refuses a client below the minimum schema version, or one that does not say, with client-outdated`.
@@ -29,7 +29,7 @@ Every write to the graph now goes through one pipeline: a client-generated mutat
 | A003-T54 (state transitions carry the base version) | `mutations/foundation.ts::transitionLifecycle` | `::an approve/reject race...` |
 | A003-T63 (Tier 1/2 mutations are online-only) | `packages/schema/src/mutations/define.ts` | `mutations.test.ts::forces onlineOnly...` |
 | A003-T64 (rejections revert optimistically) | `packages/graph/src/mutators/cache.ts::applyUndo` | `foundation.test.ts` (each mutator reverts) |
-| A003-T69 (`org.moveEmployee`) | `mutations/foundation.ts::moveEmployee`, serializable in `pipeline.ts` | skipped; F208 |
+| A003-T69 (`org.moveEmployee`) | `mutations/foundation.ts::moveEmployee`, serializable in `pipeline.ts`; `registry/edges.ts` governing partition | `pipeline.integration.test.ts::org.moveEmployee (A003-T69)` |
 | A003-T71 (schema version at upload) | `trpc.ts::currentClientProcedure`, `MIN_CLIENT_SCHEMA_VERSION` | `trpc.integration.test.ts` |
 | A003-T52 (only the pipeline writes) | `scripts/arch-check.mjs` rule 4 | `arch-check.test.ts` |
 | A004-T01/T02 (interceptor before every write) | `pipeline.ts` step 2 | `::a denied mutation writes an audit row...` |
@@ -37,6 +37,7 @@ Every write to the graph now goes through one pipeline: a client-generated mutat
 ## 4. Files changed
 ```
  docs/Foundations_Findings.md                       |   15 +
+ docs/stage-reports/STAGE-4_Mutations.md            |  107 +
  packages/graph/src/index.ts                        |    1 +
  packages/graph/src/mutators/cache.ts               |   54 +
  packages/graph/src/mutators/foundation.test.ts     |  263 ++
@@ -64,7 +65,7 @@ Every write to the graph now goes through one pipeline: a client-generated mutat
  services/api/src/router.ts                         |   19 +-
  services/api/src/trpc.integration.test.ts          |   84 +
  services/api/src/trpc.ts                           |   24 +-
- 28 files changed, 5229 insertions(+), 4 deletions(-)
+ 29 files changed, 5336 insertions(+), 4 deletions(-)
 ```
 
 ## 5. Database changes
@@ -75,11 +76,11 @@ Migration `services/api/drizzle/0014_ancient_sentry.sql`: creates `graph_mutatio
 - `pnpm stack:up` — exit 0
 - `DATABASE_URL=postgres://vulto:vulto@localhost:5432/vulto_stage4_fresh pnpm --filter @vulto/api db:migrate` (fresh database) — exit 0, 15 migrations recorded
 - `pnpm verify` — exit 0; `Tasks: 6 successful, 6 total`; `@vulto/schema` 70 passed, 2 todo; `@vulto/graph` 289 passed
-- `pnpm verify:full` — exit 0; `@vulto/api`: `Test Files  8 passed (8)`, `Tests  157 passed | 6 skipped (163)` (140 passed at the start of the stage). The six skipped are the F208-gated tests.
+- `pnpm verify:full` — exit 0; `@vulto/api`: `Test Files  8 passed (8)`, `Tests  163 passed (163)` (140 at the start of the stage; none skipped)
 - `pnpm arch:check` — exit 0
 
 ## 7. Micro-decisions
-- A request that does not state `x-vulto-schema-version`, or states a malformed one, is refused as `client-outdated`: without the header a stale client cannot be told from a current one, and A003-T71 says a stale client must not upload. This goes beyond the brief's "below the minimum" and is easy to relax.
+- (Accepted 21 September.) A request that does not state `x-vulto-schema-version`, or states a malformed one, is refused as `client-outdated`: without the header a stale client cannot be told from a current one, and A003-T71 says a stale client must not upload. This goes beyond the brief's "below the minimum" and is easy to relax.
 - `mutation_id` is unique across the whole table. The same id from another workspace is refused as `mutation-id-conflict`, which reveals nothing of the other workspace's outcome.
 - A denial commits its transaction (audit entry and rejection row) because the interceptor's audit entry must survive the refusal and nothing else has been written by then. Every other failure rolls back and records the rejection in its own small transaction.
 - A replay of a rejected mutation returns the same rejection. A blocked mutation is not run and not logged, so it can be resent.
@@ -90,18 +91,18 @@ Migration `services/api/drizzle/0014_ancient_sentry.sql`: creates `graph_mutatio
 - `graph.closeEdge` and node updates refuse a soft-deleted target as `target-deleted`; a queued write to a deleted record is rejected, never resurrected.
 
 ## 8. Findings raised
-- F208 — `managed_by` and `scoped_to_entity` have no governing partition, so no reporting-line write can be authorized. **Open.**
+- F208 — `managed_by` and `scoped_to_entity` have no governing partition. **Closed** by founder-delegated decision: `Employee: "operational"` declared on both and recorded in `VPS-A002`.
 
 ## 9. Deviations from this brief
-- The `org.moveEmployee` tests are skipped, per F208.
+- None.
 - The brief's item 4 lists an "audit" step "where required"; the interceptor already writes the denial and protected-grant entries inside the pipeline's transaction, so the pipeline adds none of its own.
 
 ## 10. Known limitations and risks
-- **F125 remains open:** a backdated `managed_by` move whose effective date is not later than the open edge's start is refused as `invalid-args` rather than rewriting history.
+- **F125 remains open** (ruled 21 September: keep the current behavior; `VRS-F037` decides backdating): a backdated `managed_by` move whose effective date is not later than the open edge's start is refused as `invalid-args` rather than rewriting history.
 - The audience seam is a no-op until Stage 6, so no audience row is written yet.
 - The client mutators are exercised only against an in-memory cache; Stage 6 supplies the SQLite one and the outbox that queues and reverts them.
 - Membership changes from Stage 3 still write the graph through `graph/membership-changes.ts`, not through the pipeline; they are the privileged projection, allowed by the arch rule.
 - Only the seven foundation mutations exist; feature mutations come with their features.
 
 ## 11. Readiness for the next stage
-Yes for Stage 5, which needs the pipeline's `writeProtected` seam and the interceptor. F208 needs a ruling before Stage 4 can be called complete.
+Yes. Stage 5 needs the pipeline and the interceptor. Stage 6's sync client and every tRPC client in `apps/` must always send `x-vulto-schema-version` (ruled 21 September); the device-side `mutation-interceptor.test.ts` assertion about `managed_by` was updated to match the declaration.

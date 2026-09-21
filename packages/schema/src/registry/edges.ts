@@ -78,12 +78,16 @@ export const EDGE_GROUPS = [
     owner: "VPS-A002",
     historyPolicy: "single-active-outgoing",
     pairs: [["Employee", "Employee"]],
+    // F208: a reporting line is an operational HR fact, not compensation.
+    governingPartitions: { Employee: "operational" },
   }),
   edgeGroup({
     edgeType: "scoped_to_entity",
     owner: "VRS-F003",
     historyPolicy: "single-active-outgoing",
     pairs: [["Employee", "Entity"]],
+    // F208: an employing entity is an operational HR fact, not compensation.
+    governingPartitions: { Employee: "operational" },
   }),
   edgeGroup({
     edgeType: "governed_by_calendar",

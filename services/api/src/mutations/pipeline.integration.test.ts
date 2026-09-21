@@ -18,16 +18,6 @@ import { applyMutation, applyMutations } from "./pipeline.js";
 
 afterAll(closeDatabase);
 
-/**
- * F208 (open): `managed_by` connects Employee, a split node, but declares no
- * governing partition, so the F136 conservative rule refuses every role and no
- * `org.moveEmployee` can be authorized. These tests pass when the declaration
- * `governingPartitions: { Employee: "operational" }` is present (verified by
- * adding it temporarily). They are skipped until the founder rules on F208;
- * change `itF208` to `it` then.
- */
-const itF208 = it.skip;
-
 async function setup(
   others: Record<
     string,
@@ -220,105 +210,93 @@ describe("org.moveEmployee (A003-T69)", () => {
       args: { employee_id: employee, new_manager_id: manager, effective_from: from },
     });
 
-  itF208(
-    "rejects a direct loop A->B->A and a longer loop, and accepts the clean move",
-    async () => {
-      const { fixture, owner } = await setup();
-      const [a, b, c] = await employees(fixture.workspaceId, 3);
-      expect(await move(owner, a!, b!, "2026-01-01T00:00:00.000Z")).toMatchObject({
-        status: "applied",
-      });
-      expect(await move(owner, b!, a!, "2026-02-01T00:00:00.000Z")).toMatchObject({
-        status: "rejected",
-        reason: "cycle",
-      });
-      expect(await move(owner, b!, c!, "2026-02-01T00:00:00.000Z")).toMatchObject({
-        status: "applied",
-      });
-      // c managing a would close a -> b -> c -> a.
-      expect(await move(owner, c!, a!, "2026-03-01T00:00:00.000Z")).toMatchObject({
-        status: "rejected",
-        reason: "cycle",
-      });
-      expect(await move(owner, a!, a!, "2026-03-01T00:00:00.000Z")).toMatchObject({
-        status: "rejected",
-        reason: "cycle",
-      });
-    },
-  );
+  it("rejects a direct loop A->B->A and a longer loop, and accepts the clean move", async () => {
+    const { fixture, owner } = await setup();
+    const [a, b, c] = await employees(fixture.workspaceId, 3);
+    expect(await move(owner, a!, b!, "2026-01-01T00:00:00.000Z")).toMatchObject({
+      status: "applied",
+    });
+    expect(await move(owner, b!, a!, "2026-02-01T00:00:00.000Z")).toMatchObject({
+      status: "rejected",
+      reason: "cycle",
+    });
+    expect(await move(owner, b!, c!, "2026-02-01T00:00:00.000Z")).toMatchObject({
+      status: "applied",
+    });
+    // c managing a would close a -> b -> c -> a.
+    expect(await move(owner, c!, a!, "2026-03-01T00:00:00.000Z")).toMatchObject({
+      status: "rejected",
+      reason: "cycle",
+    });
+    expect(await move(owner, a!, a!, "2026-03-01T00:00:00.000Z")).toMatchObject({
+      status: "rejected",
+      reason: "cycle",
+    });
+  });
 
-  itF208(
-    "closes the prior edge and opens the new one at the same instant, half-open and never overlapping",
-    async () => {
-      const { fixture, owner } = await setup();
-      const [a, b, c] = await employees(fixture.workspaceId, 3);
-      await move(owner, a!, b!, "2026-01-01T00:00:00.000Z");
-      const moved = await move(owner, a!, c!, "2026-06-01T00:00:00.000Z");
-      expect(moved.status).toBe("applied");
-      const edges = await db
-        .select()
-        .from(graphEdges)
-        .where(eq(graphEdges.fromNodeId, a!))
-        .orderBy(graphEdges.effectiveFrom);
-      expect(edges).toHaveLength(2);
-      expect(edges[0]!.effectiveTo!.toISOString()).toBe("2026-06-01T00:00:00.000Z");
-      expect(edges[1]!.effectiveFrom!.toISOString()).toBe("2026-06-01T00:00:00.000Z");
-      expect(edges[1]!.effectiveTo).toBeNull();
-      // The database itself refuses any overlap.
-      await expect(
-        db.transaction((tx) =>
-          insertEdge(
-            tx,
-            fixture.workspaceId,
-            edgeRecord(
-              "managed_by",
-              a!,
-              b!,
-              "2026-03-01T00:00:00.000Z",
-              "2026-04-01T00:00:00.000Z",
-            ),
+  it("closes the prior edge and opens the new one at the same instant, half-open and never overlapping", async () => {
+    const { fixture, owner } = await setup();
+    const [a, b, c] = await employees(fixture.workspaceId, 3);
+    await move(owner, a!, b!, "2026-01-01T00:00:00.000Z");
+    const moved = await move(owner, a!, c!, "2026-06-01T00:00:00.000Z");
+    expect(moved.status).toBe("applied");
+    const edges = await db
+      .select()
+      .from(graphEdges)
+      .where(eq(graphEdges.fromNodeId, a!))
+      .orderBy(graphEdges.effectiveFrom);
+    expect(edges).toHaveLength(2);
+    expect(edges[0]!.effectiveTo!.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+    expect(edges[1]!.effectiveFrom!.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+    expect(edges[1]!.effectiveTo).toBeNull();
+    // The database itself refuses any overlap.
+    await expect(
+      db.transaction((tx) =>
+        insertEdge(
+          tx,
+          fixture.workspaceId,
+          edgeRecord(
+            "managed_by",
+            a!,
+            b!,
+            "2026-03-01T00:00:00.000Z",
+            "2026-04-01T00:00:00.000Z",
           ),
         ),
-      ).rejects.toThrow();
-    },
-  );
+      ),
+    ).rejects.toThrow();
+  });
 
-  itF208(
-    "takes the effective date from the caller, ends a reporting line with null, and refuses a no-op",
-    async () => {
-      const { fixture, owner } = await setup();
-      const [a, b] = await employees(fixture.workspaceId, 2);
-      await move(owner, a!, b!, "2026-01-01T00:00:00.000Z");
-      expect(await move(owner, a!, b!, "2026-02-01T00:00:00.000Z")).toMatchObject({
-        status: "rejected",
-        reason: "no-change",
-      });
-      expect(await move(owner, a!, null, "2026-05-01T00:00:00.000Z")).toMatchObject({
-        status: "applied",
-      });
-      const open = await db
-        .select()
-        .from(graphEdges)
-        .where(eq(graphEdges.fromNodeId, a!));
-      expect(open.every((edge) => edge.effectiveTo !== null)).toBe(true);
-    },
-  );
+  it("takes the effective date from the caller, ends a reporting line with null, and refuses a no-op", async () => {
+    const { fixture, owner } = await setup();
+    const [a, b] = await employees(fixture.workspaceId, 2);
+    await move(owner, a!, b!, "2026-01-01T00:00:00.000Z");
+    expect(await move(owner, a!, b!, "2026-02-01T00:00:00.000Z")).toMatchObject({
+      status: "rejected",
+      reason: "no-change",
+    });
+    expect(await move(owner, a!, null, "2026-05-01T00:00:00.000Z")).toMatchObject({
+      status: "applied",
+    });
+    const open = await db
+      .select()
+      .from(graphEdges)
+      .where(eq(graphEdges.fromNodeId, a!));
+    expect(open.every((edge) => edge.effectiveTo !== null)).toBe(true);
+  });
 
-  itF208(
-    "settles two moves that would each become the other's manager: one commits, the other is a cycle",
-    async () => {
-      const { fixture, owner } = await setup();
-      const [a, b] = await employees(fixture.workspaceId, 2);
-      const results = await Promise.all([
-        move(owner, a!, b!, "2026-01-01T00:00:00.000Z"),
-        move(owner, b!, a!, "2026-01-01T00:00:00.000Z"),
-      ]);
-      expect(results.map((r) => r.status).sort()).toEqual(["applied", "rejected"]);
-      expect(results.find((r) => r.status === "rejected")).toMatchObject({
-        reason: "cycle",
-      });
-    },
-  );
+  it("settles two moves that would each become the other's manager: one commits, the other is a cycle", async () => {
+    const { fixture, owner } = await setup();
+    const [a, b] = await employees(fixture.workspaceId, 2);
+    const results = await Promise.all([
+      move(owner, a!, b!, "2026-01-01T00:00:00.000Z"),
+      move(owner, b!, a!, "2026-01-01T00:00:00.000Z"),
+    ]);
+    expect(results.map((r) => r.status).sort()).toEqual(["applied", "rejected"]);
+    expect(results.find((r) => r.status === "rejected")).toMatchObject({
+      reason: "cycle",
+    });
+  });
 });
 
 describe("authorization and audit", () => {
@@ -484,33 +462,30 @@ describe("ordered batches", () => {
 });
 
 describe("the pipeline's remaining steps", () => {
-  itF208(
-    "calls the audience seam with every row it touched, inside the transaction",
-    async () => {
-      const { fixture, owner } = await setup();
-      const [a, b] = await employees(fixture.workspaceId, 2);
-      const seen: string[][] = [];
-      const audience: AudienceMaterializer = {
-        async onRowsChanged(_tx, ids) {
-          seen.push([...ids]);
-        },
-      };
-      const result = await applyMutation(
-        owner,
-        {
-          mutation_id: randomUUID(),
-          name: "org.moveEmployee",
-          args: { employee_id: a, new_manager_id: b, effective_from: NOW },
-        },
-        { audience },
-      );
-      expect(result.status).toBe("applied");
-      expect(seen).toHaveLength(1);
-      expect(seen[0]).toEqual([
-        (result.result as { opened_edge_id: string }).opened_edge_id,
-      ]);
-    },
-  );
+  it("calls the audience seam with every row it touched, inside the transaction", async () => {
+    const { fixture, owner } = await setup();
+    const [a, b] = await employees(fixture.workspaceId, 2);
+    const seen: string[][] = [];
+    const audience: AudienceMaterializer = {
+      async onRowsChanged(_tx, ids) {
+        seen.push([...ids]);
+      },
+    };
+    const result = await applyMutation(
+      owner,
+      {
+        mutation_id: randomUUID(),
+        name: "org.moveEmployee",
+        args: { employee_id: a, new_manager_id: b, effective_from: NOW },
+      },
+      { audience },
+    );
+    expect(result.status).toBe("applied");
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toEqual([
+      (result.result as { opened_edge_id: string }).opened_edge_id,
+    ]);
+  });
 
   it("rolls everything back if the audience seam fails", async () => {
     const { fixture, owner } = await setup();
@@ -538,7 +513,7 @@ describe("the pipeline's remaining steps", () => {
     ).toHaveLength(0);
   });
 
-  itF208("closes and creates edges through the named mutations", async () => {
+  it("closes and creates edges through the named mutations", async () => {
     const { fixture, owner } = await setup();
     const [a, b] = await employees(fixture.workspaceId, 2);
     const edge = edgeRecord("managed_by", a!, b!, "2026-01-01T00:00:00.000Z");

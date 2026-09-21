@@ -150,6 +150,8 @@ Current `governingPartitions` entries:
 | `has_skill` | Employee (from) | `operational` | A skill holding is operational HR data; requiring compensation-level (finance) permission to record one is wrong for the product |
 | `holds_certification` | Employee (from) | `operational` | Certifications are operational, not compensation |
 | `assignment_of` | Employee (to) | `operational` | Which person an assignment is for is staffing/operational data |
+| `managed_by` | Employee (from and to) | `operational` | A reporting line is an operational HR fact, not compensation, so whoever may write an Employee's operational half may move them (F208) |
+| `scoped_to_entity` | Employee (from) | `operational` | The entity an employee is employed by is an operational HR fact, not compensation (F208) |
 | `membership_in` | Workspace (to) | `display` | Membership is a display/identity fact about the workspace; the `billing` partition governs financial configuration, not who belongs |
 | `assigned_to` | — (Assignment → Project, both single-partition) | none | No declaration, no change |
 | `membership_of` | — (WorkspaceMembership → User, both single-partition) | none | No declaration, no change |
