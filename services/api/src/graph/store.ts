@@ -524,6 +524,18 @@ export async function insertEdge(
   return toStoredEdge(row!);
 }
 
+export async function getEdge(
+  tx: GraphTx,
+  workspaceId: string,
+  edgeId: string,
+): Promise<StoredEdge | null> {
+  const [row] = await tx
+    .select()
+    .from(graphEdges)
+    .where(and(eq(graphEdges.workspaceId, workspaceId), eq(graphEdges.edgeId, edgeId)));
+  return row ? toStoredEdge(row) : null;
+}
+
 /** Sets `effective_to` on an open edge. History is closed, never rewritten. */
 export async function closeEdge(
   tx: GraphTx,

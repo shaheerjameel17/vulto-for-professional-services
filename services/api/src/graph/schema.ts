@@ -135,3 +135,27 @@ export const graphEdges = pgTable(
       ),
   ],
 );
+
+/**
+ * The accepted-and-rejected mutation log (A003-T53). One row per client
+ * `mutation_id`: replaying the same id returns `outcome` and never applies
+ * twice. Written only by the mutation pipeline. Never replicated.
+ */
+export const graphMutations = pgTable(
+  "graph_mutations",
+  {
+    mutationId: uuid("mutation_id").primaryKey(),
+    workspaceId: uuid("workspace_id").notNull(),
+    actorUserId: uuid("actor_user_id"),
+    name: text("name").notNull(),
+    argsSha256: text("args_sha256").notNull(),
+    outcome: jsonb("outcome").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index("graph_mutations_workspace_created_idx").on(
+      table.workspaceId,
+      table.createdAt,
+    ),
+  ],
+);

@@ -1,0 +1,79 @@
+import { describe, expect, it } from "vitest";
+import { z } from "zod";
+import { defineMutation } from "./define";
+import {
+  MUTATIONS,
+  getMutationDefinition,
+  moveEmployeeEdgeId,
+  wouldCreateCycle,
+} from "./foundation";
+
+describe("defineMutation", () => {
+  it("forces onlineOnly for any protected tier, whatever was declared", () => {
+    for (const tier of [1, 2] as const) {
+      const definition = defineMutation({
+        name: "x.protected",
+        input: z.object({}),
+        tier,
+        onlineOnly: false,
+        stateTransition: false,
+      });
+      expect(definition.onlineOnly).toBe(true);
+    }
+    expect(
+      defineMutation({
+        name: "x.open",
+        input: z.object({}),
+        tier: 0,
+        onlineOnly: false,
+        stateTransition: false,
+      }).onlineOnly,
+    ).toBe(false);
+  });
+});
+
+describe("the foundation mutation set", () => {
+  it("is exactly the seven building blocks, all Tier 0", () => {
+    expect(Object.keys(MUTATIONS).sort()).toEqual([
+      "graph.closeEdge",
+      "graph.createEdge",
+      "graph.createNode",
+      "graph.softDeleteNode",
+      "graph.transitionLifecycle",
+      "graph.updateNodeFields",
+      "org.moveEmployee",
+    ]);
+    for (const definition of Object.values(MUTATIONS)) expect(definition.tier).toBe(0);
+  });
+
+  it("marks only the lifecycle transition as a state transition", () => {
+    const transitions = Object.values(MUTATIONS).filter((d) => d.stateTransition);
+    expect(transitions.map((d) => d.name)).toEqual(["graph.transitionLifecycle"]);
+  });
+
+  it("does not resolve inherited property names as mutations", () => {
+    expect(getMutationDefinition("toString")).toBeUndefined();
+    expect(getMutationDefinition("graph.createNode")).toBe(
+      MUTATIONS["graph.createNode"],
+    );
+  });
+});
+
+describe("move helpers", () => {
+  it("derives the same edge id from the same mutation id, and a different one otherwise", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    expect(moveEmployeeEdgeId(id)).toBe(moveEmployeeEdgeId(id));
+    expect(moveEmployeeEdgeId(id)).not.toBe(
+      moveEmployeeEdgeId("22222222-2222-4222-8222-222222222222"),
+    );
+    expect(z.uuidv4().safeParse(moveEmployeeEdgeId(id)).success).toBe(true);
+  });
+
+  it("detects a direct and a longer management loop, and allows a clean move", async () => {
+    const chain: Record<string, string | null> = { b: "c", c: "d", d: null };
+    const managerOf = (id: string) => chain[id] ?? null;
+    expect(await wouldCreateCycle(managerOf, "a", "a")).toBe(true);
+    expect(await wouldCreateCycle(managerOf, "d", "b")).toBe(true);
+    expect(await wouldCreateCycle(managerOf, "a", "b")).toBe(false);
+  });
+});

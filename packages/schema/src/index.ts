@@ -154,3 +154,4 @@ export {
   type AuditOutcome,
   type AuditTargetReference,
 } from "./audit";
+export * from "./mutations";

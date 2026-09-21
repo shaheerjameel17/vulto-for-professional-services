@@ -5,6 +5,7 @@ import {
   requireCurrentWorkspaceSession,
   UnauthorizedWorkspaceSessionError,
 } from "./auth/workspace-session.js";
+import { MIN_CLIENT_SCHEMA_VERSION, SCHEMA_VERSION_HEADER } from "@vulto/schema";
 import type { MemberPrincipal } from "./permission/principal.js";
 
 /**
@@ -18,6 +19,8 @@ import type { MemberPrincipal } from "./permission/principal.js";
  */
 export interface Context {
   readonly principal: MemberPrincipal | null;
+  /** The client's schema version from `x-vulto-schema-version`, or `null` if absent or malformed. */
+  readonly schemaVersion: number | null;
 }
 
 function toHeaders(raw: CreateFastifyContextOptions["req"]["headers"]): Headers {
@@ -33,15 +36,19 @@ export async function createContext({
   req,
 }: CreateFastifyContextOptions): Promise<Context> {
   const headers = toHeaders(req.headers);
+  const rawVersion = headers.get(SCHEMA_VERSION_HEADER);
+  const schemaVersion =
+    rawVersion !== null && /^\d+$/.test(rawVersion) ? Number(rawVersion) : null;
   const current = await auth.api.getSession({
     headers,
     query: { disableCookieCache: true },
   });
   const workspaceId = current?.session.activeOrganizationId;
-  if (!current || !workspaceId) return { principal: null };
+  if (!current || !workspaceId) return { principal: null, schemaVersion };
   try {
     const admission = await requireCurrentWorkspaceSession(headers, workspaceId);
     return {
+      schemaVersion,
       principal: {
         kind: "member",
         userId: admission.userId,
@@ -51,7 +58,8 @@ export async function createContext({
       },
     };
   } catch (error) {
-    if (error instanceof UnauthorizedWorkspaceSessionError) return { principal: null };
+    if (error instanceof UnauthorizedWorkspaceSessionError)
+      return { principal: null, schemaVersion };
     throw error;
   }
 }
@@ -64,4 +72,16 @@ export const publicProcedure = t.procedure;
 export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
   if (ctx.principal === null) throw new TRPCError({ code: "UNAUTHORIZED" });
   return next({ ctx: { principal: ctx.principal } });
+});
+
+/**
+ * A client below the server's minimum schema version must reload before its
+ * queued mutations are accepted (A003-T71). A request that does not state its
+ * version cannot be told from a stale one, so it is refused the same way.
+ */
+export const currentClientProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.schemaVersion === null || ctx.schemaVersion < MIN_CLIENT_SCHEMA_VERSION) {
+    throw new TRPCError({ code: "PRECONDITION_FAILED", message: "client-outdated" });
+  }
+  return next();
 });
