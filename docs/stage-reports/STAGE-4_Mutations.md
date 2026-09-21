@@ -1,7 +1,7 @@
 # Stage 4 — The named-mutation pipeline
 
 **Status:** BLOCKED
-**Branch:** stage-4-mutations @ PLACEHOLDER
+**Branch:** stage-4-mutations @ dce6310
 **Linear issues:** FDN-95
 **Date:** 2026-09-21
 
