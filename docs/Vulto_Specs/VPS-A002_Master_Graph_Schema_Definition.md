@@ -57,7 +57,11 @@ workspace_id:      UUID, FK to Workspace
                      EXCEPTION: Workspace itself carries none
                      EXCEPTION: User carries none — a person may hold
                      WorkspaceMembership in more than one workspace;
-                     scoping and role live on the membership, not the identity
+                     scoping and role live on the membership, not the identity.
+                     Storage (F204): the record carries no workspace_id, but
+                     every stored row does. A User is stored once per workspace
+                     it belongs to, under the same node_id — its Better Auth
+                     account id — as a projection of that one account
 node_type:         string
 schema_version:    integer, incremented by the Schema Evolution Protocol below
 lifecycle_status:  enum, specific to each node type
