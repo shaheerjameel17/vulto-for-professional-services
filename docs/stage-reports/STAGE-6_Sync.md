@@ -1,6 +1,6 @@
 # Stage 6 — Sync: audience, shape proxy, device cache, outbox, offline
 
-**Status:** COMPLETE, with one CI step waiting on the founder (item 9 below)
+**Status:** COMPLETE
 **Branch:** stage-6-sync @ HEAD (the commit that adds this report)
 **Linear issues:** FDN-100 (server half), FDN-99 (client engine), FDN-101 (host, browser suite, CI)
 **Date:** 2026-09-21
@@ -157,12 +157,11 @@ The Stage 6 review was approved with conditions. Status of each, on `stage-6-syn
 - **What:** sign-out erases every `vulto:<workspaceId>:<userId>` IndexedDB database on the origin, found with `indexedDB.databases()`; where the browser cannot list them (older engines) only the current database is erased, and this is the stated fallback. Revocation erases only the revoked workspace's cache. `deleteIdbDatabase` no longer treats an error as success and no longer resolves on `onblocked`: it waits for `onsuccess` (other sessions are told to close their databases over a `BroadcastChannel`) for at most ten seconds, then fails. On failure the engine stays stopped and signed out; the names still to delete are recorded (identifiers only) before any delete starts, and the next start retries them **before** it opens the cache or reads `session_hint`, and fails to start if it still cannot.
 - **Decision to confirm:** the device-identity database `vulto:device` is **not** erased by sign-out, although its name starts with `vulto:`. It holds one random device id and the pending-erase list, no user data. Erasing it would let a device that has been revoked sign in again as a brand-new device and shed its revocation. Everything that holds data (a database named `vulto:<workspaceId>:<userId>`) is erased.
 - **Files:** `packages/graph/src/sync-client/{erasure,database,device-identity,host,engine}.ts`.
+- **Why `vulto:device` survives sign-out (founder-confirmed):** it holds only the random device id and the pending-erase list, nothing else, ever. If sign-out erased it, a device whose registration was revoked could sign in again as a brand-new device and shed the revocation.
 - **Tests:** `erasure.test.ts` (six: cache-name recognition, sign-out erases all caches and only caches, the no-`databases()` fallback, the intent is recorded before deleting and a failed delete is retried at the next start, a start with nothing pending does nothing, a start that still cannot delete fails); `engine.test.ts::review — an erase that cannot finish leaves the engine stopped and signed out` (two); browser `sign-out erases every workspace's cache on the origin, including one held open by another tab`.
 
-### 4. Cache schema version — done
-- **What:** the cache database carries `PRAGMA user_version` (now `2`, for `cache_tags`). At open, a database at any other version, or one with tables and no version, has its tables dropped and is recreated, and replication refills it. The drop is in place rather than deleting the IndexedDB database; the result is the same empty cache. One consequence to be aware of: a version bump also drops the outbox, so a bump discards queued offline changes; any future bump has to weigh that.
-- **Files:** `schema.ts`, `database.ts` (`prepareCacheSchema`).
-- **Tests:** `database.test.ts::the cache schema version` (two: a fresh database is stamped and a current one untouched; another version and a pre-versioning database are rebuilt empty).
+### 4. Cache schema version — done, then amended (see "Second review round", item 2)
+The cache database carries `PRAGMA user_version`. A mismatch rebuilds the replicated tables by resync. The first version of this fix also dropped the outbox; the founder overruled that, and it is corrected below.
 
 ### 5. F211 specification correction — done
 - `VPS-A003` T72 now lists the forwarded parameters (`offset`, `handle`, `live`, `cursor`, `expired_handle`, `cache-buster`, and `log` only as `full`) and "Reads" describes move-out over row tags and the cache tracking tags. F211 is marked applied in `docs/Foundations_Findings.md`.
@@ -170,10 +169,7 @@ The Stage 6 review was approved with conditions. Status of each, on `stage-6-syn
 ### Also fixed: a race in the mutation pipeline
 While re-running the gates, `pipeline.integration.test.ts::applies exactly once when the same mutation arrives twice at the same instant` failed about half the time (also on the previous commit). The losing side of two simultaneous identical mutations hit the unique index on the new row and was recorded as `constraint-violation` instead of replayed as a `duplicate`. The pipeline now retries when a unique violation coincides with the winner having recorded the mutation id. Eight consecutive runs pass.
 
-### 6. CI — not done, waiting on you
-- PR #4 (the CI Postgres image) is still open. Until it merges, `ci-image.yml` cannot publish `ci-postgres`, so I cannot read its digest or repin `CI_POSTGRES_IMAGE`.
-- What the branch's slow lane showed on the last run (run 35612618624): the new `sync-browser` job gets through pulling the CI image, installing and migrating, and fails at "Start Electric" against the plain Postgres image (no logical replication). That is the expected failure and the repin is what fixes it.
-- **`browser-suites (device-store-browser)` has been red on `main` since the Stage 4 merge** (runs 35580319641, 35582423261) and is red on this branch. It runs the retired local-first stack that Stage 7 deletes. So "merge only when the slow lane is green" cannot be met by the Stage 6 work alone. I have not changed that required check; see the questions at the end of the report.
+### 6. CI — done (see "Second review round", items 4 and 5)
 
 ### Gates after the fixes (local)
 - `pnpm verify` — exit 0; `@vulto/graph`: 27 files, 330 tests passed.
@@ -182,3 +178,42 @@ While re-running the gates, `pipeline.integration.test.ts::applies exactly once 
 - `pnpm --filter roster-web build` + `node scripts/artifact-check.mjs` — 72 production chunks clean, `__vultoSync` guarded.
 - Live-Electric proxy tests — `Tests  11 passed (11)`.
 - `pnpm test:sync-browser` — `11 passed (37.0s)`.
+
+## Second review round
+Rulings from the review of the review fixes.
+
+### 1. `vulto:device` keeps only the device id and the pending-erase list — done
+- Confirmed as retained at sign-out, for the reason above: revocation must not be shed by re-registering as a new device.
+- **Enforced:** `device-identity.ts` exports `DEVICE_DATABASE` (name, the single store, the two allowed keys), and every write goes through `assertAllowedKey`, which throws for anything else.
+- **Tests:** `device-identity.test.ts` (the database may hold exactly `device-id` and `erase-pending` in one `meta` store; `user`, `workspace`, `token`, `session` and `email` are refused). The browser sign-out test also opens the real `vulto:device` and asserts one store, `meta`, and keys only from that list.
+
+### 2. Cache version changes never discard queued changes — done
+- **What:** the schema is split. `cache_nodes`, `cache_edges`, `cache_tags` and `sync_cursor` (replicated, disposable) are versioned by `PRAGMA user_version`; a cache version mismatch drops and resyncs only those four. The outbox (and `session_hint`) is versioned separately in `schema_meta.outbox_version` (`OUTBOX_SCHEMA_VERSION`, now `1`) and is never dropped by a cache change. An older outbox version is migrated by the explicit `OUTBOX_MIGRATIONS`; an outbox with no migration, or from a newer build, stops the client with `OutboxVersionError`, and nothing is wiped. Sign-out and revocation still erase everything, outbox included.
+- **Files:** `packages/graph/src/sync-client/{schema,database}.ts`.
+- **Tests:** `engine.test.ts::review — a cache version change never discards queued offline changes` (three queued mutations survive the bump and each uploads exactly once); `database.test.ts::the outbox is versioned apart from the cache` (five: a cache bump keeps the queued rows and drops the replicated tables; `missingOutboxMigrations()` is empty, which fails the suite the moment `OUTBOX_SCHEMA_VERSION` is raised without a migration, and the detector itself is proven; an older outbox is migrated keeping its rows; an unmigratable or newer outbox throws and keeps its rows; the real migration table covers the real version).
+
+### 3. Pipeline concurrency fix, with the exact-id guard — done
+- **What:** a unique or constraint violation is retried as a duplicate only when `graph_mutations` already holds that exact mutation id **for that workspace**. Any other violation is recorded as `constraint-violation`, never swallowed.
+- **Files:** `services/api/src/mutations/pipeline.ts`.
+- **Tests:** `pipeline.integration.test.ts::a genuine constraint violation is not swallowed as a duplicate` (a different mutation id creating a node that already exists is `rejected`, not `duplicate`, leaving one row; two different ids racing for one node, five rounds, always end `applied` + `rejected`), alongside the original same-id race test. Six consecutive runs of the file pass.
+
+### 4. PR #4 and the repin — done
+- PR #4 merged with a merge commit (`1ebf28c`); `ci-image.yml` run 35621870496 published `ghcr.io/shaheerjameel17/vulto-for-professional-services/ci-postgres`.
+- **Digest:** `sha256:eec77295062736b9aa8468fe3f370b5a9e89931e4887827ead61d1c0e5792cfe`, read from that run's `postgres` job (`containerimage.digest`) and pinned in `.github/workflows/ci-image-ref.env` as `CI_POSTGRES_IMAGE`.
+- The Postgres service containers now carry registry credentials (`github.actor` and the token), because the image is private.
+- Two changes the first real run of `sync-browser` and `api-integration` forced:
+  - `shape-proxy.integration.test.ts` passed locally only because Electric happened to be running. Its non-live tests now stub the upstream unless `ELECTRIC_LIVE_TESTS=1`, so `pnpm --filter @vulto/api test` needs no Electric.
+  - The proxy looks up `fetch` on each call so a test can replace it.
+
+### 5. `device-store-browser` disabled as F212 — done
+- Moved out of the `browser-suites` matrix into its own job with `if: false` and a comment that names Stage 7 as its deletion point. Recorded as **F212** ("device-store-browser tests the retired local-first stack; disabled at Stage 6, deleted with the stack in Stage 7"). Stage 7 must delete the job, `services/api/playwright.device-store.config.ts`, the suite and its script along with the retired code.
+- **Cost, stated plainly:** the accessibility smoke pass lived in that suite and is not running now. Nothing replaces it yet.
+
+### GitHub slow lane
+- **Run:** https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35623142491 (commit `2842dfa`), all green: `resolve-image`, `rust-multitarget`, `api-integration`, `sync-browser`, `production-build`, `browser-suites (auth-browser)`, `browser-suites (worker-browser)`. The only job not run is `device-store-browser` (`if: false`, item 5); `publish-artifacts` runs only on `main`. `fast-lane` for the same commit also passed.
+- The `sync-browser` job (real Postgres from the pinned image, real Electric on the pinned digest, real Chromium) ran the 11-test suite and the live proxy tests.
+
+### Gates (local, after all of the above)
+- `pnpm verify` and `pnpm verify:full` — exit 0; `@vulto/graph`: 338 tests; `@vulto/api`: `Tests  223 passed | 2 skipped (225)`.
+- `pnpm arch:check` — exit 0. `pnpm --filter roster-web build` + `node scripts/artifact-check.mjs` — 72 production chunks clean.
+- Live-Electric proxy tests — `Tests  11 passed (11)`. `pnpm test:sync-browser` — `11 passed (37.0s)`.
