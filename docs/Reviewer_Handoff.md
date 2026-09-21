@@ -1,7 +1,7 @@
 # Reviewer Handoff — state for the founder's review chat
 
 **Purpose.** This file lets a fresh Claude chat (the *reviewer*, not Claude Code) resume reviewing the server-authoritative rebuild with no re-explanation. Keep it current: the reviewer updates it at each stage boundary.
-**Last updated:** 22 September 2026, after the Stage 7 review (branch `stage-7-retire` at `d749c3c`, `main` still at `4d91705` pending the merge below).
+**Last updated:** 22 September 2026, after the Stage 7 merge (`stage-7-retire` merged into `main` as `dec4eb3`; F213 closed in `906d7fa`; CI image repinned in `397f38b`, both lanes green on it).
 
 ---
 
@@ -69,7 +69,7 @@
 | 4 Mutations | done (F208) | merged |
 | 5 Protected data | done (F209, no default key provider) | `8837556` |
 | 6 Sync | done, two review rounds (F210–F212) | `961830d` |
-| **7 Retire + harden CI** | **approved 22 September (F210 verified by direct read; F213 ruled — keep the column)** | **pending — merge `stage-7-retire` → `main`, `--no-ff`** |
+| **7 Retire + harden CI** | **approved 22 September (F210 verified by direct read; F213 ruled — keep the column)** | **`dec4eb3`** (merged `--no-ff`, 22 September) |
 
 **Stage 7 facts to remember:**
 - Branch `stage-7-retire` at `d749c3c`. Green slow lane: https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35637057091. `main` was green at `961830d`/`4d91705` before branching.
