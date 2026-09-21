@@ -31,3 +31,12 @@ export {
   updateStamp,
   type Provenance,
 } from "./shared";
+export {
+  EMPLOYEE_MUTATIONS,
+  FEATURE_LIFECYCLE_NODE_TYPES,
+  employeeCreate,
+  employeeLinkUser,
+  employeeSetCompensation,
+  employeeTransitionStatus,
+  employeeUpdate,
+} from "./employee";

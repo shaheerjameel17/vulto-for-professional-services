@@ -540,10 +540,10 @@ describe("the outbox and optimistic writes", () => {
         type: "changes",
         changes: [
           nodeRow(id, {
-            node_type: "Employee",
+            node_type: "Entity",
             record: {
               node_id: id,
-              node_type: "Employee",
+              node_type: "Entity",
               lifecycle_status: "Active",
             },
           }),
@@ -559,7 +559,7 @@ describe("the outbox and optimistic writes", () => {
     });
     expect(outcome.accepted).toBe(true);
     expect(
-      (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Employee" }))
+      (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Entity" }))
         .result,
     ).toMatchObject({
       node: { lifecycleStatus: "Inactive", version: 2 },
@@ -568,7 +568,7 @@ describe("the outbox and optimistic writes", () => {
     h.api.offline = false;
     await h.engine.drain();
     expect(
-      (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Employee" }))
+      (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Entity" }))
         .result,
     ).toMatchObject({
       node: { lifecycleStatus: "Active", version: 1 },

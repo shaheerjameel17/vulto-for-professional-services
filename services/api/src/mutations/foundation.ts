@@ -1,4 +1,5 @@
 import {
+  FEATURE_LIFECYCLE_NODE_TYPES,
   isNodeType,
   isTier0Only,
   stampNewEdge,
@@ -271,7 +272,11 @@ export const transitionLifecycle: ServerMutation<
         change: { operation: "update" },
       },
     ],
-    validate: nothing,
+    async validate() {
+      // A type whose lifecycle a feature owns has its own transition table.
+      if (FEATURE_LIFECYCLE_NODE_TYPES.has(node.nodeType))
+        throw new MutationRejection("requires-feature-mutation");
+    },
     async apply() {
       const updated = await translate(() =>
         updateNodeFields(

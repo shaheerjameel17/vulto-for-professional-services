@@ -21,6 +21,13 @@ import {
   transitionLifecycle,
   updateNodeFieldsMutation,
 } from "./foundation.js";
+import {
+  employeeCreate,
+  employeeLinkUser,
+  employeeSetCompensation,
+  employeeTransitionStatus,
+  employeeUpdate,
+} from "./employee.js";
 import { MutationRejection, type ServerMutation } from "./types.js";
 
 /**
@@ -51,6 +58,11 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "graph.closeEdge": closeEdgeMutation as ServerMutation<never>,
   "graph.transitionLifecycle": transitionLifecycle as ServerMutation<never>,
   "org.moveEmployee": moveEmployee as ServerMutation<never>,
+  "employee.create": employeeCreate as ServerMutation<never>,
+  "employee.update": employeeUpdate as ServerMutation<never>,
+  "employee.transitionStatus": employeeTransitionStatus as ServerMutation<never>,
+  "employee.linkUser": employeeLinkUser as ServerMutation<never>,
+  "employee.setCompensation": employeeSetCompensation as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {

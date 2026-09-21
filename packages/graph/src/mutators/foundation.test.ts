@@ -147,7 +147,15 @@ describe("the optimistic foundation mutators", () => {
 
   it("transitionLifecycle carries the base version: a stale one is refused locally", async () => {
     const cache = new MemoryCache();
-    const employee = await seedEmployee(cache);
+    const employee = uuid();
+    await cache.putNode({
+      nodeId: employee,
+      nodeType: "Entity",
+      lifecycleStatus: "Active",
+      isSoftDeleted: false,
+      version: 1,
+      record: { node_id: employee, node_type: "Entity", lifecycle_status: "Active" },
+    });
     const undo = await applyOptimistic(context(cache), "graph.transitionLifecycle", {
       node_id: employee,
       to_status: "Inactive",

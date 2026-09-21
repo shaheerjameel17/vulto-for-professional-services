@@ -151,3 +151,4 @@ export {
 } from "./audit";
 export * from "./mutations";
 export { MAX_PROTECTED_READ_NODES, protectedReadInputSchema } from "./protected";
+export * from "./employee";

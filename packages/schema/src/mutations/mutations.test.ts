@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
+import { isValidEmployeeTransition } from "../employee";
 import { defineMutation } from "./define";
+import { FEATURE_LIFECYCLE_NODE_TYPES } from "./employee";
 import {
   MUTATIONS,
   getMutationDefinition,
@@ -33,8 +35,13 @@ describe("defineMutation", () => {
 });
 
 describe("the foundation mutation set", () => {
-  it("is exactly the seven building blocks, all Tier 0", () => {
+  it("is the seven building blocks plus the Employee mutations, and only compensation is protected", () => {
     expect(Object.keys(MUTATIONS).sort()).toEqual([
+      "employee.create",
+      "employee.linkUser",
+      "employee.setCompensation",
+      "employee.transitionStatus",
+      "employee.update",
       "graph.closeEdge",
       "graph.createEdge",
       "graph.createNode",
@@ -43,12 +50,30 @@ describe("the foundation mutation set", () => {
       "graph.updateNodeFields",
       "org.moveEmployee",
     ]);
-    for (const definition of Object.values(MUTATIONS)) expect(definition.tier).toBe(0);
+    for (const definition of Object.values(MUTATIONS)) {
+      expect(definition.tier).toBe(
+        definition.name === "employee.setCompensation" ? 1 : 0,
+      );
+      // A protected write can never be queued offline.
+      expect(definition.onlineOnly).toBe(definition.tier > 0);
+    }
   });
 
-  it("marks only the lifecycle transition as a state transition", () => {
+  it("marks only the two lifecycle transitions as state transitions", () => {
     const transitions = Object.values(MUTATIONS).filter((d) => d.stateTransition);
-    expect(transitions.map((d) => d.name)).toEqual(["graph.transitionLifecycle"]);
+    expect(transitions.map((d) => d.name).sort()).toEqual([
+      "employee.transitionStatus",
+      "graph.transitionLifecycle",
+    ]);
+  });
+
+  it("gives a feature-owned lifecycle its own table, and shuts the generic one out", () => {
+    expect(FEATURE_LIFECYCLE_NODE_TYPES.has("Employee")).toBe(true);
+    expect(isValidEmployeeTransition("Active", "Inactive")).toBe(true);
+    expect(isValidEmployeeTransition("Inactive", "Active")).toBe(true);
+    expect(isValidEmployeeTransition("Active", "Converted")).toBe(true);
+    expect(isValidEmployeeTransition("Converted", "Active")).toBe(false);
+    expect(isValidEmployeeTransition("Inactive", "Converted")).toBe(false);
   });
 
   it("does not resolve inherited property names as mutations", () => {
