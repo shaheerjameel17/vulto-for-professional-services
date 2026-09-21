@@ -1,7 +1,7 @@
 # Stage 5 — Protected data and field-level encryption
 
 **Status:** COMPLETE
-**Branch:** stage-5-protected-data @ PLACEHOLDER
+**Branch:** stage-5-protected-data @ ae7cc59
 **Linear issues:** FDN-96, FDN-97 (erasure only)
 **Date:** 2026-09-21
 
