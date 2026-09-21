@@ -1,7 +1,7 @@
 # Stage 9 — the real shell bootstrap
 
 **Status:** BLOCKED
-**Branch:** stage-9-shell-bootstrap-v2 @ pending report commit
+**Branch:** stage-9-shell-bootstrap-v2 @ e18f7eb (finding and report commit)
 **Linear issues:** FDN-116
 **Date:** 2026-09-22
 
