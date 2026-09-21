@@ -108,9 +108,22 @@ Drops `role exercised`, then `tier`, below 1280px. Actor and timestamp are never
 audit_entry_id:    UUID v4
 workspace_id:      UUID
 event_type:        enum: PermissionDenied, SensitiveAccessGranted
-actor_user_id:     UUID, FK to User — see pseudonymization below
+actor_kind:        enum: member, support, system — who acted (F206). A member
+                   is a person; a support principal is an Owner-approved
+                   staff grant; a system principal is a named job. Default
+                   member
+actor_user_id:     UUID, FK to User — see pseudonymization below. Required
+                   for a member; absent otherwise
+actor_membership_id: UUID — the member's WorkspaceMembership. Required for a
+                   member; absent otherwise
+actor_grant_id:    UUID — the support grant. Required for a support principal;
+                   absent otherwise
+actor_system_name: enum: audience-recompute, retention-sweep, erasure,
+                   key-rotation. Required for a system principal; absent
+                   otherwise
 actor_role:        string — the specific role exercised at the moment of the
-                   event, since a user may hold several
+                   event, since a user may hold several. Null for a support
+                   or system principal, which hold no role
 actor_application: string, default 'VultoRoster' — which suite application
                    issued the query. Invisible while Roster was the only
                    application able to reach the interceptor; a real gap the
@@ -182,6 +195,7 @@ auditLog.query(workspaceId, filters?: {
 | G04 | Denials are logged at every tier. Successful-access logging covers Tier 1 and Tier 3 only |
 | G05 | `actor_application` records which suite application issued the query, defaulting to `'VultoRoster'` |
 | G06 | AuditEntry is exempt from erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. An erased actor's identifier is pseudonymized to a stable opaque token; the entry itself persists |
+| G08 | `actor_kind` states who acted, and exactly the identifier that matches it is present: `actor_user_id` and `actor_membership_id` for a member, `actor_grant_id` for a support principal, `actor_system_name` for a system principal (F206, founder-decided 21 September 2026). Only a member holds roles. Pseudonymization on erasure replaces `actor_user_id` and applies to member entries only |
 | G07 | AuditEntry is never indexed by [[VPS-F002_Local-First_Search|VPS-F002]] |
 
 ---

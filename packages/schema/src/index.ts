@@ -125,6 +125,7 @@ export {
 export * from "./policy";
 
 export {
+  AUDIT_ACTOR_KINDS,
   AUDIT_DENIAL_CLASSES,
   AUDIT_EVENT_TYPES,
   AUDIT_FAILURE_CLASSES,
@@ -132,6 +133,7 @@ export {
   AUDIT_OUTCOMES,
   AUDIT_QUERY_KINDS,
   AUDIT_RESULT_CARDINALITIES,
+  auditActorKindSchema,
   auditDenialClassSchema,
   auditEdgeTargetSchema,
   auditEntrySchema,
@@ -144,6 +146,7 @@ export {
   auditQueryTargetSchema,
   auditResultCardinalitySchema,
   auditTargetReferenceSchema,
+  type AuditActorKind,
   type AuditEntry,
   type AuditEventType,
   type AuditMetadata,

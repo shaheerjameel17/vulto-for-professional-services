@@ -3,6 +3,8 @@ import {
   EDGE_REGISTRY,
   NODE_TYPES,
   POLICY_ROLES,
+  getProtectionPartitions,
+  isSystemOperationPermitted,
   MATRIX_COVERAGE_BASELINE,
   countMatrixCoverage,
   enumerateMatrixCells,
@@ -31,11 +33,10 @@ import {
   authorizeWrite,
   decideRead,
   filterReadable,
-  NonMemberAuditUnsupportedError,
   type InterceptorContext,
 } from "./interceptor.js";
 import { resolveMemberPrincipal } from "./member-principal.js";
-import type { MemberPrincipal } from "./principal.js";
+import type { MemberPrincipal, SupportPrincipal } from "./principal.js";
 import { isManager, effectiveRoles } from "./roles.js";
 import { resolveReaderSet } from "./reader-set.js";
 
@@ -893,42 +894,334 @@ describe("FDN-89 (partial) — reader sets and subject exclusion", () => {
   });
 });
 
-describe("support and system principals (F206 — fail closed)", () => {
-  it("are evaluated as having no node grant, and cannot yet be audited", async () => {
+describe("support principals (F206) — capped at scope, never above Owner", () => {
+  const support = (
+    workspaceId: string,
+    access: "read" | "read-write",
+    nodeTypes: NodeType[],
+    expiresAt = "2099-01-01T00:00:00.000Z",
+  ): SupportPrincipal => ({
+    kind: "support",
+    grantId: randomUUID(),
+    workspaceId,
+    scope: { access, node_types: nodeTypes },
+    expiresAt,
+  });
+
+  it("reads within scope at the Owner ceiling, capped to Read for a read-only scope", async () => {
     const fixture = await makeWorkspace();
-    const support = {
-      kind: "support",
-      grantId: randomUUID(),
-      workspaceId: fixture.workspaceId,
-      scope: { access: "read", nodeTypes: ["Employee"] },
-      expiresAt: "2099-01-01T00:00:00.000Z",
-    } as const;
+    await db.transaction(async (tx) => {
+      const decision = await decideRead(
+        tx,
+        support(fixture.workspaceId, "read", ["Employee"]),
+        {
+          workspaceId: fixture.workspaceId,
+          nodeType: "Employee",
+          nodeId: null,
+        },
+      );
+      expect(decision.access).toBe("read");
+      const readWrite = await decideRead(
+        tx,
+        support(fixture.workspaceId, "read-write", ["Employee"]),
+        {
+          workspaceId: fixture.workspaceId,
+          nodeType: "Employee",
+          nodeId: null,
+        },
+      );
+      expect(readWrite.access).toBe("full");
+    });
+  });
+
+  it("reaches nothing outside its scope, after it expires, or in another workspace", async () => {
+    const fixture = await makeWorkspace();
+    await db.transaction(async (tx) => {
+      const read = (p: SupportPrincipal, workspaceId = fixture.workspaceId) =>
+        decideRead(tx, p, { workspaceId, nodeType: "Employee", nodeId: null }).then(
+          (d) => d.access,
+        );
+      expect(await read(support(fixture.workspaceId, "read", ["Entity"]))).toBe("none");
+      expect(
+        await read(
+          support(
+            fixture.workspaceId,
+            "read",
+            ["Employee"],
+            "2020-01-01T00:00:00.000Z",
+          ),
+        ),
+      ).toBe("none");
+      expect(
+        await read(support(fixture.workspaceId, "read", ["Employee"]), randomUUID()),
+      ).toBe("none");
+    });
+  });
+
+  it("is never above Owner: where Owner has no grant the scope cannot supply one", async () => {
+    const ownerNone = NODE_TYPES.find((nodeType) => {
+      const cell = enumerateMatrixCells().find((c) => c.nodeType === nodeType)!;
+      return (
+        resolvePermission("owner", nodeType, cell.partitionKey).outcome === "none" &&
+        !getProtectionPartitions(nodeType).some((p) => p.tier === 3)
+      );
+    })!;
+    expect(ownerNone).toBeDefined();
+    const fixture = await makeWorkspace();
+    await db.transaction(async (tx) => {
+      const decision = await decideRead(
+        tx,
+        support(fixture.workspaceId, "read-write", [ownerNone]),
+        { workspaceId: fixture.workspaceId, nodeType: ownerNone, nodeId: null },
+      );
+      expect(decision.access).toBe("none");
+    });
+  });
+
+  it("never reaches a Tier 3 type, whatever its scope lists", async () => {
+    const tier3 = NODE_TYPES.filter((t) =>
+      getProtectionPartitions(t).some((p) => p.tier === 3),
+    );
+    expect(tier3.length).toBeGreaterThan(0);
+    const fixture = await makeWorkspace();
+    await db.transaction(async (tx) => {
+      const principal = support(fixture.workspaceId, "read-write", tier3);
+      for (const nodeType of tier3) {
+        expect(
+          (
+            await decideRead(tx, principal, {
+              workspaceId: fixture.workspaceId,
+              nodeType,
+              nodeId: null,
+            })
+          ).access,
+          nodeType,
+        ).toBe("none");
+        expect(
+          await authorizeWrite(
+            tx,
+            principal,
+            { kind: "node", workspaceId: fixture.workspaceId, nodeType, nodeId: null },
+            { operation: "create" },
+          ),
+        ).toEqual({ allowed: false, reason: "support-scope" });
+      }
+    });
+  });
+
+  it("may never write Workspace, WorkspaceMembership, User or AuditEntry, or change a role", async () => {
+    const fixture = await makeWorkspace();
+    const principal = support(fixture.workspaceId, "read-write", [
+      "Workspace",
+      "WorkspaceMembership",
+      "User",
+      "AuditEntry",
+      "Employee",
+    ]);
+    await db.transaction(async (tx) => {
+      for (const nodeType of [
+        "Workspace",
+        "WorkspaceMembership",
+        "User",
+        "AuditEntry",
+      ] as const) {
+        for (const operation of ["create", "update", "remove"] as const) {
+          expect(
+            await authorizeWrite(
+              tx,
+              principal,
+              {
+                kind: "node",
+                workspaceId: fixture.workspaceId,
+                nodeType,
+                nodeId: null,
+              },
+              { operation },
+            ),
+            `${nodeType} ${operation}`,
+          ).toEqual({ allowed: false, reason: "support-forbidden" });
+        }
+      }
+      // A role lives on the membership node, which is among the forbidden four.
+      expect(
+        await authorizeWrite(
+          tx,
+          principal,
+          {
+            kind: "edge",
+            workspaceId: fixture.workspaceId,
+            edgeType: "membership_of",
+            fromNodeType: "WorkspaceMembership",
+            toNodeType: "User",
+            edgeId: null,
+          },
+          { operation: "create" },
+        ),
+      ).toEqual({ allowed: false, reason: "support-forbidden" });
+    });
+  });
+
+  it("writes only under a read-write scope that covers the type, through the same gates as a member", async () => {
+    const fixture = await makeWorkspace({ finance: ["finance-admin"] });
+    await db.transaction(async (tx) => {
+      const target = (nodeType: NodeType) =>
+        ({
+          kind: "node",
+          workspaceId: fixture.workspaceId,
+          nodeType,
+          nodeId: randomUUID(),
+        }) as const;
+      expect(
+        await authorizeWrite(
+          tx,
+          support(fixture.workspaceId, "read", ["PayRun"]),
+          target("PayRun"),
+          {
+            operation: "create",
+          },
+        ),
+      ).toEqual({ allowed: false, reason: "support-scope" });
+      expect(
+        await authorizeWrite(
+          tx,
+          support(
+            fixture.workspaceId,
+            "read-write",
+            ["PayRun"],
+            "2020-01-01T00:00:00.000Z",
+          ),
+          target("PayRun"),
+          { operation: "create" },
+        ),
+      ).toEqual({ allowed: false, reason: "support-scope" });
+      expect(
+        await authorizeWrite(
+          tx,
+          support(fixture.workspaceId, "read-write", ["PayRun"]),
+          target("PayRun"),
+          {
+            operation: "create",
+          },
+        ),
+      ).toMatchObject({ allowed: true });
+      // The reader-set gate still applies.
+      expect(
+        await authorizeWrite(
+          tx,
+          support(fixture.workspaceId, "read-write", ["HRCase"]),
+          target("HRCase"),
+          {
+            operation: "create",
+          },
+        ),
+      ).toEqual({ allowed: false, reason: "reader-set-unresolvable" });
+    });
+  });
+
+  it("produces correctly shaped audit entries: the grant, no person, no roles", async () => {
+    const fixture = await makeWorkspace();
+    const principal = support(fixture.workspaceId, "read", ["PayRun"]);
+    await db.transaction(async (tx) => {
+      await authorizeRead(tx, principal, {
+        workspaceId: fixture.workspaceId,
+        nodeType: "PayRun",
+        nodeId: randomUUID(),
+      });
+      await authorizeRead(tx, principal, {
+        workspaceId: fixture.workspaceId,
+        nodeType: "HRCase",
+        nodeId: randomUUID(),
+      });
+    });
+    const entries = (await auditRows(fixture.workspaceId)).map(
+      (r) => r.entry as Record<string, unknown>,
+    );
+    expect(entries).toHaveLength(2);
+    for (const entry of entries) {
+      expect(entry).toMatchObject({
+        actor_kind: "support",
+        actor_grant_id: principal.grantId,
+        actor_role: null,
+        actor_roles: [],
+      });
+      expect(entry).not.toHaveProperty("actor_user_id");
+      expect(entry).not.toHaveProperty("actor_membership_id");
+    }
+    expect(entries.map((e) => e["event_type"]).sort()).toEqual([
+      "PermissionDenied",
+      "SensitiveAccessGranted",
+    ]);
+    const [row] = await db.execute(
+      sql`select actor_kind, actor_user_id, actor_grant_id, actor_system_name from audit_journal where workspace_id = ${fixture.workspaceId} limit 1`,
+    );
+    expect(row).toMatchObject({
+      actor_kind: "support",
+      actor_user_id: null,
+      actor_grant_id: principal.grantId,
+    });
+  });
+});
+
+describe("system principals (F206)", () => {
+  it("hold no node grant, are evaluated on every read and write, and are audited by name", async () => {
+    const fixture = await makeWorkspace();
     const system = {
       kind: "system",
       name: "audience-recompute",
       workspaceId: fixture.workspaceId,
     } as const;
     await db.transaction(async (tx) => {
-      for (const principal of [support, system]) {
-        expect(
-          (
-            await decideRead(tx, principal, {
-              workspaceId: fixture.workspaceId,
-              nodeType: "Employee",
-              nodeId: null,
-            })
-          ).access,
-        ).toBe("none");
-        await expect(
-          authorizeRead(tx, principal, {
+      expect(
+        (
+          await authorizeRead(tx, system, {
+            workspaceId: fixture.workspaceId,
+            nodeType: "Employee",
+            nodeId: randomUUID(),
+          })
+        ).access,
+      ).toBe("none");
+      expect(
+        await authorizeWrite(
+          tx,
+          system,
+          {
+            kind: "node",
             workspaceId: fixture.workspaceId,
             nodeType: "Employee",
             nodeId: null,
-          }),
-        ).rejects.toBeInstanceOf(NonMemberAuditUnsupportedError);
-      }
+          },
+          { operation: "create" },
+        ),
+      ).toEqual({ allowed: false, reason: "role" });
     });
-    expect(await auditRows(fixture.workspaceId)).toHaveLength(0);
+    const entries = (await auditRows(fixture.workspaceId)).map(
+      (r) => r.entry as Record<string, unknown>,
+    );
+    expect(entries).toHaveLength(2);
+    for (const entry of entries) {
+      expect(entry).toMatchObject({
+        actor_kind: "system",
+        actor_system_name: "audience-recompute",
+        actor_role: null,
+        actor_roles: [],
+        event_type: "PermissionDenied",
+      });
+      expect(entry).not.toHaveProperty("actor_user_id");
+      expect(entry).not.toHaveProperty("actor_grant_id");
+    }
+  });
+
+  it("the policy table lists a system principal's operations and nothing else", () => {
+    expect(isSystemOperationPermitted("erasure", "audit.pseudonymize-actor")).toBe(
+      true,
+    );
+    for (const name of [
+      "audience-recompute",
+      "retention-sweep",
+      "key-rotation",
+    ] as const) {
+      expect(isSystemOperationPermitted(name, "audit.pseudonymize-actor")).toBe(false);
+    }
   });
 });
 

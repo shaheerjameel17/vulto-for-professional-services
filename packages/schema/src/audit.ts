@@ -2,6 +2,7 @@ import { z } from "zod";
 
 import { deviceApplicationSchema } from "./auth";
 import { POLICY_ROLES } from "./policy/policy-table";
+import { SYSTEM_PRINCIPAL_NAMES } from "./policy/principal-policy";
 import { EDGE_TYPES } from "./registry/edges";
 import { NODE_TYPES } from "./registry/nodes";
 import { type DataTier } from "./registry/types";
@@ -134,14 +135,23 @@ export const auditMetadataSchema = z
   .strict();
 export type AuditMetadata = z.infer<typeof auditMetadataSchema>;
 
+/** F206: who acted. A member is a person; a support grant or a named system job is not. */
+export const AUDIT_ACTOR_KINDS = ["member", "support", "system"] as const;
+export const auditActorKindSchema = z.enum(AUDIT_ACTOR_KINDS);
+export type AuditActorKind = z.infer<typeof auditActorKindSchema>;
+export const auditSystemNameSchema = z.enum(SYSTEM_PRINCIPAL_NAMES);
+
 export const auditEntryEventFields = {
   event_type: auditEventTypeSchema,
   operation: auditOperationSchema,
   outcome: auditOutcomeSchema,
-  actor_user_id: uuidV4Schema,
-  actor_membership_id: uuidV4Schema,
+  actor_kind: auditActorKindSchema.default("member"),
+  actor_user_id: uuidV4Schema.optional(),
+  actor_membership_id: uuidV4Schema.optional(),
+  actor_grant_id: uuidV4Schema.optional(),
+  actor_system_name: auditSystemNameSchema.optional(),
   actor_role: policyRoleSchema.nullable(),
-  actor_roles: z.array(policyRoleSchema).min(1),
+  actor_roles: z.array(policyRoleSchema),
   actor_application: deviceApplicationSchema.default("VultoRoster"),
   target: auditTargetReferenceSchema,
   metadata: auditMetadataSchema,
@@ -150,6 +160,11 @@ export const auditEntryEventFields = {
 
 function addAuditCoherenceIssues(
   entry: {
+    actor_kind: AuditActorKind;
+    actor_user_id?: string | undefined;
+    actor_membership_id?: string | undefined;
+    actor_grant_id?: string | undefined;
+    actor_system_name?: string | undefined;
     event_type: AuditEventType;
     outcome: AuditOutcome;
     actor_role: string | null;
@@ -186,6 +201,46 @@ function addAuditCoherenceIssues(
       code: "custom",
       path: ["actor_role"],
       message: "A privileged projection audit event cannot name a deciding role",
+    });
+  }
+  const present = {
+    actor_user_id: entry.actor_user_id !== undefined,
+    actor_membership_id: entry.actor_membership_id !== undefined,
+    actor_grant_id: entry.actor_grant_id !== undefined,
+    actor_system_name: entry.actor_system_name !== undefined,
+  };
+  const required: Record<AuditActorKind, readonly (keyof typeof present)[]> = {
+    member: ["actor_user_id", "actor_membership_id"],
+    support: ["actor_grant_id"],
+    system: ["actor_system_name"],
+  };
+  for (const field of Object.keys(present) as (keyof typeof present)[]) {
+    const needed = required[entry.actor_kind].includes(field);
+    if (needed !== present[field]) {
+      context.addIssue({
+        code: "custom",
+        path: [field],
+        message: needed
+          ? `A ${entry.actor_kind} actor requires ${field}`
+          : `A ${entry.actor_kind} actor cannot carry ${field}`,
+      });
+    }
+  }
+  if (entry.actor_kind === "member" && entry.actor_roles.length === 0) {
+    context.addIssue({
+      code: "custom",
+      path: ["actor_roles"],
+      message: "A member actor names at least one role",
+    });
+  }
+  if (
+    entry.actor_kind !== "member" &&
+    (entry.actor_roles.length > 0 || entry.actor_role !== null)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["actor_roles"],
+      message: "Only a member holds roles; a support grant or system job names none",
     });
   }
   const suppliedRoles = new Set(entry.actor_roles);

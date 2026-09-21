@@ -24,7 +24,7 @@ import {
 } from "../graph/store.js";
 import type { RoleDependencies } from "./roles.js";
 import { effectiveRoles } from "./roles.js";
-import type { MemberPrincipal, Principal } from "./principal.js";
+import type { Principal, SupportPrincipal } from "./principal.js";
 import { resolveReaderSet, resolveSubjectEmployee } from "./reader-set.js";
 import { checkWriteAuthority } from "./write-authority.js";
 
@@ -53,16 +53,6 @@ const RANK: Readonly<Record<PermissionOutcome, number>> = {
   restricted: 1,
   none: 0,
 };
-
-/** Thrown for a decision that cannot be audited. Nothing is released without its entry. */
-export class NonMemberAuditUnsupportedError extends Error {
-  constructor() {
-    super(
-      "Support and system principals cannot be audited until F206 defines how an audit entry names them",
-    );
-    this.name = "NonMemberAuditUnsupportedError";
-  }
-}
 
 // ── Row scope ───────────────────────────────────────────────────────────────
 
@@ -118,9 +108,58 @@ function partitionTier(nodeType: NodeType, partitionKey: string): DataTier {
   return partition?.tier ?? 3;
 }
 
-function requireMember(principal: Principal): MemberPrincipal {
-  if (principal.kind !== "member") throw new NonMemberAuditUnsupportedError();
-  return principal;
+/** A support scope never reaches a type with a Tier 3 partition, whatever it lists. */
+function hasTier3(nodeType: NodeType): boolean {
+  return getProtectionPartitions(nodeType).some((p) => p.tier === 3);
+}
+
+/** Written only by the membership projection or `appendAudit`; a support principal may never write them. */
+const SUPPORT_NEVER_WRITES: ReadonlySet<NodeType> = new Set<NodeType>([
+  "Workspace",
+  "WorkspaceMembership",
+  "User",
+  "AuditEntry",
+]);
+
+function supportExpired(
+  principal: SupportPrincipal,
+  context: InterceptorContext,
+): boolean {
+  return Date.parse(principal.expiresAt) <= Date.parse((context.now ?? nowIso)());
+}
+
+const nowIso = () => new Date().toISOString();
+
+/** The roles a decision is made under, and whether the principal is capped at read. */
+async function decisionRoles(
+  tx: GraphTx,
+  principal: Principal,
+  nodeType: NodeType,
+  operation: "read" | "write",
+  context: InterceptorContext,
+): Promise<{ roles: PolicyRole[]; readOnly: boolean }> {
+  if (principal.kind === "member") {
+    return {
+      roles: await effectiveRoles(tx, principal, context.roleDependencies),
+      readOnly: false,
+    };
+  }
+  if (principal.kind === "support") {
+    const inScope = principal.scope.node_types.includes(nodeType);
+    const allowed =
+      inScope &&
+      !hasTier3(nodeType) &&
+      !supportExpired(principal, context) &&
+      (operation === "read" || principal.scope.access === "read-write") &&
+      (operation === "read" || !SUPPORT_NEVER_WRITES.has(nodeType));
+    // Owner is the ceiling, and the scope only narrows it.
+    return {
+      roles: allowed ? ["owner"] : [],
+      readOnly: principal.scope.access === "read",
+    };
+  }
+  // A system principal holds no node grant; its policy rows list operations.
+  return { roles: [], readOnly: true };
 }
 
 function bestCell(
@@ -155,13 +194,18 @@ export async function decideRead(
 ): Promise<ReadDecision> {
   const partitionKey = target.partitionKey ?? rowPartitionKey(target.nodeType);
   const tier = partitionTier(target.nodeType, partitionKey);
-  // Support and system principals have no node-level read grants: their
-  // policy rows are not defined yet (F206), so they resolve to `none`.
-  if (principal.kind !== "member" || principal.workspaceId !== target.workspaceId) {
+  if (principal.workspaceId !== target.workspaceId) {
     return { access: "none", tier, partitionKey };
   }
-  const roles = await effectiveRoles(tx, principal, context.roleDependencies);
+  const { roles, readOnly } = await decisionRoles(
+    tx,
+    principal,
+    target.nodeType,
+    "read",
+    context,
+  );
   const best = bestCell(roles, target.nodeType, partitionKey);
+  if (readOnly && best.outcome === "full") best.outcome = "read";
   if (best.outcome === "full" || best.outcome === "read") {
     return { access: best.outcome, role: best.role!, tier, partitionKey };
   }
@@ -183,9 +227,44 @@ function canonicalRoles(roles: readonly PolicyRole[]): PolicyRole[] {
   return POLICY_ROLES.filter((role) => held.has(role));
 }
 
+function actorFields(principal: Principal, roles: readonly PolicyRole[]) {
+  if (principal.kind === "member") {
+    const held = canonicalRoles(roles);
+    return {
+      actor_kind: "member" as const,
+      actor_user_id: principal.userId,
+      actor_membership_id: principal.membershipId,
+      actor_roles: held.length > 0 ? held : ["team-member" as const],
+    };
+  }
+  if (principal.kind === "support") {
+    return {
+      actor_kind: "support" as const,
+      actor_grant_id: principal.grantId,
+      actor_roles: [] as PolicyRole[],
+    };
+  }
+  return {
+    actor_kind: "system" as const,
+    actor_system_name: principal.name,
+    actor_roles: [] as PolicyRole[],
+  };
+}
+
+/** A member's held roles, for the audit entry; a support or system principal holds none. */
+async function auditRoles(
+  tx: GraphTx,
+  principal: Principal,
+  context: InterceptorContext,
+): Promise<PolicyRole[]> {
+  return principal.kind === "member"
+    ? effectiveRoles(tx, principal, context.roleDependencies)
+    : [];
+}
+
 async function audit(
   tx: GraphTx,
-  principal: MemberPrincipal,
+  principal: Principal,
   roles: readonly PolicyRole[],
   entry: {
     readonly eventType: "PermissionDenied" | "SensitiveAccessGranted";
@@ -196,7 +275,6 @@ async function audit(
   },
   context: InterceptorContext,
 ): Promise<void> {
-  const held = canonicalRoles(roles);
   await appendAudit(tx, {
     audit_entry_id: (context.newId ?? randomUUID)(),
     schema_version: 1,
@@ -204,17 +282,15 @@ async function audit(
     event_type: entry.eventType,
     operation: entry.operation,
     outcome: entry.eventType === "PermissionDenied" ? "Denied" : "Granted",
-    actor_user_id: principal.userId,
-    actor_membership_id: principal.membershipId,
-    actor_role: entry.actorRole,
-    actor_roles: held.length > 0 ? held : ["team-member"],
+    ...actorFields(principal, roles),
+    actor_role: principal.kind === "member" ? entry.actorRole : null,
     actor_application: "VultoRoster",
     target: entry.target,
     metadata: {
       ...(entry.denialClass === undefined ? {} : { denial_class: entry.denialClass }),
       result_cardinality: "Single",
     },
-    occurred_at: (context.now ?? (() => new Date().toISOString()))(),
+    occurred_at: (context.now ?? nowIso)(),
   });
 }
 
@@ -244,14 +320,13 @@ export async function authorizeRead(
   context: InterceptorContext = {},
   operation: AuditOperation = "NodeRead",
 ): Promise<ReadDecision> {
-  const member = requireMember(principal);
   const decision = await decideRead(tx, principal, target, context);
-  const roles = await effectiveRoles(tx, member, context.roleDependencies);
+  const roles = await auditRoles(tx, principal, context);
   const auditTarget = nodeTarget(target, decision.partitionKey, decision.tier);
   if (decision.access === "none" || decision.access === "restricted") {
     await audit(
       tx,
-      member,
+      principal,
       roles,
       {
         eventType: "PermissionDenied",
@@ -268,7 +343,7 @@ export async function authorizeRead(
   } else if (decision.tier > 0) {
     await audit(
       tx,
-      member,
+      principal,
       roles,
       {
         eventType: "SensitiveAccessGranted",
@@ -390,7 +465,6 @@ export async function authorizeTraversal(
   request: TraversalRequest,
   context: InterceptorContext = {},
 ): Promise<{ hits: TraversalHit[]; truncated: boolean }> {
-  requireMember(principal);
   const operation: AuditOperation =
     request.maxDepth > 1 ? "RecursiveTraversal" : "EdgeTraversal";
   const maxResults = request.maxResults ?? 200;
@@ -498,6 +572,8 @@ export type WriteRefusalReason =
   | "reserved-projection"
   | "unregistered-relationship"
   | "role"
+  | "support-scope"
+  | "support-forbidden"
   | "write-authority"
   | "reader-set-unresolvable"
   | "empty-reader-set";
@@ -575,8 +651,7 @@ export async function authorizeWrite(
   change: WriteChange,
   context: InterceptorContext = {},
 ): Promise<WriteDecision> {
-  const member = requireMember(principal);
-  const roles = await effectiveRoles(tx, member, context.roleDependencies);
+  const roles = await auditRoles(tx, principal, context);
   const operation =
     target.kind === "node"
       ? NODE_OPERATIONS[change.operation]
@@ -617,7 +692,7 @@ export async function authorizeWrite(
   ): Promise<WriteDecision> => {
     await audit(
       tx,
-      member,
+      principal,
       roles,
       {
         eventType: "PermissionDenied",
@@ -633,8 +708,11 @@ export async function authorizeWrite(
 
   if (principal.workspaceId !== target.workspaceId) return refuse("role");
 
-  // Reservations come first: they are not a matter of role.
-  if (target.kind === "node") {
+  // Reservations come first: they are not a matter of role. A support
+  // principal is refused for the same types below, under its own reason.
+  if (principal.kind === "support") {
+    // handled by the support restrictions
+  } else if (target.kind === "node") {
     if (target.nodeType === "AuditEntry") return refuse("audit-entry-reserved");
     if (RESERVED_PROJECTION_NODE_TYPES.has(target.nodeType))
       return refuse("reserved-projection");
@@ -642,14 +720,37 @@ export async function authorizeWrite(
     return refuse("reserved-projection");
   }
 
-  // Gate 1 — role.
+  // A support principal is checked against its scope before any policy row.
+  if (principal.kind === "support") {
+    const endpoints =
+      target.kind === "node"
+        ? [target.nodeType]
+        : [target.fromNodeType, target.toNodeType];
+    if (endpoints.some((t) => SUPPORT_NEVER_WRITES.has(t)))
+      return refuse("support-forbidden");
+    if (
+      supportExpired(principal, context) ||
+      principal.scope.access !== "read-write" ||
+      endpoints.some((t) => !principal.scope.node_types.includes(t) || hasTier3(t))
+    ) {
+      return refuse("support-scope");
+    }
+  }
+
+  // Gate 1 — role. A support principal is held to Owner, no higher.
+  const gateRoles: readonly PolicyRole[] =
+    principal.kind === "member"
+      ? await effectiveRoles(tx, principal, context.roleDependencies)
+      : principal.kind === "support"
+        ? ["owner"]
+        : [];
   let role: PolicyRole | null = null;
   if (target.kind === "node") {
-    const best = bestCell(roles, target.nodeType, partitionKey);
+    const best = bestCell(gateRoles, target.nodeType, partitionKey);
     if (best.outcome !== "full") return refuse("role");
     role = best.role;
   } else {
-    const failure = edgeRoleDecision(roles, target);
+    const failure = edgeRoleDecision(gateRoles, target);
     if (failure === "unregistered-relationship") return refuse(failure);
     if (failure !== null) return refuse("role");
   }
@@ -696,7 +797,7 @@ export async function authorizeWrite(
   if (tier > 0) {
     await audit(
       tx,
-      member,
+      principal,
       roles,
       {
         eventType: "SensitiveAccessGranted",

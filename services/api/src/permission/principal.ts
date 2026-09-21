@@ -22,12 +22,13 @@ export interface MemberPrincipal {
 }
 
 /**
- * The area and mode an Owner-approved access request grants (VPS-A008 P1).
- * Evaluated only for expiry until F206 fixes what a support scope means.
+ * What an Owner-approved access request grants (VPS-A008): a mode and the node
+ * types ("areas") it covers. A support principal is evaluated against the same
+ * policy table as a member, capped at this scope and never above Owner (F206).
  */
 export interface SupportScope {
   readonly access: "read" | "read-write";
-  readonly nodeTypes: readonly NodeType[];
+  readonly node_types: readonly NodeType[];
 }
 
 /** An Owner-approved, time-boxed staff grant (VPS-A008). Nothing issues one yet (FDN-106). */

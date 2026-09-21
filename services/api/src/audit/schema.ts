@@ -31,7 +31,12 @@ export const auditJournal = pgTable(
     contentDigest: text("content_digest").notNull(),
     entry: jsonb("entry").$type<AuditEntry>().notNull(),
     occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
-    actorUserId: uuid("actor_user_id").notNull(),
+    // F206: who acted. A member has a user id; a support grant a grant id; a
+    // system job its closed name. Exactly the one that matches `actor_kind`.
+    actorKind: text("actor_kind").notNull().default("member"),
+    actorUserId: uuid("actor_user_id"),
+    actorGrantId: uuid("actor_grant_id"),
+    actorSystemName: text("actor_system_name"),
     eventType: text("event_type").notNull(),
     operation: text("operation").notNull(),
     outcome: text("outcome").notNull(),
@@ -79,6 +84,23 @@ export const auditJournal = pgTable(
     check(
       "audit_journal_event_type_check",
       sql`${table.eventType} in ('PermissionDenied', 'SensitiveAccessGranted', 'AuthorizedOperationFailed', 'PrivilegedProjectionAuthorized')`,
+    ),
+    index("audit_journal_workspace_actor_kind_idx").on(
+      table.workspaceId,
+      table.actorKind,
+      table.actorGrantId,
+      table.actorSystemName,
+      table.occurredAt,
+    ),
+    check(
+      "audit_journal_actor_kind_check",
+      sql`${table.actorKind} in ('member', 'support', 'system')`,
+    ),
+    check(
+      "audit_journal_actor_identity_check",
+      sql`(${table.actorKind} = 'member' and ${table.actorUserId} is not null and ${table.actorGrantId} is null and ${table.actorSystemName} is null)
+        or (${table.actorKind} = 'support' and ${table.actorGrantId} is not null and ${table.actorUserId} is null and ${table.actorSystemName} is null)
+        or (${table.actorKind} = 'system' and ${table.actorSystemName} is not null and ${table.actorUserId} is null and ${table.actorGrantId} is null)`,
     ),
     check(
       "audit_journal_outcome_check",

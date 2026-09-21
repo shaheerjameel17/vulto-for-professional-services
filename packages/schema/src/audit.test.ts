@@ -99,3 +99,77 @@ describe("VPS-F004 canonical AuditEntry contract", () => {
     ).toThrow("belongs only to privileged projections");
   });
 });
+
+describe("F206 — the audit actor", () => {
+  const {
+    actor_user_id: _u,
+    actor_membership_id: _m,
+    actor_role: _r,
+    actor_roles: _rs,
+    ...rest
+  } = validEntry;
+  const nonMember = { ...rest, actor_role: null, actor_roles: [] };
+
+  it("defaults to a member and requires the person's ids", () => {
+    expect(auditEntrySchema.parse(validEntry).actor_kind).toBe("member");
+    expect(() =>
+      auditEntrySchema.parse({ ...validEntry, actor_user_id: undefined }),
+    ).toThrow();
+    expect(() => auditEntrySchema.parse({ ...validEntry, actor_roles: [] })).toThrow();
+  });
+
+  it("names a support grant by its grant id alone", () => {
+    const entry = auditEntrySchema.parse({
+      ...nonMember,
+      actor_kind: "support",
+      actor_grant_id: OTHER_ID,
+    });
+    expect(entry.actor_grant_id).toBe(OTHER_ID);
+    expect(() =>
+      auditEntrySchema.parse({ ...nonMember, actor_kind: "support" }),
+    ).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({
+        ...nonMember,
+        actor_kind: "support",
+        actor_grant_id: OTHER_ID,
+        actor_user_id: ID,
+      }),
+    ).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({
+        ...nonMember,
+        actor_kind: "support",
+        actor_grant_id: OTHER_ID,
+        actor_roles: ["owner"],
+      }),
+    ).toThrow();
+  });
+
+  it("names a system job by its closed name alone", () => {
+    const entry = auditEntrySchema.parse({
+      ...nonMember,
+      actor_kind: "system",
+      actor_system_name: "erasure",
+    });
+    expect(entry.actor_system_name).toBe("erasure");
+    expect(() =>
+      auditEntrySchema.parse({
+        ...nonMember,
+        actor_kind: "system",
+        actor_system_name: "cron",
+      }),
+    ).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({ ...nonMember, actor_kind: "system" }),
+    ).toThrow();
+    expect(() =>
+      auditEntrySchema.parse({
+        ...nonMember,
+        actor_kind: "system",
+        actor_system_name: "erasure",
+        actor_grant_id: OTHER_ID,
+      }),
+    ).toThrow();
+  });
+});
