@@ -1,7 +1,7 @@
 # Reviewer Handoff — state for the founder's review chat
 
 **Purpose.** This file lets a fresh Claude chat (the *reviewer*, not Claude Code) resume reviewing the server-authoritative rebuild with no re-explanation. Keep it current: the reviewer updates it at each stage boundary.
-**Last updated:** 22 September 2026, after writing the Stage 8 brief (`docs/Claude_Code_Build_Prompt.md` Part 3) and awaiting "Stage 8 go." Stage 7 is merged into `main` as `dec4eb3`; F213 closed in `906d7fa`; CI image repinned in `397f38b`, both lanes green on it.
+**Last updated:** 22 September 2026, after reviewing and ruling on the Stage 8 report. Stage 7 is merged into `main` as `dec4eb3`; F213 closed in `906d7fa`; CI image repinned in `397f38b`, both lanes green on it. Stage 8 (`c733763` on `stage-8-employee-profile`) is reviewed and ruled — F130 confirmed closed, F215 confirmed, F214 ruled (design accepted, build deferred to Stage 9) — and awaiting Claude Code's merge; the merge commit still needs to be recorded here once reported.
 
 ---
 
@@ -70,7 +70,7 @@
 | 5 Protected data | done (F209, no default key provider) | `8837556` |
 | 6 Sync | done, two review rounds (F210–F212) | `961830d` |
 | **7 Retire + harden CI** | **approved 22 September (F210 verified by direct read; F213 ruled — keep the column)** | **`dec4eb3`** (merged `--no-ff`, 22 September) |
-| **8 Spec sweep (priority slice) + RST-33** | **brief written, awaiting "Stage 8 go"** | — |
+| **8 Spec sweep (priority slice) + RST-33** | **reviewed 22 September (F130 closure confirmed; F215 confirmed; F214 ruled — design accepted, build deferred to Stage 9)** | pending — awaiting merge |
 
 **Stage 7 facts to remember:**
 - Branch `stage-7-retire` at `d749c3c`. Green slow lane: https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35637057091. `main` was green at `961830d`/`4d91705` before branching.
@@ -83,24 +83,22 @@
 
 Every checklist item from the Stage 7 brief was verified by direct code read, not just the report (F210's migration and its test, F212's CI job list, the accessibility gate, the done-criteria grep, the adversarial suite, the findings recount reproduced programmatically, `CLAUDE.md`/`Bootstrap.md`/`CONTRIBUTING.md`, the file/line diff stat). Full reasoning is in the Amendments entry dated 22 September. Merge completed cleanly (verified: the net diff from the merge commit to the final head touches only the three intended files — a stray 602-file commit from the reviewer's own worktree cleanup was caught and fully reverted the same day, confirmed by diff, not by trusting the report).
 
-## 7. Stage 8 — brief written, 22 September 2026, awaiting "Stage 8 go"
+## 7. Stage 8 review — closed, 22 September 2026
 
-Full brief in `docs/Claude_Code_Build_Prompt.md` Part 3. Scope, in order: correct `VPS-D004` (the "Locked shell" section describes the retired sealed-store/online-unlock mechanism and needs a real design replacement — flagged to come back as a numbered finding, not a silent rewrite; the "Aged out — Fetch" state becomes `requires-connection` + Retry), `VPS-F004`, `VPS-F002` (Tier-0-only local search), `VPS-A002`'s Client ownership row (F207), `VRS-F002`; then implement RST-33 — register `Employee`, its mutations and lifecycle, wire `resolveEmployeeForUser` (closes F130, lights up Manager-scope derivation and subject exclusion for the first time — watch for the same class of seam defect Stage 2/3 and Stage 4 caught: code that compiles against a non-null id versus code that is actually tested to enforce the boundary). This is a priority slice of FDN-104's 44 specs, not the whole sweep — the rest correct just-in-time before their own stages, per FDN-104 itself.
+Every checklist item from the Stage 8 brief (below) was checked against the code, not just the report: `rowScopeSatisfied`/`decideRead`/`resolveReaderSet` read in full and cross-checked against the policy table and the temporal edge-filtering in `graph/store.ts`; the `Employee` registry entry confirmed byte-for-byte unchanged via `git show`; `FEATURE_LIFECYCLE_NODE_TYPES`'s symmetric client/server refusal confirmed; `employeeLinkUser`'s bidirectional uniqueness read in full; the four F130 subject-exclusion tests read in full, including the sentinel-string end-to-end proof; the `transitionStatus` status-table and stale-state test read in full; the import-equivalence test read in full; the `VPS-D004` F214 marker checked against the actual section text; the findings recount independently reproduced by parsing every `| F<n> |` row (161 rows, F54–F215, one gap at F198, 146 closed, 9 open — exact match). The mutation-testing pass/fail counts were not re-run (no `pnpm` on the linked machine in this session) but are consistent with the test bodies read. Full ruling in the Amendments entry dated 22 September (Stage 8 review). Three outcomes: **F130 closure confirmed**, no action; **F215's three sub-decisions confirmed**, plus a small follow-up (define "team" in `VPS-A004`'s own matrix, since it names "own + team" but never defines "team"); **F214 ruled** — the proposed single `Reconnect` state is accepted, with both tradeoffs decided as recommended (a missing session goes to sign-in, not `Reconnect`; nothing is erased on a plain `401`, safe only because the device cache is Tier 0 only) — but the actual UI and wiring are **not** built in this pass; that is **Stage 9**, briefed separately. `VPS-D004` and `VPS-A004` get their text corrected now; the merge, the `Foundations_Findings.md` updates and the Linear status are Claude Code's to apply per the ruling.
 
-**What to check in the Stage 8 report:**
-1. The Locked-shell replacement arrived as a numbered finding with a recommendation, not a decision baked into the diff.
-2. `VPS-D004`, `VPS-F004`, `VPS-F002`, `VRS-F002` each have a Decisions Recorded entry pointing to F199; the four-document grep for "local store" / "authorized device" / "retention window" / "client-side" returns only those entries.
-3. `Employee`'s registry entry matches `VPS-A002`'s existing tier-split documentation for it exactly — this stage wires the schema, it does not redesign it.
-4. `resolveEmployeeForUser` is real, and there are paired tests proving subject exclusion and Manager-scope derivation actually fire (not just that the function returns non-null). Read `reader-set.ts` and `roles.ts` yourself.
-5. Import and manual Employee creation produce equivalent records, or there's a finding explaining why not yet (likely `VPS-F006` not being corrected in this slice).
+## 8. Stage 9 — the Reconnect shell state (not yet briefed)
 
-## 8. After Stage 8
+F214's design is ruled (see above and the Amendments entry) but not built. When briefing Stage 9: build the single `Reconnect` state in `apps/roster-web` per the accepted design (trigger only on `401`/`UNAUTHORIZED` or `access-revoked`, never on a network failure/timeout/5xx; full-bleed, one **Retry**; a missing session routes to sign-in instead); wire it into the tRPC client's error handling and the shape proxy's `access-revoked` response; and require a browser test proving cold-start and mid-session render identically and that Retry actually re-issues the failed call. This is the first client shell feature since Stage 7 retired the old one, so treat it as its own reviewed stage, not a follow-up patch.
 
-- The next brief covers whichever `VRS-001` MVP-order feature follows RST-33, correcting that feature's own FDN-104 specs just-in-time.
+## 9. After Stage 8 / Stage 9
+
+- The next feature brief (after Stage 9, or before it if the founder prioritizes differently) covers whichever `VRS-001` MVP-order feature follows RST-33, correcting that feature's own FDN-104 specs just-in-time.
 - Open follow-ups:
   - KEK rotation (FDN-96 follow-up list);
   - k-anonymity enforcement when analytics features arrive;
   - F125 (backdated `managed_by`, decided in VRS-F037);
   - workspace switching (the client is fail-closed until it is designed);
   - FDN-110 before the first real-data pilot;
-  - F213 (`member.projection_state`), scoped into the FDN-104 spec sweep per the 22 September ruling.
+  - F213 (`member.projection_state`), scoped into the FDN-104 spec sweep per the 22 September ruling — not yet revisited, FDN-104's remaining specs are still just-in-time;
+  - Stage 9 (the Reconnect shell state) itself, per F214's ruling above.
