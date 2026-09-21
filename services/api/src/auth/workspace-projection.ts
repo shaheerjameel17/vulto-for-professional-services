@@ -10,6 +10,7 @@ import { and, eq, gt, isNull, lt, or, sql } from "drizzle-orm";
 import { db } from "../db.js";
 import { auth } from "./config.js";
 import { parseDeviceId } from "./device-unlock.js";
+import { membershipInEdgeId, membershipOfEdgeId } from "./membership-edge-ids.js";
 import {
   device,
   deviceUnlockSecret,
@@ -52,6 +53,8 @@ import {
  * privileged write needs its own ruling.
  */
 
+export { membershipInEdgeId, membershipOfEdgeId };
+
 export const PROJECTION_GRANT_PREFIX = "vlt_proj_";
 
 /**
@@ -71,27 +74,6 @@ export class WorkspaceProjectionDeniedError extends Error {
 
 function hashGrant(grant: string): string {
   return createHash("sha256").update(grant, "utf8").digest("hex");
-}
-
-/**
- * A deterministic UUID v4-shaped id from a seed, so re-projection and
- * reconciliation are idempotent (a membership always yields the same edge
- * ids). Computed server-side and carried in the grant — the graph Worker
- * never derives an id of its own.
- */
-function deterministicUuid(seed: string): string {
-  const h = createHash("sha256").update(seed, "utf8").digest();
-  h[6] = (h[6]! & 0x0f) | 0x40;
-  h[8] = (h[8]! & 0x3f) | 0x80;
-  const hex = h.subarray(0, 16).toString("hex");
-  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-}
-
-export function membershipOfEdgeId(membershipId: string): string {
-  return deterministicUuid(`membership_of:${membershipId}`);
-}
-export function membershipInEdgeId(membershipId: string): string {
-  return deterministicUuid(`membership_in:${membershipId}`);
 }
 
 function slugFor(workspaceName: string, workspaceId: string): string {
@@ -311,6 +293,9 @@ export async function createWorkspaceWithPendingOwner(
     roles: ["owner"],
   });
 
+  // The grant below feeds the device-side projection, a temporary dual write
+  // beside the Postgres graph rows written above.
+  // F199: removed in Stage 7 (FDN-103)
   return mintWorkspaceProjectionGrant(headers, {
     workspaceId,
     deviceId: request.deviceId,
