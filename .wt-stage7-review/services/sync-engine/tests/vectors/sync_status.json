@@ -1,0 +1,10 @@
+{
+  "description": "SyncStatus: relay reports PendingChanges, highest known cursor 10, client acknowledged through 4",
+  "message": {
+    "type": "sync_status",
+    "status": "pending_changes",
+    "highest_known_cursor": 10,
+    "highest_acknowledged_cursor": 4
+  },
+  "encoded_hex": "010602000000000000000a0000000000000004"
+}

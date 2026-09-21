@@ -1,0 +1,1737 @@
+# Prototype Findings
+
+**Status:** Closed. Fifty-three findings, all resolved in the document that owns the fact.
+**Purpose:** Record every defect, ambiguity and contradiction found in the specification set by rendering it, so corrections go back into the document that owns the fact.
+
+This file is not a specification and is deliberately outside `docs/Vulto_Specs/`. It began as a worklist and is now a record.
+
+**The table below states each finding's final state, verified against the owning document rather than carried forward from when the finding was raised.** The narrative sections that follow are the reasoning, in the order it happened, and they preserve the intermediate positions deliberately — several findings were closed twice as later rounds superseded earlier answers, and a reader tracing why a value is what it is needs that history. Where a section and the table disagree, the table is later and wins.
+
+**Nothing here is outstanding.** The specifications carry the corrections; this log explains them.
+
+---
+
+## Status of each finding
+
+| | Finding | Owner document | State |
+|---|---|---|---|
+| F1 | Sidebar navigation is not specified | `VPS-D004` | **Closed by FDN-39** — twelve role-aware destinations in five intent groups |
+| F2 | No day-column width for the Timeline | `VPS-D002` | **Closed** — per-horizon day widths in `VRS-F005` |
+| F3 | Bench cost figure has no specified color | `VPS-D001` | **Closed** — cost figure is `text-primary` |
+| F4 | "Counting up" contradicts the stated formula | `VPS-D001` | **Closed by decision** — prose changed |
+| F5 | Restricted bench region: three overlapping treatments | `VRS-F005` | **Closed** — figure dropped, day count kept, in `VRS-F005` |
+| F6 | `billing_rate_default` cost fallback contradicts itself | `VRS-F005` | **Closed** — the fallback is deleted in `VRS-F005` |
+| F7 | Timeline row separators unspecified | `VPS-D002` | **Closed** — Timeline matches Table, no separators |
+| F8 | Summary row vs. 56px page header | `VRS-F005` | **Closed** — 48px header plus a summary band |
+| F9 | Specified color pairings fail the contrast floor | `VPS-D001`, `VPS-D002` | **Closed** — `VPS-D001`'s contrast floor now names the permitted pairings |
+| F10 | Three dark surface tokens are the same color | `VPS-D001` | **Closed by FDN-37** — dark surfaces are three distinct values |
+| F11 | Timesheet responsive breakpoint contradiction | `VPS-D003`, `VRS-F010` | **Closed** — `VPS-D003` splits 768–1023 from below 768 |
+| F12 | `Cmd+D` fill semantics ambiguous | `VPS-D003`, `VRS-F010` | **Closed** — `Cmd+D` fills rightward from the current cell |
+| F13 | `G` `D` missing from the global shortcut table | `VPS-D003` | **Closed** — `VPS-D003` carries the full `G` table |
+| F14 | Ghost "reduced-opacity" is not a defined treatment | `VRS-F007` | **Closed** — `VRS-F007` uses the dashed treatment, opacity unchanged |
+| F15 | Ghost bar cites the wrong shared treatment | `VRS-F007` | **Closed** — `VRS-F007` cites the neutral bar fill and `border-strong` |
+| F16 | Standing Rule 6 mislabels the language convention | `VPS-000` | **Closed by decision** — American English |
+| F17 | App directory named two ways | `VPS-A001` | **Closed by decision** — `apps/roster-web` |
+| F18 | `VPS-F002` indexed-fields table is malformed | `VPS-F002` | **Closed** — the table gained its `Registered by` column |
+| F19 | `VPS-D001` cannot express the structural dimensions other documents use | `VPS-D001` | **Closed** — `VPS-D001` gained Structural dimensions and narrowed its authority claim |
+| F20 | No document names the default density | `VPS-D001` | **Closed by FDN-33** — one information-preserving density |
+| F21 | `VPS-D002`'s blanket hover rule cannot apply to `primary` | `VPS-D002` | **Closed** — `VPS-D002` states hover per variant |
+| F22 | Badge has no neutral tone, but two features need one | `VPS-D002` | **Closed** — `VPS-D002` gained a neutral Badge tone |
+| F23 | Two groups for five items may be worse than none | `VPS-D004` | **Closed** — group headers render only above two non-empty groups |
+| F24 | 56px page header cannot stack an `h1` and a subtitle | `VPS-D004` | **Closed** — 48px header, title and subtitle on one baseline |
+| F25 | Panels cannot trap focus and also be dismissed by the canvas | `VPS-D002` | **Closed** — `VPS-D002` scopes the focus trap to Modal |
+| F26 | Window position relative to today is unspecified | `VRS-F005` | **Closed** — 14-day lead-in stated in `VRS-F005` |
+| F27 | Bench cost has no annual denominator | `VRS-F005` | **Closed** — `VRS-F005` derives the denominator through `VRS-F004` |
+| F28 | Left column content does not fit its own row at compact density | `VRS-F005`, `VPS-D001` | **Superseded by FDN-33** — identity persists at every desktop width |
+| F29 | Bench region has no specified height | `VPS-D002` | **Closed** — bench region is 20px, matching the assignment bar |
+| F30 | Aggregate utilization has no formula on the screen that displays it | `VRS-F005` | **Closed** — `VRS-F005` states the formula |
+| F31 | The bench region is specified as patternless and is drawn over a pattern | `VPS-D001`, `VPS-D002` | **Closed by FDN-12**, verified |
+| F32 | The amber is weak in light mode and strong in dark | `VPS-D001` | **Closed by FDN-12**, recalibrated in FDN-36 |
+| F33 | Categorical bars outshout the amber in dark mode | `VPS-D001` | **Closed by FDN-33** — assignment bars are neutral |
+| F34 | The categorical palette's exclusions were understated | `VPS-D001` | **Closed** — brand is amber, so the warm arc already excludes it |
+| F35 | Bar labels at `text-inverse` fail on mid-tone categorical fills | `VPS-D002` | **Closed by FDN-33** — no label sits on a categorical fill |
+| F36 | The amber saturates at the 180-day horizon | `VRS-F005` | **Closed** — 45-day cost horizon, and the bench bar shrank the amber field |
+| F37 | A quiet bar's opaque fill does not follow its own row's backdrop | `VPS-D002` | **Closed by FDN-16**, verified |
+| F38 | In light mode the canvas and the surface are 1.04:1 apart | `VPS-D001` | **Corrected in `VPS-D001`** |
+| F39 | Non-working shading may now be below the threshold of perception | `VPS-D001` | **Closed** — middle value, then replaced by on-demand off-days in FDN-34 |
+| F40 | The type scale has twelve tokens; `VPS-D001` said eleven | `VPS-D001` | **Closed** — the family is now `numeric`, carried in `VPS-D001` |
+| F41 | Table and Timeline disagree about what row hover looks like | `VPS-D002` | **Closed** — `VPS-D002` scopes Timeline hover to the frozen identity group |
+| F42 | At the design center the Panel hides a third of the canvas either way | `VPS-D003`, `VRS-F005` | **Closed by this pass** — `VRS-F005` gains a third, scoped Panel behavior |
+| F43 | Brand appears on the workspace mark, a fourth use | `VPS-D001` | **Exempted in `VPS-D001`** |
+| F44 | The mono family's suffixes mean two different things | `VPS-D001` | **Closed** — the `mono` family was renamed `numeric` in FDN-29 |
+| F45 | The Employee profile's Screens table names a Panel with nothing for it to show | `VRS-F002` | **Closed by this pass** — the profile is Content-only, and `VRS-F002` says why |
+| F46 | Tabs.Trigger's label, wrapped in Text as a nested span, gave the tab an empty accessible name | `VPS-D002` | **Closed**, fixed in Tabs |
+| F47 | `VRS-F002` contradicted itself: permanent Inputs in prose, open/close-an-edit in the keyboard table | `VRS-F002` | **Closed**, keyboard model kept |
+| F48 | `VPS-D002`'s Input has no affix contract; suffixed number fields overlap their own spinner | `VPS-D002` | **Closed**, affix contract added |
+| F49 | `InputProps`' own `prefix` collided with `HTMLAttributes`' RDFa `prefix?: string` | — | **Closed**, `prefix` omitted alongside `className` |
+| F50 | People was a name-and-role list, not `VRS-F002`'s Table directory | `VRS-F002` | **Closed**, built as `VPS-D002`'s Table |
+| F51 | F9 at Table scale: a directory is nothing but column headers doing load-bearing work at 2.6:1 | `VPS-D002` | **Closed by FDN-9** — headers use `text-secondary` |
+| F52 | Profile tabs were underlined beside pill segmented controls on the same screen | `VPS-D002` | **Closed**, Tabs and Toggle Group unified as one treatment |
+| F53 | Making amber the brand left `VPS-D001` forbidding its own signature surface | `VPS-D001` | **Closed by this pass** — the ration counts signals; the cost field is not one |
+
+---
+
+## New findings, in detail
+
+Findings F1–F18 were reported before the build and are recorded above. What follows is what rendering the documents produced.
+
+### F19 — `VPS-D001` cannot express the structural dimensions other documents use
+
+`VPS-D001` declares itself "the single source of truth for every color, typeface, size, space and border" and states that "no feature document, in any application, may introduce a value not defined here." Its space set is the twelve four-pixel steps.
+
+`VPS-D002` and `VPS-D004` then introduce, directly and necessarily: 240px and 48px sidebar widths, 360px panel, 56px page header, 220px and 160px timeline label columns, 200px timesheet label column, 640px palette, 480px and 640px modals, 20px and 24px bar heights, 20/24/32/40 avatar sizes, 24/28/32 button heights, 20px badge height, 16px controls, and a 6px dot. Most are not expressible in `VPS-D001`'s set, and 6px is not a multiple of the four-pixel base at all.
+
+These are layout dimensions, not spacing, and they are legitimate. But `VPS-D001`'s authority claim is currently false as written, which means an implementer either violates it or invents a second home for these values.
+
+**Proposed correction:** `VPS-D001` gains a Structural dimensions section that either enumerates them or explicitly delegates them to `VPS-D002` and `VPS-D004`, and its authority sentence is narrowed accordingly. In the build they live in `packages/tokens` with a per-value citation.
+
+### F20 — No document names the default density
+
+`VPS-D001` says density is a "workspace default with a per-user override" and never says which mode is the default. `VPS-002` names "a 14px base with 32px rows" as the thing to look at, which is compact.
+
+The prototype defaults to compact on that basis.
+
+### F21 — `VPS-D002`'s blanket hover rule cannot apply to `primary`
+
+`VPS-D002`'s Button section gives four variants and then one hover rule for all of them: "Hover is `bg-hover`; there is no elevation change." `bg-hover` is `neutral-100` in light and `neutral-800` in dark. Applying it to `primary`, which is filled `brand-600`, turns an indigo button gray on hover. The same problem applies to a confirming `danger` button.
+
+`VPS-D001` separately states that hover "is expressed as `bg-hover`, and that is the whole vocabulary," so there is no sanctioned alternative.
+
+**Proposed correction:** `VPS-D002` states a hover treatment per variant. The build uses `brand-700` for `primary` provisionally.
+
+### F22 — Badge has no neutral tone, but two features need one
+
+`VPS-D002` gives Badge two intensities and requires that "status badges take their color from the semantic tokens exclusively" and that "a badge is never `brand`." Three semantic tokens exist.
+
+`VRS-F002` badges employment type and status in the People directory. `VRS-F007` specifies a `Ghost` Badge in subtle intensity. None of those is a semantic state — an employment type of Contractor is not a success, an attention or a danger — and there is no fourth tone to use.
+
+**Proposed correction:** `VPS-D002` adds a neutral tone for non-semantic categorization, and says plainly that the semantic-only rule governs status badges specifically. The build uses `bg-subtle` with `text-secondary`.
+
+### F23 — Two groups for five items may be worse than none
+
+`VPS-D004` requires navigation be "grouped by role relevance rather than by feature taxonomy" and gives no group-header treatment and no threshold below which grouping stops earning its keep.
+
+Rendered with the five agreed destinations under **Work** and **Waiting**, the two `micro` uppercase headers occupy vertical space and visual weight comparable to the items they organize. At five items the grouping is arguably taxonomy for its own sake — the exact failure the rule was written to prevent, arrived at from the other direction.
+
+**This is a look-at-it question, not a defect.** Recorded rather than resolved, per the founder's instruction.
+
+### F24 — 56px page header cannot stack an `h1` and a subtitle
+
+`VPS-D004` specifies a 56px page header "containing the page title at `h1`, an optional `small` subtitle carrying the most useful context for that screen." An `h1` at 24/30 above a `small` at 13/18 is 48px of text in a 56px band, leaving 4px above and below.
+
+`VPS-D004` does not say the two are stacked. The build sets them inline on a shared baseline, which fits.
+
+**Proposed correction:** `VPS-D004` states the arrangement explicitly, or raises the header height.
+
+### F25 — Panels cannot trap focus and also be dismissed by the canvas
+
+`VPS-D002`'s accessibility floor states that "modals and panels trap focus and restore it to the trigger on close." For the Panel this cannot be implemented as written, and should not be:
+
+- `VPS-D004` requires the Panel be dismissible "by clicking the canvas," which presumes the canvas is reachable.
+- `VPS-D004` requires Panel state persist across selections within a screen.
+- `VRS-F005` requires `J`/`K` row navigation, and the Panel exists precisely so a user can move down the rows with it open.
+
+A focus trap makes the surface the Panel annotates unreachable by keyboard. The Panel is non-modal; the rule is correct for Modal only.
+
+**Proposed correction:** `VPS-D002` scopes the focus trap to Modal, and specifies focus restoration alone for Panel. The build implements restoration and no trap.
+
+### F26 — Window position relative to today is unspecified
+
+`VRS-F005` gives three horizons and a `T` shortcut to "scroll today into view," which implies today can be off-screen and therefore that the window extends before it. Nothing says by how much.
+
+The build carries a 14-day lead-in.
+
+### F27 — Bench cost has no annual denominator
+
+`VRS-F005` requires accumulated cost be `bench working days × daily cost`, "where daily cost derives from the employee's compensation." `VRS-F002`'s `base_compensation_amount` is annual, monthly or hourly per `compensation_frequency`.
+
+Converting an annual figure to a daily one needs a count of working days in a year. No document provides one. `VRS-F004` provides `standard_daily_hours` for hour-level proration and no annual day count. `VRS-F062` owns payroll proration and is thirty features later, so MVP feature five cannot defer to it.
+
+This matters more than its size suggests: it is the denominator of the number the product is most trusted to get right, and an implementer will otherwise reach for 260.
+
+**Proposed correction:** `VRS-F004` exposes an annual working-day count per employee, since it is the only feature permitted to know. The build counts it from the mocked index, which yields about 252 for the London calendar and 278 for Karachi.
+
+### F28 — Left column content does not fit its own row at compact density
+
+Measured in the browser, not inferred.
+
+`VRS-F005` specifies the left column as "avatar, name at `body-medium`, role at `small` in `text-secondary`." `VPS-D001` sets the Bench Forecast row to 36px at compact density.
+
+`body-medium` is 14/20 and `small` is 13/18. Stacked, that is **38px of text in a 36px row.** Measured: `rowHeight: 36, labelStackHeight: 38`. The role line bleeds into the neighboring row and the whole left column reads as vertically misaligned against the bars, which is visible immediately at compact density and absent at comfortable.
+
+This is the closest thing in the set to the failure `VPS-002` predicted: a density decision and a content decision made in two documents that do not survive each other.
+
+**Proposed correction:** one of — the compact Bench Forecast row rises to 40px; the role line drops at compact density as it already does below 1280px; or the two lines share a line-height budget. This is a founder decision about what compact density is for.
+
+### F29 — Bench region has no specified height
+
+`VPS-D002` gives the assignment bar a height (20px compact, 24px comfortable) and the bench region none. The build fills the row height, so the region reads as a region rather than as an object sitting in a lane, but nothing in the documents says so.
+
+### F30 — Aggregate utilization has no formula on the screen that displays it
+
+`VRS-F005` puts agency-wide utilization on the Forecast as "a single `display` figure" — the largest number on the canvas — and never states how it is computed. `VRS-F011` owns utilization computation and is a later feature, so there is nothing to call.
+
+`VRS-F007` G08 additionally requires the Ghost contribution be reported separately, which constrains the shape of the answer without supplying it.
+
+**Proposed correction:** `VRS-F005` either states the formula or defers the figure until `VRS-F011` exists. The build uses covered working days weighted by `billable_percentage` over total working days, with the Ghost contribution shown beside it.
+
+### F31 — The bench region is specified as patternless and is drawn over a pattern
+
+`VPS-D001`: the bench period renders as "a flat `attention`-tinted region with no border and no pattern." `VPS-D002`: "flat `attention` at 12% fill, no border."
+
+`VRS-F005` separately requires non-working days render `bg-subtle`. Those columns sit underneath the bench region, and a 12% fill is transparent, so the weekend shading shows through and produces a repeating vertical stripe across every amber region — exactly the pattern both documents forbid.
+
+Measured composite in light mode: `rgb(250, 239, 225)` over a working column against `rgb(241, 229, 216)` over a non-working one. The step repeats every five days in London and every six in Karachi, and at the 180-day horizon, where a day column is 12px, it reads as dense hatching.
+
+**Proposed correction:** state which layer wins. Either the bench region is opaque and occludes the working-day shading, or the shading is suppressed inside a bench region, or the region's fill is composited against `bg-surface` regardless of what is beneath it. This is a real decision, not a rendering detail — the signature element's flatness is the thing being protected.
+
+### F32 — The amber is weak in light mode and strong in dark
+
+A look-at-it finding, and the most important one.
+
+`attention` at 12% over white composites to `rgb(250, 239, 225)` — a pale peach that reads as an absence of color rather than a warning. In dark mode the same 12% of `#F59E0B` over `neutral-900` produces a distinctly warm band that carries real weight.
+
+The signature element currently lands in dark mode and does not land in light. `VPS-D001` says dark is "likely the majority mode for this audience," so this may be acceptable — but it is the opposite of what a founder checking a bank balance in a bright office would experience, and the fill percentage was specified once for both themes.
+
+**Proposed correction:** a per-theme fill percentage, in the same way the hue itself is per-theme. Candidate: 12% dark, 20–24% light. Worth deciding by looking rather than by arithmetic.
+
+### F33 — Categorical bars outshout the amber in dark mode
+
+`VPS-D001`'s governing rule: "The interface is deliberately color-starved so that money is the only thing on screen with a hue," and "ninety percent of any Roster screen is neutral."
+
+In dark mode the categorical bars are full-saturation `cat-n` on a near-black canvas, and they are by a wide margin the loudest thing on screen — louder than the amber they exist not to compete with. The Forecast in dark mode reads as a chart of colorful projects with some warm patches, which inverts the intended hierarchy.
+
+Light mode holds the hierarchy better, because a saturated bar on white is less dominant than the same bar on `neutral-950`.
+
+**Proposed correction:** consider a per-theme treatment for `cat-n` fills — a reduced opacity or a darkened ramp in dark mode — so the categorical layer sits below the amber in both themes. This is the same shape of problem as F32 and probably has the same answer.
+
+### F34 — `cat-4` and `cat-8` do not read as cool
+
+`VPS-D001` states the categorical palette is "drawn exclusively from the cool half of the wheel, which is the system rule that keeps them from ever being mistaken for a cost signal," and that "everything warm is excluded to protect `attention`."
+
+`cat-4` is `#D946EF` and `cat-8` is `#EC4899`. Both are magenta-to-pink and read as warm on screen. `cat-4` in particular, rendered as a wide assignment bar, is the most aggressive color on the canvas.
+
+They will not be mistaken for amber specifically. But the stated rule is not what the palette does.
+
+**Proposed correction:** either replace the two with genuinely cool hues, or restate the rule as excluding the amber-to-red arc rather than the whole warm half.
+
+### F35 — Bar labels at `text-inverse` fail on mid-tone categorical fills
+
+`VPS-D002` specifies the assignment bar's label as "inside at `small` `text-inverse`." `text-inverse` is `neutral-0` in light and `neutral-950` in dark — that is, it flips with the theme while the `cat-n` fill beneath it does not.
+
+On `cat-7` (`#64748B`, slate) the result is white on mid-gray in light mode and near-black on mid-gray in dark mode. Both are marginal, and the dark case is the worse of the two — visible on screen on the Tandem Discovery bars.
+
+**Proposed correction:** the bar label color is chosen per categorical token against its own fill, not inherited from the theme. `VPS-A007`'s contrast gate will fail this on every rendered surface that draws a bar.
+
+### F36 — The amber saturates at the 180-day horizon
+
+`VRS-F005` added the 180-day horizon because "the hiring decisions this forecast is meant to inform have a lead time longer than ninety days."
+
+At 180 days almost nobody has confirmed assignments covering the back half of the window, so almost every row carries a large bench region and the screen is mostly amber. In the prototype's data, 15 of 15 people show bench time at 180 days against 13 of 15 at 90, and the total accumulated figure moves from £59,170 to £245,916.
+
+The number is arithmetically correct and operationally misleading. Being unassigned five months out is the normal state of a professional services firm, not £245,916 of unrecovered cost. A screen that is mostly amber has lost the thing amber is for, which is the concern `VPS-D001` raises about dilution — arriving here not from misuse but from a horizon change.
+
+**This is a look-at-it question.** Options include suppressing the cost figure beyond a confidence boundary, showing bench days without cost at the 180-day horizon, or accepting it because the user chose that horizon deliberately.
+
+---
+
+## FDN-11 and FDN-12 — what changed, and what the changes closed
+
+Both were token-layer changes only. No screen logic was touched beyond the two
+items explicitly in scope, F28 and F36.
+
+### FDN-11 — two faces
+
+Inter Variable replaces both Plus Jakarta Sans and Manrope. Geist Mono stays for
+figures. `VPS-D001` goes from three faces to two, and its typography section
+needs rewriting accordingly.
+
+**Loaded as a variable font, and it matters.** The scale now asks for weight 560
+at `micro` and 640 at `display` and `h1`. Verified in the browser as 560 and 640
+rather than rounded to 500 and 600, which is what a static build would have done
+silently.
+
+**The line-height re-derivation produced exactly one change, and that is the
+finding.** Inter's content box is 1.21em, against Manrope's 1.29em and Plus
+Jakarta Sans' 1.28em — Inter is the tighter face vertically despite the taller
+x-height, so every line height in the old scale already cleared it. The single
+exception was `display`, where 32/36 was 1.125 and had been sitting inside Plus
+Jakarta Sans' own content box too. It moves to 32/40.
+
+That is worth recording because the expectation going in was that a face swap
+would ripple through the vertical rhythm, and it did not. The real change was
+horizontal.
+
+**Tracking was re-derived from Inter's own dynamic-metrics curve,**
+`-0.0223 + 0.185 · e^(-0.1745 · size)`, which yields −0.022em at 32px, −0.020em
+at 24px and −0.017em at 20px, crossing zero at about 12px. Applied above 20px
+only, per the decision to tighten the display sizes and leave the body sizes
+alone. The old scale used a flat −0.01em at `h2` and above, which was roughly
+half of what Inter wants at display sizes.
+
+**One exception carried forward:** `micro` keeps +0.04em. That is `VPS-D001`'s
+uppercase treatment rather than a metric inherited from Manrope, and uppercase
+needs the tracking at 11px.
+
+### FDN-12 — the color weight, inverted
+
+The assignment bar's hue moved to a 2px `cat-n` left edge, its fill went quiet
+and opaque, and its label became `text-primary`. The bench region became a solid
+color chosen per theme.
+
+**Three candidates each, chosen by looking.** Switchers at the sidebar foot, and
+a side-by-side strip at the top of `/foundations`. Bench: `restrained`,
+`present`, `assertive`. Bar: `hairline` (no hue in the fill at all), `wash`,
+`tint`.
+
+**The mechanism that closed F31 was opacity, not color.** Both fills are now
+opaque — the bench region is a solid token, and the bar mixes `cat-n` with the
+surface via `color-mix` rather than layering an alpha. Verified: the bench region
+computes to `rgb(78, 58, 28)` in dark with no alpha channel, and the bar to an
+`oklab()` value with none. Nothing beneath either can show through, so the
+non-working-day striping is gone.
+
+### F34 survives, and should be recorded as surviving
+
+`cat-4` (`#D946EF`) and `cat-8` (`#EC4899`) are unchanged, so `VPS-D001`'s claim
+that the categorical palette is drawn "exclusively from the cool half of the
+wheel" is still not what the palette does.
+
+What changed is only the symptom. At a 12–30% mix behind a 2px edge, a magenta
+that was the most aggressive element on the canvas is now a pale lilac wash, and
+the practical risk of confusing it with a cost signal is largely gone.
+
+**The documentation defect is untouched.** Either the two tokens are replaced
+with genuinely cool hues, or the rule is restated as excluding the amber-to-red
+arc rather than the whole warm half. FDN-12 removed the pressure to decide; it
+did not decide.
+
+### F36 is half closed
+
+The cost figure now renders only for bench regions beginning within 45 days, and
+the header total says which window it counts. Verified at the 180-day horizon:
+regions beyond the boundary show `76d` and `80d` in quiet `mono` with no figure,
+and the header reads "£59,637 unrecovered in the next 45 days".
+
+**Two parts of the original finding are untouched.**
+
+**The magnitude is still unbounded.** The rule as specified gates *which* regions
+carry a figure, not *how much* of a region counts. Lena Petrova's assignment ends
+inside the boundary, so her gap begins inside it and is costed in full — about
+115 working days and £23,351 at the 180-day horizon. The workspace total also
+still grows with the horizon, from £46,016 at 90 days to £59,637 at 180, because
+regions that begin inside the boundary simply extend further as the window does.
+
+Bounding the magnitude means truncating a gap's cost at the 45-day line, which
+says something about that gap that is not true — the cost does not stop at day
+45. This is the genuine trade-off, and it is a founder decision rather than an
+implementation one.
+
+**The visual saturation is unchanged.** At 180 days most of the canvas is still
+amber, because the regions are still drawn; only their figures went away. F36 as
+scoped addressed the number, not the color. If the concern was that a
+mostly-amber screen has lost what amber is for, that concern still holds.
+
+### F37 — new, introduced by FDN-12
+
+A quiet bar's fill is an opaque mix against `bg-surface`. A row's backdrop is not
+always `bg-surface`: it is `bg-hover` on hover and `bg-selected` on selection.
+
+Measured in light mode: `--vt-bar-base` is `#ffffff` while a hovered row is
+`#f4f4f5` and a selected row is `#eef2ff`. So a bar on a hovered or selected row
+carries a fill mixed against the wrong backdrop and reads as slightly detached
+from the row it belongs to — most visible on the selected row, where the brand
+tint is furthest from the surface.
+
+This did not exist before FDN-12 because a fully saturated bar had no backdrop
+dependency. It is the cost of making the fill opaque, and opacity is what closed
+F31, so it is worth paying rather than reverting.
+
+**Proposed correction:** the mix base follows the row state rather than being
+fixed to `bg-surface` — which means `VPS-D002` has to say that a quiet fill
+composites against its own row, not against the canvas.
+
+---
+
+## FDN-15 and FDN-16 — what changed
+
+### FDN-16 — shell architecture
+
+One continuous `bg-canvas` across the window. The sidebar lost its surface and
+its right border and now sits directly on that canvas. The workspace is an inset
+panel — `radius-lg`, a 1px `border-default`, space-3 margin on all four sides —
+and the page header lives inside it. The contextual Panel moved inside the inset
+too, so it is clipped by the same rounded corners: it is part of the workspace
+rather than a third region floating beside it.
+
+The Timeline lost its own `raised` elevation as a direct consequence. A bordered
+canvas inside a bordered inset panel is the nested card `VPS-D002` forbids, and
+the workspace is now the raised surface.
+
+Segmented controls became pills, applied once on `ToggleGroup` so it reaches the
+horizon toggle, Owner/Manager, density, theme and the candidate switchers
+together. Buttons keep `radius-md` — the distinction is between a control you set
+and an action you take. **Note on scope:** the Filters and Today controls are
+`ghost` Buttons rather than segmented controls, so they kept `radius-md`. If
+those were meant to be the "filter chips", say so and they move.
+
+Comfortable is the default density. The mechanism is unchanged — still one data
+attribute on the root, still no component branching on it.
+
+### F37 is closed by construction, and verified
+
+Row hover and selection are now a border on the whole row rather than a
+background fill. Measured: the row's own background is `rgba(0, 0, 0, 0)`, the
+label column's is unconditionally `bg-surface`, and `--vt-bar-base` and
+`--vt-bg-surface` resolve to the same value. A quiet bar's opaque mix is
+therefore always mixing against what is actually behind it.
+
+**Selection had to move too, and that goes beyond what was asked.** Changing
+hover alone would have left `bg-selected` breaking the same bars on the selected
+row, so F37 would have survived. `VPS-D001` already assigns brand to "the current
+selection or focus", so a 1px `brand-500` border is the reading that follows from
+the existing rule rather than a new one.
+
+**One implementation note worth recording.** The border is an absolutely
+positioned overlay inside the row, not an `outline` on the row itself. The sticky
+label column paints its own background over anything the row draws beneath it,
+which would have broken the border exactly where the person column meets the
+timeline — the join the change exists to make visible.
+
+### FDN-15 — the bench region became a bar
+
+Same `radius-md` as an assignment bar, on the same plane, so a row reads as a
+sequence of periods rather than as bars floating in a tinted cell.
+
+**The amber is chosen per theme, not mixed.** `#F59E0B` (amber-500) in light,
+`#FBBF24` (amber-400) in dark. The step between them follows `VPS-D001`'s own
+pattern for its semantic hues — `attention` goes 600 to 500 between themes,
+because a near-black field needs more luminance to carry the same perceived
+weight — so the bench amber goes 500 to 400 for the same reason.
+
+Mixing against the surface is what produced tan in light and olive in dark. It
+was never going to produce amber, because the surface was in the mix.
+
+The figure sits on the amber at 9.26:1 in light and 11.92:1 in dark, so it is
+comfortably legible in both.
+
+**Two height variants, switchable at the sidebar foot.**
+
+| | Bench bar | Assignment bar | Row | Figure |
+|---|---|---|---|---|
+| `match` | 24px | 24px | 44px | `mono-medium`, 13/18/500 |
+| `tall` | 32px | 24px | 44px | `mono-lg`, 20/26/600 |
+
+`match` is the one that delivers the stated intent — one plane, one sequence of
+periods — but it costs the figure its size and leans entirely on weight. `tall`
+keeps `mono-lg` and stands 8px proud of the bars on either side of it.
+
+Neither overflows its bar. `mono-lg` does not fit inside 24px, which is why
+`match` drops to `mono-medium` rather than clipping.
+
+### F40 — new, introduced by FDN-15
+
+`mono-medium` is a twelfth type token. `VPS-D001` states eleven.
+
+It exists because the bench figure has to be heavier than an assignment bar's
+label by weight rather than hue, and at the `match` height there is no room to
+also be larger. It is `mono` at 500 against the label's Inter 400, and it follows
+`VPS-D001`'s existing `body` / `body-medium` naming exactly.
+
+`mono-lg` also moved from 500 to 600 so the figure is heavier than the label at
+the `tall` height too. Geist Mono is now loaded as a variable font, since the
+static pair of cuts did not include 600.
+
+**If `tall` wins, `mono-medium` can be deleted** and the scale returns to eleven.
+If `match` wins, `VPS-D001` gains a token.
+
+### F38 — new, and it undercuts the inset panel in light mode
+
+Light mode's `bg-canvas` (`neutral-50`) and `bg-surface` (`neutral-0`) are
+**1.04:1** apart. Dark mode's are 1.12:1 — nearly three times the separation.
+
+So in light mode the inset workspace panel is carried almost entirely by its 1px
+border, and the "one continuous background with a panel inset into it" reading
+that FDN-16 is built on barely happens. In dark it works.
+
+This is not a bug in FDN-16; it is a gap in `VPS-D001`'s light ramp that FDN-16
+is the first thing to depend on. **Proposed correction:** light `bg-canvas` moves
+from `neutral-50` to `neutral-100`, which takes the separation to roughly 1.10:1
+and matches what dark already does.
+
+### F39 — new, and possibly an overcorrection
+
+Non-working day columns went from `bg-subtle` to a dedicated
+`--vt-nonworking-fill`, because once the bench is an opaque bar the shading no
+longer has to be visible through a 12% tint.
+
+Both themes now sit at **1.07:1** against the surface, and on screen the columns
+are very close to invisible — in dark they read as absent rather than quiet. The
+brief was that the shading read as structure in dark mode, and it may have
+traveled past quiet.
+
+Neither value is expressible in `VPS-D001`'s ramp, which is another instance of
+F19. A middle value is probably right; this needs a look rather than a
+calculation.
+
+### F41 — new, and it needs a decision rather than a fix
+
+`VPS-D002`'s Table says rows carry no separators and that separation comes from
+"row hover and alignment alone", meaning `bg-hover`. FDN-16 changed the Timeline's
+row hover to a border. The two data surfaces in the product now express the same
+state two different ways.
+
+Only the Timeline was in scope, so the Table is untouched and still fills. The
+question is whether the border treatment is a Timeline affordance — justified
+because a Timeline row spans a frozen column and a scrolling track, which a
+Table row does not — or whether it is the new row hover everywhere and `VPS-D002`
+should say so.
+
+Worth noting that the reason F37 existed at all does not apply to a Table: a
+Table has no quiet opaque fills sitting inside its rows, so `bg-hover` breaks
+nothing there.
+
+---
+
+## FDN-17, FDN-18 and FDN-19
+
+### Settled, and their scaffolding deleted
+
+**Bench height is `match`.** The `tall` variant, its switcher, its token and the
+per-density override are gone. The bench bar and an assignment bar both measure
+24px at comfortable, verified.
+
+**Bar fill is candidate 3.** The `hairline` and `wash` candidates, the
+`data-bar` attribute and the `BarFill` union are gone; one settled token remains,
+raised per FDN-18.
+
+**F40 is settled at twelve tokens, and the code decided it rather than
+preference.** `mono` at 13/18/400 cannot become 500: it is load-bearing on the
+bench bar, where the day count is deliberately lighter than the cost figure
+beside it. That is FDN-15's "weight, not hue" distinction, and redefining `mono`
+would collapse the two into the same weight. `mono-medium` stays and `VPS-D001`'s
+type table carries it.
+
+Worth noting: `VPS-D001` never stated a count in prose — "eleven" was inferred
+from the table's length. Adding the row was the whole amendment.
+
+### FDN-18 — accent and weight
+
+**Brand is out of navigation and out of segmented controls.** Both now take a
+neutral `bg-active` with `text-primary`.
+
+`bg-active` is its own value rather than an alias of `bg-subtle`, and that is a
+consequence of F38: moving light `bg-canvas` to neutral-100 made it identical to
+`bg-subtle`, and the sidebar sits directly on the canvas, so an active nav item
+filled with `bg-subtle` was invisible. Caught on screen, not in review.
+
+**The assignment bars are raised** from 22%/30% to 34%/42%. Hannah Weiss's row —
+fully assigned, previously reading as empty in light mode — now reads as
+assigned.
+
+**F39 is closed at a middle value.** `#F5F5F6` light and `#232327` dark, roughly
+1.09:1 and 1.12:1 against the surface, between the `bg-subtle` that read as
+structure and the correction that read as absent.
+
+**The bench figure carries two variants**, and they are a pair rather than two
+choices. White on amber-500 is 2.15:1, and white only clears `VPS-D001`'s floor
+once the amber darkens to amber-700 — amber-600 fails at 3.19:1 — so the fill and
+the figure have to move together. Variant A is amber-500 with a near-black figure
+at 9.26:1; variant B is amber-700 with white at 5.05:1. Dark is identical in both.
+
+### F43 — new, and it came out of FDN-18's own audit
+
+Auditing every element for brand color found exactly three uses: the today line,
+its dot, and **the workspace mark in the sidebar**, which is a 20px `brand-600`
+square holding the workspace initial.
+
+That mark is not the today line, not a primary action and not a focus ring, so
+under FDN-18's enumeration it should be neutral. But it is plausibly a different
+thing from all three — a logo rather than a signal — and `VPS-D001`'s rule
+enumerates signals.
+
+Left as brand, flagged rather than decided. The audit also cannot see the row
+selection border, which is `brand-500` and only exists while a row is selected;
+it is the one surviving instance of `VPS-D001`'s "current selection or focus".
+
+### FDN-19 — panel, radius and the mask
+
+**The contextual panel is an inset within the inset**, sitting `1` inside the
+workspace on all four sides with a border on all four and `radius-lg`.
+
+**The concentric rule is now in `VPS-D001`**, along with `radius-xl` at 12px.
+Measured: the workspace is 12px radius at 12px margin, and the panel is 8px —
+`12 − 4`. The rule is scoped so it governs nesting rather than every pairing, or
+a Card inside a `6`-padded region would owe a negative radius.
+
+**The scroll-boundary mask works, and `VPS-D001` carries the exception.** At a
+400px scroll offset the track's computed mask is
+`linear-gradient(to right, transparent 0px, transparent 400px, black 424px, black 100%)`
+with `backdrop-filter: none`. The exception is written with three conditions —
+mask not fill, never `backdrop-filter`, scroll boundaries never surfaces — and an
+explicit statement that it is not general permission for gradients.
+
+One implementation note: the fade's two variables must be declared on `:root` and
+set on the scroll container. Declaring them inside the utility shadowed the
+inherited values and froze the mask at its resting state — which is how it was
+first built, and it silently did nothing.
+
+**The Tooltip is drawn from the system.** Radix-backed, `overlay` elevation,
+200ms delay, `small` text, 280px max. Zero native `title` attributes remain on
+the 30 assignment bars and 25 bench bars. Nav items and toolbar buttons carry it
+too, with the shortcut in `mono` `text-tertiary` alongside the label.
+
+Segmented controls now get a tooltip **only where there is a shortcut to
+document**. Nine of the twelve were repeating their own visible label, which is
+what `VPS-D002` means by a tooltip that contains the only copy of nothing.
+
+### F42 — new, and the panel question answered
+
+**Measured: the panel does not displace content.** The Timeline's scroll
+container is 966px wide at a 1280px viewport with the panel open and 966px with
+it closed. `absolute` positioning is doing its job, and `VPS-D003`'s 1280–1535px
+overlay rule is what is implemented.
+
+**But the observation behind the question stands.** The panel covers the right
+360px of a 966px canvas, so a bar whose left edge falls under it loses its label
+— occlusion rather than truncation, and specified rather than broken.
+
+The finding is that **neither of `VPS-D003`'s two behaviors is good here.**
+Displacing costs the Forecast a third of its width; overlaying hides the same
+third. On a screen whose horizontal space is time, "the panel is open" should not
+mean "a third of the forecast is unreadable", and `VPS-D003`'s table has no third
+option.
+
+A third behavior probably belongs to `VRS-F005` rather than `VPS-D003`, since it
+is specific to a canvas where horizontal position carries meaning: on selection,
+scroll the track so the selected row's live region sits left of the panel. Not
+built — it is a behavior change, not chrome.
+
+### FDN-17 — the summary band, and F8 closed
+
+Three figures, top right, money largest: `mono-lg` at 20px weight 600 for
+**£46,016** with "unrecovered · next 45 days", then **13 of 15** and **74%** at
+`mono`. Verified the money figure computes to `rgb(24, 24, 27)` — `text-primary`,
+not amber. Size carries the hierarchy; the hue stays exclusive to the timeline.
+
+The page header's subtitle is gone. It was stating the most important fact on the
+screen at 13px.
+
+**The legend is an info icon beside the band**, and its two full-width lines are
+returned to rows.
+
+**F8 is closed with a stated reason.** Two bands: `VPS-D004`'s page header is
+56px, and a 20px figure with a `micro` label beneath it plus a row of pill
+controls does not fit inside it alongside an `h1`. The arithmetic decided it.
+
+**Closed by FDN-9:** a Stat label is load-bearing text, so `Stat` uses
+`text-secondary` throughout. `text-tertiary` is reserved for nonessential
+metadata.
+
+---
+
+## FDN-20
+
+### Settled, and deleted
+
+The bench figure is the bright amber with a near-black figure. Variant B —
+amber-700 with white — is gone, along with its tokens, its switcher, its type and
+the `data-bench-text` attribute.
+
+### The band's hierarchy
+
+**£46,016** at `mono-lg` 20px/600, **13 of 15** and **74%** at `mono-md`
+16px/500. Verified in the browser. Money still leads by four pixels and a weight
+step; the other two are figures rather than captions.
+
+`mono-md` is a thirteenth type token on an existing size step — 16px is `h3`'s.
+`VPS-D001`'s table carries it.
+
+### F44 — new, and it is a naming problem rather than a visual one
+
+The mono family now reads `mono` / `mono-medium` / `mono-md` / `mono-lg`, where
+`-medium` denotes **weight** (matching `body-medium`) and `-md` and `-lg` denote
+**size**. One suffix convention, two meanings, in one family.
+
+Nothing renders wrong. It is a trap for whoever reads the scale next, and it
+belongs in FDN-21's pass rather than a rename mid-flight.
+
+### The segmented control, rebuilt
+
+A brand fill carried the active state on its own, and one neutral fill could not
+replace it. The control is now built the way a segmented control actually works:
+the track recesses to `--vt-segment-track` and the active segment sits on top at
+`--vt-segment-active`, with the label also changing weight and color. Three
+channels for what one used to carry.
+
+Those two remain their own values because a segmented control needs an explicit
+recessed track and elevated active segment in either theme. **FDN-9 closed F10**
+by separating the dark canvas, inset, control, active, and hover surface steps.
+
+### The categorical palette
+
+**The rule is restated in `VPS-D001` and F34 is closed as a documentation
+defect.** The exclusions are the warm arc, green and teal, and the brand's own
+hue band. Indigo 500 is at 239°; the retired `cat-2` was 258° and `cat-6` was
+271°, both inside it.
+
+**The consequence is now written down too, because it is not obvious.** After all
+three exclusions the cool arc supports roughly four distinguishable hue families
+— cyan 192°, sky 200°, blue 217°, fuchsia 293° — plus a hue-neutral slate. Eight
+tokens cannot come from hue alone, so every candidate spends lightness to reach
+eight. That is a consequence of the exclusions, not a shortage of options, and
+`VPS-D001` says so rather than leaving the next reader to rediscover it.
+
+**Categorical tokens are now per theme**, like the semantic hues, because the bar
+is an opaque mix — 34% against white, 42% against near-black — and one source
+value comes out pastel in one theme and saturated in the other.
+
+Three fields on `/foundations` at fifteen rows each, with real hash assignment
+from the real Project UUIDs and the amber bars included, since "does the amber
+still win" is half the test. `current`, `spread` (four hues, two lightness steps),
+`ladder` (two hues, three steps, one accent, one slate).
+
+**Two things to look for that the palettes cannot settle on their own.** In
+`spread` the pale cyan and pale blue sit close together at a 34% mix, so hue
+separation that is obvious at full strength may not survive the tint. In `ladder`
+the cyan-800 step carries a faint green cast in light mode, which is the boundary
+`success` is meant to own.
+
+### Off-days on demand
+
+`--vt-nonworking-rest` at 1.02:1 against the surface, coming up to
+`--vt-nonworking-fill` at 1.09:1 on row hover.
+
+**It reads as one gesture, and that is structural rather than lucky.** Both the
+shading and FDN-16's row border transition on `group-hover` from the same
+ancestor, both at `motion-fast` — verified as 0.12s and the same
+`cubic-bezier(0.2, 0, 0, 1)` on both. They cannot arrive at different times.
+
+Worth a look nonetheless: the rest-to-hover delta is small, and it may be too
+quiet to register as calendar detail appearing rather than as nothing happening.
+
+### An implementation note that produced wrong colors silently
+
+The hand-written `bar-cat-n` utilities referenced `var(--color-cat-n)`, the
+Tailwind theme alias. An `@theme inline` alias is substituted into Tailwind's own
+generated utilities and is **not** emitted as a custom property, so a
+hand-written utility referencing it resolves to nothing and `color-mix` falls
+back — which looked like a working bar in the wrong color. All three palette
+fields rendered identically and the CSS was valid.
+
+The utilities now reference `--vt-cat-n` directly. Caught by measuring computed
+values across the three fields, not by looking: the fields looked plausible.
+
+---
+
+## FDN-3 — the employee profile
+
+### What was built
+
+The profile header, the full tab structure (Overview, Skills, Documents,
+Activity) and enough per-person detail across all four to make the density
+real: roughly thirty fields on Overview alone once employment, reporting and
+schedule are counted together, plus skills with proficiency and verification,
+certifications, a document list and an activity feed, for all fifteen real
+employees. `Input` and `Tabs` are new in `packages/ui`, both per `VPS-D002`.
+
+A minimal `/people` list exists only to reach a profile — it is explicitly not
+`VRS-F002`'s own People directory, which is a full `VPS-D002` Table with
+filters and a Panel summary, and stays out of scope until its own pass.
+
+### Structural absence, verified rather than assumed
+
+`lib/profile.ts`'s `buildEmployeeProfile` adds the `compensation` key with a
+**conditional spread**, not a conditional value: `...(canSeeCompensation ? {
+compensation } : {})`. An unauthorized view-model has no `compensation` key
+at all, not a key holding `undefined`.
+
+Checked in the browser rather than by reading the code back: with the
+prototype's viewer toggle set to Team Member, the rendered page's HTML
+contains no "Compensation" heading, no salary figure, and no occurrence of
+the string "Tier 1" anywhere. The layout closes cleanly on toggle — the
+two-column Employment/Reporting grid simply ends where the Compensation
+Section would have started, with no gap and no rendered placeholder.
+
+### F45 — new
+
+`VRS-F002`'s Screens table lists "Content + Panel" for the Employee profile
+but the Layout and components section never says what the Panel would show —
+unlike the People directory, there is no list on this screen for a Panel to
+open a summary from. Built as Content-only; logged rather than resolved by
+inventing a use for the Panel.
+
+### F46 — new, and fixed
+
+`Tabs.Trigger`'s label was wrapped in `<Text variant="body-medium"
+as="span">`, which gave every tab an empty accessible name — `read_page`'s
+accessibility tree showed `tab [ref] type="button"` with no name at all,
+confirmed by a `find` query for the tab's own label returning no matches.
+The visible text rendered as a child `generic` node rather than contributing
+to the button's name. Fixed by rendering the label directly as the
+Trigger's child, with the same typography classes moved onto the Trigger
+itself — a diagnostic step taken while investigating a suspected click bug in
+the same component that turned out to be unrelated: stale cached element
+positions in one debugging pass, not a rendering fault. Worth recording
+because the same wrapping pattern appears nowhere else in this component set,
+and shouldn't be reintroduced.
+
+---
+
+## FDN-24 and FDN-25
+
+### FDN-24 — the profile is a form, not a record
+
+`VRS-F002`'s layout sentence and its own keyboard table couldn't both be
+true — a permanently-editable Input has nothing for `E` to open and nothing
+for `Escape` to close. The keyboard model won, for the reason the ticket
+gave: it's consistent with `VPS-D003` everywhere else, and thirty
+permanently bordered boxes on a screen with nothing being edited reads as a
+data-entry form.
+
+`EditableField` is new in the app (not `packages/ui` — this is `VRS-F002`'s
+own interaction, not a generic design-system component). Read state is
+plain text, no border, no box. `E` on the focused field, or a click, opens
+it as a real `Input`; blur or `Cmd+Enter` commits; `Escape` discards and
+reverts to the pre-edit value.
+
+**Verified, not assumed, and the verification found a tooling limit worth
+recording.** Escape-discards is confirmed two ways: a direct `keydown`
+listener shows `e.key` resolves to `"Escape"` correctly, and the field
+visibly reverts. Blur-commits is confirmed by typing a change and clicking
+elsewhere, watching the field close back to text carrying the new value.
+Cmd+Enter-commits uses the identical `onKeyDown` handler and could not be
+exercised through this session's browser-automation tool: its synthesized
+`"Return"`/`"Enter"` keydown carries an empty `e.key`, with or without the
+modifier, while every named key this build has relied on elsewhere —
+`Escape`, `j`, `k` — resolves correctly. That is a gap in the tool, not
+evidence about the code; it's recorded because a future session hitting the
+same wall shouldn't re-diagnose it as a component bug.
+
+### The affix contract, and the bug that motivated it
+
+Contracted hours and Billing rate previously rendered their unit suffix and
+the browser's native number-spinner in the same corner of the box, because
+`Input`'s suffix was positioned over the field rather than beside it.
+`VPS-D002` gains the contract: prefix and suffix are laid out as siblings
+of the actual `<input>` inside one shared bordered container, never
+positioned over it, and a numeric field carrying either suppresses the
+native spinner via a new `no-spinner` token utility.
+
+**Verified in the browser, not by reading the code back.** `getComputedStyle`
+queried against `::-webkit-inner-spin-button` directly returned misleading
+values (`appearance: auto`, `display: block`) — querying a vendor
+pseudo-element's computed style through this automation path isn't
+reliable, and is logged here so it isn't re-trusted next time. What
+settled it was a real screenshot at high relative zoom: `40` with no
+spinner arrows, `hrs/wk` sitting flush beside it, measured programmatically
+at a 0px gap between the two, meaning adjacent siblings rather than overlap.
+
+**F49 — new, found while building the contract.** `InputProps` declared its
+own `prefix?: ReactNode` alongside `Omit<InputHTMLAttributes<...>,
+"className">` — but `HTMLAttributes` already carries an RDFa `prefix?:
+string`, and the two intersected silently into a type any non-string
+`ReactNode` value would fail against. The fix is the same shape as
+`className`'s existing exclusion: `prefix` needed omitting from the native
+attributes too. Worth recording because it's a trap in React's own DOM
+typings, not this codebase's design, and it will bite the next component
+that names a prop `prefix`, `about`, `content`, `property`, `rel`,
+`resource`, `rev`, `typeof` or `vocab` — the RDFa set `HTMLAttributes`
+carries by default.
+
+**Audited.** `Input` is used in exactly one place — inside `EditableField`
+— so the audit `VPS-D002` calls for is complete by construction rather
+than by checking a list.
+
+### FDN-25 — People as a Table, tabs as pills
+
+**People.** Built as `VPS-D002`'s `Table`: sticky header, click-to-sort,
+eight columns (name, role, department, entity, type, status, reports-to,
+hours/week), pill filters for entity and employment type. Verified sorting
+by clicking the Name header and reading back an alphabetical list, and
+verified the entity filter narrows fifteen rows to the expected ten UK
+employees. Row click still opens the profile directly.
+
+**Deliberately not built:** checkbox row selection, keyboard row
+navigation, virtualization above 100 rows. `VPS-D002` specifies all three;
+no screen composing `Table` needs any of them yet, and building ahead of
+that need is the premature abstraction CLAUDE.md warns against. Logged
+here rather than silently absent.
+
+**F51, at Table scale, recorded rather than patched, exactly as asked.**
+The header row's `micro` `text-tertiary` computes to the same ~2.6:1 as
+`Stat`'s label under F9 — except a table's headers are the *entire* text a
+column carries, not one label beside a bigger number. Left exactly as
+`VPS-D002` specifies; FDN-9 owns the correction.
+
+**Tabs became pills.** Same track, same active-fill, same weight change as
+`ToggleGroup` — `VPS-D002` now states the two as one treatment rather than
+describing an underline separately. The active state is computed from the
+known `value` rather than read off Radix's own `data-state`, matching
+`ToggleGroup`'s fix from FDN-23 before this component needed it: the
+moment a Tab trigger is ever wrapped in `Tooltip`, `data-state` stops being
+exclusively its own, and the new composed-primitives rule in `VPS-D002`
+(below) is exactly the situation that would create.
+
+### The composed-primitives rule
+
+`VPS-D002` now states plainly what FDN-23 found by debugging it: wrapping
+one primitive's trigger around another's own styled element merges the
+wrapper's DOM attributes onto the child, and where both write the same
+attribute for their own state, the wrapper's silently wins. The rule going
+forward — a component derives its visual state from a prop it already
+holds, never from an attribute a second primitive might also be writing —
+is now written down instead of left to be rediscovered per component.
+
+---
+
+## FDN-26 and FDN-27
+
+### FDN-26 — the reflow had two independent causes, not one
+
+The read state and the Input it becomes didn't occupy the same box, and
+measuring in the browser (`getBoundingClientRect` on `Reporting & schedule`
+and `Department`, before/after opening Job title) found the shift was two
+separate bugs stacked on top of each other, not the single horizontal one
+the ticket described.
+
+**Horizontal — 13px.** `EditableField`'s read div used `px-3 -mx-3`, a
+pad-in/negative-margin-out pair that nets to a 0px inset so the value text
+sits flush with its label. `Input`'s box is a real 1px border with the
+`<input>` itself carrying `pl-3`, an inset of `1 + 12 = 13px`. Fixed by
+replacing `-mx-3` with a matching `border border-transparent` on the read
+div — same padding, same border width, box model now identical, only the
+paint (transparent vs. `border-border-default`) changes on transition.
+
+**Vertical — 4px, and not where it looked.** Every field's label row grew
+4px taller in edit mode, which is what actually pushed `Department` and
+`Reporting & schedule` down. Traced to `Input.tsx`: it wrapped its label
+`Text` in a native `<label>` element — `<label><Text variant="label">…`.
+`EditableField`'s read state renders that same `Text` as a direct child of
+a `flex` container, which blockifies it (a flex item is always blockified,
+whatever tag it is) and lets its own `text-label` line-height (16px) govern
+its box. Nested one level inside the `<label>`, the `Text` span is no
+longer the flex item — the `<label>` is — so the span stays genuinely
+`display: inline`, and the line box that actually renders defers to the
+label's own (unstyled, ambient) font metrics, 20px, rather than the 16px
+`text-label` sets. Fixed in `Input.tsx` by making the label itself the flex
+item — `<Text as="label" htmlFor={inputId} variant="label">` — rather than
+nesting a `Text` inside a separate `<label>` wrapper. `Text` gained an
+`htmlFor` prop for this. No component wraps `Input`'s label this way
+elsewhere, so this was the only call site.
+
+**Verified by measurement, not by looking, per the ticket.** Zero delta on
+both reference points, opening Job title, Contracted hours (suffixed) and
+Frequency (Compensation section), in both Comfortable and Compact density.
+Before/after screenshots at the same scroll position confirm it visually
+too — see the round's report.
+
+### FDN-27 — the toggle was not broken
+
+Read the mechanism end to end — `AppearanceControls` → `setTheme` → the
+`AppearanceProvider` context → the `useEffect` that writes `data-theme` on
+`<html>` → `packages/tokens/src/runtime.css`'s `:root[data-theme="dark"]`
+block — and every name matches across every hop. No stray `.dark` class, no
+`dark:` Tailwind variant anywhere, no `localStorage` (confirmed clean
+against CLAUDE.md's rule too). Clicking Light in a fresh session flips
+`data-theme` to `"light"` and the whole UI repaints correctly, immediately,
+every time.
+
+**The false report traces to how the previous session drove the browser,
+not to the code.** Screenshot-pixel coordinates were being passed to a
+click action without being scaled to the real viewport — an 800×450
+screenshot clicked against a 1280×720 page, roughly a 1.6× mismatch. A
+click aimed at the Light toggle by screenshot coordinates lands on empty
+space instead, the toggle never actually gets clicked, `data-theme` never
+changes, and every screenshot that session took was dark — which is
+indistinguishable from "the toggle does nothing" unless you check the DOM
+attribute directly rather than trusting that the click landed.
+
+**Reproduced twice this round, as a check on the theory rather than an
+assumption.** A raw screenshot-coordinate click against this exact build
+failed to open a field for editing on the first attempt today, for the
+identical reason. Clicking by element reference, or by coordinates read
+back from a fresh same-resolution screenshot, worked every time. This is
+the same category of tooling caveat as F46 and the `Cmd+Enter` note below —
+worth recording so the next session doesn't re-diagnose working code as
+broken because of how it was driven.
+
+**`Cmd+Enter` re-attempted, per the round's ask.** Still reproduces exactly
+as FDN-24 logged it: a `keydown` listener on the field sees `key: ""`,
+`code: ""`, `metaKey: false` for the synthesized Return regardless of the
+modifier requested. Confirmed still a tooling gap, not new evidence about
+the component — Escape and Blur remain the two paths verified directly.
+
+No code changed for FDN-27. Shell (Bench Forecast), People and the profile
+are now captured in light mode — see the round's report.
+
+---
+
+## FDN-28 through FDN-30 — profile containment, numeric voice, scalable People controls
+
+### FDN-28 — contained profile fields and explicit numeric stepping
+
+The rendered profile proved FDN-24's borderless paint too sparse even though
+its edit-on-demand interaction was sound. Every fact now occupies a restrained
+`bg-subtle` field surface with a hairline `border-default`; editable fields
+strengthen that paint on hover and focus, while read-only facts retain the same
+contained treatment without looking disabled. This supersedes only FDN-24's
+paint decision. Its read/edit model and FDN-26's identical box-model contract
+remain in force across every profile field.
+
+Numeric fields now use explicit up/down controls rather than relying on a
+browser-owned spinner. The controls are siblings of the value and unit, reserve
+their own space, and work in both read and edit states. Arrow Up/Down changes
+the value from the keyboard; the controls enforce the same step, minimum and
+maximum rules. This keeps the affordance visible without allowing it to overlap
+`hrs/wk` or `GBP/day`.
+
+**Measured in the browser.** Opening Job title produced a 0px delta for the
+field's x, y, width and height, the fixed `Reporting & schedule` reference
+point, and the profile scroll position in both Comfortable (32px field) and
+Compact (28px field) density. Compact was deliberately tested at `scrollTop:
+220`, so the result also covers focus behavior away from the top of the page.
+The evidence pair was captured at the same scroll position in each density.
+Light and dark field paint was read from the applied theme and captured.
+
+**Keyboard verification improved this round.** A real browser `Meta+Enter`
+keypress committed both a text edit and a stepped numeric edit, closing the
+input and leaving the committed read value. The earlier empty-`e.key` tooling
+limitation did not reproduce through the browser's DOM keypress path. Arrow Up
+also stepped the focused numeric editor before that commit.
+
+### FDN-29 — Inter tabular numerals replace the technical monospace voice
+
+Geist Mono made operational figures feel like code. Product figures now use
+Inter with `font-variant-numeric: tabular-nums`; monospace is reserved for
+genuine code or shortcut notation. The type tokens and shared `Text` variant
+were renamed from `mono*` semantics to `numeric*`, and the prototype call sites
+were audited so the old product-figure treatment cannot linger behind an old
+class name.
+
+**Verified from rendered output.** The Bench Forecast exposes 25 tabular-number
+nodes; the sampled `£46,016` resolves to `Inter, "Inter Fallback", ui-sans-serif,
+system-ui, sans-serif` with `font-variant-numeric: tabular-nums`. The People
+hours column and profile numeric fields resolve to the same family and variant.
+This supersedes the Geist Mono portion of FDN-11, not its scale, tracking or
+weight decisions.
+
+### FDN-30 — People filters scale, and Add person has a clear home
+
+Entity and employment-type pills did not scale beyond the two-entity fixture.
+Both are now shared multi-select popovers. Entity includes search; both show
+checkbox choices, selected counts and a clear action. Selection is a union
+inside each filter and an intersection between filters. The filter bar stays
+compact as entities and employment types grow instead of expanding laterally.
+
+`+ Add person` is the People page's primary header action. It opens a real
+shared dialog with the minimum prototype fields, required-field validation and
+an in-session success alert; it deliberately does not persist or simulate a
+backend. Browser verification covered the full 15-row directory, a Karachi
+search yielding one entity choice, the PK entity narrowing to five people,
+PK plus Full time and Part time narrowing to four, and a successful modal
+submission.
+
+The shared component work introduces `MultiSelect`, `Select` and `Dialog` in
+`packages/ui`. Two token-owned values were added for the work: the filter-list
+height and semantic scrim color. No feature-local component or arbitrary visual
+value was introduced.
+
+---
+
+## FDN-4 — Timesheet speed-run prototype
+
+The weekly entry surface now follows `VRS-F010` rather than behaving like a
+generic seven-day spreadsheet. Its columns come from the resolved calendar
+fixture, its rows represent two active assignments, a staffed pitch and the
+standing Non-billable category, and the current fixture deliberately uses
+Karachi's six-day week. That made the special case visible in the product:
+typing `fd` in Saturday's cell resolves to 4 hours while `fd` and `hd` on an
+eight-hour day resolve to 8 and 4 respectively. No screen code inspects a
+weekday or computes a weekend.
+
+The natural parser accepts decimals, `fd`, `hd` and one-operation addition or
+subtraction. `Tab` and `Shift+Tab` move row-major, arrows move geometrically,
+`Cmd+D` copies the current cell's resolved value into the remaining cells on
+that row, and brackets change week. The `Cmd+D` behavior is the founder-approved
+correction recorded on FDN-9: the old specification phrase “from the cell
+above” is incompatible with “fill the rest of the row.”
+
+**The speed run used real browser keypresses.** Two billable rows were filled to
+44 hours, including the four-hour Saturday, and submitted with `Cmd+Enter` in
+1.395 seconds. Submission changed every entry surface to read-only, exposed the
+success Badge and Unlock action, and the confirmation check was fully transparent
+at 1,000ms. `Cmd+D`, `Tab`, arrows, brackets and `Cmd+Enter` were each exercised
+through the same native browser keypress path. The direct `Cmd+Enter` limitation
+from the earlier profile round did not recur.
+
+The 24-hour boundary was also driven through the browser: 20 hours and 5 hours
+on Monday produced “Mon would total 25h. A day cannot exceed 24h.” and disabled
+submission. Light/Compact and Dark/Comfortable were read from the applied root
+attributes, not inferred from the controls. Compact rows measured 33px including
+their 1px separator, matching the 32px cell requirement.
+
+Responsive verification used the real page inside temporary 900px and 700px
+browsing contexts. At 900px the 200px work label and exactly three 128px day
+columns are visible, with the full 968px six-day grid horizontally scrollable.
+At 700px the Table is absent and the six-day Toggle Group plus four vertical
+Cards with explicit numeric steppers are present. Submit week is absent at the
+start of Monday and appears on the final working day as specified. The day strip
+is directly interactive. The available browser driver synthesizes mouse drag
+rather than touch, so swipe is verified through the touch-handler path rather
+than a genuine touch event.
+
+This screen exposed one pre-existing shared-component omission: `Button` had no
+disabled treatment even though `VPS-D002` specifies 40% opacity and a
+not-allowed cursor without changing variant color. The shared component now
+implements that contract, so the disabled Submit week state reads correctly on
+every surface.
+
+---
+
+## FDN-31 — deliberate Timeline scroll boundaries
+
+The clipped `GUST` month label and unfinished right edge had the same underlying
+cause: the Timeline knew the horizontal offset needed by its frozen person
+column, but its mask applied only to row tracks and only at the left boundary.
+The month band was therefore hard-clipped by an opaque sibling, while content
+at the other edge simply ran out of the viewport.
+
+The shared Timeline now publishes both visible track boundaries as runtime
+geometry. The existing 24px alpha mask applies to the month header and every
+row, fading only where more content exists. At the actual right end its fade
+resolves to 0px, so the termination is crisp instead of implying another page.
+The active month label is shifted just inside the clear part of the left mask;
+if a full label cannot fit before the next month, it is suppressed. A partial
+label can no longer become a different word.
+
+**Measured across the full matrix.** At 30, 90 and 180 days in Light and Dark,
+Comfortable and Compact, the first visible month was `August`, no visible month
+crossed the frozen-column boundary, the header mask was applied, and the right
+continuation fade measured 24px. At the true right edge the fade measured 0px.
+The frozen person column's x position and width were identical before and after
+horizontal scrolling, and the Today action returned the 90-day view from its
+maximum offset to the today position with the line and dot still rendered.
+
+Screenshots cover both edges at 90 days in Light/Comfortable and at 180 days in
+Dark/Compact under `artifacts/prototype-findings/fdn-31-*`.
+
+---
+
+## FDN-5 — one global, grouped command palette
+
+The command palette now sits at shell level, so there is one search and command
+surface for every prototype route. Its mock local index contains commands,
+people, skill matches, projects, clients, documents and policies in the fixed
+order from `VPS-F002`. An empty query gives a quiet prompt; a query with no
+matches gives only the specified honest message. Skill-match delegation is
+deliberately skill-shaped: searching a person's name or job title does not fan
+out every skill they hold.
+
+The shared component owns the 640px overlay surface, 15% viewport anchor,
+grouped rows and keyboard selection. The app owns transient mock results and
+navigation. `Enter` navigates when a prototype destination exists;
+`Cmd+Enter` opens the selected result in the contextual Panel without leaving
+the current screen. Unsupported document and policy destinations open in the
+Panel rather than pretending those out-of-scope screens exist.
+
+**Verified in the browser.** At a 1280×720 viewport the surface measured 640px
+wide at y=108px, exactly the specified 15% anchor, and the search input held
+focus as soon as the dialog rendered. Five Arrow Down keypresses crossed from
+People into Skill matches; a real `Cmd+Enter` opened the selected skill match
+in the Panel, and a real `Enter` navigated from the Timesheets command to
+`/timesheets`. `figma` returned only three ranked skill-match rows, while a
+known-absent query returned the exact no-matches copy and zero options. The
+dark selected row resolves to the theme's `bg-selected` token and remains
+unambiguous; evidence is `fdn-5-command-palette-dark.png`.
+
+The in-app browser reserves `Cmd+K` before the page receives it, so that one
+chord could not be driven directly in this automation pass. The same global
+shortcut listener was exercised through `Cmd+\\`, which collapsed the sidebar
+from 240px to 48px, and the palette's remaining keyboard path was driven
+directly. This is a browser-driver limitation, not a substitute for founder
+signoff on the actual chord in Chrome.
+
+---
+
+## FDN-6 — the manager queue is one age-ordered list, not grouped stacks
+
+The Manager Dashboard composes seven obligations from seven notional source
+features, plus the four Team at a Glance cards from `VRS-F049`. The queue is
+strictly age-ordered across source and type: 19, 12, 8, 6, 4, 2 and 1 days.
+Category counts for Approvals, Alerts and Requests sit above it, and each row
+carries its originating feature as a neutral Badge. That preserves the useful
+part of the specification's “grouped sections” requirement without violating
+its stronger rule that an old leave request must outrank a new alert. Separate
+physical section stacks cannot satisfy both rules at once; the specification
+should describe category summaries around one flat age-ordered queue.
+
+No feature component was invented. The screen composes PageHeader, ToggleGroup,
+Card, Table, Badge, InlineAlert, Button, Stat and Text. The only shared-library
+extension is controlled row selection on Table, because this is the first
+screen that needs the `J`/`K` behavior `VPS-D002` already assigns to Table. The
+escalated strain signal uses the existing attention InlineAlert inside its row;
+successful actions use the success variant above the still-current queue.
+
+**Verified in the browser.** The rendered waiting values were read in strict
+descending order. A real `J` keypress moved selection from the 19-day item to
+the 12-day item across source types; Enter removed that selected item, reduced
+the queue to six and selected the next-oldest row. After reload, `E` handled the
+selected informational alert through a real keypress. The Clear fixture state
+showed *Nothing waiting on you.* while Team at a Glance remained rendered.
+At 900px the overview was collapsed behind its toggle and opened on demand.
+Light/Comfortable and Dark/Compact were read from the root attributes and
+captured as `fdn-6-manager-queue-light.png` and
+`fdn-6-manager-queue-dark-compact.png`.
+
+The first five-column table pass was too compressed at the 1280px boundary:
+the alert became a column of single words. Source and subject now sit with the
+item they qualify, leaving Waiting, Needs Your Action and Action as the three
+load-bearing columns. This is a content-hierarchy correction, not a new
+component or breakpoint exception.
+
+---
+
+## FDN-33 — one information-preserving density and one workspace menu
+
+The two-density model is retired. Browser zoom and product density solve
+different technical problems, but the prototype demonstrated that Vulto did
+not need two product modes: Compact removed the person's designation while
+Comfortable spent four to eight pixels per repeated row without adding a fact.
+The settled geometry takes the denser values — 32px table rows, 36px timeline
+rows, 28px controls and `2` cell padding — and adjusts the timeline typography
+so name, designation and a human-readable employee code remain present.
+No `data-density` attribute or user preference remains.
+
+The sidebar now has one workspace trigger at the top. Its popover contains the
+current account and role, Auto/Light/Dark theme, role-gated Settings, workspace
+switching and sign out. The footer contains sync status only. This removes the
+competing top workspace and bottom account menus and makes the company name the
+single route into workspace administration.
+
+The page header is 48px with an `h2` title. This retains title hierarchy while
+bringing repeated shell chrome closer to the scale of the rest of the product.
+
+Assignment bars are neutral `bg-subtle` with a token border. A 6px
+categorical dot assigned from the Project UUID carries project identity;
+bench time remains the only large colored field. The employee column now shows
+`EMP-nnn` beside the name and the full designation beneath it. This is a
+workspace-scoped operational code, not the graph UUID. Ghosts use
+`GHOST-nnn` under the same contract.
+
+**Verified from rendered output.** The document had no density attribute; the
+page header measured 48px, a table row 32px, a forecast row 36px and a control
+28px. In Light, an assignment resolved to `rgb(244, 244, 245)` with a
+categorical dot while bench resolved to `rgb(245, 158, 11)`. In Dark, the
+assignment resolved to `rgb(39, 39, 42)` while bench resolved to
+`rgb(251, 191, 36)`. People, Profile and Timesheets were checked with the same
+shared shell, and no Compact or Comfortable control remained.
+Evidence is `artifacts/prototype-findings/fdn-33-bench-light.png`,
+`fdn-33-bench-dark.png` and `fdn-33-workspace-menu-light.png`.
+
+---
+
+## FDN-34 — second visual calibration: restraint is a system property
+
+The first density pass retained too much visual weight in the light canvas,
+typography, and Bench chrome. The settled product is now quieter and more
+compact without removing another fact: Inter is the one product face, tabular
+figures retain stable numeric scanning, page titles use `h2` at 18/24, and
+supporting interface copy steps down to 13/18 or below. Text Buttons are pills
+and icon-only Buttons are circular; fields, cards, panels, and dialogs retain
+their structural radii.
+
+Light canvas and interaction tokens are softened toward an almost-white,
+Linear-like neutral field. Assignment bars use `bg-raised` so they are white
+with a restrained border in light mode, while their project identity remains a
+6px categorical dot. Bench amber is intentionally muted at rest and returns to
+the signature `attention` weight only when the row is being inspected.
+
+The timeline no longer presents a single workspace calendar as if it applied to
+every person. It has no resting off-day shading; a row's materialized working
+calendar appears only with row hover. Daily labels remain at 30 days, but the
+90-day view labels seven-day ranges and the 180-day view labels fortnight
+anchors. Hovering a bench region replaces month labels with its exact start/end
+range and highlights the matching sticky header cells. The persistent grid is
+therefore reduced to its actual jobs: month orientation, the frozen identity
+boundary, and the Today line.
+
+**Verified from rendered output.** Light resolves `bg-canvas` to `#f7f7f8`,
+bench rest to `#f7cf83`, the 48px page header and 36px timeline rows remain
+stable, and no resting off-day cell remains in the timeline. On real pointer
+hover a bench region resolved to the stronger amber, its 23 matching day cells
+were highlighted in the sticky header, and the header stated the exact range.
+The same timeline structure was then checked after switching themes.
+
+---
+
+## Closed by founder decision during this build
+
+**F1 — Sidebar navigation.** Five destinations, two groups: **Work** (Bench Forecast `G B`, People `G P`, Timesheets `G T`) and **Waiting** (Inbox `G I`, Manager Dashboard `G D`). Goes into `VPS-D004`. See F23 for the question this raised.
+
+**F4 — "Counting up."** `VRS-F005`'s formula is authoritative: whole working days. `VPS-D001`'s "quietly counting up" prose is what changes, since the formula produces a figure that steps at a working-day boundary rather than accruing through the day.
+
+**F16 — Language convention.** `VPS-000` Standing Rule 6's label is a leftover from the conversion pass and is wrong; its examples are correct. American English throughout, in prose, comments and identifiers.
+
+**F17 — App directory.** `apps/roster-web` is correct. `VPS-A001`'s two-language-boundary table says `apps/web` and is the defect.
+
+---
+
+## Settled prototype decisions
+
+Each decision was validated through the prototype and reconciled into its owning specification.
+
+| Finding | Settled decision |
+|---|---|
+| F2 | Minimum day width per horizon — 32px at 30 days, 20px at 90, 12px at 180 — and the region scrolls rather than compressing the window. Where a bench region is narrower than its cost figure the figure is suppressed, not truncated; below 44px the day count is dropped too |
+| F3 | Cost figure is `text-primary` |
+| F5 | Restricted bench region drops the figure and keeps the day count. No border, no lock icon, no "Visible to" copy — `VPS-D004`'s Restricted treatment does not apply to a region that is itself fully visible |
+| F6 | No figure at all for an unauthorized viewer. The `billing_rate_default` fallback is deleted |
+| F7 | Timeline rows carry no separator, matching Table |
+| F8 | Two bands: the 48px page header, then a summary row beneath it |
+| F21 | `primary` hover is `brand-700` |
+| F22 | Badge neutral tone is `bg-active` with `text-secondary` |
+| F24 | Page header title and subtitle are inline on a shared baseline |
+| F26 | 14-day lead-in before today |
+| F27 | Annual working days counted from the working-day index |
+| F28 | Superseded by FDN-33: name, employee code and role remain present at every desktop timeline width |
+| F29 | Bench region is 20px, matching Assignment bars; the 48px row uses space for person-level separation |
+| F30 | Utilization is covered working days weighted by `billable_percentage` over total working days |
+| F36 | Cost horizon of 45 days. A region beginning inside it is costed in full; beyond it, days and no figure. The header total states the window |
+| F42 | Opening the Panel scrolls the selected row's live region clear of it, at the overlay breakpoints only |
+| F45 | The employee profile is Content-only; a Panel over a detail surface would be the detail of a detail |
+| F53 | Amber is brand and cost both. The ration counts signals, not pixels; the cost field is not a signal |
+| FDN-11 | `display` moves to 32/40; tracking −0.022 / −0.02 / −0.015em above 20px, zero below; weights 640 / 600 / 560 where the variable font is used |
+| FDN-12 | Settled by FDN-33: neutral assignment fill with one categorical project dot |
+| F20 | Superseded by FDN-33: one information-preserving density, no preference |
+| FDN-15 | Superseded in FDN-36: bench rest is `#FFCCA1` light / `#D69A4A` dark, strengthening on hover; height matches the 20px assignment bar; `numeric-medium` at 500 |
+| FDN-16 | Workspace inset at space-3 with `radius-lg`; row hover `border-strong`, selection `brand-500`; segmented controls at `radius-full`, Buttons unchanged |
+
+---
+
+## Notes on the build, not findings
+
+- **The working-day rule holds.** `apps/roster-web/src/fixtures/calendar.ts` is the only file that inspects a date's weekday, and it exists as the stand-in for `VRS-F004`'s materialization worker. Every consumer reads the index. Two divergent entity calendars — London Monday–Friday, Karachi Monday–Friday plus a four-hour Saturday — so a weekend assumption anywhere is visible on screen.
+- **Off-token values do not compile.** Tailwind's default color, spacing, radius, type, shadow, blur and breakpoint scales are cleared before `VPS-D001`'s are declared. Verified: `bg-red-500`, `p-7`, `shadow-lg`, `blur-sm`, `rounded-xl`, `gap-9`, `font-bold` and `max-w-md` all produce no CSS; the token equivalents all do.
+- **Tooltip, Input, DatePicker, PhoneInput, CurrencySelect, Tabs, Table, Select, MultiSelect, Dialog and Command Palette are built.** `Table` implements sticky header, click-to-sort, hover and controlled selection paint. The Manager queue composes `useShortcuts` with that controlled state for J/K movement; checkbox row selection and virtualization above 100 rows remain unbuilt because no prototype screen needs either. **Chart, Toast, Progress, Textarea, Radio, Switch, Breadcrumb and Pagination are still not built.** Checkbox behavior exists inside `MultiSelect`, but it is not yet exposed as a standalone library component. None of the remaining components is needed by a screen built so far; each arrives with the screen that composes it.
+- **The good-news empty state is implemented but unreachable** with the current fixture, since somebody always has bench time in this data.
+- **The font-weight scale is cleared the same way color and spacing are, and one consumer was silently wrong for it.** `--font-weight-*: initial` in `theme.css` means only weight tokens explicitly declared compile; `font-medium` had no matching declaration until this was found, so `Stat`'s delta text had been rendering at the base 400 weight the entire time despite the class. Fixed narrowly — `--font-weight-medium` and `--font-weight-semibold` restored, not the full Tailwind scale — but only this one instance was checked. Worth a repo-wide grep for other `font-medium`/`font-semibold`/`font-bold` usages before trusting any of them.
+
+## FDN-35 — surface hierarchy and contextual controls
+
+The workspace inset now uses `bg-subtle`, preserving a visible distinction from the canvas while letting white raised assignment bars, filters and the contextual panel read as operational objects rather than faint outlines. The workspace retains `radius-xl`; it is deliberately not made pill-shaped simply because controls inside it are pills.
+
+The Bench Forecast now has 48px rows, no persistent header or frozen-column dividers, a rounded identity hover target, a two-row adaptive header at every horizon, and an 8px Today marker whose date is a brand pill. Bench ranges highlight as one rounded header pill. Resting bench amber is pastel in light and materially quieter than hover in dark. The panel overlays above sticky timeline paint at narrow widths and uses overlay elevation; it includes the selected person's avatar and operational code.
+
+People now composes the sparse `Table` variant: white filter pills, active filter dot-plus-clear treatment, a searchable visible-column chooser, code column, an active header strip, and divider-free 40px rows. The behavior belongs in `MultiSelect` and `Table`, not only in the People page.
+
+## FDN-36 — Linear-calibrated Bench hierarchy, timeline metadata, and contextual detail
+
+The light shell now uses `#EFEFF0` for its canvas and sidebar and `#F9F9FA` for the workspace inset. This makes white raised controls and assignment bars legible without reintroducing container borders. The Bench Forecast title remains the local hierarchy peak; the horizon, filters, Today control, viewer selector, and all three summary figures sit below it.
+
+Timeline rows are 48px while assignment and bench bars remain 20px. Every horizon has a two-row date header: months plus dates at 30 days, and months plus grouped ranges at 90 and 180 days. Bench hover ranges are vertically centered pills; the brand Today marker is paired with a quieter neutral reference date, so the timeline can retain schedule context without persistent grids.
+
+Resting bench is `#FFCCA1` in light mode and strengthens on row hover. Timeline tooltips use structured Project/Company/Allocation/Ends or Bench time/Unrecovered/Range rows with semantic icons and overlay elevation. Bars in the first two people rows open their tooltips below, preserving the date header. Assignment labels remain neutral but become sticky at the frozen edge and naturally clip under the existing scroll-boundary fade.
+
+The forecast panel now presents an XL avatar beside its three-line identity block, places the employee code below role, uses a circular close target, labels Next rolloff explicitly, and renders workspace-stable colored skill pills. The People status treatment remains a semantic pill.
+
+## FDN-37 — dark surface calibration and pointer-led timeline inspection
+
+The dark theme now has the same three-level surface hierarchy as the settled light theme instead of collapsing inset, controls, bars, and borders onto one value. Canvas and sidebar resolve to `#09090A`, the workspace inset to `#111112`, and raised controls, assignment bars, table headers, and the contextual panel to `#1A1A1B`. Hover and border tokens sit above those values at `#222223` and `#2A2A2B`, which keeps the People filters, rounded table header, page-header boundary, contextual panel, and neutral assignment bars visibly distinct without adding new containers.
+
+Amber is now the product brand ramp. The primary action and leading unrecovered figure use that ramp with white action text; Today remains the fixed brand line and date pill. The three summary figures use the same 15px tabular size and weight so the title remains the local hierarchy peak, while money leads by hue rather than by an unrelated size jump.
+
+The timeline's secondary date marker is no longer a fixed fixture date. A neutral inspection line and date pill follow the pointer across the timeline, exposing exact dates contextually while Today remains fixed. Grouped date labels are explicitly non-wrapping, preserving exactly two header rows at 30, 90, and 180 days.
+
+Assignment names and categorical dots, plus bench figures, now move with a horizontally clipped bar. Their offset is clamped between the bar's own leading and trailing edges, so content never escapes its bar and disappears naturally as the bar leaves the viewport. Rich bar tooltips wrap their values and use collision-aware sticky placement with a 12px viewport boundary.
+
+The sidebar is 200px with `label` navigation text, returning 40px to the workspace without removing identity. Icon-only Buttons use explicit square geometry, making the forecast filter a true circle. Badge shape is now an explicit component property, so People statuses and skill tags remain pills without relying on conflicting radius utilities.
+
+## FDN-38 — final cross-surface polish and Manager cohort semantics
+
+The last cross-surface pass removes the remaining gaps between the settled tokens and their rendered behavior. Page-header accessories align to the title center; the workspace trigger aligns to the workspace inset; the Forecast summary band has a deliberate boundary and breathing room before its two-row date header; Tooltip padding is shared and collision-aware; Panel clipping is owned by its rounded outer surface rather than by the scrolling body inside it.
+
+The People directory keeps both filters and its rounded header sticky, uses 52px divider-free rows, and carries pill-shaped status and employment metadata in both themes. Profile read fields now use the same raised surface as their editing control. The shared library adds a typed DatePicker with month/year selection and calendar navigation, a country-aware PhoneInput, and a CurrencySelect that states symbol plus ISO code without misusing national flags. A real browser `Meta+Enter` keypress committed an edited profile field.
+
+The manager queue is one neutral, age-ordered list with a rounded header, top-aligned waiting dates, pastel source pills, employee avatar and code where applicable, colored category icons, and circular counts. Row separation comes from space and hover, not dividers. Its utilization comparison is visibly weighted as supporting emphasis.
+
+The Bench Forecast's prototype viewer control is explicitly labeled as prototype furniture. Owner remains workspace-wide. Manager represents Omar Farooq and is restricted to the six employees whose profile resolves to him as manager; rows, utilization, bench count and every other aggregate are recomputed from those six rather than filtered after aggregation. Compensation remains structurally absent in that role. The founder accepted categorical collisions because project hue is redundant with a visible dot and label rather than being the sole identifier.
+
+**Verified from rendered output.** Dark Forecast, People, Profile and Manager Dashboard were inspected in the live browser. The pointer produced a neutral date pill at the hovered day, the 90-day ranges stayed on one row, Manager removed non-reports and changed the summary to `5 of 6`, the custom calendar exposed month/year selectors and previous/next controls, and the phone editor exposed `🇬🇧 +44` beside a national-number placeholder. A real `Meta+Enter` committed `Principal Designer` and returned the field to read state. TypeScript checks pass across all three workspaces.
+
+**Measured from the rendered page.** Dark-mode root tokens read back as `#09090A`, `#111112`, and `#1A1A1B`; assignment bars resolved to `rgb(26, 26, 27)` against the `rgb(17, 17, 18)` inset. People status and filter controls measured `9999px` radii, the filter Button measured 24 × 24px, the header divider resolved to `rgb(42, 42, 43)`, and the Add person action rendered amber with white text. The pointer produced a neutral date pill and line at the hovered day. The 30-, 90-, and 180-day label rows each measured 20px with no overflow. After a 720px horizontal scroll, assignment and bench labels were still inside their own bar bounds; a right-edge rich tooltip remained 12px inside the viewport.
+
+## FDN-39 — role-aware product navigation and prototype freeze
+
+The feature register is not a navigation model. The final Owner sidebar is therefore limited to twelve durable work areas in five intent groups: **Home** and **Inbox**; **Bench Forecast** and **Hiring**; **People**, **Development** and **People Ops**; **Timesheets**, **Leave** and **Expenses**; **Payroll** and **Reports**. [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]] owns the map, the role matrix and the placement test.
+
+Person-scoped facts remain in the employee profile, event-driven work starts in Inbox, administrative behavior belongs in Workspace Settings, and rare lookup remains behind `Cmd/Ctrl + K`. Manager Bench Forecast is retained with direct-report scope; Team Members do not receive the destination. The prototype renders the complete Owner map and uses explicit *Not built yet* pages for destinations outside prototype scope, so information architecture can be reviewed without implying those features exist.
+
+This closes the visual prototype as a design-system validation artifact. Further polishing without production feature states would optimize synthetic fixtures. The next project should begin the implementation sequence in [[VPS-002_Implementation_Handoff|VPS-002]], with one design-system consistency audit during MVP integration and a final release-hardening pass after the MVP surfaces exist.
+
+American English is the sole repository convention. The governing rule in [[VPS-000_Documentation_Standard|VPS-000]] now says so explicitly, and the final consolidation removed remaining British spellings from product specifications and implementation prose. VPS-000 records the one legacy specification filename that requires a deliberate inbound-link migration before it can be renamed safely.
+
+---
+
+## FDN-21 / FDN-7 — the consolidated pass, and the last three findings
+
+The consolidated specification pass ran once, as sequenced. It closed every finding that the
+build had left provisional, reconciled `VPS-D001` through `VPS-D004` with the rendered system,
+renamed the `mono` type family to `numeric` across specifications and code together, and removed
+the remaining British spellings. A closure audit against the owning documents then found three
+findings still genuinely open, two of them known and one of them new.
+
+### F53 — new, and introduced by making amber the brand
+
+`VPS-D001` contained two statements that could not both be true once FDN-37 settled amber as the
+product brand.
+
+The thesis section said amber is *"the product brand and the signature color for cost and
+idleness."* The Brand section said brand *"marks exactly three things"* and is *"never a
+background fill for a large region,"* and that *"a screen showing brand color in four places has
+three too many."* Every bench region on the Bench Forecast is a large amber field. Read literally,
+the design system forbade its own signature surface.
+
+This was coherent while brand was indigo and amber was `attention`. Collapsing the two hues left
+the rationing paragraph describing a product that no longer existed, and nobody reconciled it —
+the same shape of defect as F43, which was closed by stating an exemption rather than by changing
+a value.
+
+**Resolved by counting signals rather than pixels.** `VPS-D001` now separates the two jobs
+explicitly. Brand marks exactly three *signals* — the primary action, the current selection or
+focus, and the today line — where a signal is something that *points*. The cost field is not a
+signal: the bench region and the unrecovered figure do not point at something else on the screen,
+they are the thing the product exists to surface, and the governing rule at the top of the
+document requires them to carry the hue. The document also now records why one hue does both
+jobs, which is that an indigo brand beside an amber bench rendered as two products sharing a
+screen. An audit of amber now sorts every instance into a signal, the cost field, the workspace
+mark, or a defect.
+
+### F45 — closed by deciding the profile has no Panel
+
+`VRS-F002`'s Screens table listed the Employee profile as *Content + Panel* and never said what
+the Panel would show. FDN-3 built it Content-only and recorded that nothing was missing.
+
+`VRS-F002` now says Content, and says why: a Panel is the contextual detail of a record selected
+in a collection, and the profile is already that detail surface, so a Panel over it would be the
+detail of a detail. The Skills, Documents and Activity tabs do hold collections, but a Panel
+opened from one would be a third level of nesting inside a screen already reached through the
+directory's own Panel. Document preview belongs to `VRS-F022`, and it is a Modal.
+
+### F42 — closed by giving `VRS-F005` a third Panel behavior
+
+`VPS-D003` offers two Panel behaviors: displace at `≥ 1536px`, overlay at the 1280–1535px design
+center. Measured, the Panel covers the right 360px of an approximately 966px track. Displacing
+costs the Forecast a third of its width; overlaying hides a third of the timeline.
+
+**Overlaying is normally fine because what a Panel covers is more of the same list.** On the
+Forecast it is not: the horizontal axis is time, so the covered region is a different span of
+time, and a bar whose left edge falls beneath the Panel loses the label naming its project.
+
+`VRS-F005` therefore declares a third behavior scoped to itself — on selection the track scrolls
+so the selected employee's current or next live region sits clear of the Panel's leading edge,
+as one `motion-base` movement, at the overlay breakpoints only. Today stays visible where both
+fit; where they do not, the live region wins, because looking at what that person is doing is why
+the row was selected. `VPS-D003` now states the general principle that permits this — a feature
+whose horizontal position carries meaning may declare one scoped reveal behavior in its own
+document — so the exception is a rule with a condition rather than a one-off.
+
+### What the closeout did not change
+
+The eighteen issues sitting In Review are implementation increments awaiting founder acceptance.
+They are not closed here: approval is not inferred from implementation, per the project's own
+standing rule.
+
+---
+
+## FDN-44 round 3 — the polish pass that found five token collisions
+
+A founder-directed pass over the Bench Forecast, the shell, the Manager Dashboard and the People
+directory. Most of the requested items were geometry, but five of them turned out to share one
+root cause worth stating on its own, because it will recur.
+
+### The pattern: a state token standing in for a structural one
+
+`bg-active` was doing five jobs. It was the sidebar's active item, the Table's column-header
+strip, the Table's selected row, the Timeline's date pill and Badge's neutral tone. It works
+against `bg-canvas` and against `bg-subtle`, so four of those five looked correct and nobody had
+reason to look again.
+
+On a Card it was fatal. Dark `bg-active` and dark `bg-surface` were both `#1A1A1B` — the same
+value — so on the Manager Dashboard the column header and the selected row were painted in
+exactly the color of the card beneath them. The selected row is the cursor that queue's entire
+J/K keyboard model depends on, and in dark mode it was invisible. Worse, `bg-hover` (`#222223`)
+sat *above* `bg-active`, so hovering any other row out-shouted the selected one.
+
+Three corrections, all of them the same correction:
+
+* **`bg-column-header`, new.** A column header is a structural surface and needs a value that
+  clears every surface a table can be placed on, not one borrowed from a state token that
+  happens to work in one location.
+* **`bg-active` raised to `#2A2A2E` in dark.** Selection is the strongest resting state a row
+  has, and now measures that way in both themes.
+* **`bg-canvas-hover`, new.** `bg-hover` is calibrated against `bg-surface`. The sidebar has no
+  surface — FDN-16 put it on the canvas — and F38 then moved light `bg-canvas` to `#EFEFF0`, one
+  digit from `bg-hover`. Sidebar hover was invisible in light and inverted in dark. The new token
+  sits between canvas and active in both themes.
+
+**The rule this yields, and it is general: a hover state must never out-weigh the active state it
+previews, and a token calibrated against one surface cannot be reused on another without being
+re-measured there.** Both halves of that were being violated, in opposite directions, in the two
+themes.
+
+### Badge could not be one alpha percentage
+
+`subtle` was the semantic hue at 10% with `text-primary`, for both themes. Over white that is a
+wash reading as no color at all; `neutral` resolved to `bg-active` and inherited the collision
+above. This is F32's bench finding in a second place — one percentage over white and over
+near-black is not one decision. The tint is now stated per theme with the ink derived from the
+same hue by `color-mix`, so no new color enters the system and a tag reads as a status rather
+than as a gray chip that happens to be tinted.
+
+### The today/cursor marker, rebuilt against a measurement
+
+Round 2 placed the date pill at `-bottom-2`, eight pixels outside the track header's border box,
+and the track header carries `scroll-boundary-fade`. **A mask brings `mask-clip: border-box` with
+it**, so everything painted outside that box is masked away: the pill lost its bottom eight
+pixels, and the header's own `pb-2` then left an eight-pixel gap before the line resumed on row
+one. Round 2 verified the pill was flush at 184px and it was — flush with a boundary that was
+being clipped away.
+
+The rule that replaces it: the marker never leaves the header's border box, and the header has no
+bottom padding, so the header's bottom edge *is* the first row's top edge. The stem runs from the
+pill's top edge to that boundary and the pill paints over it, so nothing shows above the pill and
+nothing interrupts the line below. The pill is centered in the date row rather than flush to its
+bottom, which is what lets it nest inside the bench range pill.
+
+The cursor pill also now takes the pointer's raw pixel position, exactly as its line does. Round 2
+had deliberately snapped the pill to column centers while the line tracked continuously, on the
+reasoning that the pill names a discrete day. It does — but only its *label* is a fact about the
+day. Its position is a fact about the pointer, and splitting the two made one object visibly come
+apart. Only the label snaps now.
+
+### Smaller corrections, each with a cause worth keeping
+
+* **An unsortable column header is not a disabled button, it is not a button.** Every header
+  rendered as one, `disabled` where the column had no sort — and VPS-D002's own base rule puts
+  `:disabled` at 40% opacity. Status and other unsortable columns were drawn at 40% of the weight
+  of the columns beside them. It read as a type-contrast failure and was a control state leaking
+  onto a label.
+* **A `<tr>` accepts `border-radius` and does nothing with it.** The background is painted by the
+  cells, so a row's apparent corners are its first and last cell's. Row fills moved to the cells;
+  the directory moved to `border-separate border-spacing-0`, which tiles identically and lets a
+  radius clip.
+* **`label` renders a span, and an inline span takes the root's 20px line box**, not the 14px the
+  token specifies. Six stray pixels between the workspace name and its jurisdiction that no token
+  asked for. Timeline's row label already had `block`; the sidebar did not.
+* **Avatar initials.** VPS-D002's 20/24/32/40 was written before initials were rendered. Two
+  uppercase glyphs at the only token that fits a 20px circle span ~14px, and `micro`'s +0.04em
+  uppercase tracking spent part of the remaining clearance on a *trailing* space, pushing the pair
+  off-center into the edge. Now 24/28/32/40, set in `label`, which has no tracking to decenter it.
+* **Non-working-day shading, third attempt.** FDN-44 round 2 called a lighter value the bug and
+  set `#141415` to be "genuinely darker" — but it measured against `bg-raised` (`#1A1A1B`) and the
+  Timeline sits on `bg-subtle` (`#111112`). It was never darker. Chasing darker is not available:
+  matching light's 1.15:1 against `#111112` needs a negative luminance. In a near-black theme the
+  light metaphor inverts — an inert column is marked by a wash, not a shade. The real constraint
+  is that the wash must stay *below* the bars, and it does. Drawn as runs now, so a Saturday and a
+  Sunday round as one period rather than two cells with a seam.
+* **The overlay shadow's light recipe** raised alpha as blur grew — 0.04 at 4px, 0.12 at 48px —
+  the inverse of how occlusion behaves, and most of what makes a shadow read as cheap. Contact
+  layer darkest and tightest, wider layers at lower alpha pulled in by negative spread, tinted
+  neutral-950 rather than pure black because this ramp is zinc.
+* **Date labels ungrouped at 90 and 180 days.** The ranges existed because with no way to ask
+  about a specific day, a label had to describe the span it stood for. The pointer marker answers
+  that directly now, so the range was restating the interaction in twice the width.
+* **Drag state must be a ref, not React state.** A drop can arrive in the same tick as its
+  dragstart, and state written in `dragstart` is not readable from the `drop` closure until React
+  re-renders — so the drop reads `undefined` and silently does nothing. State remains only for the
+  visual affordance, which is the one thing a render needs to know.
+
+### New in the library
+
+Column order is now a first-class setting on the People directory, editable by two gestures onto
+one piece of state: dragging a row in the Columns popover, or dragging a header in the table.
+`MultiSelect` gained `onReorder` (suppressed while a search narrows the list, because dropping one
+visible row onto another says nothing about the rows the query is hiding) with `Alt+Arrow` as its
+keyboard path; `Table` gained `onReorderColumns` and a `pinned` column flag, because a directory
+whose name column can be pushed into the middle has stopped being a directory.
+
+**Verified from rendered output, both themes.** The today pill measures 154–174 with its stem
+154–176 and row one's line beginning at 176, all three at center x 739 in one color; the cursor
+pill, its stem and its row line measured a single shared center under real pointer movement, in
+`#3F3F42` throughout. The control row measures 12px above and below. Sidebar active and hover both
+span 188px with 12px clearance each side, hover `#E8E8EB` against a `#EFEFF0` canvas and
+subordinate to active's `#E6E6E9`. Selected-row cells measured contiguous at 0px gaps with 6px on
+the outer corners only. Dark Manager Dashboard read card `#1A1A1B`, selection `#2A2A2E`, header
+strip `#242427`. Header drag moved Role into Entity's slot and the Columns popover reflected it;
+a popover drag moved Hours per week to first and the table header followed. `pnpm typecheck` and
+the production `pnpm build` both pass.
+
+### Deliberately not done
+
+`VPS-D001`'s brand section still describes the pre-FDN-37 rationing rule, and now also predates
+the token additions above. The specification amendment remains deferred to one consolidated pass
+at the end of this round, per the project's own standing rule — not piecemeal while the founder is
+still directing changes. The tokens added here (`bg-column-header`, `bg-canvas-hover`, the tag
+tint and ink set) and the corrected avatar scale all belong in that pass.
+
+---
+
+## FDN-41 — Home had three names, and only one of its variants existed
+
+**Found by opening the rendered app as an Owner.** The sidebar said Home, the route said `/dashboard`, and the page title said "Manager Dashboard" — three names for one destination, and the title named a role the viewer did not hold.
+
+The naming was the symptom. `VPS-D004` describes Home as *"the action queue for Managers, and the relevant operational overview for administrative roles"* — **two compositions, not one list filtered differently** — and only the Manager one had been built. Renaming the title alone would have left an Owner on a manager's screen with a more honest label on it.
+
+### What the two variants actually differ in
+
+| Role | Home leads with |
+|---|---|
+| Manager | The action queue. A manager's morning is a list of things waiting on them |
+| Owner and administrative roles | The firm's figures. An owner's first question is how the business stands |
+
+Putting the queue first for every role is what made the administrative Home read as a manager's screen regardless of what it was called. The Owner variant now opens on *Firm at a Glance* — utilization, bench exposure, unrecovered cost and headcount — with the workspace-wide queue beneath it. The Manager variant is unchanged in shape: queue leading, *Team at a Glance* supporting it from the side.
+
+Route is `/home`. `/` remains the Bench Forecast, as FDN-39 settled; only `/dashboard` was renamed, so the twelve-destination map and its `G` bindings are untouched.
+
+### Every figure is counted, and counted once
+
+Three of the glance figures were literals. *Team at a Glance* announced "9 reports" beside a cohort of six; utilization read a fixed 74% whichever cohort was selected; skill coverage read "7 / 9 roles". All three now count from the viewer's own cohort.
+
+**Skill coverage is the one worth recording as a decision.** `VRS-F014` owns what makes a skill critical and the prototype's fixtures carry no such ranking — only a `verified` flag. Rather than keep a literal or invent a criticality field, the figure counts people holding at least one verified skill and **relabels itself to say exactly that**. A figure naming a narrower fact than its label claims is the failure this screen exists to prevent.
+
+**The Owner's figures are read from the Bench Forecast's own derivation rather than recomputed here**, so the two surfaces cannot state different numbers for the same fact. Rendered, both report 74%, 13 of 15, and £46,016 — not because they agree, but because there is one derivation.
+
+Bench exposure is deliberately absent from the *Manager* glance: a manager reads their cohort's bench on the Bench Forecast, which FDN-38 already scopes to direct reports. It appears in the Owner overview because an owner has no other summary of it on that screen.
+
+### A queue is scoped by who it is about
+
+The fixture carries a subject and no assignee, so the only honest rule available is that a manager's queue holds obligations about the people they manage — the same scoping the Bench Forecast uses. Rendered, that takes the queue from seven items to two, and recomputes its category counts with it.
+
+**Team Member self-service remains unbuilt.** `VPS-D004` names it and that is enough; it is a real surface with its own content and does not belong in a naming correction.
+
+## FDN-42 — the placeholder is not an empty state, and could not be
+
+FDN-42 asked the seven unbuilt destinations to compose `VPS-D004`'s Empty treatment. **They deliberately do not, and the reason is the issue's own acceptance criterion.**
+
+`VPS-D004` defines Empty as *"the query succeeded and the answer is none"* — it is what a built feature renders on a day it holds no rows. Using it for an unbuilt destination would make that destination look like a working feature with nothing in it today, which FDN-42 states must never happen. Empty is also specified as body text with *"no illustration, no icon, no centered box"*, so composing it would not have addressed the actual complaint either: that 58% of the navigation rendered as an unstyled paragraph.
+
+What this needed was a state `VPS-D004` does not have, **because it is not a product state at all** — it says something about the prototype rather than about the data.
+
+The treatment is not invented. This design system already has a visual language for *a placeholder standing where something real will be*: the dashed treatment, used by `VRS-F007`'s Ghost Resources on the Bench Forecast, by dashed Avatar and by dashed Badge. A dashed panel is that same statement at the scale of a screen. It runs the full content width on purpose — a dashed outline around the whole region says the area is reserved, which a small card in the corner would not — with the copy inside kept to a reading measure and left-aligned, borrowing the house style Empty uses even though this is not Empty.
+
+Each destination keeps the copy it already had naming what it will own, led by a `micro` "Not in this prototype" marker, in the same treatment the Bench Forecast uses to label its prototype viewer control.
+
+## FDN-43 — the scrollbar was the operating system's
+
+The signature surface rendered 2308px of track in an 1182px viewport with `scrollbar-width: auto`, putting a piece of chrome whose color, width and radius come from the platform directly across the bottom of the one screen whose entire premise is that an off-token value fails to compile.
+
+**No new color enters the system.** The thumb is `border-strong` — a scrollbar is a hairline affordance, the same weight as the rules beside it — resolving to `text-tertiary` on hover, the same promotion every other quiet control makes when pointed at. Both are *references* to the existing tokens rather than copies, so the scrollbar follows the theme without being declared twice; verified as `#D4D4D8`/`#A1A1AA` in light and `#3F3F42`/`#71717A` in dark from one declaration. The track is transparent, because a filled track would draw the permanent band across the Bench Forecast that the native scrollbar was reported for.
+
+The 8px size is a **structural dimension delegating to `VPS-D002`** under the rule FDN-21 added, not an addition to `VPS-D001`'s space set. It happens to equal space-2, but it is the size of a piece of chrome, in the same category as the sidebar's width — the F19 distinction, applied.
+
+**Both engines, and that is the point rather than a detail.** Gecko reads `scrollbar-width` and `scrollbar-color`; Blink and WebKit read the `::-webkit-scrollbar` pseudo-elements. Styling one and not the other looks correct only on the machine it was written on. `thin` is Gecko's only expressible narrow width — it takes no length — so the two agree in intent rather than to the pixel. That is a platform limit, recorded rather than worked around.
+
+Applied as a utility to the surfaces this design system owns — Timeline, Sidebar, Panel, MultiSelect, command palette, Content and the timesheet grid — never as a global reset, which would also restyle anything embedded later that has its own opinion.
+
+**Verification gap, recorded honestly.** Only one engine was reachable: the in-app browser is Chromium. The Gecko path is verified at the CSS level — `scrollbar-width` computes to `thin` and `scrollbar-color` to the token pair, which is exactly what Gecko reads — but it has not been seen rendered in Firefox. That check remains open.
+
+### Verified from rendered output, both themes
+
+Owner Home reports 74%, 13 of 15 and £46,016, matching the Bench Forecast exactly. Switching to Manager recomputes to 76% of 6 reports, 5 of 6 with bench time, "6 reports", and takes the queue from seven items to two with category counts of 1 / 1 / 0. The seven placeholders render one shared dashed treatment. The Timeline's scrollbar computes `thin` with a `border-strong` thumb and transparent track in both themes. `pnpm typecheck`, the production `pnpm build` and `git diff --check` all pass; the build emits `/home` and no `/dashboard`.
+
+---
+
+## FDN-73 — the round that found a test proving nothing
+
+Founder-directed polish following FDN-41/42/43. Three of its items are worth recording as findings rather than as changes.
+
+### Home's third variant, derived rather than specified
+
+`VPS-D004` names Team Member self-service; no feature document claims it, and FDN-41 scoped it out. The founder's instruction was to reason about it rather than wait for a specification.
+
+**The Member variant is not a smaller Manager view.** It is not a queue — a team member's queue is almost always empty, and a screen built around an empty list says nothing. It is not an overview — the figures an owner reads are none of their business. It is their own record: what they are on, what they are contracted for, when they next come free, and the few things actually waiting on them.
+
+Manager and Member are deliberately **the same person**. Omar Farooq manages six people and is managed by one, which is the ordinary case in a firm this size. Using one identity for both variants makes the distinction the screen is actually testing visible: not who you are, but which of your two relationships to the workspace Home is answering.
+
+A member's cohort is **themselves** — the existing cohort rule at its smallest rather than a special case, so every figure still goes through one path. Compensation is structurally absent rather than hidden: `buildForecast` is called with `canSeeCompensation: false`, verified by asserting no currency symbol appears anywhere in the rendered view.
+
+### A test that cannot fail for the right reason is not evidence
+
+Column reordering was reported broken. It had three independent causes, any one sufficient:
+
+* **Only the grip carried `draggable`.** Grabbing the row — what anyone actually does — did nothing at all, silently.
+* **Native drag is unreliable inside a Radix portal**, which manages `pointer-events` on the document to implement dismissal.
+* **It could not be verified.** Synthetic input does not open a native drag session.
+
+The third is the finding. The previous round recorded this feature as *verified* on the strength of a check that dispatched `DragEvent` objects directly at the handlers — which exercised the handlers and told us nothing about whether a person could perform the gesture. **The check passed for reasons unrelated to the thing it claimed to establish.** Rebuilt on pointer events, which the browser delivers identically whether they originate from a hand or a script, so the same check now means something.
+
+The gesture is one shared `useReorder` hook across `MultiSelect` and `Table`. The whole row is the drag surface and the grip states that it is; a 4px threshold keeps a press a click so checkboxes still toggle. Drop indicators are **insertion lines in the gap, not a tinted target row** — the gesture asks *between which two*, and the gap is where that answer belongs. They are absolutely positioned so they occupy no width: an indicator that takes space reflows every column to its right at the exact moment you are aiming at one of them.
+
+### Amber that appears by default stops meaning anything
+
+The timesheet footer read `Billable target 44h · Logged 0h · Remaining 44h` in one sentence, colored `attention` whenever anything was outstanding. So an untouched Monday — where nothing has happened and nothing is wrong — rendered in the color this product reserves for cost and for things needing a person's attention.
+
+Three pills now, and only one carries a color. Target and Logged are facts and stay neutral. Remaining has three states: **neutral** before the week has started, because there is nothing to report; **attention** when work is underway and behind; **success** when met, which it says in words as well as in hue.
+
+This generalizes: *a semantic color that is present in the resting state is not a signal.* Worth checking the rest of the product against.
+
+### Smaller corrections
+
+* **The timesheet's today column** was a `border-t` on the header cell alone which, beside the column rule the cell already had, read as two unrelated strokes meeting at a corner rather than as a marked column. A column cannot practically be outlined on four sides in a collapsed table whose height changes with its rows, so it is filled instead: a stronger tint on the header where the date is named, a faint wash down the body. New `bg-today` / `bg-today-header`, mixed from `text-brand` so nothing new is declared. It is the *same signal* as the Bench Forecast's today line, so it stays inside VPS-D001's brand ration rather than adding a fourth use.
+* **Timesheet rows to 52px.** Two stacked facts in a 32px row is 30px of type in 32px of space. Every other row in this product carrying two stacked facts is already 52px — the People directory's, the Bench Forecast's. This is the same row.
+* **Keyboard focus now carries the hover treatment.** The row tint and the cell fill were pointer-only, on the one grid whose acceptance criterion is a keyboard speed run. `focus-within:` and `focus:` rather than tracked state, so it covers every route to a cell rather than the ones we remembered.
+* **The Timeline's scrollbar moved into the gutter** — `-mb-2 pb-2`. A horizontal scrollbar paints at the bottom of its container's padding box, so it was landing on the last row. 8px rather than 16 so it fills the strip exactly, flush beneath the grid; at 16px it cleared the rows but drifted to the far side of the gap, reading as attached to the inset edge rather than to the grid it scrolls.
+* **People's filters default to every option selected.** An empty selection and a full one filter identically, but the popover is where a user finds out which is which, and opening it to a column of empty checkboxes above a table showing every row states the opposite of what is true.
+
+---
+
+# FDN-71 — the consolidated amendment, and the close of this log
+
+**This is what the project was for.** Its own description: *"The deliverable of this project is a corrected VPS-D001 through VPS-D004. The Roster screens built here are the instrument, not the output. If this project ends with polished screens and no changes to the design documents, it has failed."*
+
+Every round since FDN-37 deferred its amendment under the standing rule — *amend once at the end, not piecemeal while the founder is still directing changes*. The founder closed the last round; this is that end.
+
+## What changed in the documents
+
+### `VPS-D001` — the largest correction, and the one the prototype most earned
+
+**The Brand section was wrong in its premise, not its details.** It specified amber as the brand and argued that in a product whose subject is money, the brand hue and the money hue being identical was *the thesis rather than a collision*. The argument was coherent and the result was not: rendered, `border-focus` and the bench fill resolved to the **identical value** in dark mode, so the ring marking where you were typing and the field marking unrecovered cost were the same color on the same screen.
+
+Brand is now its own orange at ~30° with amber reserved for cost at 38–45°. The ration still counts signals rather than pixels, but it no longer needs a clause exempting the cost field, because cost is no longer brand.
+
+**The contrast exception is now stated where the rule is stated.** White on `#FF8000` is 2.52:1, below this document's own floor. It was measured, flagged with the numbers, and accepted by the founder in favor of one consistent orange. It previously lived only in a code comment and a Linear issue — so the document stated a rule the product knowingly broke, without saying so, which is worse than either choice made openly.
+
+**Two rules were added that the prototype proved rather than assumed:**
+
+1. *A hover state must never out-weigh the active state it previews.* Any canvas/hover/active triple must be monotonically orderable in both themes. Dark had it inverted.
+2. *A token calibrated against one surface cannot be reused on another without being re-measured there.* Its corollary: **a state token may not stand in for a structural surface.** That is why `bg-canvas-hover` and `bg-column-header` exist as their own names.
+
+A third was added to the Semantic section: **a semantic color present in the resting state is not a signal.** Any surface applying one must be able to state the condition under which it does not.
+
+The surface-token table gained the six tokens that existed only in code, and Elevation and Scrollbar sections were added.
+
+### `VPS-D002`
+Badge's per-theme tint with hue-derived ink; the Avatar scale at 24/28/32/40 with initials in `label` and the general rule about tracking decentering a centered box; Table's `bg-column-header` strip and `text-primary` header, the 52px two-fact row, the cells-carry-the-fill rule, and column order as a setting edited by two gestures onto one state.
+
+### `VPS-D003`
+`Alt+Arrow` as the keyboard path for every reorder; drag-to-reorder specified as pointer events rather than the native API, with the three reasons; the insertion-line indicator; and **whatever marks the pointer's position must also mark the keyboard's.**
+
+### `VPS-D004`
+Home's role variants (added during FDN-41), and **Empty is a statement about data and only ever that** — a feature not built, not licensed, or not permitted is not empty.
+
+### `VPS-002`
+A fourth kind of specification defect, alongside the three it already listed: **an instruction that is internally consistent, followable, and produces the wrong result on screen.** Where building reveals that, the implementation stands and the specification is corrected. Two worked examples. Explicitly not a licence to disagree with a decision because you would have made a different one.
+
+## What changed in the code
+
+Dead scaffolding the token file's own comments said should have been deleted: the two rejected categorical palettes and their type union, the bench candidate block. Every `PROVISIONAL` and `draft` marker was either settled or removed — F2, F26, F30 and F36 have been in the settled table for some time while the code still described them as open. The `/foundations` proof sheet was corrected: it pointed at candidates that no longer existed and stated the superseded `text-secondary` header rule.
+
+## What is carried forward, and why
+
+* **Firefox was never reached.** The scrollbar's Gecko path is verified at the CSS level — the standard properties compute to the token pair, which is exactly what Gecko reads — but has not been seen rendered. Recorded on FDN-43 rather than closed.
+* **`CLAUDE.md` and `AGENTS.md` remain byte-identical duplicates**, both stating the prototype phase. Correctly deferred: the phase has not changed, and they are updated together when implementation begins. The duplication is a standing drift risk to resolve at that point.
+* **Team Member self-service has a Home variant and no feature document.** `VPS-D004` names the surface; nothing specifies it. Built from reasoning rather than from a document, and flagged so the eventual owner knows it was.
+* **Inbox remains outside prototype scope**, deliberately, and its sidebar destination is navigation furniture rather than an unfinished screen.
+
+**Every other finding in this log is applied.** The instrument did its job: eleven of the corrections above exist because something was rendered and looked wrong, and could not have been reached by reading the documents against each other.

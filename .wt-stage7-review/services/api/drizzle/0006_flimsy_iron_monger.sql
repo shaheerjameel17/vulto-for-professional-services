@@ -1,0 +1,2 @@
+ALTER TABLE "device_trust_event" DROP CONSTRAINT "device_trust_event_type_check";--> statement-breakpoint
+ALTER TABLE "device_trust_event" ADD CONSTRAINT "device_trust_event_type_check" CHECK ("device_trust_event"."event_type" in ('registered', 'activity-refreshed', 'revoked-explicit', 'revoked-membership', 'retired-by-user', 'stale-flagged', 're-approved'));

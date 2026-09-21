@@ -1,0 +1,9 @@
+{
+  "description": "Error: relay rejects a Hello whose offered version range does not include 1",
+  "message": {
+    "type": "error",
+    "error_kind": "unsupported_version",
+    "detail": "server implements protocol version 1 only"
+  },
+  "encoded_hex": "010700010000002973657276657220696d706c656d656e74732070726f746f636f6c2076657273696f6e2031206f6e6c79"
+}

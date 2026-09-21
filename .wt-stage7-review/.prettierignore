@@ -1,0 +1,26 @@
+node_modules
+.next
+dist
+target
+.turbo
+pnpm-lock.yaml
+*.tsbuildinfo
+
+# The specification set is not Prettier's to format.
+#
+# Running it over docs/ rewraps prose and rewrites tables across 94 documents,
+# which would make every future diff against a specification unreadable — and
+# the specification is what the next person reads. VPS-000 owns the
+# documentation standard; a code formatter does not get a vote.
+#
+# The findings logs are excluded for the same reason: they are prose records,
+# not source.
+docs/
+
+# The project instruction files are prose, and the same argument applies:
+# rewrapping them churns a document people read rather than compile.
+CLAUDE.md
+AGENTS.md
+
+# Editor and harness configuration, owned by whoever generated it.
+.claude/

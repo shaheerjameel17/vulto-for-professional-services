@@ -1,0 +1,41 @@
+# The workspace container, added on top of the same docker-compose.yml the local
+# path uses. Only this file is Codespaces-specific; every service definition is
+# shared, so the two environments cannot drift apart.
+
+services:
+  workspace:
+    # Pinned by digest, not tag, per A007-T16 — which says *every* base image,
+    # and the development image is one of VPS-A007's three image roles. This
+    # was a tag until F79 caught it.
+    #
+    # trixie (Debian 13) matches services/sync-engine's build and runtime
+    # images, which pin rust:1.97.1-slim-trixie and debian:trixie-slim. That
+    # alignment is why the base stays trixie rather than moving to bookworm to
+    # dodge the Moby packaging gap — see the `moby` note in devcontainer.json.
+    #
+    # Honest provenance: trixie was not chosen for that reason. It followed the
+    # Dockerfile's choice with no comment justifying it. The alignment argument
+    # is real, and it was found afterwards rather than applied at the time.
+    image: mcr.microsoft.com/devcontainers/base:trixie@sha256:025b74bb5f7ac53edd77e01aa7188c359aab100e23a2f6220bde50bbb9fd31dd
+    volumes:
+      # `.`, not `..`.
+      #
+      # Compose resolves a relative path against the PROJECT directory — the
+      # directory of the first compose file, which is the repository root where
+      # docker-compose.yml lives — not against the file the path is written in.
+      # So `..` from here resolved to the repository's PARENT, and the container
+      # opened a folder containing the repository rather than the repository.
+      #
+      # Verified against the merged configuration in the failed Codespace build,
+      # which showed `source: /var/lib/docker/codespacemount/workspace` where the
+      # repository is at .../workspace/vulto.
+      - .:/workspaces/vulto:cached
+    command: sleep infinity
+    environment:
+      DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy

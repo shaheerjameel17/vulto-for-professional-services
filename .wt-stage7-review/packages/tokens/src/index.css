@@ -1,0 +1,218 @@
+/*
+ * @vulto/tokens — the only source of values in this product.
+ *
+ * VPS-D001 owns color, typography, space, radius and elevation.
+ * VPS-D003 owns motion.
+ *
+ * Import order matters: `runtime.css` declares the variables that theme.css
+ * references, and theme.css clears Tailwind's defaults before declaring
+ * Vulto's scale.
+ */
+
+@import "./runtime.css";
+@import "./theme.css";
+
+@layer base {
+  /*
+   * Tabular figures globally rather than per component. VPS-D001: a column
+   * of costs whose digits do not align is a column that cannot be scanned,
+   * and scanning is the entire point of the Bench Forecast.
+   */
+  html {
+    font-feature-settings: "tnum" 1;
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--vt-bg-canvas);
+    color: var(--vt-text-primary);
+    font-family: var(--font-ui);
+    font-size: 14px;
+    line-height: 20px;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /*
+   * VPS-D002's accessibility floor: a visible 2px border-focus ring at 2px
+   * offset on every interactive element. Focus is never suppressed, so this
+   * is a base rule rather than something each component remembers.
+   */
+  :focus-visible {
+    outline: 2px solid var(--vt-border-focus);
+    outline-offset: 2px;
+  }
+
+  [data-disabled="true"],
+  :disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+/*
+ * VPS-D003: `prefers-reduced-motion: reduce` sets every duration to 0ms and
+ * removes every transform. Nothing else changes — no functionality is lost,
+ * no layout differs, and no alternative animation is substituted.
+ */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --vt-motion-fast: 0ms;
+    --vt-motion-base: 0ms;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0ms !important;
+    animation-duration: 0ms !important;
+    transform: none !important;
+  }
+}
+
+/* ---- Composite utilities ------------------------------------------- */
+
+/*
+ * Elevation. Three levels, and only the third uses a shadow. VPS-D001.
+ * `flat` needs no utility: it is the absence of both.
+ */
+@utility elevation-raised {
+  background-color: var(--vt-bg-surface);
+  border: 1px solid var(--vt-border-default);
+}
+
+@utility elevation-overlay {
+  background-color: var(--vt-bg-raised);
+  /* FDN-40: border-strong, not border-default. A pure-black shadow at
+   * low alpha gives depth in light mode but is nearly invisible against a
+   * near-black canvas, so the border is what actually separates an overlay
+   * from what's behind it in dark mode — border-default was too close to
+   * bg-raised to do that job on its own. */
+  border: 1px solid var(--vt-border-strong);
+  box-shadow: var(--vt-shadow-overlay);
+}
+
+/*
+ * FDN-43. The scrollbar on the surfaces this design system owns.
+ *
+ * Deliberately a utility rather than a global rule on `*`. A product decides
+ * which of its surfaces are its own; resetting every scrollbar in the document
+ * would also restyle anything embedded later that has its own opinion.
+ *
+ * Both engines are covered, and that is the point rather than a detail. Firefox
+ * reads `scrollbar-width` and `scrollbar-color`; Chromium and WebKit read the
+ * `::-webkit-scrollbar` pseudo-elements and ignore the standard properties when
+ * a pseudo-element rule exists. Styling only one engine is worse than styling
+ * neither, because it looks correct on the machine it was written on.
+ *
+ * `thin` is Firefox's only expressible narrow width — it takes no length — so
+ * the two engines agree in intent rather than to the pixel. That is a platform
+ * limit, not a decision, and is recorded as such.
+ */
+@utility scrollbar-slim {
+  scrollbar-width: thin;
+  scrollbar-color: var(--vt-scrollbar-thumb) transparent;
+
+  &::-webkit-scrollbar {
+    width: var(--spacing-scrollbar);
+    height: var(--spacing-scrollbar);
+  }
+
+  /* Transparent, so the fade at a scroll boundary is never competing with a
+   * painted band underneath it — see `scroll-boundary-fade` below. */
+  &::-webkit-scrollbar-track,
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-thumb {
+    background-color: var(--vt-scrollbar-thumb);
+    border-radius: var(--radius-full);
+  }
+
+  &::-webkit-scrollbar-thumb:hover {
+    background-color: var(--vt-scrollbar-thumb-hover);
+  }
+}
+
+/*
+ * FDN-19. The fade where a horizontally scrolling track passes under a frozen
+ * column.
+ *
+ * This is an alpha mask, not a painted gradient and not a backdrop blur. A blur
+ * is the glassmorphism VPS-D001 rules out; a fade on a scroll boundary is
+ * information — it says the content continues. VPS-D001 carries the exception
+ * explicitly, scoped to scroll boundaries and never to surfaces.
+ *
+ * `--vt-scroll-x` is the track's current horizontal scroll offset, which in the
+ * track's own coordinate space is exactly where the frozen column's right edge
+ * falls. `--vt-scroll-end` is the visible right edge after accounting for the
+ * frozen column. Each fade is clamped to the content hidden beyond its edge, so
+ * an edge with no continuation has no fade to explain.
+ */
+@utility scroll-boundary-fade {
+  /* The two variables are declared on :root and set on the scroll container.
+   * They must NOT be declared here: a local declaration on the element that
+   * consumes them shadows the inherited value, and the mask would freeze at
+   * its resting state. */
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    transparent var(--vt-scroll-x),
+    black calc(var(--vt-scroll-x) + var(--vt-scroll-fade)),
+    black calc(var(--vt-scroll-end) - var(--vt-scroll-end-fade)),
+    transparent var(--vt-scroll-end),
+    transparent 100%
+  );
+}
+
+/*
+ * FDN-24. Suppresses the browser's native step spinner on a numeric input.
+ * Scoped to affixed number inputs by Input.tsx — an unaffixed one keeps its
+ * spinner. Without this, the spinner renders inside the input's own box
+ * regardless of how much padding an affix reserves, which is the collision
+ * the affix contract in VPS-D002 exists to prevent.
+ */
+@utility no-spinner {
+  &::-webkit-inner-spin-button,
+  &::-webkit-outer-spin-button {
+    margin: 0;
+    -webkit-appearance: none;
+  }
+  -moz-appearance: textfield;
+}
+
+/* FDN-29. Stable digit widths without switching product data to a monospace
+ * face. Kept as one utility so the OpenType contract cannot drift by callsite. */
+@utility numeric-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Motion. VPS-D003 — three durations, one decelerating curve. */
+@utility motion-fast {
+  transition-timing-function: var(--ease-vulto);
+  transition-duration: var(--vt-motion-fast);
+}
+
+@utility motion-base {
+  transition-timing-function: var(--ease-vulto);
+  transition-duration: var(--vt-motion-base);
+}
+
+/* VPS-D003: the command palette fades and scales from 98% at motion-base.
+ * The animation belongs to the surface inside Radix's positioned focus scope,
+ * so it never replaces the transform used to center the dialog itself. */
+@keyframes command-palette-in {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@utility command-palette-enter {
+  animation: command-palette-in var(--vt-motion-base) var(--ease-vulto);
+  transform-origin: top center;
+}

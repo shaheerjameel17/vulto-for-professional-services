@@ -1,0 +1,29 @@
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    environment: "node",
+    fileParallelism: false,
+    include: ["src/**/*.test.ts"],
+    env: {
+      DATABASE_URL:
+        process.env.DATABASE_URL ??
+        "postgres://vulto:vulto@localhost:5432/vulto_fdn60_test",
+      BETTER_AUTH_SECRET:
+        process.env.BETTER_AUTH_SECRET ??
+        "fdn60-test-only-secret-that-is-longer-than-thirty-two-chars",
+      API_ORIGIN: process.env.API_ORIGIN ?? "http://localhost:3101",
+      WEB_ORIGIN: process.env.WEB_ORIGIN ?? "http://localhost:3100",
+      AUTH_TRUSTED_ORIGINS: process.env.AUTH_TRUSTED_ORIGINS ?? "http://localhost:3100",
+      PASSKEY_RP_ID: process.env.PASSKEY_RP_ID ?? "localhost",
+      // Local-only key provider for tests; never used in production (A003-T73).
+      VULTO_KEY_PROVIDER: "local",
+      VULTO_LOCAL_ROOT_KEY: "D6QVNEsijEoJKnNdcu+/ez0N8rkLsdewyxeCwTYX7LA=",
+      // Electric, for the shape proxy: the local stack's values (`pnpm stack:up`).
+      ELECTRIC_URL: process.env.ELECTRIC_URL ?? "http://localhost:5133",
+      ELECTRIC_SECRET:
+        process.env.ELECTRIC_SECRET ?? "7410a5d35c4ace6ceceb2de9e5c0ac32",
+      LOG_LEVEL: "silent",
+    },
+  },
+});

@@ -1,0 +1,506 @@
+# FDN-55 Stage 3 — the slow lane.
+#
+# Everything the fast lane deliberately leaves out: the Postgres-backed api
+# integration suite, the three browser suites, the multi-target Rust build, the
+# accessibility smoke pass, and the production build + artifact check.
+#
+# Runs on every push (any branch, `main` included) and on every PR (ruling 6 —
+# not only once before merge). Required for merge.
+#
+# Sharding (ruling 7): the browser suites are expressed as an `include:` matrix
+# so a suite that crosses ~8 minutes of wall-clock gets split by raising its
+# `shardTotal` here — no structural change. On the CI runner device-store is
+# ~14 min (worker ~2, auth ~2); it is a candidate to shard, but the cost is
+# one relay/next-dev/api start-up per shard, so it stays single until the
+# per-shard time is the bigger problem. The `@large-backlog-replay` device-store
+# tests are excluded from the CI gate — see the `grep_invert` note below and
+# FDN-93 (the real fix: a sidecar-container split).
+
+name: slow-lane
+
+on:
+  pull_request:
+  # Every push, `main` included — the branch it protects gets the full matrix
+  # on every commit, not only through PRs (ruling 6, and "green on main").
+  push:
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: slow-lane-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Every job that needs Postgres points its clients here. The browser-setup
+  # scripts create + migrate + truncate their own database off the admin URL.
+  PG_ADMIN_URL: postgres://vulto:vulto@postgres:5432/postgres
+
+jobs:
+  resolve-image:
+    runs-on: ubuntu-24.04
+    outputs:
+      image: ${{ steps.read.outputs.image }}
+      postgres_image: ${{ steps.read.outputs.postgres_image }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/workflows/ci-image-ref.env
+          sparse-checkout-cone-mode: false
+      - id: read
+        shell: bash
+        run: |
+          set -euo pipefail
+          source .github/workflows/ci-image-ref.env
+          echo "image=${CI_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "postgres_image=${CI_POSTGRES_IMAGE}" >> "$GITHUB_OUTPUT"
+          if [[ "${CI_IMAGE}" != *"@sha256:"* ]]; then
+            echo "::warning title=CI image is not digest-pinned::${CI_IMAGE} — A007-T16 requires a digest. Bump .github/workflows/ci-image-ref.env once ci-image.yml has published the image."
+          fi
+
+  api-integration:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    services:
+      postgres:
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      # The service container already creates this database (POSTGRES_DB); the
+      # CI image carries no psql, and a fresh container per run means the name
+      # need not be the local `vulto_fdn60_test`.
+      DATABASE_URL: postgres://vulto:vulto@postgres:5432/vulto
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+
+      - name: Migrate the database
+        shell: bash
+        run: pnpm --dir services/api exec drizzle-kit migrate --config drizzle.config.ts
+
+      - name: api integration suite (real Postgres)
+        shell: bash
+        run: pnpm --filter @vulto/api test
+
+  browser-suites:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    services:
+      postgres:
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # suite       — the pnpm script (its pretest: hook migrates + seeds)
+          # fdn         — the FDN{NN}_{ADMIN,BROWSER}_DATABASE_URL prefix the suite reads
+          # db          — that suite's database name
+          # shard/total — raise `total` (and add rows) when a suite passes ~8 min
+          - suite: auth-browser
+            fdn: FDN60
+            db: vulto_fdn60_browser
+            shard: 1
+            total: 1
+          - suite: worker-browser
+            fdn: FDN77
+            db: vulto_fdn77_browser
+            shard: 1
+            total: 1
+          # device-store-browser is disabled: see the `device-store-browser` job
+          # below (F212). It was a row here until Stage 6.
+    name: browser-suites (${{ matrix.suite }} ${{ matrix.shard }}/${{ matrix.total }})
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+
+      - name: Run ${{ matrix.suite }}
+        shell: bash
+        env:
+          PLAYWRIGHT_SHARD: ${{ matrix.shard }}/${{ matrix.total }}
+          GREP_INVERT: ${{ matrix.grep_invert }}
+        run: |
+          set -euo pipefail
+          export ${{ matrix.fdn }}_ADMIN_DATABASE_URL="${PG_ADMIN_URL}"
+          export ${{ matrix.fdn }}_BROWSER_DATABASE_URL="postgres://vulto:vulto@postgres:5432/${{ matrix.db }}"
+
+          invert=()
+          if [ -n "${GREP_INVERT:-}" ]; then
+            invert=(--grep-invert "${GREP_INVERT}")
+            excluded=$(pnpm exec playwright test --config services/api/playwright.device-store.config.ts --grep "${GREP_INVERT}" --list 2>/dev/null | grep -c '›' || true)
+            total=$(pnpm exec playwright test --config services/api/playwright.device-store.config.ts --list 2>/dev/null | grep -c '›' || true)
+            {
+              echo "### ${{ matrix.suite }} — ${excluded} test(s) excluded from the CI gate"
+              echo
+              echo "Not run here: tests tagged \`${GREP_INVERT}\` — one device flushing a"
+              echo "local-write backlog larger than one relay page (see FDN-93). They still"
+              echo "run in a local \`pnpm test:device-store-browser\`."
+              echo
+              echo "**$((total - excluded)) of ${total} device-store tests gate merge; ${excluded} excluded — see FDN-93.**"
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning title=${excluded} device-store test(s) excluded from the CI gate (FDN-93)::tag ${GREP_INVERT} — runs locally via pnpm test:device-store-browser, not on the shared CI runner"
+          fi
+
+          # Playwright's own --shard / --grep-invert, passed through the pnpm script.
+          pnpm test:${{ matrix.suite }} --shard="${PLAYWRIGHT_SHARD}" "${invert[@]}"
+
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-${{ matrix.suite }}
+          path: |
+            services/api/test-results/**
+            packages/graph/test-results/**
+          if-no-files-found: ignore
+
+  # DISABLED (F212). device-store-browser tests the retired local-first stack
+  # (services/sync-engine, the Loro worker runtime, the sealed store), which the
+  # server-authoritative re-foundation replaced (F199). It has been red since the
+  # Stage 4 merge and is not a check anyone can act on. It is deleted, with its
+  # Playwright config, its suite and the retired code, in Stage 7 (FDN-103).
+  # Do not re-enable it and do not add it back to the browser-suites matrix.
+  device-store-browser:
+    if: false
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    services:
+      postgres:
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+      - name: Run device-store-browser
+        shell: bash
+        run: |
+          export FDN84_ADMIN_DATABASE_URL="${PG_ADMIN_URL}"
+          export FDN84_BROWSER_DATABASE_URL="postgres://vulto:vulto@postgres:5432/vulto_fdn84_browser"
+          pnpm test:device-store-browser --grep-invert "@large-backlog-replay"
+
+  # Stage 6 (FDN-99/FDN-101): the sync client's browser suite, against real
+  # Postgres and real Electric. Electric connects as the `vulto_electric` role,
+  # which the migration creates and set-electric-password.mjs gives a password,
+  # so it cannot be an ordinary `services:` entry (it would start before the
+  # role exists). The job runs on the host: Postgres is a service, the migration
+  # and the suite run inside the CI image on the host network, and Electric is
+  # started between them.
+  sync-browser:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: ${{ needs.resolve-image.outputs.postgres_image }}
+        credentials:
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          POSTGRES_USER: vulto
+          POSTGRES_PASSWORD: vulto
+          POSTGRES_DB: vulto
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U vulto -d vulto"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      CI_IMAGE: ${{ needs.resolve-image.outputs.image }}
+      ELECTRIC_IMAGE: electricsql/electric:1.8.1@sha256:efb6fa43859d67cb8c73439e0c8bc0f7a3daa467500fb06f2a924bcb2070c139
+      DATABASE_URL: postgres://vulto:vulto@localhost:5432/vulto
+      ELECTRIC_DB_PASSWORD: sync-browser-ci-electric-password
+      ELECTRIC_SECRET: sync-browser-ci-electric-secret
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull the CI image
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "${CI_IMAGE}"
+      - name: Install and migrate (creates the vulto_electric role and sets its password)
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e DATABASE_URL -e ELECTRIC_DB_PASSWORD "${CI_IMAGE}" \
+            bash -lc "pnpm install --frozen-lockfile && pnpm --filter @vulto/api db:migrate"
+      - name: Start Electric
+        run: |
+          docker run -d --name electric --network host \
+            -e DATABASE_URL="postgres://vulto_electric:${ELECTRIC_DB_PASSWORD}@localhost:5432/vulto" \
+            -e ELECTRIC_SECRET -e ELECTRIC_MANUAL_TABLE_PUBLISHING=true -e ELECTRIC_PORT=5133 \
+            "${ELECTRIC_IMAGE}"
+          for i in $(seq 1 40); do
+            curl -fsS http://localhost:5133/v1/health && exit 0
+            sleep 3
+          done
+          docker logs electric
+          exit 1
+      - name: Shape proxy against real Electric
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e DATABASE_URL -e ELECTRIC_LIVE_TESTS=1 \
+            -e ELECTRIC_URL=http://localhost:5133 -e ELECTRIC_SECRET \
+            "${CI_IMAGE}" bash -lc "pnpm --filter @vulto/api exec vitest run src/sync/shape-proxy.integration.test.ts"
+      - name: Sync browser suite
+        run: |
+          docker run --rm --network host --user root -v "$PWD:/work" -w /work \
+            -e SYNC_BROWSER_DATABASE_URL="${DATABASE_URL}" \
+            -e ELECTRIC_URL=http://localhost:5133 -e ELECTRIC_SECRET \
+            "${CI_IMAGE}" bash -lc "pnpm install --frozen-lockfile && pnpm test:sync-browser"
+      - name: Upload traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces-sync-browser
+          path: packages/graph/test-results/**
+          if-no-files-found: ignore
+
+  rust-multitarget:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - name: native + wasm32 build, cargo test (A007-T03 as corrected by F193)
+        shell: bash
+        run: bash scripts/rust-multitarget.sh
+
+  production-build:
+    needs: resolve-image
+    runs-on: ubuntu-24.04
+    container:
+      image: ${{ needs.resolve-image.outputs.image }}
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+      options: --user root
+    steps:
+      - uses: actions/checkout@v4
+      - run: pnpm install --frozen-lockfile
+        shell: bash
+
+      - name: Blackhole the font CDNs (the build must be hermetic)
+        shell: bash
+        run: |
+          # A production build must not reach the internet. FDN-91 moved the
+          # Inter font to `next/font/local` against a committed woff2, so this
+          # is now a standing guard against a `next/font/google` regression —
+          # not a known failure.
+          printf '0.0.0.0 fonts.googleapis.com\n0.0.0.0 fonts.gstatic.com\n' >> /etc/hosts
+
+      - name: next build
+        shell: bash
+        run: pnpm --filter roster-web build
+
+      - name: artifact check (FDN-91)
+        shell: bash
+        run: node scripts/artifact-check.mjs
+
+      # FDN-55 Stage 4b — hand the exact build the gate just verified to the
+      # publish job. It is never rebuilt downstream (a `next build` is not
+      # reproducible); the publish job re-checks this content digest and
+      # refuses to publish anything that does not match.
+      - name: Package the verified roster-web build
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd apps/roster-web
+          digest=$(find .next -type f -not -path '*/cache/*' -print0 \
+            | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          tar --exclude='.next/cache' -czf /tmp/roster-web-next.tar.gz .next
+          printf '%s\n' "$digest" > /tmp/roster-web.sha256
+          echo "roster-web build content digest: ${digest}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the roster-web build
+        uses: actions/upload-artifact@v4
+        with:
+          name: roster-web-build
+          path: |
+            /tmp/roster-web-next.tar.gz
+            /tmp/roster-web.sha256
+          retention-days: 14
+          if-no-files-found: error
+
+  # FDN-55 Stage 4b — publish the promotable artifacts on every push to `main`,
+  # after the whole matrix is green. `continue-on-error` — a publish failure is
+  # visible but gates nothing; nothing consumes these until FDN-58 exists.
+  # A007-T12's "promote, never rebuild" starts here: this job stores the
+  # artifacts and records their digests; it does not deploy them.
+  #
+  # Proven end to end on branch fdn-55-stage-4a-api-service-image (slow-lane run
+  # 34346328411) with `proof-<sha>` tags before this was narrowed to `main`.
+  publish-artifacts:
+    needs:
+      - resolve-image
+      - api-integration
+      - browser-suites
+      - sync-browser
+      - rust-multitarget
+      - production-build
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    permissions:
+      contents: read
+      packages: write
+    env:
+      REGISTRY: ghcr.io/${{ github.repository }}
+      SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Reuse the verified roster-web build (never rebuild)
+        uses: actions/download-artifact@v4
+        with:
+          name: roster-web-build
+          path: roster-web-build
+
+      - name: Re-verify the build against its recorded digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd roster-web-build
+          recorded=$(cat roster-web.sha256)
+          mkdir _x && tar -xzf roster-web-next.tar.gz -C _x
+          actual=$(cd _x && find .next -type f -not -path '*/cache/*' -print0 \
+            | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          if [ "$recorded" != "$actual" ]; then
+            echo "::error title=roster-web build digest mismatch::recorded ${recorded}, got ${actual} — refusing to publish a build the slow lane did not verify"
+            exit 1
+          fi
+          echo "ROSTER_WEB_SHA256=${recorded}" >> "$GITHUB_ENV"
+          echo "roster-web build re-verified: ${recorded}"
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push the API image
+        id: api
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: services/api/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/api:${{ env.SHA }}
+          provenance: false
+
+      - name: Build and push the sync-engine image
+        id: sync
+        uses: docker/build-push-action@v6
+        with:
+          context: services/sync-engine
+          file: services/sync-engine/Dockerfile
+          push: true
+          tags: ${{ env.REGISTRY }}/sync-engine:${{ env.SHA }}
+          provenance: false
+
+      - name: Emit the deploy manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          latest_migration=$(ls services/api/drizzle/*.sql | sort | tail -1 \
+            | xargs basename | sed 's/\.sql$//')
+          schema_sha=$(find packages/schema/src -type f -print0 \
+            | sort -z | xargs -0 sha256sum | sha256sum | awk '{print $1}')
+          cat > deploy-manifest.json <<JSON
+          {
+            "commit": "${SHA}",
+            "ref": "${{ github.ref_name }}",
+            "built_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "slow_lane_run": "${{ github.run_id }}",
+            "schema": {
+              "latest_migration": "${latest_migration}",
+              "schema_src_sha256": "${schema_sha}"
+            },
+            "artifacts": {
+              "api": {
+                "image": "${REGISTRY}/api",
+                "tag": "${SHA}",
+                "digest": "${{ steps.api.outputs.digest }}"
+              },
+              "sync_engine": {
+                "image": "${REGISTRY}/sync-engine",
+                "tag": "${SHA}",
+                "digest": "${{ steps.sync.outputs.digest }}"
+              },
+              "roster_web": {
+                "form": "next-build",
+                "content_sha256": "${ROSTER_WEB_SHA256}",
+                "artifact": "roster-web-build (this run)"
+              }
+            }
+          }
+          JSON
+          cat deploy-manifest.json
+          {
+            echo '### Deploy manifest'
+            echo '```json'
+            cat deploy-manifest.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the deploy manifest
+        uses: actions/upload-artifact@v4
+        with:
+          name: deploy-manifest-${{ env.SHA }}
+          path: deploy-manifest.json
+          retention-days: 90
+          if-no-files-found: error

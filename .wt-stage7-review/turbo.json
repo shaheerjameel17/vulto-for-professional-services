@@ -1,0 +1,51 @@
+{
+  "$schema": "https://turbo.build/schema.json",
+  "globalPassThroughEnv": [
+    "DATABASE_URL",
+    "REDIS_URL",
+    "API_PORT",
+    "API_HOST",
+    "API_URL",
+    "API_ORIGIN",
+    "WEB_ORIGIN",
+    "AUTH_TRUSTED_ORIGINS",
+    "BETTER_AUTH_SECRET",
+    "GOOGLE_CLIENT_ID",
+    "GOOGLE_CLIENT_SECRET",
+    "PASSKEY_RP_ID",
+    "API_TLS_CERT_PATH",
+    "API_TLS_KEY_PATH",
+    "NEXT_PUBLIC_API_ORIGIN",
+    "NEXT_PUBLIC_GOOGLE_AUTH_ENABLED",
+    "LOG_LEVEL",
+    "NODE_ENV",
+    "ELECTRIC_URL",
+    "ELECTRIC_SECRET",
+    "ELECTRIC_DB_PASSWORD",
+    "VULTO_KEY_PROVIDER",
+    "VULTO_LOCAL_ROOT_KEY",
+    "AWS_REGION",
+    "VULTO_KMS_ROOT_KEY_ARN"
+  ],
+  "tasks": {
+    "dev": {
+      "cache": false,
+      "persistent": true
+    },
+    "build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**", "!.next/cache/**", "dist/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["^typecheck"]
+    },
+    "lint": {},
+    "format": {
+      "cache": false
+    },
+    "format:check": {},
+    "test": {
+      "dependsOn": ["^typecheck"]
+    }
+  }
+}

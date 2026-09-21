@@ -1,0 +1,10 @@
+{
+  "description": "Ack (ack_kind 1): relay confirms the client's push (client_ref a1b2c3d4) committed at cursor 8",
+  "message": {
+    "type": "ack",
+    "ack_kind": "relay_receipt",
+    "client_ref_hex": "a1b2c3d4",
+    "assigned_cursor": 8
+  },
+  "encoded_hex": "01050100000004a1b2c3d40000000000000008"
+}

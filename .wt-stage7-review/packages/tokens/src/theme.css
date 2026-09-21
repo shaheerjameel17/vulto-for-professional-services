@@ -1,0 +1,440 @@
+/*
+ * The Tailwind scale, generated from VPS-D001.
+ *
+ * Tailwind's own scales are DELETED, not extended. `--color-*: initial` and
+ * friends clear the defaults before a single Vulto value is declared.
+ *
+ * The reason: VPS-A001-T09 and VPS-A007's lint gate catch arbitrary values
+ * like `p-[7px]`. They do not catch `bg-red-500` or `p-7` — valid Tailwind,
+ * absent from VPS-D001. Clearing the namespace makes an off-token value fail
+ * to compile, which is a stronger guarantee than a lint rule and arrives
+ * sooner. If a value you need is not here, that is a design system question.
+ */
+
+@theme {
+  /* ---- Color ------------------------------------------------------ */
+
+  --color-*: initial;
+
+  /* Structural, not palette. */
+  --color-transparent: transparent;
+  --color-current: currentColor;
+
+  /* Neutral ramp — zinc, cool-neutral. VPS-D001. */
+  --color-neutral-0: #ffffff;
+  --color-neutral-50: #fafafa;
+  --color-neutral-100: #f4f4f5;
+  --color-neutral-200: #e4e4e7;
+  --color-neutral-300: #d4d4d8;
+  --color-neutral-400: #a1a1aa;
+  --color-neutral-500: #71717a;
+  --color-neutral-600: #52525b;
+  --color-neutral-700: #3f3f46;
+  --color-neutral-800: #27272a;
+  --color-neutral-900: #18181b;
+  --color-neutral-950: #09090b;
+
+  /* Brand — orange, distinct from the amber reserved for cost. Rationed:
+   * marks exactly three signals. VPS-D001, F53, FDN-40.
+   *
+   * FOUNDER DECISION, recorded deliberately: brand-500 and brand-600 are both
+   * FF8000 and pair with white text throughout (buttons, badges, the
+   * workspace mark). White on FF8000 measures 2.52:1, below the 4.5:1 body /
+   * 3:1 large-text floor VPS-D001 states elsewhere. Flagged and accepted
+   * knowingly in favor of a single consistent orange — this is not an
+   * oversight, do not "fix" it back to a darker step without asking first.
+   * brand-700 stays a genuine darker step, but only for the button
+   * hover-darken interaction, not for a resting contrast fix. */
+  --color-brand-50: #fef7f0;
+  --color-brand-100: #feebd7;
+  --color-brand-200: #ffd4a8;
+  --color-brand-300: #ffb366;
+  --color-brand-400: #ff9933;
+  --color-brand-500: #ff8000; /* anchor */
+  --color-brand-600: #ff8000; /* same as 500 — see note above */
+  --color-brand-700: #cc6600; /* hover-darken only */
+  --color-brand-800: #7a3d00;
+  --color-brand-900: #5e3102;
+
+  /* Categorical tokens are declared per theme in runtime.css and aliased in the
+   * `@theme inline` block below — FDN-20 made them theme-aware, because one
+   * value mixed against white and against near-black cannot be right for both. */
+
+  /* ---- Radius ----------------------------------------------------- */
+
+  /*
+   * FDN-19 adds `radius-xl` and states the concentric rule the scale now obeys:
+   *
+   *   a nested radius equals the outer radius minus the gap between them.
+   *
+   * The workspace inset is `radius-xl` at 12px. The contextual panel sits 4px
+   * inside it, so it takes 12 − 4 = 8px, which is `radius-lg`. That is why the
+   * scale is 4 / 6 / 8 / 12 rather than an arbitrary set: each step is a
+   * legitimate nesting of the one above it at a space-1 or space-2 gap.
+   */
+  --radius-*: initial;
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 12px;
+  --radius-full: 9999px;
+
+  /* ---- Space ------------------------------------------------------ */
+  /* Four-pixel base. The full permitted set, and nothing between.
+   * `--spacing: initial` disables Tailwind's dynamic scale, so `p-7`
+   * does not exist. VPS-D001. */
+
+  --spacing: initial;
+  --spacing-0: 0px;
+  --spacing-1: 4px;
+  --spacing-2: 8px;
+  --spacing-3: 12px;
+  --spacing-4: 16px;
+  --spacing-5: 20px;
+  --spacing-6: 24px;
+  --spacing-8: 32px;
+  --spacing-10: 40px;
+  --spacing-12: 48px;
+  --spacing-16: 64px;
+  --spacing-20: 80px;
+
+  /* Shared product geometry. FDN-33 removes user-selectable density. */
+  --spacing-row: var(--vt-row-height);
+  --spacing-timeline-row: var(--vt-timeline-row-height);
+  --spacing-control: var(--vt-control-height);
+  --spacing-cell: var(--vt-cell-padding);
+  --spacing-bar: var(--vt-bar-height);
+  --spacing-bench-bar: var(--vt-bench-bar-height); /* FDN-15 */
+
+  /* Structural dimensions from VPS-D002 and VPS-D004. These are fixed
+   * layout sizes, not spacing — see Prototype_Findings F19: VPS-D001
+   * claims authority over every size but its space set cannot express
+   * them, and the shell documents introduce them directly. */
+  --spacing-sidebar: 200px; /* FDN-38: denser shell, corrected from VPS-D004 */
+  --spacing-sidebar-collapsed: 48px; /* VPS-D004 */
+  --spacing-panel: 360px; /* VPS-D004, VPS-D002 */
+  --spacing-page-header: 48px; /* VPS-D004, corrected by FDN-33 */
+  --spacing-timeline-label: 220px; /* VPS-D002, VRS-F005 */
+  --spacing-palette: 640px; /* VPS-D002 */
+  --spacing-palette-offset: 15vh; /* VPS-D002, VPS-F002 */
+  --spacing-palette-results: 480px; /* six to eight grouped rows at design center */
+  --spacing-icon: 16px; /* VPS-D002 */
+  /*
+   * FDN-43. The scrollbar's own thickness, delegated to VPS-D002 under the
+   * structural-dimensions rule above rather than added to VPS-D001's space set.
+   *
+   * It happens to equal space-2, but it is not spacing — it is the size of a
+   * piece of chrome, in the same category as the sidebar's width. Stating it
+   * here is what keeps the Bench Forecast from rendering a scrollbar whose
+   * width, color and radius come from the operating system, on the one surface
+   * whose entire premise is that every value comes from the token set.
+   */
+  --spacing-scrollbar: 8px; /* VPS-D002, FDN-43 */
+  /* The categorical project dot inside an assignment bar, and the active-filter
+   * dot on a MultiSelect trigger. It was named for the today line's dot, which
+   * FDN-44 deleted when the marker was rebuilt. Not in D001's space set. */
+  --spacing-dot: 6px; /* VPS-D002 */
+  --spacing-badge: 20px; /* VPS-D002 */
+  /*
+   * FDN-44 round 3 raises the two small steps. VPS-D002's 20/24/32/40 was
+   * written before initials were rendered: two uppercase glyphs of Inter at
+   * the only type token that fits a 20px circle span ~14px, leaving under 3px
+   * of clearance to a curved edge, and `micro`'s +0.04em uppercase tracking
+   * spent part of that on a trailing space that pushed the pair off-center.
+   *
+   * 24/28/32/40 keeps four distinct steps and lands every one of them near
+   * the 0.45 glyph-to-diameter ratio initials actually need. The two large
+   * steps were already right and do not move.
+   */
+  --spacing-avatar-sm: 24px; /* VPS-D002, corrected by FDN-44 */
+  --spacing-avatar-md: 28px; /* VPS-D002, corrected by FDN-44 */
+  --spacing-avatar-lg: 32px; /* VPS-D002 */
+  --spacing-avatar-xl: 40px; /* VPS-D002 */
+  --spacing-button-sm: 24px; /* VPS-D002 */
+  --spacing-button-md: 28px; /* VPS-D002 */
+  --spacing-button-lg: 32px; /* VPS-D002 */
+  --spacing-filter-list: 240px; /* FDN-30 */
+  --spacing-timesheet-label: 200px; /* VRS-F010 */
+  --spacing-timesheet-day: 128px; /* FDN-4, three-column intermediate view */
+  --spacing-timesheet-grid: 968px; /* 200px + six 128px day columns */
+
+  --container-*: initial;
+  --container-content: 1440px; /* VPS-D004 */
+  --container-tooltip: 280px; /* VPS-D002 */
+
+  /* ---- Typography ------------------------------------------------- */
+  /*
+   * FDN-29. One product face, with two figure modes.
+   *
+   * Inter Variable carries display, interface, body and figures. Numeric
+   * tokens turn on tabular numerals so aligned data keeps stable digit widths
+   * without introducing a separate monospace voice. Geist Mono, Plus Jakarta
+   * Sans and Manrope are retired from the product.
+   *
+   * Inter is loaded as a variable font, not as static cuts, which is what
+   * makes the intermediate weights below available — `micro` at 560 and the
+   * headings at 640 are weights no static family offers.
+   *
+   * The family variables are supplied by the app via next/font — the one
+   * token that cannot live wholly in this package, because next/font
+   * generates the family name at build.
+   */
+
+  --font-*: initial;
+  --font-weight-*: initial;
+  /* Weight lives inside each named type token (VPS-D001), not as a separate
+   * axis — these two exist only for the rare case of bolding an existing
+   * variant in place (a Stat delta, say) without a token of its own. `medium`
+   * was already referenced as dead weight before this existed: `font-medium`
+   * compiled to nothing with the scale cleared, which is worth knowing if you
+   * go looking for other silently-missing weight classes. */
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-ui: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+
+  /*
+   * Base is 14px, not 16. VPS-D001: a 16px base would cost roughly two rows
+   * of the Bench Forecast per viewport.
+   *
+   * LINE HEIGHTS, re-derived against Inter's metrics rather than inherited.
+   * Inter's content box is (ascender + descender) / em = 1.21em, against
+   * Manrope's 1.29em and Plus Jakarta Sans' 1.28em — Inter is the tighter
+   * face vertically, despite the taller x-height. Every line height in the
+   * old scale already clears 1.21em except `display`, where 32/36 was 1.125
+   * and sat inside Jakarta's own content box too. `display` moves to 40.
+   * Nothing else needed to change, which is itself worth knowing.
+   *
+   * TRACKING, derived from Inter's dynamic-metrics curve
+   *   -0.0223 + 0.185 · e^(-0.1745 · size)
+   * which yields -0.022em at 32px, -0.020em at 24px and -0.017em at 20px,
+   * crossing zero at about 12px. Applied above 20px only, per the decision
+   * to tighten the display sizes and leave the body sizes alone.
+   *
+   * `micro` keeps +0.04em. That is VPS-D001's uppercase treatment, not a
+   * metric inherited from Manrope, and uppercase needs the tracking at 11px.
+   */
+
+  --text-*: initial;
+
+  --text-display: 32px;
+  --text-display--line-height: 40px;
+  --text-display--font-weight: 640;
+  --text-display--letter-spacing: -0.022em;
+
+  --text-h1: 22px;
+  --text-h1--line-height: 28px;
+  --text-h1--font-weight: 600;
+  --text-h1--letter-spacing: -0.02em;
+
+  --text-h2: 18px;
+  --text-h2--line-height: 24px;
+  --text-h2--font-weight: 600;
+  --text-h2--letter-spacing: -0.015em;
+
+  --text-h3: 15px;
+  --text-h3--line-height: 20px;
+  --text-h3--font-weight: 600;
+  --text-h3--letter-spacing: 0;
+
+  --text-body: 13px;
+  --text-body--line-height: 18px;
+  --text-body--font-weight: 400;
+  --text-body--letter-spacing: 0;
+
+  --text-body-medium: 13px;
+  --text-body-medium--line-height: 18px;
+  --text-body-medium--font-weight: 500;
+  --text-body-medium--letter-spacing: 0;
+
+  --text-small: 12px;
+  --text-small--line-height: 16px;
+  --text-small--font-weight: 400;
+  --text-small--letter-spacing: 0;
+
+  --text-label: 11px;
+  --text-label--line-height: 14px;
+  --text-label--font-weight: 500;
+  --text-label--letter-spacing: 0;
+
+  --text-micro: 11px;
+  --text-micro--line-height: 14px;
+  --text-micro--font-weight: 560;
+  --text-micro--letter-spacing: 0.04em;
+
+  --text-numeric: 12px;
+  --text-numeric--line-height: 16px;
+  --text-numeric--font-weight: 400;
+  --text-numeric--letter-spacing: 0;
+
+  /*
+   * FDN-15 adds a twelfth type token, which is a design system change rather
+   * than a component decision — recorded as such in Findings.
+   *
+   * The bench figure has to be heavier than an assignment bar's label, by
+   * weight rather than by hue. At the `match` height there is no room to also
+   * be larger, so this is `numeric` at 500 against the label's Inter 400. It
+   * follows VPS-D001's existing `body` / `body-medium` naming exactly.
+   */
+  --text-numeric-medium: 12px;
+  --text-numeric-medium--line-height: 16px;
+  --text-numeric-medium--font-weight: 500;
+  --text-numeric-medium--letter-spacing: 0;
+
+  /*
+   * FDN-20's thirteenth token. A supporting figure in a group: large enough to
+   * read as a figure rather than a caption, and below the one that leads.
+   *
+   * 16px is `h3`'s step on the size ladder, so this adds no new size.
+   */
+  --text-numeric-md: 15px;
+  --text-numeric-md--line-height: 20px;
+  --text-numeric-md--font-weight: 500;
+  --text-numeric-md--letter-spacing: 0;
+
+  /* Weight 600 so the leading figure outweighs whatever sits beside it. */
+  --text-numeric-lg: 18px;
+  --text-numeric-lg--line-height: 24px;
+  --text-numeric-lg--font-weight: 600;
+  --text-numeric-lg--letter-spacing: 0;
+
+  /* ---- Elevation -------------------------------------------------- */
+  /* Three levels, only the third uses a shadow. Nothing else in this
+   * product casts one. VPS-D001. */
+
+  --shadow-*: initial;
+  --inset-shadow-*: initial;
+  --drop-shadow-*: initial;
+  --shadow-overlay: var(--vt-shadow-overlay);
+
+  /* Backdrop blur is forbidden by VPS-D001. Clearing the namespace means
+   * `blur-sm` does not compile. */
+  --blur-*: initial;
+
+  /* ---- Motion ----------------------------------------------------- */
+  /* A single decelerating curve throughout: fast departure, soft arrival.
+   * No spring, no bounce, no overshoot. VPS-D003. */
+
+  --ease-*: initial;
+  --ease-vulto: cubic-bezier(0.2, 0, 0, 1);
+
+  /* ---- Breakpoints ------------------------------------------------ */
+  /* VPS-D003 names 1024, 1280 and 1536; VRS-F010 and VPS-F002 name 768.
+   * Those four, and no others — Tailwind's 640px `sm` is not a Vulto
+   * breakpoint. */
+
+  --breakpoint-*: initial;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1536px;
+}
+
+/*
+ * Semantic surface tokens. Components reference these, never raw ramp
+ * values — this is what makes theming a single switch. VPS-D001.
+ *
+ * `@theme inline` so the utility emits the runtime variable directly and
+ * resolves against the root's data-theme rather than a frozen copy.
+ */
+@theme inline {
+  --color-bg-canvas: var(--vt-bg-canvas);
+  --color-bg-surface: var(--vt-bg-surface);
+  --color-bg-raised: var(--vt-bg-raised);
+  --color-bg-subtle: var(--vt-bg-subtle);
+  --color-bg-hover: var(--vt-bg-hover);
+  /* FDN-44: hover for anything sitting on the canvas rather than on a
+   * surface — which in this shell means the sidebar, and only the sidebar. */
+  --color-bg-canvas-hover: var(--vt-bg-canvas-hover);
+  --color-bg-selected: var(--vt-bg-selected);
+  --color-bg-scrim: var(--vt-bg-scrim);
+
+  --color-border-default: var(--vt-border-default);
+  --color-border-strong: var(--vt-border-strong);
+  --color-border-focus: var(--vt-border-focus);
+
+  --color-text-primary: var(--vt-text-primary);
+  --color-text-secondary: var(--vt-text-secondary);
+  --color-text-tertiary: var(--vt-text-tertiary);
+  --color-text-inverse: var(--vt-text-inverse);
+  --color-text-brand: var(--vt-text-brand);
+
+  --color-success: var(--vt-success);
+  --color-attention: var(--vt-attention);
+  --color-danger: var(--vt-danger);
+
+  --color-avatar-fallback: var(--vt-avatar-fallback);
+
+  /* FDN-44: Badge's `subtle` intensity, stated per theme. The tint is the
+   * semantic hue at a theme-specific alpha; the ink is derived from the same
+   * hue so no new color enters the system. */
+  --color-tag-success: color-mix(
+    in srgb,
+    var(--vt-success) var(--vt-tag-tint),
+    transparent
+  );
+  --color-tag-attention: color-mix(
+    in srgb,
+    var(--vt-attention) var(--vt-tag-tint),
+    transparent
+  );
+  --color-tag-danger: color-mix(
+    in srgb,
+    var(--vt-danger) var(--vt-tag-tint),
+    transparent
+  );
+  --color-tag-neutral: var(--vt-tag-neutral-bg);
+  --color-tag-success-ink: var(--vt-tag-success-ink);
+  --color-tag-attention-ink: var(--vt-tag-attention-ink);
+  --color-tag-danger-ink: var(--vt-tag-danger-ink);
+  --color-tag-neutral-ink: var(--vt-tag-neutral-ink);
+
+  /*
+   * Categorical. FDN-20: per theme, because the bar is an opaque mix — 34%
+   * against white, 42% against near-black — and a single source value comes out
+   * pastel in one theme and saturated in the other.
+   */
+  --color-cat-1: var(--vt-cat-1);
+  --color-cat-2: var(--vt-cat-2);
+  --color-cat-3: var(--vt-cat-3);
+  --color-cat-4: var(--vt-cat-4);
+  --color-cat-5: var(--vt-cat-5);
+  --color-cat-6: var(--vt-cat-6);
+  --color-cat-7: var(--vt-cat-7);
+  --color-cat-8: var(--vt-cat-8);
+
+  --color-segment-track: var(--vt-segment-track);
+  --color-segment-active: var(--vt-segment-active);
+
+  /* FDN-44: the Table's inset column-header strip, which has to read on every
+   * surface a table can sit on rather than only on `bg-subtle`. */
+  --color-bg-column-header: var(--vt-bg-column-header);
+
+  /*
+   * FDN-12. The bench region's fill is a chosen color per theme, not
+   * `attention` composited at a percentage.
+   *
+   * Two reasons it stopped being a composite. A transparent fill let the
+   * non-working-day shading beneath it show through as a repeating stripe,
+   * which is the pattern VPS-D001 and VPS-D002 both forbid on this exact
+   * element (F31). And one percentage cannot serve both themes: 12% over
+   * white was a pale peach that read as an absence of color, while the same
+   * 12% over neutral-900 carried real weight (F32).
+   */
+  --color-bench: var(--vt-bench-fill);
+  --color-bench-rest: var(--vt-bench-rest);
+  --color-bench-figure: var(--vt-bench-figure);
+  /* FDN-18: the neutral fill that replaced `bg-selected` on navigation items
+   * and segmented controls, once brand was reserved to three uses. It is its
+   * own value rather than an alias of `bg-subtle`, because F38 moved light
+   * `bg-canvas` to neutral-100 — the same value — and the sidebar sits directly
+   * on the canvas, so an active item filled with `bg-subtle` was invisible. */
+  --color-bg-active: var(--vt-bg-active);
+
+  /* FDN-15: the faintest hint that a column is not a working day. */
+  --color-nonworking: var(--vt-nonworking-fill);
+
+  /* FDN-45: today's column on the timesheet grid — the same signal as the
+   * Bench Forecast's today line, filled rather than drawn. */
+  --color-bg-today: var(--vt-bg-today);
+  --color-bg-today-header: var(--vt-bg-today-header);
+}

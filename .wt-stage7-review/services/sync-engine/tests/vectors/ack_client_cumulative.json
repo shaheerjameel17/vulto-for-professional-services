@@ -1,0 +1,9 @@
+{
+  "description": "Ack (ack_kind 0): client has durably applied everything through cursor 7",
+  "message": {
+    "type": "ack",
+    "ack_kind": "client_cumulative",
+    "acknowledged_cursor": 7
+  },
+  "encoded_hex": "0105000000000000000007"
+}
