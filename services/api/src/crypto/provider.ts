@@ -23,16 +23,25 @@ export function keyProviderConfigFromEnv(
 }
 
 /**
- * Selects the key provider by `VULTO_KEY_PROVIDER`. It throws — at startup,
- * because the server builds one before it listens — if production is asked to
- * use the local provider (A003-T73).
+ * Selects the key provider by `VULTO_KEY_PROVIDER`. There is no default: an unset
+ * or empty value is an error in every environment, so a server that lost its
+ * configuration cannot fall back to a development key. `local` is accepted only
+ * when `NODE_ENV` is `development` or `test` — not merely "not production" — so
+ * a production server missing `NODE_ENV` refuses it too (A003-T73). The server
+ * builds a provider before it listens, so this fails at startup.
  */
 export function createKeyProvider(config: KeyProviderConfig): KeyProvider {
-  const provider =
-    config.provider === undefined || config.provider === "" ? "local" : config.provider;
+  const provider = config.provider;
+  if (provider === undefined || provider === "") {
+    throw new Error(
+      "VULTO_KEY_PROVIDER is not set; choose aws-kms, or local for development and test",
+    );
+  }
   if (provider === "local") {
-    if (config.nodeEnv === "production") {
-      throw new Error("VULTO_KEY_PROVIDER=local is refused in production; use aws-kms");
+    if (config.nodeEnv !== "development" && config.nodeEnv !== "test") {
+      throw new Error(
+        "VULTO_KEY_PROVIDER=local is accepted only when NODE_ENV is development or test",
+      );
     }
     if (!config.localRootKey)
       throw new Error("VULTO_LOCAL_ROOT_KEY is required for the local key provider");

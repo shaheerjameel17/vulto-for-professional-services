@@ -107,7 +107,9 @@ Drops `role exercised`, then `tier`, below 1280px. Actor and timestamp are never
 ```
 audit_entry_id:    UUID v4
 workspace_id:      UUID
-event_type:        enum: PermissionDenied, SensitiveAccessGranted
+event_type:        enum: PermissionDenied, SensitiveAccessGranted,
+                   AuthorizedOperationFailed, PrivilegedProjectionAuthorized,
+                   CryptographicErasureExecuted (F209)
 actor_kind:        enum: member, support, system — who acted (F206). A member
                    is a person; a support principal is an Owner-approved
                    staff grant; a system principal is a named job. Default
@@ -195,6 +197,7 @@ auditLog.query(workspaceId, filters?: {
 | G04 | Denials are logged at every tier. Successful-access logging covers Tier 1 and Tier 3 only |
 | G05 | `actor_application` records which suite application issued the query, defaulting to `'VultoRoster'` |
 | G06 | AuditEntry is exempt from erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. An erased actor's identifier is pseudonymized to a stable opaque token; the entry itself persists |
+| G09 | A cryptographic erasure is recorded as `CryptographicErasureExecuted`, operation `KeyDestroy`, with the closed target `ErasureTarget { erasure_domain_id, tier, destroyed_key_count, erasure_request_id }`. It is written only by the `erasure` system principal, in the same transaction as the key destruction, and holds identifiers and a count, never content. `erasure_request_id` is null until [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]'s ErasureRequest exists, and required from then on, so every erasure traces to an approved request (F209, founder-decided 21 September 2026) |
 | G08 | `actor_kind` states who acted, and exactly the identifier that matches it is present: `actor_user_id` and `actor_membership_id` for a member, `actor_grant_id` for a support principal, `actor_system_name` for a system principal (F206, founder-decided 21 September 2026). Only a member holds roles. Pseudonymization on erasure replaces `actor_user_id` and applies to member entries only |
 | G07 | AuditEntry is never indexed by [[VPS-F002_Local-First_Search|VPS-F002]] |
 

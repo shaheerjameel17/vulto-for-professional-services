@@ -15,56 +15,61 @@ import { createKeyProvider } from "./provider.js";
 const ROOT = Buffer.alloc(32, 7).toString("base64");
 
 describe("the key provider factory (A003-T73)", () => {
-  it("refuses the local provider in production, whether named or defaulted", () => {
-    const base = {
-      nodeEnv: "production",
-      localRootKey: ROOT,
-      awsRegion: undefined,
-      kmsRootKeyArn: undefined,
-    };
-    expect(() => createKeyProvider({ ...base, provider: "local" })).toThrow(
-      /production/,
-    );
-    expect(() => createKeyProvider({ ...base, provider: undefined })).toThrow(
-      /production/,
-    );
+  const base = { localRootKey: ROOT, awsRegion: undefined, kmsRootKeyArn: undefined };
+
+  it("has no default: an unset or empty provider is an error in every environment", () => {
+    for (const nodeEnv of ["production", "development", "test", undefined]) {
+      for (const provider of [undefined, ""]) {
+        expect(
+          () => createKeyProvider({ ...base, nodeEnv, provider }),
+          `${nodeEnv} ${provider}`,
+        ).toThrow(/VULTO_KEY_PROVIDER is not set/);
+      }
+    }
   });
 
-  it("builds the local provider outside production and requires its key", () => {
-    const base = {
+  it("accepts local only when NODE_ENV is development or test", () => {
+    for (const nodeEnv of ["development", "test"]) {
+      expect(createKeyProvider({ ...base, nodeEnv, provider: "local" })).toBeInstanceOf(
+        LocalKeyProvider,
+      );
+    }
+    // Not merely "not production": a missing or unexpected NODE_ENV is refused too.
+    for (const nodeEnv of ["production", undefined, "", "staging", "Production"]) {
+      expect(
+        () => createKeyProvider({ ...base, nodeEnv, provider: "local" }),
+        String(nodeEnv),
+      ).toThrow(/development or test/);
+    }
+  });
+
+  it("requires a well-formed local key", () => {
+    const local = {
       nodeEnv: "test",
       awsRegion: undefined,
       kmsRootKeyArn: undefined,
       provider: "local",
     };
-    expect(createKeyProvider({ ...base, localRootKey: ROOT })).toBeInstanceOf(
-      LocalKeyProvider,
-    );
-    expect(() => createKeyProvider({ ...base, localRootKey: undefined })).toThrow(
+    expect(() => createKeyProvider({ ...local, localRootKey: undefined })).toThrow(
       /VULTO_LOCAL_ROOT_KEY/,
     );
-    expect(() => createKeyProvider({ ...base, localRootKey: "c2hvcnQ=" })).toThrow(
+    expect(() => createKeyProvider({ ...local, localRootKey: "c2hvcnQ=" })).toThrow(
       /32-byte/,
     );
   });
 
-  it("builds the KMS provider in production and rejects unknown names", () => {
-    const kms = createKeyProvider({
+  it("builds the KMS provider in any environment and rejects unknown names", () => {
+    const kms = {
       provider: "aws-kms",
-      nodeEnv: "production",
       localRootKey: undefined,
       awsRegion: "eu-west-2",
       kmsRootKeyArn: "arn:aws:kms:eu-west-2:000000000000:key/test",
-    });
-    expect(kms).toBeInstanceOf(AwsKmsKeyProvider);
+    };
+    for (const nodeEnv of ["production", undefined]) {
+      expect(createKeyProvider({ ...kms, nodeEnv })).toBeInstanceOf(AwsKmsKeyProvider);
+    }
     expect(() =>
-      createKeyProvider({
-        provider: "rot13",
-        nodeEnv: "test",
-        localRootKey: ROOT,
-        awsRegion: undefined,
-        kmsRootKeyArn: undefined,
-      }),
+      createKeyProvider({ ...base, nodeEnv: "test", provider: "rot13" }),
     ).toThrow(/Unknown/);
   });
 });

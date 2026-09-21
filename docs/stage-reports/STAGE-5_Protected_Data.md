@@ -1,26 +1,27 @@
 # Stage 5 — Protected data and field-level encryption
 
-**Status:** BLOCKED
-**Branch:** stage-5-protected-data @ cf2cdbc
+**Status:** COMPLETE
+**Branch:** stage-5-protected-data @ PLACEHOLDER
 **Linear issues:** FDN-96, FDN-97 (erasure only)
 **Date:** 2026-09-21
 
 ## 1. Summary
-Salaries and other Tier 1 and Tier 2 content are now stored only as ciphertext, under a three-level key hierarchy whose root is AWS KMS in production and an environment key in development. The only way to read the content is an audited request: the permission decision is made, an audit entry is written, and only then is the value decrypted and returned, and if the entry cannot be written nothing is returned. Erasing one employee's content destroys that employee's key and leaves everyone else readable. One piece is blocked: there is no audit event for an erasure in the audit vocabulary (finding F209), so as shipped the erasure function refuses to destroy anything until you decide one.
+Salaries and other Tier 1 and Tier 2 content are now stored only as ciphertext, under a three-level key hierarchy whose root is AWS KMS in production and an environment key in development. The only way to read the content is an audited request: the permission decision is made, an audit entry is written, and only then is the value decrypted and returned, and if the entry cannot be written nothing is returned. Erasing one employee's content destroys that employee's key and leaves everyone else readable. Erasure is now audited too: destroying a key writes a `CryptographicErasureExecuted` entry in the same transaction, and if the entry cannot be written no key is destroyed (finding F209, closed). Following the review, the key provider has no default: an unset value stops the server at startup, and the development key is accepted only when the environment says it is development or test.
 
 ## 2. Done-criteria checklist
 - [x] A dump of both tables contains no plaintext sentinel — evidence: `services/api/src/protected/protected.integration.test.ts::a dump of the key and fragment tables and the graph rows holds no plaintext sentinel`.
 - [x] A fragment's ciphertext copied onto another owner fails authentication — evidence: `::ciphertext copied onto another node's row fails authentication and returns nothing`, `::a fragment moved to another partition or owner type fails too`; `services/api/src/crypto/crypto.test.ts::decrypts under the same header and fails under any changed field`.
 - [x] A denied read writes an audit row and returns nothing — evidence: `::a denied read returns nothing and writes an audit row`.
 - [x] A forced audit-append failure withholds the data — evidence: `::withholds the data if the audit entry cannot be written`.
-- [x] Erasing one employee's domain leaves another employee's content readable — evidence: `::destroys one employee's key, leaves the row, and leaves another employee's content readable` (with a recording audit injected; see F209).
+- [x] Erasing one employee's domain leaves another employee's content readable — evidence: `::destroys one employee's key, leaves the row, and leaves another employee's content readable` .
 - [x] `runAsPrincipal` for a demoted or removed member throws before reading — evidence: `::stops before reading anything when the member has been demoted or removed`, `::uses the member's current roles...`.
 - [x] The production guard rejects `LocalKeyProvider` — evidence: `services/api/src/crypto/crypto.test.ts::refuses the local provider in production, whether named or defaulted`; the server calls the factory before it listens (`server.ts::buildServer`).
 - [x] `AwsKmsKeyProvider` is unit-tested with a mocked KMS client, no network — evidence: `crypto.test.ts::wraps and unwraps with the workspace as the encryption context and the configured key`.
 - [x] Arch-check rules pass — evidence: `services/api/src/graph/arch-check.test.ts::fails when anything but the KMS provider imports the AWS SDK, or an unlisted module reaches decrypt`, `::passes on the real repository`.
 - [x] Logging: no protected value or session cookie reaches the application log — evidence: `services/api/src/trpc.integration.test.ts::never lets a protected value or a session cookie reach the application log (A006-T12)`.
 - [x] `protected.read` returns `Cache-Control: no-store`, is capped at 500 nodes and requires a session — evidence: `trpc.integration.test.ts` `protected.read over tRPC` (3 tests).
-- [ ] Erasure is audited — blocked by F209. Evidence for the rest: `::destroys nothing when the erasure cannot be audited, and is refused for any other principal`.
+- [x] Erasure is audited, and a failed audit destroys no key — evidence: `::writes one CryptographicErasureExecuted entry, in the same transaction, naming the request and no content`, `::a failed audit destroys no key`, `::is refused for every principal but the erasure system principal, and for another workspace`; `packages/schema/src/audit.test.ts::F209 — the cryptographic erasure event` (3 tests).
+- [x] The key provider has no default (Stage 5 review) — evidence: `services/api/src/crypto/crypto.test.ts::has no default: an unset or empty provider is an error in every environment`, `::accepts local only when NODE_ENV is development or test`.
 
 VPS-A003's acceptance criteria: dump safety (`a dump of the key and fragment tables...`), a fragment moved to another node (`ciphertext copied onto another node's row...`), and erasure of one employee leaving others readable (`destroys one employee's key...`).
 
@@ -35,6 +36,7 @@ VPS-A003's acceptance criteria: dump safety (`a dump of the key and fragment tab
 | A003-T62 (no key spans two domains; erasure destroys the key) | `crypto/keys.ts`, `protected/erasure.ts`, unique indexes | `::destroys one employee's key...`; `::keeps one data key per Tier 1 erasure domain...` |
 | A003-T68 (job principal, re-resolved) | `jobs/principal.ts` | `::stops before reading anything when the member has been demoted or removed` |
 | A003-T73 (KMS in production, local elsewhere; one interface) | `crypto/provider.ts`, `aws-kms-key-provider.ts`, `local-key-provider.ts` | `crypto.test.ts` factory and provider tests |
+| F209 (erasure audit event) | `packages/schema/src/audit.ts`, `protected/erasure.ts`, migration `0016_thin_iron_lad.sql`, `VPS-F004` G09 | `::writes one CryptographicErasureExecuted entry...` |
 | A007-T08 (decryption reachability) | `scripts/arch-check.mjs` rule 5 | `arch-check.test.ts` |
 | A006-T12 (log redaction) | `server.ts::LOG_REDACT` | log test |
 | F206 (system operations added as built) | `packages/schema/src/policy/principal-policy.ts` | `protected.integration.test.ts::...refused for any other principal` |
@@ -42,6 +44,7 @@ VPS-A003's acceptance criteria: dump safety (`a dump of the key and fragment tab
 ## 4. Files changed
 ```
  docs/Foundations_Findings.md                       |   13 +
+ docs/stage-reports/STAGE-5_Protected_Data.md       |  126 +
  packages/schema/src/index.ts                       |    1 +
  packages/schema/src/policy/index.ts                |    6 +-
  packages/schema/src/policy/principal-policy.ts     |    9 +-
@@ -79,7 +82,7 @@ VPS-A003's acceptance criteria: dump safety (`a dump of the key and fragment tab
  services/api/src/trpc.integration.test.ts          |   83 +-
  services/api/src/trpc.ts                           |    8 +-
  services/api/vitest.config.ts                      |    3 +
- 38 files changed, 5532 insertions(+), 13 deletions(-)
+ 39 files changed, 5658 insertions(+), 13 deletions(-)
 ```
 
 ## 5. Database changes
@@ -88,12 +91,14 @@ Migration `services/api/drizzle/0015_curved_carlie_cooper.sql`:
 - `graph_protected_fragments`: as specified, with `data_key_id` referencing `protected_data_keys`, a unique index on `(owner_kind, owner_id, schema_partition)`, and indexes on `(workspace_id, owner_id)` and `data_key_id`.
 Neither table is published for replication.
 
+Migration `services/api/drizzle/0016_thin_iron_lad.sql` (F209): widens the `audit_journal` check constraints to allow event type `CryptographicErasureExecuted` and target kind `ErasureTarget`.
+
 ## 6. Tests and gates
 - `pnpm install --frozen-lockfile` — exit 0 (after adding `@aws-sdk/client-kms@3.1136.0` and `canonicalize@4.0.0`, both exact)
 - `pnpm stack:up` — exit 0
-- `DATABASE_URL=postgres://vulto:vulto@localhost:5432/vulto_stage5_fresh pnpm --filter @vulto/api db:migrate` (fresh database) — exit 0, 16 migrations recorded
+- `DATABASE_URL=postgres://vulto:vulto@localhost:5432/vulto_stage5_fresh pnpm --filter @vulto/api db:migrate` (fresh database) — exit 0, 17 migrations recorded
 - `pnpm verify` — exit 0
-- `pnpm verify:full` — exit 0; `@vulto/api`: `Test Files  10 passed (10)`, `Tests  195 passed (195)` (163 at the start of the stage)
+- `pnpm verify:full` — exit 0; `@vulto/api`: `Test Files  10 passed (10)`, `Tests  198 passed (198)` (163 at the start of the stage)
 - `pnpm arch:check` — exit 0
 
 ## 7. Micro-decisions
@@ -104,23 +109,25 @@ Neither table is published for replication.
 - `protected.read` is a tRPC mutation, because up to 500 ids do not fit a URL and a read-through-POST is never cached; it changes nothing but the audit journal.
 - Fragment headers are rebuilt from the row's own columns at read time, never trusted from the stored `header` column, so moving ciphertext with its header still fails.
 - Edge-owned fragments are not written yet: no feature has protected edge metadata, and the brief's Stage 2 wrote none. `writeProtected` accepts node owners.
+- (Review) `createKeyProvider` has no default and refuses `local` unless `NODE_ENV` is `development` or `test`. `.env.example` and the local `.env` gain `NODE_ENV=development`; `NODE_ENV` is passed through Turbo; the three Playwright configs that start the API set `NODE_ENV=development`, `VULTO_KEY_PROVIDER=local` and the local-only key; Vitest already runs with `NODE_ENV=test`. The production image sets `NODE_ENV=production`, so it must be given `aws-kms`.
 - The `erasure` system principal gains one operation, `protected.destroy-key`. `key-rotation` gains none: its job is not built, and F206 says operations are added as built.
 - Server logs redact `cookie`, `authorization` and `set-cookie`; request bodies are never logged.
 - `services/api` reads its key provider configuration from the environment on first use and at startup; the test environment supplies a local-only key in `vitest.config.ts`.
 
 ## 8. Findings raised
-- F209 — a cryptographic erasure has no audit event. **Open.**
+- F209 — a cryptographic erasure has no audit event. **Closed** by founder-delegated decision: `CryptographicErasureExecuted`, `KeyDestroy`, `ErasureTarget` with `erasure_request_id`; `VPS-F004` corrected (G09).
 
 ## 9. Deviations from this brief
-- Item 10's `appendAudit` for erasure is behind an `ErasureAudit` seam that refuses by default, per F209.
+- None.
 - FDN-96's scope mentions annual and on-demand KEK rotation and FDN-97's mentions blob encryption; neither is in this stage's brief. Rotation has no code yet; blob encryption waits for object storage (FDN-70).
 
 ## 10. Known limitations and risks
 - **Backup key expiry is an operations task (FDN-58).** Destroying a data key in the live store does not by itself destroy retained backups of key records; A003's erasure criterion about backups needs FDN-58.
-- Until F209 is decided no key can be destroyed in production.
+- `erasure_request_id` is null until `VPS-F007`'s ErasureRequest exists and is required from then on; nothing yet enforces the requirement, because there is no request to point at.
+- KEK rotation has no issue yet; noted for FDN-96's follow-up list (ruled 21 September). `protected.read` resolves each fragment's node and key one query at a time, acceptable at the 500-node cap.
 - The pipeline does not yet call `writeProtected`: generic mutations refuse protected types (`requires-feature-mutation`), so the first feature mutation that owns a protected type is its first caller.
 - The KMS provider is verified only against a mocked client; there is no live-KMS test in CI.
 - `protected.read` audits each fragment separately, so a read of many fragments writes many entries.
 
 ## 11. Readiness for the next stage
-Yes for Stage 6, which needs the interceptor, the pipeline seam and the key services. F209 needs a ruling before erasure can be used.
+Yes. Stage 6 needs the interceptor, the pipeline seam and the key services. Any process that starts the API must now set `VULTO_KEY_PROVIDER` and `NODE_ENV`.

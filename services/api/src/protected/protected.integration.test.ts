@@ -17,12 +17,7 @@ import { PrincipalWithdrawnError, runAsPrincipal } from "../jobs/principal.js";
 import { resolveMemberPrincipal } from "../permission/member-principal.js";
 import type { MemberPrincipal } from "../permission/principal.js";
 import { addNode, makeWorkspace } from "../permission/test-support.js";
-import {
-  ErasureAuditUndefinedError,
-  ErasureDeniedError,
-  eraseErasureDomain,
-  type ErasureAudit,
-} from "./erasure.js";
+import { ErasureDeniedError, eraseErasureDomain } from "./erasure.js";
 import { readProtected } from "./read.js";
 import { graphProtectedFragments, protectedDataKeys } from "./schema.js";
 import { writeProtected } from "./write.js";
@@ -333,36 +328,34 @@ describe("A003-T59 — protected.read: decide, audit, decrypt", () => {
 });
 
 describe("A003-T62 — cryptographic erasure of one erasure domain", () => {
-  const recording = (): ErasureAudit & { events: unknown[] } => {
-    const events: unknown[] = [];
-    return {
-      events,
-      async record(_tx, event) {
-        events.push(event);
-      },
-    };
-  };
+  const erase = (
+    workspaceId: string,
+    erasureDomainId: string,
+    erasureRequestId: string | null = null,
+    options = {},
+    name:
+      "erasure" | "audience-recompute" | "retention-sweep" | "key-rotation" = "erasure",
+  ) =>
+    db.transaction((tx) =>
+      eraseErasureDomain(
+        tx,
+        services,
+        { kind: "system", name, workspaceId },
+        { workspaceId, erasureDomainId, erasureRequestId },
+        options,
+      ),
+    );
 
   it("destroys one employee's key, leaves the row, and leaves another employee's content readable", async () => {
     const { fixture, owner } = await setup();
     const a = await employeeWithSalary(fixture.workspaceId, { salary: "A" });
     const b = await employeeWithSalary(fixture.workspaceId, { salary: "B" });
-    const audit = recording();
     const [keyBefore] = await db
       .select()
       .from(protectedDataKeys)
       .where(eq(protectedDataKeys.erasureDomainId, a));
-    const result = await db.transaction((tx) =>
-      eraseErasureDomain(
-        tx,
-        services,
-        { kind: "system", name: "erasure", workspaceId: fixture.workspaceId },
-        { workspaceId: fixture.workspaceId, erasureDomainId: a },
-        audit,
-      ),
-    );
+    const result = await erase(fixture.workspaceId, a);
     expect(result.destroyedKeyIds).toEqual([keyBefore!.keyId]);
-    expect(audit.events).toHaveLength(1);
     const [keyAfter] = await db
       .select()
       .from(protectedDataKeys)
@@ -389,41 +382,134 @@ describe("A003-T62 — cryptographic erasure of one erasure domain", () => {
     ).rejects.toBeInstanceOf(ErasedDomainError);
   });
 
-  it("destroys nothing when the erasure cannot be audited, and is refused for any other principal", async () => {
+  it("writes one CryptographicErasureExecuted entry, in the same transaction, naming the request and no content", async () => {
     const { fixture } = await setup();
-    const a = await employeeWithSalary(fixture.workspaceId);
+    const a = await employeeWithSalary(fixture.workspaceId, { salary: SENTINEL });
+    const request = randomUUID();
+    await erase(fixture.workspaceId, a, request);
+    const entries = (await listAuditEntries(db, fixture.workspaceId)).filter(
+      (e) => e.event_type === "CryptographicErasureExecuted",
+    );
+    expect(entries).toHaveLength(1);
+    expect(entries[0]).toMatchObject({
+      outcome: "Granted",
+      operation: "KeyDestroy",
+      actor_kind: "system",
+      actor_system_name: "erasure",
+      actor_role: null,
+      target: {
+        kind: "ErasureTarget",
+        erasure_domain_id: a,
+        tier: 1,
+        destroyed_key_count: 1,
+        erasure_request_id: request,
+      },
+    });
+    expect(JSON.stringify(entries)).not.toContain(SENTINEL);
+
+    // Same transaction: if it rolls back, the entry and the destruction both do.
+    const b = await employeeWithSalary(fixture.workspaceId);
     await expect(
-      db.transaction((tx) =>
-        eraseErasureDomain(
+      db.transaction(async (tx) => {
+        await eraseErasureDomain(
           tx,
           services,
           { kind: "system", name: "erasure", workspaceId: fixture.workspaceId },
-          { workspaceId: fixture.workspaceId, erasureDomainId: a },
-        ),
+          {
+            workspaceId: fixture.workspaceId,
+            erasureDomainId: b,
+            erasureRequestId: null,
+          },
+        );
+        throw new Error("abort");
+      }),
+    ).rejects.toThrow("abort");
+    const [key] = await db
+      .select()
+      .from(protectedDataKeys)
+      .where(eq(protectedDataKeys.erasureDomainId, b));
+    expect(key!.destroyedAt).toBeNull();
+    expect(
+      (await listAuditEntries(db, fixture.workspaceId)).filter(
+        (e) => e.event_type === "CryptographicErasureExecuted",
       ),
-    ).rejects.toBeInstanceOf(ErasureAuditUndefinedError);
+    ).toHaveLength(1);
+  });
+
+  it("a failed audit destroys no key", async () => {
+    const { fixture, owner } = await setup();
+    const a = await employeeWithSalary(fixture.workspaceId, { salary: "A" });
+    const id = randomUUID();
+    // An entry with this id and different content exists, so the append conflicts.
+    await db.transaction((tx) =>
+      appendAudit(tx, {
+        audit_entry_id: id,
+        schema_version: 1,
+        workspace_id: fixture.workspaceId,
+        event_type: "PermissionDenied",
+        operation: "NodeList",
+        outcome: "Denied",
+        actor_kind: "member",
+        actor_user_id: randomUUID(),
+        actor_membership_id: randomUUID(),
+        actor_role: null,
+        actor_roles: ["team-member"],
+        actor_application: "VultoRoster",
+        target: {
+          kind: "QueryTarget",
+          query_kind: "node-list",
+          requested_node_type: "Employee",
+          target_tier: 1,
+        },
+        metadata: { denial_class: "InsufficientPermission" },
+        occurred_at: "2026-09-21T09:00:00.000Z",
+      }),
+    );
+    await expect(
+      erase(fixture.workspaceId, a, null, { newId: () => id }),
+    ).rejects.toThrow();
     const [key] = await db
       .select()
       .from(protectedDataKeys)
       .where(eq(protectedDataKeys.erasureDomainId, a));
     expect(key!.destroyedAt).toBeNull();
+    expect(key!.wrappedKey).not.toBeNull();
+    expect(await read(owner, [a])).toMatchObject([
+      { state: "available", value: { salary: "A" } },
+    ]);
+  });
+
+  it("is refused for every principal but the erasure system principal, and for another workspace", async () => {
+    const { fixture } = await setup();
+    const a = await employeeWithSalary(fixture.workspaceId);
     for (const name of [
       "audience-recompute",
       "retention-sweep",
       "key-rotation",
     ] as const) {
       await expect(
-        db.transaction((tx) =>
-          eraseErasureDomain(
-            tx,
-            services,
-            { kind: "system", name, workspaceId: fixture.workspaceId },
-            { workspaceId: fixture.workspaceId, erasureDomainId: a },
-            recording(),
-          ),
-        ),
+        erase(fixture.workspaceId, a, null, {}, name),
       ).rejects.toBeInstanceOf(ErasureDeniedError);
     }
+    await expect(
+      db.transaction((tx) =>
+        eraseErasureDomain(
+          tx,
+          services,
+          { kind: "system", name: "erasure", workspaceId: randomUUID() },
+          {
+            workspaceId: fixture.workspaceId,
+            erasureDomainId: a,
+            erasureRequestId: null,
+          },
+        ),
+      ),
+    ).rejects.toBeInstanceOf(ErasureDeniedError);
+    const [key] = await db
+      .select()
+      .from(protectedDataKeys)
+      .where(eq(protectedDataKeys.erasureDomainId, a));
+    expect(key!.destroyedAt).toBeNull();
   });
 });
 

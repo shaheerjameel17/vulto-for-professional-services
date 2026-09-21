@@ -59,6 +59,9 @@ function indexedTarget(entry: AuditEntry): {
       targetTier: entry.target.target_tier,
     };
   }
+  if (entry.target.kind === "ErasureTarget") {
+    return { targetNodeType: null, targetTier: entry.target.tier };
+  }
   return { targetNodeType: null, targetTier: entry.target.target_tier };
 }
 

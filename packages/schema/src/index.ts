@@ -137,6 +137,7 @@ export {
   auditDenialClassSchema,
   auditEdgeTargetSchema,
   auditEntrySchema,
+  auditErasureTargetSchema,
   auditEventTypeSchema,
   auditFailureClassSchema,
   auditMetadataSchema,

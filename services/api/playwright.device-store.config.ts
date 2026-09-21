@@ -31,6 +31,10 @@ export default defineConfig({
       env: {
         DATABASE_URL: databaseUrl,
         BETTER_AUTH_SECRET: secret,
+        // The key provider has no default; a local-only key for browser tests (A003-T73).
+        NODE_ENV: "development",
+        VULTO_KEY_PROVIDER: "local",
+        VULTO_LOCAL_ROOT_KEY: "D6QVNEsijEoJKnNdcu+/ez0N8rkLsdewyxeCwTYX7LA=",
         API_ORIGIN: "https://localhost:3111",
         WEB_ORIGIN: "https://localhost:3110",
         AUTH_TRUSTED_ORIGINS: "https://localhost:3110",
