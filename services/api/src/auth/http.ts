@@ -1,4 +1,4 @@
-import { passkeyRegistrationInputSchema } from "@vulto/schema";
+import { passkeyRegistrationInputSchema, WORKSPACE_HEADER } from "@vulto/schema";
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { auth } from "./config.js";
 import {
@@ -123,6 +123,18 @@ export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
       parsed = parseDeviceRegistrationRequest(request.body);
     } catch {
       return reply.code(400).send({ error: "The device could not be registered" });
+    }
+    // A client that names a workspace must mean the session's active one.
+    const claimed = request.headers[WORKSPACE_HEADER];
+    if (typeof claimed === "string") {
+      const current = await auth.api.getSession({
+        headers: requestHeaders(request),
+        query: { disableCookieCache: true },
+      });
+      const active = current?.session.activeOrganizationId?.toLowerCase();
+      if (current && claimed.trim().toLowerCase() !== active) {
+        return reply.code(403).send({ error: "workspace-mismatch" });
+      }
     }
     try {
       return await registerDevice(requestHeaders(request), parsed);

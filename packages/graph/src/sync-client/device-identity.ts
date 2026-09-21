@@ -8,6 +8,7 @@
 const DATABASE = "vulto:device";
 const STORE = "meta";
 const KEY = "device-id";
+const PENDING_ERASE = "erase-pending";
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -36,6 +37,35 @@ export async function getOrCreateDeviceId(): Promise<string> {
       transaction.onerror = () => reject(transaction.error);
     });
     return created;
+  } finally {
+    database.close();
+  }
+}
+
+/** Names of cache databases whose deletion has not finished. Identifiers only. */
+export async function readPendingErase(): Promise<string[]> {
+  const database = await open();
+  try {
+    return await new Promise<string[]>((resolve, reject) => {
+      const request = database.transaction(STORE).objectStore(STORE).get(PENDING_ERASE);
+      request.onsuccess = () => resolve((request.result as string[] | undefined) ?? []);
+      request.onerror = () => reject(request.error);
+    });
+  } finally {
+    database.close();
+  }
+}
+
+export async function writePendingErase(names: readonly string[]): Promise<void> {
+  const database = await open();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const transaction = database.transaction(STORE, "readwrite");
+      if (names.length === 0) transaction.objectStore(STORE).delete(PENDING_ERASE);
+      else transaction.objectStore(STORE).put([...names], PENDING_ERASE);
+      transaction.oncomplete = () => resolve();
+      transaction.onerror = () => reject(transaction.error);
+    });
   } finally {
     database.close();
   }

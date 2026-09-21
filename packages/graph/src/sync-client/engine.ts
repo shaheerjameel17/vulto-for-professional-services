@@ -45,7 +45,8 @@ export interface EngineOptions {
     resume: { handle: string | null; offset: string | null },
   ) => ShapeSource;
   /** Deletes this device's cache for the workspace. Called before anything else on revocation. */
-  readonly eraseLocalData: () => Promise<void>;
+  /** `workspace` erases this cache (revocation); `all` erases every cache on the origin (sign-out). */
+  readonly eraseLocalData: (scope: "workspace" | "all") => Promise<void>;
   readonly deviceId?: string;
   readonly deviceName?: string;
   readonly now?: () => string;
@@ -81,6 +82,8 @@ export class SyncEngine {
   #drainRun: Promise<void> | null = null;
   #drainAgain = false;
   #uploadFailures = 0;
+  /** Set while the server refuses this client's workspace claim; queued work waits, unreverted. */
+  #blocked: string | null = null;
   #cancelDrainTimer: (() => void) | null = null;
   #stopped = false;
   #state: SyncState = { status: "Syncing", signedOut: false, attention: [] };
@@ -247,13 +250,26 @@ export class SyncEngine {
     for (const source of this.#sources.values()) source.stop();
     this.#sources.clear();
     this.#protected.clear();
-    await this.#options.eraseLocalData();
+    await this.#erase("workspace");
     this.#publish({
       status: "Offline",
       signedOut: true,
       reason: "access-revoked",
       attention: [],
     });
+  }
+
+  /**
+   * Erases local data. If it cannot be finished (a blocked or failed delete), the
+   * engine stays stopped and signed out anyway; the host has recorded what is
+   * left, and the next start finishes it before opening anything.
+   */
+  async #erase(scope: "workspace" | "all"): Promise<void> {
+    try {
+      await this.#options.eraseLocalData(scope);
+    } catch {
+      // Stays stopped and signed out; the next start retries the delete first.
+    }
   }
 
   /** The network came back: try again now instead of waiting out the backoff. */
@@ -274,7 +290,7 @@ export class SyncEngine {
     this.#cancelDrainTimer?.();
     this.#protected.clear();
     this.#querySubscriptions.clear();
-    await this.#options.eraseLocalData();
+    await this.#erase("all");
     this.#publish({
       status: "Offline",
       signedOut: true,
@@ -426,7 +442,16 @@ export class SyncEngine {
           outcomes = await this.#options.api.applyMutations(envelopes);
         } catch (error) {
           await this.#exclusive(() => this.#outbox.requeueInflight());
-          if (error instanceof ApiError && error.kind === "network") {
+          if (error instanceof ApiError && error.kind === "workspace-mismatch") {
+            // Retryable later: the mutation stays queued and is not reverted.
+            this.#blocked = "workspace-mismatch";
+            this.#uploadFailures += 1;
+            this.#cancelDrainTimer?.();
+            this.#cancelDrainTimer = this.#timer(
+              () => void this.drain(),
+              backoffDelayMs(this.#uploadFailures),
+            );
+          } else if (error instanceof ApiError && error.kind === "network") {
             this.#connectivity = "offline";
             this.#uploadFailures += 1;
             this.#cancelDrainTimer?.();
@@ -439,6 +464,7 @@ export class SyncEngine {
           return false;
         }
         this.#uploadFailures = 0;
+        this.#blocked = null;
         this.#connectivity = "online";
         await this.#exclusive(async () => {
           for (const outcome of outcomes) {
@@ -475,6 +501,8 @@ export class SyncEngine {
     // Always try: the connectivity flag is a hint, and a request that works is the cure.
     try {
       const items = await this.#options.api.protectedRead(nodeIds);
+      // What the server returned is the whole truth for these nodes.
+      this.#protected.removeNodes(nodeIds);
       this.#protected.put(items);
       this.#connectivity = "online";
       return {
@@ -482,14 +510,33 @@ export class SyncEngine {
         items,
       };
     } catch (error) {
+      // Only a network failure may fall back to what memory holds. Every other
+      // outcome is the server saying no, and a value it would not give now must
+      // not be shown from memory.
       if (error instanceof ApiError && error.kind === "network") {
         this.#connectivity = "offline";
         await this.#refreshState();
+        return {
+          availability: "requires-connection",
+          items: this.#protected.forNodes(nodeIds),
+        };
       }
-      return {
-        availability: "requires-connection",
-        items: this.#protected.forNodes(nodeIds),
-      };
+      if (error instanceof ApiError && error.kind === "access-revoked") {
+        await this.#handleRevoked();
+        return { availability: "permission-absence", items: [] };
+      }
+      this.#protected.removeNodes(nodeIds);
+      if (error instanceof ApiError && error.kind === "workspace-mismatch") {
+        this.#blocked = "workspace-mismatch";
+        await this.#refreshState();
+        return { availability: "permission-absence", items: [] };
+      }
+      if (error instanceof ApiError && error.kind === "forbidden") {
+        return { availability: "permission-absence", items: [] };
+      }
+      // Unauthenticated, outdated or a server fault: nothing may be shown, and
+      // a connection or a sign-in is what would change that.
+      return { availability: "requires-connection", items: [] };
     }
   }
 
@@ -557,9 +604,13 @@ export class SyncEngine {
         this.#synced.size < TEMPLATES.length ||
         this.#draining,
       pending,
-      rejected,
+      rejected: rejected + (this.#blocked === null ? 0 : 1),
     });
-    this.#publish({ status, signedOut: false, attention });
+    const shown =
+      this.#blocked === null
+        ? attention
+        : [...attention, { mutationId: "", name: "sync", reason: this.#blocked }];
+    this.#publish({ status, signedOut: false, attention: shown });
   }
 
   #publish(state: SyncState): void {

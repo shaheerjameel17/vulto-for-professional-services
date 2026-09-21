@@ -2,7 +2,7 @@ import * as SQLite from "wa-sqlite";
 import SQLiteAsyncESMFactory from "wa-sqlite/dist/wa-sqlite-async.mjs";
 import { IDBBatchAtomicVFS } from "wa-sqlite/src/examples/IDBBatchAtomicVFS.js";
 import { MemoryVFS } from "wa-sqlite/src/examples/MemoryVFS.js";
-import { CREATE_CACHE_SCHEMA } from "./schema";
+import { CACHE_SCHEMA_VERSION, CREATE_CACHE_SCHEMA } from "./schema";
 
 /**
  * The cache database as the sync client sees it: SQL in, rows out. The real one
@@ -13,6 +13,8 @@ export type SqlValue = string | number | null;
 export interface SyncDatabase {
   all(sql: string, params?: readonly SqlValue[]): Promise<Record<string, SqlValue>[]>;
   run(sql: string, params?: readonly SqlValue[]): Promise<void>;
+  /** Runs several statements with no parameters. */
+  exec(sql: string): Promise<void>;
   /** Runs `work` in one transaction: all of it, or none of it. */
   transaction<T>(work: () => Promise<T>): Promise<T>;
   close(): Promise<void>;
@@ -56,6 +58,10 @@ class WaSqliteDatabase implements SyncDatabase {
     await this.all(sql, params);
   }
 
+  async exec(sql: string) {
+    await this.#sqlite.exec(this.#handle, sql);
+  }
+
   async transaction<T>(work: () => Promise<T>): Promise<T> {
     await this.#sqlite.exec(this.#handle, "BEGIN IMMEDIATE");
     try {
@@ -72,6 +78,30 @@ class WaSqliteDatabase implements SyncDatabase {
     await this.#sqlite.close(this.#handle);
     await this.#vfs?.close?.();
   }
+}
+
+/**
+ * Brings the schema to the current version. A database at another version, or
+ * one with tables but no version (from before versioning), is emptied and
+ * rebuilt: everything in it is replicated again from the server.
+ * Returns true when it had to start over.
+ */
+export async function prepareCacheSchema(database: SyncDatabase): Promise<boolean> {
+  const [{ user_version: version } = { user_version: 0 }] =
+    await database.all("PRAGMA user_version");
+  const existing = await database.all(
+    "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'",
+  );
+  const stale =
+    version !== CACHE_SCHEMA_VERSION && (Number(version) !== 0 || existing.length > 0);
+  if (stale) {
+    for (const table of existing) {
+      await database.run(`DROP TABLE IF EXISTS "${String(table["name"])}"`);
+    }
+  }
+  await database.exec(CREATE_CACHE_SCHEMA);
+  await database.run(`PRAGMA user_version = ${CACHE_SCHEMA_VERSION}`);
+  return stale;
 }
 
 let vfsCounter = 0;
@@ -105,17 +135,42 @@ export async function openSyncDatabase(
     handle = await sqlite.open_v2(name, undefined, name);
   }
   const database = new WaSqliteDatabase(sqlite, handle, vfs);
-  await sqlite.exec(handle, CREATE_CACHE_SCHEMA);
+  await prepareCacheSchema(database);
   return database;
 }
 
-/** Deletes a person's cache database outright (sign-out, revocation). */
-export async function deleteIdbDatabase(name: string): Promise<void> {
+/**
+ * Deletes a cache database. Resolves only once it is gone. An error is a
+ * failure; a blocked delete (another connection still open) is waited out, and
+ * fails if it has not completed within `timeoutMs`.
+ */
+export async function deleteIdbDatabase(
+  name: string,
+  timeoutMs = 10_000,
+): Promise<void> {
   if (typeof indexedDB === "undefined") return;
-  await new Promise<void>((resolve) => {
+  await new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Deleting ${name} did not finish`)),
+      timeoutMs,
+    );
     const request = indexedDB.deleteDatabase(name);
-    request.onsuccess = () => resolve();
-    request.onerror = () => resolve();
-    request.onblocked = () => resolve();
+    request.onsuccess = () => {
+      clearTimeout(timer);
+      resolve();
+    };
+    request.onerror = () => {
+      clearTimeout(timer);
+      reject(request.error ?? new Error(`Deleting ${name} failed`));
+    };
+    // onblocked: other connections are closing (they were told to); wait for success.
   });
+}
+
+/** The names of the origin's IndexedDB databases, or `null` where the browser cannot list them. */
+export async function listIdbDatabases(): Promise<string[] | null> {
+  if (typeof indexedDB === "undefined" || typeof indexedDB.databases !== "function")
+    return null;
+  const infos = await indexedDB.databases();
+  return infos.flatMap((info) => (info.name ? [info.name] : []));
 }

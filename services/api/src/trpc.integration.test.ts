@@ -2,7 +2,9 @@ import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { LightMyRequestResponse } from "fastify";
 import { afterAll, describe, expect, it } from "vitest";
+import { listAuditEntries } from "./audit/journal.js";
 import { member, session, user } from "./auth/schema.js";
+import { graphMutations } from "./graph/schema.js";
 import { closeDatabase, db } from "./db.js";
 import { getKeyServices } from "./crypto/keys.js";
 import { writeProtected } from "./protected/write.js";
@@ -302,5 +304,129 @@ describe("protected.read over tRPC", () => {
     expect(log.length).toBeGreaterThan(0);
     expect(log).not.toContain(SECRET);
     expect(log).not.toContain("better-auth.session_token");
+  });
+});
+
+describe("review — a workspace claim that is not the session's is refused (fail closed)", () => {
+  const CLAIM = "x-vulto-workspace-id";
+
+  it("refuses graph.applyMutations, applying nothing", async () => {
+    const owner = await signedInOwner();
+    const other = await makeWorkspace();
+    const body = {
+      mutations: [
+        {
+          mutation_id: randomUUID(),
+          name: "graph.createNode",
+          args: {
+            node: {
+              node_id: randomUUID(),
+              node_type: "Entity",
+              schema_version: 1,
+              lifecycle_status: "Active",
+              workspace_id: other.workspaceId,
+            },
+          },
+        },
+      ],
+    };
+    const count = async () =>
+      (await db.select().from(graphMutations)).filter(
+        (r) => r.mutationId === body.mutations[0]!.mutation_id,
+      ).length;
+    const response = await app.inject({
+      method: "POST",
+      url: "/trpc/graph.applyMutations",
+      headers: {
+        origin: ORIGIN,
+        "content-type": "application/json",
+        cookie: owner.cookie,
+        "x-vulto-schema-version": "1",
+        [CLAIM]: other.workspaceId,
+      },
+      payload: JSON.stringify(body),
+    });
+    expect(response.statusCode, response.body).toBe(403);
+    expect(JSON.parse(response.body).error.message).toBe("workspace-mismatch");
+    expect(await count()).toBe(0);
+
+    // The same call claiming the session's own workspace is served.
+    const ok = await app.inject({
+      method: "POST",
+      url: "/trpc/graph.applyMutations",
+      headers: {
+        origin: ORIGIN,
+        "content-type": "application/json",
+        cookie: owner.cookie,
+        "x-vulto-schema-version": "1",
+        [CLAIM]: owner.workspaceId.toUpperCase(),
+      },
+      payload: JSON.stringify({
+        mutations: [
+          {
+            ...body.mutations[0]!,
+            args: {
+              node: {
+                ...(body.mutations[0]!.args.node as object),
+                workspace_id: owner.workspaceId,
+              },
+            },
+          },
+        ],
+      }),
+    });
+    expect(ok.statusCode, ok.body).toBe(200);
+  });
+
+  it("refuses protected.read: nothing is decrypted and no audit entry is written", async () => {
+    const owner = await signedInOwner();
+    const nodeId = await db.transaction(async (tx) => {
+      const id = await addNode(tx, owner.workspaceId, "Employee");
+      await writeProtected(
+        tx,
+        getKeyServices(),
+        { workspaceId: owner.workspaceId, nodeId: id, nodeType: "Employee" },
+        "compensation",
+        { salary: "SENTINEL-mismatch-4417" },
+      );
+      return id;
+    });
+    const audits = async () => (await listAuditEntries(db, owner.workspaceId)).length;
+    const before = await audits();
+    const response = await app.inject({
+      method: "POST",
+      url: "/trpc/protected.read",
+      headers: {
+        origin: ORIGIN,
+        "content-type": "application/json",
+        cookie: owner.cookie,
+        [CLAIM]: randomUUID(),
+      },
+      payload: JSON.stringify({ node_ids: [nodeId] }),
+    });
+    expect(response.statusCode, response.body).toBe(403);
+    expect(JSON.parse(response.body).error.message).toBe("workspace-mismatch");
+    expect(response.body).not.toContain("SENTINEL-mismatch-4417");
+    expect(await audits()).toBe(before);
+  });
+
+  it("refuses /devices/register for a mismatched claim and registers nothing", async () => {
+    const owner = await signedInOwner();
+    const deviceId = randomUUID().replaceAll("-", "");
+    const refused = await app.inject({
+      method: "POST",
+      url: "/devices/register",
+      headers: { origin: ORIGIN, cookie: owner.cookie, [CLAIM]: randomUUID() },
+      payload: { deviceId, deviceName: "Test", platform: "web" },
+    });
+    expect(refused.statusCode, refused.body).toBe(403);
+    expect(JSON.parse(refused.body).error).toBe("workspace-mismatch");
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/devices/register",
+      headers: { origin: ORIGIN, cookie: owner.cookie, [CLAIM]: owner.workspaceId },
+      payload: { deviceId, deviceName: "Test", platform: "web" },
+    });
+    expect(accepted.statusCode, accepted.body).toBe(200);
   });
 });

@@ -227,6 +227,16 @@ export async function applyMutation(
       ) {
         continue;
       }
+      // A unique violation may be the losing side of a concurrent attempt at the
+      // same mutation (both wrote the same new row). If the winner has recorded
+      // the mutation id by now, start over: this attempt replays it as a duplicate.
+      if (pgCode(error)?.startsWith("23") && attempt < MAX_ATTEMPTS) {
+        const [recorded] = await db
+          .select({ id: graphMutations.mutationId })
+          .from(graphMutations)
+          .where(eq(graphMutations.mutationId, mutationId));
+        if (recorded) continue;
+      }
       const reason =
         error instanceof MutationRejection
           ? error.reason

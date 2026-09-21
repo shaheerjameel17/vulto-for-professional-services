@@ -4,7 +4,12 @@
  * Tier 1 or Tier 2 value is never written here — it lives in worker memory
  * (`protected-store.ts`). `session_hint` holds identifiers, never a token.
  */
-export const CACHE_SCHEMA_VERSION = 1;
+/**
+ * Bumped whenever a cache table changes. A database at any other version (or a
+ * pre-versioning one) is dropped and rebuilt by resyncing: the cache is
+ * disposable, replicated from the server. 2: `cache_tags` added (F211).
+ */
+export const CACHE_SCHEMA_VERSION = 2;
 
 export const CREATE_CACHE_SCHEMA = `
   CREATE TABLE IF NOT EXISTS cache_nodes (

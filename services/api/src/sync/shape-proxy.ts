@@ -1,5 +1,5 @@
 import { Readable } from "node:stream";
-import { uuidV4Schema } from "@vulto/schema";
+import { DEVICE_HEADER, uuidV4Schema, WORKSPACE_HEADER } from "@vulto/schema";
 import { and, eq, isNotNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { auth } from "../auth/config.js";
@@ -50,8 +50,7 @@ export const FORWARDED_PARAMETERS = [
 /** Parameters that may only carry one value: `log=full` is the client's default and narrows nothing. */
 const FIXED_VALUES: Readonly<Record<string, string>> = { log: "full" };
 
-export const WORKSPACE_HEADER = "x-vulto-workspace-id";
-export const DEVICE_HEADER = "x-vulto-device-id";
+export { DEVICE_HEADER, WORKSPACE_HEADER };
 
 export interface ShapeProxyConfig {
   readonly electricUrl: string;

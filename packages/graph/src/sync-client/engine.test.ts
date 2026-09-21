@@ -51,9 +51,12 @@ class FakeApi implements ApiClient {
   offline = false;
   reject = new Map<string, string>();
   protectedItems: ProtectedItem[] = [];
+  /** When set, the next requests fail with this error until it is cleared. */
+  failWith: ApiError | null = null;
   async applyMutations(mutations: readonly MutationEnvelope[]) {
     this.calls.push([...mutations]);
     if (this.offline) throw new ApiError("network", "down");
+    if (this.failWith) throw this.failWith;
     const out: MutationOutcome[] = [];
     let blocked = false;
     for (const m of mutations) {
@@ -88,6 +91,7 @@ class FakeApi implements ApiClient {
   }
   async protectedRead() {
     if (this.offline) throw new ApiError("network", "down");
+    if (this.failWith) throw this.failWith;
     return this.protectedItems;
   }
   async registerDevice() {}
@@ -795,7 +799,11 @@ describe("the schema-version header (A003-T71)", () => {
       seen.push(init?.headers as Record<string, string>);
       return new Response(JSON.stringify({ result: { data: [] } }), { status: 200 });
     }) as typeof fetch;
-    const api = createApiClient({ apiOrigin: "https://api.test", fetch: fetchStub });
+    const api = createApiClient({
+      apiOrigin: "https://api.test",
+      workspaceId: WORKSPACE,
+      fetch: fetchStub,
+    });
     await api.applyMutations([]);
     await api.protectedRead([]);
     await api.registerDevice("device-1234567890abcdef", "Test");
@@ -809,6 +817,7 @@ describe("the schema-version header (A003-T71)", () => {
 
   it("classifies client-outdated and network failures", async () => {
     const outdated = createApiClient({
+      workspaceId: WORKSPACE,
       apiOrigin: "https://api.test",
       fetch: (async () =>
         new Response(JSON.stringify({ error: { message: "client-outdated" } }), {
@@ -819,11 +828,157 @@ describe("the schema-version header (A003-T71)", () => {
       kind: "client-outdated",
     });
     const down = createApiClient({
+      workspaceId: WORKSPACE,
       apiOrigin: "https://api.test",
       fetch: (async () => {
         throw new TypeError("offline");
       }) as typeof fetch,
     });
     await expect(down.applyMutations([])).rejects.toMatchObject({ kind: "network" });
+  });
+});
+
+describe("review — a workspace mismatch fails closed", () => {
+  it("keeps a queued mutation queued and unreverted, shows NeedsAttention with the reason, and delivers it once the mismatch clears", async () => {
+    const h = await harness();
+    const id = uuid();
+    h.api.failWith = new ApiError("workspace-mismatch", "wrong workspace");
+    const outcome = await h.engine.mutate("graph.createNode", { node: entityNode(id) });
+    expect(outcome.accepted).toBe(true);
+    await h.engine.drain();
+    // Still queued, still applied locally, nothing reverted.
+    expect(await h.database.all("SELECT status FROM outbox")).toEqual([
+      { status: "pending" },
+    ]);
+    expect(
+      (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Entity" }))
+        .result,
+    ).toMatchObject({
+      node: { nodeId: id },
+    });
+    const state = h.engine.getState();
+    expect(state.status).toBe("NeedsAttention");
+    expect(state.attention.map((a) => a.reason)).toContain("workspace-mismatch");
+    expect(h.api.applied.size).toBe(0);
+    // A retry is scheduled, not a revert.
+    expect(h.timers.some((t) => !t.cancelled)).toBe(true);
+
+    h.api.failWith = null;
+    await h.engine.drain();
+    expect(h.api.applied.size).toBe(1);
+    expect(await h.database.all("SELECT * FROM outbox")).toEqual([]);
+    expect(h.engine.getState().attention).toEqual([]);
+  });
+});
+
+describe("review — protectedRead falls back to memory only on a network error", () => {
+  const held = {
+    node_id: "n1",
+    partition: "p",
+    state: "available",
+    value: SENTINEL,
+  } as const;
+  const primed = async () => {
+    const h = await harness();
+    h.api.protectedItems = [held];
+    await h.engine.protectedRead(["n1"]);
+    expect(h.engine.protectedStoreSize).toBe(1);
+    return h;
+  };
+
+  it("network: returns requires-connection with what memory holds", async () => {
+    const h = await primed();
+    h.api.failWith = new ApiError("network", "down");
+    expect(await h.engine.protectedRead(["n1"])).toEqual({
+      availability: "requires-connection",
+      items: [held],
+    });
+  });
+
+  it("access-revoked: erases everything and returns nothing", async () => {
+    const h = await primed();
+    h.api.failWith = new ApiError("access-revoked", "gone");
+    expect(await h.engine.protectedRead(["n1"])).toEqual({
+      availability: "permission-absence",
+      items: [],
+    });
+    expect(h.erased).toEqual(["erased"]);
+    expect(h.engine.getState()).toMatchObject({
+      signedOut: true,
+      reason: "access-revoked",
+    });
+    expect(h.engine.protectedStoreSize).toBe(0);
+  });
+
+  it("forbidden: removes those nodes' items and returns permission-absence", async () => {
+    const h = await primed();
+    h.api.failWith = new ApiError("forbidden", "no");
+    expect(await h.engine.protectedRead(["n1"])).toEqual({
+      availability: "permission-absence",
+      items: [],
+    });
+    expect(h.engine.protectedStoreSize).toBe(0);
+  });
+
+  it("workspace-mismatch: removes the items, returns permission-absence and shows NeedsAttention", async () => {
+    const h = await primed();
+    h.api.failWith = new ApiError("workspace-mismatch", "wrong");
+    expect(await h.engine.protectedRead(["n1"])).toEqual({
+      availability: "permission-absence",
+      items: [],
+    });
+    expect(h.engine.protectedStoreSize).toBe(0);
+    expect(h.engine.getState().status).toBe("NeedsAttention");
+  });
+
+  it("unauthenticated: removes the items and returns requires-connection with none", async () => {
+    const h = await primed();
+    h.api.failWith = new ApiError("unauthenticated", "no session");
+    expect(await h.engine.protectedRead(["n1"])).toEqual({
+      availability: "requires-connection",
+      items: [],
+    });
+    expect(h.engine.protectedStoreSize).toBe(0);
+  });
+
+  it("keeps items for nodes it was not asked about", async () => {
+    const h = await primed();
+    h.api.failWith = new ApiError("forbidden", "no");
+    await h.engine.protectedRead(["other"]);
+    expect(h.engine.protectedStoreSize).toBe(1);
+  });
+});
+
+describe("review — an erase that cannot finish leaves the engine stopped and signed out", () => {
+  it("signOut and revocation both end signed out even when the delete fails", async () => {
+    const failing = async () => {
+      throw new Error("blocked");
+    };
+    const a = await harness({ eraseLocalData: failing });
+    await a.engine.signOut();
+    expect(a.engine.getState()).toMatchObject({
+      signedOut: true,
+      reason: "signed-out",
+    });
+    expect(a.sources.every((s) => s.stopped)).toBe(true);
+
+    const b = await harness({ eraseLocalData: failing });
+    b.source("nodes").fail({ kind: "access-revoked" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(b.engine.getState()).toMatchObject({
+      signedOut: true,
+      reason: "access-revoked",
+    });
+    expect(b.sources.every((s) => s.stopped)).toBe(true);
+  });
+
+  it("asks for a whole-origin erase on sign-out and a single workspace on revocation", async () => {
+    const scopes: string[] = [];
+    const a = await harness({ eraseLocalData: async (s) => void scopes.push(s) });
+    await a.engine.signOut();
+    const b = await harness({ eraseLocalData: async (s) => void scopes.push(s) });
+    b.source("nodes").fail({ kind: "access-revoked" });
+    await new Promise((r) => setTimeout(r, 20));
+    expect(scopes).toEqual(["all", "workspace"]);
   });
 });

@@ -2,11 +2,22 @@ import { createApiClient } from "./api";
 import {
   cacheDatabaseName,
   deleteIdbDatabase,
+  listIdbDatabases,
   openSyncDatabase,
   type SyncDatabase,
 } from "./database";
-import { getOrCreateDeviceId } from "./device-identity";
+import {
+  getOrCreateDeviceId,
+  readPendingErase,
+  writePendingErase,
+} from "./device-identity";
 import { SyncEngine } from "./engine";
+import {
+  completePendingErase,
+  eraseAllCaches,
+  eraseDatabases,
+  type EraseEnvironment,
+} from "./erasure";
 import type {
   InitPayload,
   WorkerMessage,
@@ -44,14 +55,28 @@ const sessions = new Map<string, Session>();
 const lockName = (workspaceId: string, userId: string) =>
   `vulto-sync:${workspaceId}:${userId}`;
 
+const ERASE_ALL_CHANNEL = "vulto-sync:erase-all";
+
+const eraseEnvironment: EraseEnvironment = {
+  listDatabases: listIdbDatabases,
+  deleteDatabase: (name) => deleteIdbDatabase(name),
+  readPending: readPendingErase,
+  writePending: writePendingErase,
+};
+
 async function createSession(
   init: InitPayload,
   mode: "shared" | "dedicated",
 ): Promise<Session> {
   const name = cacheDatabaseName(init.workspaceId, init.userId);
+  // An erase that did not finish is finished before anything is opened or read.
+  await completePendingErase(eraseEnvironment);
   const deviceId = await getOrCreateDeviceId();
   const database: SyncDatabase = await openSyncDatabase({ kind: "idb", name });
-  const api = createApiClient({ apiOrigin: init.apiOrigin });
+  const api = createApiClient({
+    apiOrigin: init.apiOrigin,
+    workspaceId: init.workspaceId,
+  });
   const channelName = lockName(init.workspaceId, init.userId);
   const channel =
     typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(channelName);
@@ -71,10 +96,17 @@ async function createSession(
         resume,
       }),
     // Wipe the cache database, then every other tab's connection to it.
-    eraseLocalData: async () => {
+    eraseLocalData: async (scope) => {
       channel?.postMessage({ type: "erase" });
+      // Sign-out reaches every workspace's cache, so every session must let go of its database.
+      if (scope === "all" && typeof BroadcastChannel !== "undefined") {
+        const everyone = new BroadcastChannel(ERASE_ALL_CHANNEL);
+        everyone.postMessage({ type: "erase-all" });
+        everyone.close();
+      }
       await engine.withDatabase((d) => d.close()).catch(() => undefined);
-      await deleteIdbDatabase(name);
+      if (scope === "all") await eraseAllCaches(eraseEnvironment, name);
+      else await eraseDatabases(eraseEnvironment, [name]);
     },
     onCacheChanged: () => channel?.postMessage({ type: "changed" }),
   });
@@ -90,6 +122,15 @@ async function createSession(
   engine.onState((state) => {
     for (const port of ports) port.postMessage({ event: "state", state });
   });
+
+  if (typeof BroadcastChannel !== "undefined") {
+    // Another session is signing out of everything: close this database so its deletion can complete.
+    const everyone = new BroadcastChannel(ERASE_ALL_CHANNEL);
+    everyone.onmessage = () => {
+      void engine.stop();
+      void engine.withDatabase((d) => d.close()).catch(() => undefined);
+    };
+  }
 
   if (channel) {
     channel.onmessage = (event: MessageEvent) => {

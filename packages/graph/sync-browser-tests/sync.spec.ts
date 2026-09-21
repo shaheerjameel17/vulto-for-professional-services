@@ -325,3 +325,36 @@ test("revoking the device erases that workspace's local database", async ({
     .poll(async () => (await scanBrowserStorage(page)).databases)
     .not.toContain(cacheName(workspaceId, userId));
 });
+
+test("sign-out erases every workspace's cache on the origin, including one held open by another tab", async ({
+  page,
+  context,
+}) => {
+  const userId = await signInNewUser(context);
+  const first = await createOwnedWorkspace(userId);
+  const second = await createOwnedWorkspace(userId);
+  await seedEntities(first, userId, 1);
+  await seedEntities(second, userId, 1);
+  await openHarness(page, first, userId);
+  await untilSynced(page, 1);
+  const other = await context.newPage();
+  await openHarness(other, second, userId);
+  await untilSynced(other, 1);
+
+  const caches = async () =>
+    (await scanBrowserStorage(page)).databases.filter((name) =>
+      /^vulto:[^:]+:[^:]+$/.test(name),
+    );
+  expect(await caches()).toEqual(
+    expect.arrayContaining([cacheName(first, userId), cacheName(second, userId)]),
+  );
+
+  await other.evaluate(() =>
+    (
+      window as unknown as { __vultoSync: { client: { signOut(): Promise<void> } } }
+    ).__vultoSync.client.signOut(),
+  );
+  await expect.poll(caches, { timeout: 30_000 }).toEqual([]);
+  // The device identity is deliberately kept: erasing it would let a revoked device re-register as a new one.
+  expect((await scanBrowserStorage(page)).databases).toContain("vulto:device");
+});

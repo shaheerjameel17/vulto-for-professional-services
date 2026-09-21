@@ -44,6 +44,14 @@ export const MIN_CLIENT_SCHEMA_VERSION = 1;
 
 export const SCHEMA_VERSION_HEADER = "x-vulto-schema-version";
 
+/**
+ * The workspace a sync client believes it is acting in, sent on every API
+ * request. It is a claim, never authorization: the server refuses any request
+ * whose claim differs from the session's active workspace (`workspace-mismatch`).
+ */
+export const WORKSPACE_HEADER = "x-vulto-workspace-id";
+export const DEVICE_HEADER = "x-vulto-device-id";
+
 /** The most mutations one `graph.applyMutations` call may carry. */
 export const MAX_MUTATIONS_PER_CALL = 100;
 

@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { SqliteCache } from "./cache";
 import { openTestDatabase } from "./test-database";
-import { CACHE_TABLES } from "./schema";
+import { prepareCacheSchema } from "./database";
+import { CACHE_SCHEMA_VERSION, CACHE_TABLES } from "./schema";
 
 describe("the cache database over wa-sqlite", () => {
   it("creates exactly the cache tables and holds nothing of Tier 1 or Tier 2", async () => {
@@ -49,5 +50,39 @@ describe("the cache database over wa-sqlite", () => {
     expect(await cache.getNode("n1")).toBeDefined();
     expect(await cache.getNode("n2")).toBeUndefined();
     await db.close();
+  });
+});
+
+describe("the cache schema version", () => {
+  it("stamps a fresh database and keeps a current one untouched", async () => {
+    const db = await openTestDatabase();
+    expect((await db.all("PRAGMA user_version"))[0]?.["user_version"]).toBe(
+      CACHE_SCHEMA_VERSION,
+    );
+    await db.run(
+      "INSERT INTO cache_nodes (node_id, node_type, lifecycle_status, version, record_json) VALUES ('n','Entity','Active',1,'{}')",
+    );
+    expect(await prepareCacheSchema(db)).toBe(false);
+    expect((await db.all("SELECT node_id FROM cache_nodes")).length).toBe(1);
+  });
+
+  it("drops and rebuilds a database at another version, and one from before versioning", async () => {
+    const db = await openTestDatabase();
+    await db.run(
+      "INSERT INTO cache_nodes (node_id, node_type, lifecycle_status, version, record_json) VALUES ('n','Entity','Active',1,'{}')",
+    );
+    await db.run("PRAGMA user_version = 1");
+    expect(await prepareCacheSchema(db)).toBe(true);
+    expect(await db.all("SELECT node_id FROM cache_nodes")).toEqual([]);
+    expect((await db.all("PRAGMA user_version"))[0]?.["user_version"]).toBe(
+      CACHE_SCHEMA_VERSION,
+    );
+
+    await db.run(
+      "INSERT INTO cache_nodes (node_id, node_type, lifecycle_status, version, record_json) VALUES ('m','Entity','Active',1,'{}')",
+    );
+    await db.run("PRAGMA user_version = 0");
+    expect(await prepareCacheSchema(db)).toBe(true);
+    expect(await db.all("SELECT node_id FROM cache_nodes")).toEqual([]);
   });
 });

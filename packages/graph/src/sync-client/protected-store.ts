@@ -39,6 +39,13 @@ export class ProtectedStore {
     return [...this.#items.values()].filter((item) => wanted.has(item.node_id));
   }
 
+  /** Drops everything held for these nodes: a refusal means none of it may be shown. */
+  removeNodes(nodeIds: readonly string[]): void {
+    const gone = new Set(nodeIds);
+    for (const [key, item] of this.#items)
+      if (gone.has(item.node_id)) this.#items.delete(key);
+  }
+
   clear(): void {
     this.#items.clear();
   }

@@ -1,4 +1,5 @@
 import { ShapeStream, isChangeMessage, isControlMessage } from "@electric-sql/client";
+import { DEVICE_HEADER, WORKSPACE_HEADER } from "@vulto/schema";
 import { apiHeaders } from "./api";
 import type { ShapeChange, ShapeCursor, ShapeTemplateName } from "./cache";
 
@@ -92,8 +93,8 @@ export function createElectricSource(options: ElectricSourceOptions): ShapeSourc
         url: `${options.apiOrigin}/v1/shape/${options.template}`,
         headers: {
           ...apiHeaders(),
-          "x-vulto-workspace-id": options.workspaceId,
-          "x-vulto-device-id": options.deviceId,
+          [WORKSPACE_HEADER]: options.workspaceId,
+          [DEVICE_HEADER]: options.deviceId,
         },
         ...(options.resume.handle && options.resume.offset
           ? { handle: options.resume.handle, offset: options.resume.offset as never }

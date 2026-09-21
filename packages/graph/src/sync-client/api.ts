@@ -1,4 +1,8 @@
-import { MIN_CLIENT_SCHEMA_VERSION, SCHEMA_VERSION_HEADER } from "@vulto/schema";
+import {
+  MIN_CLIENT_SCHEMA_VERSION,
+  SCHEMA_VERSION_HEADER,
+  WORKSPACE_HEADER,
+} from "@vulto/schema";
 import type { ProtectedItem } from "./protected-store";
 
 /**
@@ -21,7 +25,17 @@ export interface MutationOutcome {
   readonly result?: unknown;
 }
 
-export type ApiErrorKind = "network" | "unauthenticated" | "client-outdated" | "server";
+export type ApiErrorKind =
+  | "network"
+  | "unauthenticated"
+  | "client-outdated"
+  /** The request named a workspace other than the session's active one; nothing was done. */
+  | "workspace-mismatch"
+  /** The server understood the request and refused it. */
+  | "forbidden"
+  /** The server said access is gone (`{ code: "access-revoked" }`). */
+  | "access-revoked"
+  | "server";
 
 export class ApiError extends Error {
   constructor(
@@ -41,6 +55,8 @@ export interface ApiClient {
 
 export interface ApiClientOptions {
   readonly apiOrigin: string;
+  /** Sent as `x-vulto-workspace-id` on every request: a claim the server checks, never authorization. */
+  readonly workspaceId: string;
   readonly fetch?: typeof fetch;
 }
 
@@ -60,7 +76,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     try {
       return await doFetch(`${options.apiOrigin}${path}`, {
         method: "POST",
-        headers: apiHeaders(),
+        headers: apiHeaders({ [WORKSPACE_HEADER]: options.workspaceId }),
         credentials: "include",
         body: JSON.stringify(body),
       });
@@ -71,12 +87,24 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
 
   async function trpc<T>(procedure: string, input: unknown): Promise<T> {
     const response = await call(`/trpc/${procedure}`, input);
-    if (response.status === 401)
-      throw new ApiError("unauthenticated", "The session is not valid");
     const payload = (await response.json().catch(() => null)) as {
       result?: { data: T };
       error?: { message?: string };
+      code?: string;
     } | null;
+    if (response.status === 401) {
+      if (payload?.code === "access-revoked")
+        throw new ApiError("access-revoked", "Access was revoked");
+      throw new ApiError("unauthenticated", "The session is not valid");
+    }
+    if (response.status === 403) {
+      if (payload?.error?.message === "workspace-mismatch")
+        throw new ApiError(
+          "workspace-mismatch",
+          "This client is not in the session's workspace",
+        );
+      throw new ApiError("forbidden", "The server refused the request");
+    }
     if (response.status === 412 && payload?.error?.message === "client-outdated") {
       throw new ApiError("client-outdated", "This client must reload");
     }
@@ -98,6 +126,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       });
       if (response.status === 401)
         throw new ApiError("unauthenticated", "The session is not valid");
+      if (response.status === 403)
+        throw new ApiError(
+          "workspace-mismatch",
+          "This client is not in the session's workspace",
+        );
       if (!response.ok)
         throw new ApiError("server", `Device registration answered ${response.status}`);
     },
