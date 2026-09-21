@@ -19,6 +19,10 @@
 //      `graph/membership-projection.ts` may name the authority that lets a
 //      `User` row be written (F204).
 //
+//   3. The audit journal table (Stage 3, F198). Only `services/api/src/audit`
+//      and `db.ts` may import `audit/schema`, so `appendAudit` is the one
+//      writer of an AuditEntry.
+//
 // Both run from the current working directory, so a test can point the check
 // at a temporary tree by running it there.
 //
@@ -100,6 +104,7 @@ if (!isDirectory(CROSS_TENANT_DIR)) {
 
 const API_SRC = "services/api/src";
 const STORE = `${API_SRC}/graph/store`;
+const AUDIT_SCHEMA = `${API_SRC}/audit/schema`;
 const AUTHORITY_HOMES = new Set([
   `${API_SRC}/graph/store.ts`,
   `${API_SRC}/graph/membership-projection.ts`,
@@ -122,6 +127,7 @@ if (!isDirectory(API_SRC)) {
 } else {
   const storeViolations = [];
   const authorityViolations = [];
+  const auditViolations = [];
   for (const raw of walk(API_SRC)) {
     const file = raw.split(sep).join("/");
     const text = readFileSync(raw, "utf8");
@@ -137,6 +143,21 @@ if (!isDirectory(API_SRC)) {
             .replace(/\.(js|ts)$/, "");
           if (resolved === STORE) {
             storeViolations.push(`    ${file}:${i + 1}  ${line.trim()}`);
+          }
+        }
+      });
+    }
+    if (!file.startsWith(`${API_SRC}/audit/`) && file !== `${API_SRC}/db.ts`) {
+      text.split("\n").forEach((line, i) => {
+        for (const match of line.matchAll(SPECIFIER)) {
+          const specifier = match[1];
+          if (!specifier.startsWith(".")) continue;
+          const resolved = normalize(join(dirname(file), specifier))
+            .split(sep)
+            .join("/")
+            .replace(/\.(js|ts)$/, "");
+          if (resolved === AUDIT_SCHEMA) {
+            auditViolations.push(`    ${file}:${i + 1}  ${line.trim()}`);
           }
         }
       });
@@ -176,7 +197,24 @@ if (!isDirectory(API_SRC)) {
       ].join("\n") + "\n",
     );
   }
-  if (storeViolations.length === 0 && authorityViolations.length === 0) {
+  if (auditViolations.length > 0) {
+    failed = true;
+    process.stderr.write(
+      [
+        "",
+        "  ✗ F198 — audit/schema may be imported only from services/api/src/audit and db.ts;",
+        "    appendAudit is the only writer of an AuditEntry. Found:",
+        "",
+        ...auditViolations,
+        "",
+      ].join("\n") + "\n",
+    );
+  }
+  if (
+    storeViolations.length === 0 &&
+    authorityViolations.length === 0 &&
+    auditViolations.length === 0
+  ) {
     process.stdout.write(`  ✓ ${STORE} — import boundary holds\n`);
   }
 }

@@ -87,6 +87,24 @@ describe("arch-check — the graph store import boundary", () => {
     expect(good.status, good.stderr).toBe(0);
   });
 
+  it("fails when anything but the audit module imports the journal table (F198)", () => {
+    // Specifiers are assembled at runtime so this file does not itself match the rule.
+    const dir = "../audit";
+    const bad = archCheck({
+      "services/api/src/audit/schema.ts": "export const auditJournal = 1;\n",
+      "services/api/src/routes/rogue.ts": `import { auditJournal } from "${dir}/schema.js";\nvoid auditJournal;\n`,
+    });
+    expect(bad.status).toBe(1);
+    expect(bad.stderr).toContain("F198");
+    const good = archCheck({
+      "services/api/src/audit/schema.ts": "export const auditJournal = 1;\n",
+      "services/api/src/audit/journal.ts":
+        'import { auditJournal } from "./schema.js";\nvoid auditJournal;\n',
+      "services/api/src/db.ts": `import * as a from "./audit/${"schema"}.js";\nvoid a;\n`,
+    });
+    expect(good.status, good.stderr).toBe(0);
+  });
+
   it("passes on the real repository", () => {
     const result = spawnSync(process.execPath, [SCRIPT], {
       cwd: fileURLToPath(new URL("../../../../", import.meta.url)),

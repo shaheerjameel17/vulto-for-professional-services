@@ -1,7 +1,5 @@
-import { initTRPC } from "@trpc/server";
 import { sql } from "./db.js";
-
-const t = initTRPC.create();
+import { protectedProcedure, publicProcedure, t } from "./trpc.js";
 
 /**
  * Render a timestamp the driver returned, whatever shape it chose.
@@ -51,7 +49,7 @@ function toIsoOrRaw(value: unknown): string | null {
  */
 export const appRouter = t.router({
   system: t.router({
-    status: t.procedure.query(async () => {
+    status: publicProcedure.query(async () => {
       const startedAt = Date.now();
 
       let row: { now: unknown } | undefined;
@@ -124,6 +122,18 @@ export const appRouter = t.router({
         latencyMs: Date.now() - startedAt,
       };
     }),
+  }),
+  principal: t.router({
+    /**
+     * The caller's own principal, as the server resolved it. It reads nothing
+     * from the input and returns only what the caller already holds; it exists
+     * so a role change can be seen taking effect on the next request.
+     */
+    current: protectedProcedure.query(({ ctx }) => ({
+      userId: ctx.principal.userId,
+      workspaceId: ctx.principal.workspaceId,
+      roles: [...ctx.principal.roles],
+    })),
   }),
 });
 

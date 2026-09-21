@@ -114,6 +114,8 @@ describe("Stage 2 — the canonical graph store", () => {
     await db.transaction(async (tx) => {
       const workspaceId = await newWorkspace(tx);
       for (const { nodeType } of NODE_REGISTRY) {
+        // F198: AuditEntry is written only by appendAudit; see audit.integration.test.ts.
+        if (nodeType === "AuditEntry") continue;
         const record = nodeRecord(nodeType, workspaceId);
         if (nodeType === "User") await writeMembershipUser(tx, workspaceId, record);
         else if (nodeType !== "Workspace") await insertNode(tx, record);
@@ -127,8 +129,16 @@ describe("Stage 2 — the canonical graph store", () => {
       // including the anonymity-protected contributions, went through the store.
       const stored = await getNodes(tx, workspaceId, { includeSoftDeleted: true });
       expect(new Set(stored.map((n) => n.nodeType))).toEqual(
-        new Set(NODE_REGISTRY.map((r) => r.nodeType)),
+        new Set(NODE_REGISTRY.map((r) => r.nodeType).filter((t) => t !== "AuditEntry")),
       );
+    });
+  });
+
+  it("refuses AuditEntry on every generic write path (F198)", async () => {
+    await db.transaction(async (tx) => {
+      const workspaceId = await newWorkspace(tx);
+      const record = nodeRecord("AuditEntry", workspaceId);
+      await expect(insertNode(tx, record)).rejects.toThrow(/appendAudit/);
     });
   });
 

@@ -27,6 +27,7 @@ import {
 } from "./workspace-projection.js";
 import { SYNC_TICKET_PREFIX, SYNC_TICKET_TTL_SECONDS } from "./sync-ticket.js";
 import {
+  admitWorkspaceMember,
   confirmWorkspaceAdmission,
   confirmWorkspaceRevocationProjection,
   createPendingWorkspaceAdmission,
@@ -311,7 +312,7 @@ describe("exact-workspace revocation guard", () => {
     const workspaceA = await addWorkspace(created.userId, `a-${randomUUID()}`);
     const workspaceB = await addWorkspace(created.userId, `b-${randomUUID()}`);
 
-    await revokeWorkspaceAdmission(workspaceA.membershipId);
+    await revokeWorkspaceAdmission(workspaceA.membershipId, randomUUID());
     await expect(
       requireCurrentWorkspaceSession(headers(created.cookie), workspaceA.workspaceId),
     ).rejects.toBeInstanceOf(UnauthorizedWorkspaceSessionError);
@@ -536,7 +537,7 @@ describe("F148 — the role-refresh checkpoint separates its failures from its d
       userId,
       `f148-revoked-${randomUUID()}`,
     );
-    await revokeWorkspaceAdmission(membershipId);
+    await revokeWorkspaceAdmission(membershipId, randomUUID());
 
     const response = await app.inject({
       method: "POST",
@@ -587,7 +588,7 @@ describe("F151 — the real revocation cascade classifies as membership-revoked"
     expect(unlockResponse.statusCode, "the device must unlock successfully").toBe(200);
 
     // The real function, not a hand-simulated cascade.
-    await revokeWorkspaceAdmission(membershipId);
+    await revokeWorkspaceAdmission(membershipId, randomUUID());
 
     // The cascade's own effect, checked directly: this device's secret was
     // revoked as a SIDE EFFECT of the membership revocation, not because
@@ -1086,7 +1087,7 @@ describe("FDN-63 — device trust gate and revocation cascade", () => {
     expect((await unlock(cookie, workspaceId, id)).statusCode).toBe(200);
     expect((await unlock(cookie, other.workspaceId, id)).statusCode).toBe(200);
 
-    await revokeWorkspaceAdmission(membershipId);
+    await revokeWorkspaceAdmission(membershipId, randomUUID());
 
     const [row] = await db
       .select()
@@ -1689,7 +1690,7 @@ describe("FDN-85 Stage 2 — the founding workspace-admission projection", () =>
     const workspaceId = String(grant.workspaceId);
     const membershipId = String(grant.membershipId);
 
-    await revokeWorkspaceAdmission(membershipId);
+    await revokeWorkspaceAdmission(membershipId, randomUUID());
 
     await expect(
       consumeWorkspaceProjectionGrant(String(grant.grant), {
@@ -1754,21 +1755,29 @@ describe("FDN-85 Stage 3 — removal and role-change projection", () => {
     return { cookie, userId, device, workspaceId, ownerMembershipId: membershipId };
   }
 
+  /** The graph's copy of a membership: its node, and its two edges' `effective_to`. */
+  async function graphMembership(membershipId: string) {
+    const nodes = (await db.execute(
+      sql`select lifecycle_status, record from graph_nodes where node_id = ${membershipId}`,
+    )) as unknown as { lifecycle_status: string; record: { role: string } }[];
+    const edges = (await db.execute(
+      sql`select edge_type, effective_to from graph_edges where from_node_id = ${membershipId} order by edge_type`,
+    )) as unknown as { edge_type: string; effective_to: Date | null }[];
+    return { node: nodes[0], edges };
+  }
+
   /** A second, confirmed member of an EXISTING workspace (server-seeded —
    * FDN-86 owns the real invitation flow). */
   async function addConfirmedMember(workspaceId: string, roles: WorkspaceRoleName[]) {
     const { userId } = await createSignedInAccount();
     const membershipId = randomUUID();
-    await db.insert(member).values({
-      id: membershipId,
-      organizationId: workspaceId,
+    await admitWorkspaceMember({
+      workspaceId,
+      membershipId,
       userId,
-      role: roles.join(","),
-      createdAt: new Date(),
-      status: "pending",
-      projectionState: "pending",
+      roles,
+      actorUserId: randomUUID(),
     });
-    await confirmWorkspaceAdmission(membershipId);
     return { userId, membershipId };
   }
 
@@ -1798,6 +1807,16 @@ describe("FDN-85 Stage 3 — removal and role-change projection", () => {
       membershipId,
     });
     expect(revoked.statusCode, revoked.body).toBe(200);
+
+    // The graph's copy changed in the same transaction: the membership is
+    // Revoked and both of its edges are closed, nothing deleted.
+    const revokedGraph = await graphMembership(membershipId);
+    expect(revokedGraph.node?.lifecycle_status).toBe("Revoked");
+    expect(revokedGraph.edges.map((e) => e.edge_type)).toEqual([
+      "membership_in",
+      "membership_of",
+    ]);
+    expect(revokedGraph.edges.every((e) => e.effective_to !== null)).toBe(true);
 
     // Central denial is immediate — the member row is revoked/revocation-pending.
     const [row] = await db
@@ -1892,6 +1911,8 @@ describe("FDN-85 Stage 3 — removal and role-change projection", () => {
       .from(member)
       .where(sql`${member.id} = ${membershipId}`);
     expect(row?.role).toBe("hr-admin");
+    // ...and so is the graph's copy, in the same transaction.
+    expect((await graphMembership(membershipId)).node?.record.role).toBe("hr-admin");
   });
 
   it("role change — WIDEN: member.role is NOT updated until confirm-role-change, after the graph records it", async () => {
@@ -1927,6 +1948,9 @@ describe("FDN-85 Stage 3 — removal and role-change projection", () => {
       .from(member)
       .where(sql`${member.id} = ${membershipId}`);
     expect(after?.role?.split(",").sort()).toEqual(["finance-admin", "hr-admin"]);
+    expect((await graphMembership(membershipId)).node?.record.role).toBe(
+      "finance-admin,hr-admin",
+    );
   });
 
   it("stale-state CAS: a revocation transition grant cannot be consumed while the membership is still active/confirmed", async () => {
@@ -1950,7 +1974,7 @@ describe("FDN-85 Stage 3 — removal and role-change projection", () => {
     const { membershipId } = await addConfirmedMember(owner.workspaceId, [
       "team-member",
     ]);
-    await revokeWorkspaceAdmission(membershipId);
+    await revokeWorkspaceAdmission(membershipId, randomUUID());
     // First confirm succeeds.
     await confirmWorkspaceRevocationProjection(membershipId);
     // Second confirm — no longer revocation-pending.

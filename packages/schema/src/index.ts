@@ -121,3 +121,33 @@ export {
   type WorkspaceRole,
   type WorkspaceStatus,
 } from "./auth";
+
+export * from "./policy";
+
+export {
+  AUDIT_DENIAL_CLASSES,
+  AUDIT_EVENT_TYPES,
+  AUDIT_FAILURE_CLASSES,
+  AUDIT_OPERATIONS,
+  AUDIT_OUTCOMES,
+  AUDIT_QUERY_KINDS,
+  AUDIT_RESULT_CARDINALITIES,
+  auditDenialClassSchema,
+  auditEdgeTargetSchema,
+  auditEntrySchema,
+  auditEventTypeSchema,
+  auditFailureClassSchema,
+  auditMetadataSchema,
+  auditNodeTargetSchema,
+  auditOperationSchema,
+  auditOutcomeSchema,
+  auditQueryTargetSchema,
+  auditResultCardinalitySchema,
+  auditTargetReferenceSchema,
+  type AuditEntry,
+  type AuditEventType,
+  type AuditMetadata,
+  type AuditOperation,
+  type AuditOutcome,
+  type AuditTargetReference,
+} from "./audit";

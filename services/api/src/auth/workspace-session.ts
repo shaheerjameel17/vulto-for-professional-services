@@ -9,6 +9,10 @@ import { db } from "../db.js";
 import { auth } from "./config.js";
 import { recordTrustEvent } from "./device-trust-log.js";
 import { writeFoundingRecords } from "../graph/founding.js";
+import {
+  projectMemberAdmission,
+  projectMemberRemoval,
+} from "../graph/membership-changes.js";
 import { membershipInEdgeId, membershipOfEdgeId } from "./membership-edge-ids.js";
 import {
   device,
@@ -134,6 +138,52 @@ export async function createPendingWorkspaceAdmission(
   });
 }
 
+export interface WorkspaceMemberAdmission {
+  workspaceId: string;
+  membershipId: string;
+  userId: string;
+  roles: readonly WorkspaceRole[];
+  /** Who admitted them. */
+  actorUserId: string;
+}
+
+/**
+ * Invitation acceptance: the central membership row and its graph records
+ * commit together. Active and confirmed at once, because the graph copy is
+ * written in this transaction and no device projection follows. The invitation
+ * flow that calls this is FDN-86.
+ */
+export async function admitWorkspaceMember(
+  input: WorkspaceMemberAdmission,
+): Promise<void> {
+  const workspaceId = uuidV4Schema.parse(input.workspaceId);
+  const membershipId = uuidV4Schema.parse(input.membershipId);
+  const userId = uuidV4Schema.parse(input.userId);
+  const actorUserId = uuidV4Schema.parse(input.actorUserId);
+
+  await db.transaction(async (transaction) => {
+    await projectMemberAdmission(transaction, {
+      workspaceId,
+      membershipId,
+      userId,
+      roles: input.roles,
+      membershipOfEdgeId: membershipOfEdgeId(membershipId),
+      membershipInEdgeId: membershipInEdgeId(membershipId),
+      actorUserId,
+      occurredAt: new Date().toISOString(),
+    });
+    await transaction.insert(member).values({
+      id: membershipId,
+      organizationId: workspaceId,
+      userId,
+      role: serializeWorkspaceRoles(input.roles),
+      createdAt: new Date(),
+      status: "active",
+      projectionState: "confirmed",
+    });
+  });
+}
+
 export async function confirmWorkspaceAdmission(
   membershipIdInput: string,
 ): Promise<void> {
@@ -164,8 +214,10 @@ export async function confirmWorkspaceAdmission(
  */
 export async function revokeWorkspaceAdmission(
   membershipIdInput: string,
+  actorUserIdInput: string,
 ): Promise<void> {
   const membershipId = uuidV4Schema.parse(membershipIdInput);
+  const actorUserId = uuidV4Schema.parse(actorUserIdInput);
 
   await db.transaction(async (transaction) => {
     const [revoked] = await transaction
@@ -174,6 +226,14 @@ export async function revokeWorkspaceAdmission(
       .where(eq(member.id, membershipId))
       .returning({ userId: member.userId, workspaceId: member.organizationId });
     if (!revoked) throw new Error("Workspace membership does not exist");
+
+    // The graph copy changes in the same transaction as the central row.
+    await projectMemberRemoval(transaction, {
+      workspaceId: revoked.workspaceId,
+      membershipId,
+      actorUserId,
+      occurredAt: new Date().toISOString(),
+    });
 
     await transaction
       .update(session)
