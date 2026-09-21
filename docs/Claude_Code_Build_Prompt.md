@@ -149,6 +149,13 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 
 ---
 
+## Amendments
+
+- **21 September 2026 — F203 closed.** GitHub Actions service containers cannot override the Postgres command. Decision: CI gets a tiny Postgres image of its own whose default command carries the replication flags, built and pinned exactly like the existing CI image. Implemented in Stage 6 item 0, because no CI suite needs replication before then. When merging Stage 1, update F203 to **Closed by founder-delegated decision, 21 September 2026 — CI Postgres image, built in Stage 6**, and move its detailed section so it follows F202.
+- **21 September 2026 — pushing.** The founder has allowed `git push` to `origin` for `main`, `stage-*`, `archive/local-first-e2e` and `fdn-68-audit-wip`. A refused push is still a STOP condition.
+
+---
+
 ## Part 3 — The stages
 
 ### Stage 1 — Alignment, baseline and local stack
@@ -164,7 +171,7 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 2. **Baseline:** run `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify` and `pnpm verify:full`. Record every result verbatim in the report as the baseline. Fix nothing yet.
 3. **Postgres logical replication.** In `docker-compose.yml`, give the `postgres` service:
    `command: ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=10", "-c", "max_wal_senders=10"]`
-   Mirror the same settings in the CI Postgres service in `.github/workflows/*.yml` wherever Postgres is started.
+   **CI is not changed in Stage 1.** GitHub Actions service containers cannot take a command (F203); Stage 6 item 0 gives CI its own Postgres image.
 4. **Retire the Rust relay from the default stack without deleting it.** Give the `sync-engine` compose service `profiles: ["retired"]`, so `pnpm stack:up` no longer builds Rust. Stage 7 deletes it.
 5. **Add Electric** to `docker-compose.yml`:
    - service name `electric`; image `electricsql/electric`, using the latest stable **1.x** release as of the day you run this;
@@ -419,6 +426,8 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
 
 **Server:**
 
+0. **CI Postgres image (F203).** Create `.docker/ci-postgres/Dockerfile`: `FROM` the same `postgres:17-alpine@sha256:742f40ea…` digest the workflows use today, with `CMD ["postgres", "-c", "wal_level=logical", "-c", "max_replication_slots=10", "-c", "max_wal_senders=10"]`. Extend `.github/workflows/ci-image.yml` to build and publish it as `ghcr.io/<repo>/ci-postgres`, triggered by changes under `.docker/ci-postgres/**`, exactly as the CI image is. Add `CI_POSTGRES_IMAGE=<digest pin>` to `.github/workflows/ci-image-ref.env`, and have `slow-lane.yml`'s `resolve-image` job output it, so every Postgres `services:` entry uses `${{ needs.resolve-image.outputs.postgres_image }}` instead of the literal digest. Publishing needs a merge to `main` followed by a repin, as the CI image README describes: do the Dockerfile and workflow change first, stop and report so the founder can merge it, then repin once the digest exists. Until the repin, the Stage 6 browser suite runs locally only; say so in the report.
+
 1. **Audience tables:** `sync_node_audience (workspace_id uuid, user_id uuid, node_id uuid, primary key (user_id, node_id))` and `sync_edge_audience (workspace_id uuid, user_id uuid, edge_id uuid, primary key (user_id, edge_id))`, each with an index on `(workspace_id, user_id)`. Identifiers only.
 2. **Materializer** — `services/api/src/audience/`:
    - implements `audience.onRowsChanged` from Stage 4: for each touched Tier 0 node or edge, and each active member of the workspace, insert or delete audience rows so they equal `interceptor.authorizeRead` for that member;
@@ -480,6 +489,8 @@ Any pre-existing failure you find in Stage 1 is recorded as a baseline and must 
   8. **no protected data on the device**: seed Tier 1 and Tier 2 sentinel values, exercise `protectedRead`, then scan every IndexedDB database and every cache table for the sentinels — none are found.
 
 **Done criteria:** every test above passes; VPS-A003's acceptance criteria for offline boot, queued writes, stale-state, the device-storage scan and revocation are cited with test names.
+
+**CI:** add an `electric` service to the slow-lane job that runs this suite, using the same pinned digest and the `vulto_electric` role, and run the suite there once item 0's repin has landed.
 
 **Gates:** the standard four, plus `pnpm exec playwright test --config packages/graph/playwright.sync.config.ts`.
 
