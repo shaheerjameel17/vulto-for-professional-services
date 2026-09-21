@@ -184,7 +184,8 @@ export async function registerShapeProxy(
   options: ShapeProxyOptions = {},
 ): Promise<void> {
   const getConfig = options.config ?? configFromEnv;
-  const doFetch = options.fetch ?? fetch;
+  // Looked up per call, so a test may replace the global fetch after the server is built.
+  const doFetch: typeof fetch = (input, init) => (options.fetch ?? fetch)(input, init);
 
   app.get(
     "/v1/shape/:template",

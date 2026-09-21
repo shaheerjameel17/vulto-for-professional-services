@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import type { LightMyRequestResponse } from "fastify";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { syncNodeAudience } from "../audience/schema.js";
 import {
   admitWorkspaceMember,
@@ -17,7 +17,23 @@ const ORIGIN = "http://localhost:3100";
 const PASSWORD = "Correct horse battery staple 60!";
 const app = await buildServer();
 
+const LIVE = process.env["ELECTRIC_LIVE_TESTS"] === "1";
+
+// Unless the run is against real Electric, the upstream is a stand-in that always answers 200.
+beforeAll(() => {
+  if (LIVE) return;
+  vi.stubGlobal(
+    "fetch",
+    async () =>
+      new Response("[]", {
+        status: 200,
+        headers: { "content-type": "application/json", "electric-handle": "stub" },
+      }),
+  );
+});
+
 afterAll(async () => {
+  vi.unstubAllGlobals();
   await app.close();
   await closeDatabase();
 });
