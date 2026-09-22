@@ -49,7 +49,7 @@ This feature treats a provisional date as a first-class state rather than a data
 
 ### Setting up a calendar
 
-Each Entity has one active WorkingCalendar. During [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s setup, a template is applied from the Entity's jurisdiction — Monday to Friday for UK and US, Monday to Friday for AE, Sunday to Thursday for SA, Monday to Saturday with a half-day Saturday for PK, and Monday to Friday at `standard_daily_hours: 8` for `Global`, `IN` and `SG` (F227) — and the founder confirms or adjusts it. Both an Entity's founding-bootstrap creation and any later `entity.create` write this initial calendar atomically with the Entity itself, never as a follow-up step (F227). The template is a starting point, never an assumption: a Karachi studio working Monday to Friday changes two toggles and moves on.
+Each Entity has one active WorkingCalendar. During [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s setup, a template is applied from the Entity's jurisdiction — Monday to Friday for UK and US, Sunday to Thursday for AE (F232) and SA, Monday to Saturday with a half-day Saturday for PK, and Monday to Friday at `standard_daily_hours: 8` for `Global`, `IN` and `SG` (F227) — and the founder confirms or adjusts it. Both an Entity's founding-bootstrap creation and any later `entity.create` write this initial calendar atomically with the Entity itself, never as a follow-up step (F227) — including offline, where `entity.create`'s optimistic handler derives and writes the identical calendar and ownership edge from the same shared template logic (F233). The template is a starting point, never an assumption: a Karachi studio working Monday to Friday changes two toggles and moves on.
 
 ### Adjusting the working week
 
@@ -198,6 +198,8 @@ reduced_hours_periods: JSON array of
 
 `factor` multiplies each working day's hours. Ramadan in the UAE is a factor of 0.75 against an 8-hour day. The period is itself frequently provisional, since Ramadan's start is moon-sighted, and it carries the same confirmation mechanism as a Holiday.
 
+**Written exclusively through `calendar.update` (F234).** Having no independent lifecycle means having no mutation of its own: `calendar.update`'s optional `reducedHoursPeriods` parameter carries the whole array — omitted, the superseding version inherits the prior version's array unchanged, the same copy-forward convention Holiday gets (F230); provided, it replaces the array outright on the new version. Adding a period, editing one, removing one, and confirming a provisional one by rewriting its dates are all the same call with a different array — never a separate write path, never a dedicated confirmation mutation.
+
 ### Resolution order
 
 For a given employee and date, hours resolve in this order, first match winning:
@@ -237,10 +239,12 @@ Everything else — bench days, utilization, capacity forecasts, timesheet expec
 
 ```
 calendar.get(entityId, asOf?)                          -> WorkingCalendar
-calendar.update(calendarId, workingWeek, dailyHours, expectedVersion) -> { calendarId }
+calendar.update(calendarId, workingWeek, dailyHours, expectedVersion, reducedHoursPeriods?) -> { calendarId }
   // Checks expectedVersion first (F228). Creates a superseding version;
   // never edits in place. Holidays still Active on the superseded version
-  // are copied forward onto the new one (F230)
+  // are copied forward onto the new one (F230). reducedHoursPeriods omitted
+  // carries the prior version's array forward unchanged; provided, it
+  // replaces the array outright (F234)
 
 holiday.add(calendarId, fields)                        -> { holidayId }
 holiday.confirm(holidayId, actualDate)                 -> { success, affectedRange }
@@ -270,7 +274,7 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 | ID | Specification |
 |---|---|
 | G01 | Exactly one Active WorkingCalendar per Entity. Editing creates a superseding version rather than editing in place |
-| G02 | Every workspace Entity has a calendar from the moment it is created. There is no state in which an employee has no calendar |
+| G02 | Every workspace Entity has a calendar from the moment it is created, online or offline — `entity.create`'s optimistic handler creates the calendar and its ownership edge in the same call as the Entity, from shared deterministic IDs and shared template logic (F233), so there is no state in which an employee has no calendar |
 | G03 | A WorkingPattern omitting a weekday inherits that day from the entity calendar. Omission is inheritance, never zero |
 | G04 | WorkingPattern follows single-active-with-history, sharing `scoped_to_entity`'s own closed-at-the-boundary convention (F229): superseding a pattern sets its `effective_to` to the new pattern's own `effective_from`, never the day before. The one write-time overlap guard this creates is that a new `effective_from` may never precede the pattern it supersedes — an earlier date would overlap already-closed history instead |
 | G05 | Holiday resolution respects `applies_to_locations`. A regional holiday does not remove a working day from an employee elsewhere |
