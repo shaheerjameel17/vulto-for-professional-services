@@ -152,6 +152,7 @@ Current `governingPartitions` entries:
 | `assignment_of` | Employee (to) | `operational` | Which person an assignment is for is staffing/operational data |
 | `managed_by` | Employee (from and to) | `operational` | A reporting line is an operational HR fact, not compensation, so whoever may write an Employee's operational half may move them (F208) |
 | `scoped_to_entity` | Employee (from) | `operational` | The entity an employee is employed by is an operational HR fact, not compensation (F208) |
+| `pattern_for` | Employee (to) | `operational` | Which working pattern applies to an employee is operational scheduling data, not compensation; `WorkingPattern` itself is single-partition Tier 0 Standard (F235) |
 | `membership_in` | Workspace (to) | `display` | Membership is a display/identity fact about the workspace; the `billing` partition governs financial configuration, not who belongs |
 | `assigned_to` | — (Assignment → Project, both single-partition) | none | No declaration, no change |
 | `membership_of` | — (WorkspaceMembership → User, both single-partition) | none | No declaration, no change |
