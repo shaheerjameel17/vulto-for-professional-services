@@ -113,6 +113,8 @@ export const createNode: ServerMutation<Args<"graph.createNode">> = async (ctx) 
       { target: nodeTarget(ctx, nodeType, nodeId), change: { operation: "create" } },
     ],
     async validate() {
+      if (FEATURE_LIFECYCLE_NODE_TYPES.has(nodeType))
+        throw new MutationRejection("requires-feature-mutation");
       if (!isTier0Only(nodeType))
         throw new MutationRejection("requires-feature-mutation");
       const claimed = node["workspace_id"];
@@ -145,6 +147,8 @@ export const updateNodeFieldsMutation: ServerMutation<
       },
     ],
     async validate() {
+      if (FEATURE_LIFECYCLE_NODE_TYPES.has(nodeType))
+        throw new MutationRejection("requires-feature-mutation");
       if (!isTier0Only(nodeType))
         throw new MutationRejection("requires-feature-mutation");
     },
@@ -180,7 +184,10 @@ export const softDeleteNodeMutation: ServerMutation<
         change: { operation: "remove" },
       },
     ],
-    validate: nothing,
+    async validate() {
+      if (FEATURE_LIFECYCLE_NODE_TYPES.has(node.nodeType))
+        throw new MutationRejection("requires-feature-mutation");
+    },
     async apply() {
       const deleted = await translate(() =>
         softDeleteNode(ctx.tx, ctx.principal.workspaceId, node.nodeId, {

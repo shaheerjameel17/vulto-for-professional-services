@@ -40,3 +40,4 @@ export {
   employeeTransitionStatus,
   employeeUpdate,
 } from "./employee";
+export { ENTITY_MUTATIONS, JURISDICTIONS } from "./entity";

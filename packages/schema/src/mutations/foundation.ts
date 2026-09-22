@@ -2,6 +2,7 @@ import { z } from "zod";
 import { jsonValueSchema, utcTimestampSchema, uuidV4Schema } from "../records";
 import { defineMutation, type MutationDefinition } from "./define";
 import { EMPLOYEE_MUTATIONS } from "./employee";
+import { ENTITY_MUTATIONS } from "./entity";
 
 const jsonObject = z.record(z.string(), jsonValueSchema);
 const version = z.int().positive();
@@ -98,6 +99,7 @@ export const MUTATIONS = {
   "graph.transitionLifecycle": graphTransitionLifecycle,
   "org.moveEmployee": orgMoveEmployee,
   ...EMPLOYEE_MUTATIONS,
+  ...ENTITY_MUTATIONS,
 } as const;
 
 export type MutationName = keyof typeof MUTATIONS;

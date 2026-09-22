@@ -249,6 +249,13 @@ const DEFAULT_CLASS_MAPPING: Readonly<
  * this table is even consulted — see the module doc comment's third bullet.
  */
 const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
+  Entity: {
+    owner: FULL_ANY(),
+    "hr-admin": FULL_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: READ_ANY(),
+    "team-member": READ_ANY(),
+  },
   "Workspace:billing": {
     owner: FULL_ANY(),
     "hr-admin": cell(

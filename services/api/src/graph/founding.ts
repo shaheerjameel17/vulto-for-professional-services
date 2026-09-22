@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { WorkspaceRole } from "@vulto/schema";
 import { writeMembershipUser } from "./membership-projection.js";
 import { insertEdge, insertNode, type GraphTx } from "./store.js";
@@ -21,8 +22,8 @@ export function canonicalRoles(roles: readonly WorkspaceRole[]): string {
 }
 
 /**
- * Writes the five records every workspace starts with — the Workspace node,
- * the founding member's User node, the WorkspaceMembership node, and the
+ * Writes the six records every workspace starts with — the Workspace and
+ * default Entity nodes, the founding member's User node, the WorkspaceMembership node, and the
  * `membership_of` and `membership_in` edges — in the caller's transaction, so
  * they commit or roll back together with the central membership row.
  *
@@ -51,6 +52,18 @@ export async function writeFoundingRecords(
   await insertNode(
     tx,
     base(input.workspaceId, "Workspace", { name: input.workspaceName }),
+  );
+  await insertNode(
+    tx,
+    base(randomUUID(), "Entity", {
+      workspace_id: input.workspaceId,
+      name: input.workspaceName,
+      legal_name: null,
+      jurisdiction: "Global",
+      registered_address: null,
+      registration_number: null,
+      default_currency: "USD",
+    }),
   );
   await writeMembershipUser(tx, input.workspaceId, base(input.userId, "User", {}));
   await insertNode(

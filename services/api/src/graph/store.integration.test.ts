@@ -630,11 +630,11 @@ describe("workspace.create — atomic across Better Auth and graph rows", () => 
     return (rows as unknown as { org: number; member: number }[])[0]!;
   }
 
-  it("writes the five founding records with the central membership row", async () => {
+  it("writes six founding records, including the sole Active Entity, with the central membership row", async () => {
     const userId = await makeUser();
     const ids = { workspaceId: randomUUID(), membershipId: randomUUID() };
     await createPendingWorkspaceAdmission(admission(userId, ids));
-    expect(await graphCounts(ids.workspaceId)).toEqual({ nodes: 3, edges: 2 });
+    expect(await graphCounts(ids.workspaceId)).toEqual({ nodes: 4, edges: 2 });
     expect(await centralRows(ids.workspaceId, ids.membershipId)).toEqual({
       org: 1,
       member: 1,
@@ -644,6 +644,7 @@ describe("workspace.create — atomic across Better Auth and graph rows", () => 
       .from(graphNodes)
       .where(eq(graphNodes.workspaceId, ids.workspaceId));
     expect(types.map((r) => r.t).sort()).toEqual([
+      "Entity",
       "User",
       "Workspace",
       "WorkspaceMembership",

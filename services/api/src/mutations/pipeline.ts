@@ -28,6 +28,12 @@ import {
   employeeTransitionStatus,
   employeeUpdate,
 } from "./employee.js";
+import {
+  employeeSetEntity,
+  entityCreate,
+  entityDeactivate,
+  entityUpdate,
+} from "./entity.js";
 import { MutationRejection, type ServerMutation } from "./types.js";
 
 /**
@@ -63,6 +69,10 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "employee.transitionStatus": employeeTransitionStatus as ServerMutation<never>,
   "employee.linkUser": employeeLinkUser as ServerMutation<never>,
   "employee.setCompensation": employeeSetCompensation as ServerMutation<never>,
+  "entity.create": entityCreate as ServerMutation<never>,
+  "entity.update": entityUpdate as ServerMutation<never>,
+  "entity.deactivate": entityDeactivate as ServerMutation<never>,
+  "employee.setEntity": employeeSetEntity as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {
@@ -227,7 +237,8 @@ export async function applyMutation(
     try {
       return await db.transaction(
         transaction,
-        definition?.name === "org.moveEmployee"
+        definition?.name === "org.moveEmployee" ||
+          definition?.name === "entity.deactivate"
           ? { isolationLevel: "serializable" }
           : undefined,
       );
