@@ -110,7 +110,6 @@ registration_number: string, nullable — company number, NTN, EIN
 default_currency:    ISO 4217, required — every PayRun scoped to this Entity is
                      calculated in it, and it is the default for an employee's
                      compensation_currency where unset
-is_active:           boolean, default true
 lifecycle_status:    enum: Active, Dissolved
 
 — Universal Node Conventions per VPS-A002 —
@@ -136,8 +135,9 @@ Changing an employee's Entity never retroactively alters an already-generated Co
 entity.create(name, jurisdiction, defaultCurrency, fields?) -> { entityId }
 entity.update(entityId, fields)                             -> { success }
 entity.list(workspaceId)                                    -> Entity[]
-entity.deactivate(entityId)                                 -> { success }
-  // Refused where any Active employee remains scoped to it
+entity.deactivate(entityId, expectedVersion)                -> { success }
+  // Carries the base version per VPS-A003 A003-T54 (F223); refused
+  // stale-state, or where any Active employee remains scoped to it
 
 employee.setEntity(employeeId, entityId, effectiveFrom)     -> { edgeId }
   // Closes the prior active edge, creates a new one
@@ -159,8 +159,8 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
 | G01 | Entity carries the full schema above |
 | G02 | `scoped_to_entity` follows the single-active-edge-with-history pattern. At most one active edge per Employee; history preserved on change |
 | G03 | Changing an employee's Entity never retroactively alters an already-generated Contract, resolved leave entitlement, or closed PayRun |
-| G04 | Every workspace has at least one Entity. It cannot be reduced to zero — see the interim bootstrap ruling below (F222) while [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] does not yet exist |
-| G05 | An Entity with Active scoped employees cannot be deactivated. The refusal names the count |
+| G04 | Every workspace has at least one Entity with `lifecycle_status = "Active"`. It cannot be reduced to zero — see the interim bootstrap ruling below (F222) while [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] does not yet exist |
+| G05 | An Entity with Active (`lifecycle_status = "Active"`) scoped employees cannot be deactivated. The refusal names the count — see F223 below for `entity.deactivate`'s corrected signature |
 | G06 | Consuming features MUST call `entity.resolveForEmployee` rather than traversing `scoped_to_entity` directly, so temporal resolution is implemented once |
 | G07 | Where exactly one Entity exists in a workspace, it is applied automatically at employee creation and the selector is not rendered |
 
@@ -254,9 +254,11 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
 
 **The write path's offline and timing claims are corrected for the server-authoritative architecture (F199-consistent correction, 22 September 2026).** The Non-Functional Requirements previously read as a single blanket claim — `entity.resolveForEmployee` completing "within 20ms from the local graph," full functionality "offline from local cache" — without distinguishing the client-side UI call (contract generation, leave policy, reading the device's replicated Tier 0 cache, for which the claim is true and the budget matters) from server-side callers like payroll, which run no "local graph" at all and have no device or 20ms budget to meet. The requirement is corrected to name both callers explicitly; nothing about Entity's Tier 0 classification or its offline availability changes.
 
-**A workspace's first Entity is bootstrapped without waiting for `VPS-F006` (F222, 22 September 2026).** G04 required a first Entity that [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] — not built, not yet briefed as its own stage — was meant to supply from "the founder's own answers." Until that wizard exists, workspace creation writes a sixth founding record alongside its existing five: a default Entity named after the workspace itself, `jurisdiction: "Global"`, `default_currency: "USD"`, `is_active: true`. Editable afterward through `entity.update` by an Owner or HR Admin. `VPS-F006`, when built, may ask the founder's own questions and correct these defaults in place; this is the interim path that keeps G04 true starting now.
+**A workspace's first Entity is bootstrapped without waiting for `VPS-F006` (F222, 22 September 2026).** G04 required a first Entity that [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] — not built, not yet briefed as its own stage — was meant to supply from "the founder's own answers." Until that wizard exists, workspace creation writes a sixth founding record alongside its existing five: a default Entity named after the workspace itself, `jurisdiction: "Global"`, `default_currency: "USD"`, `lifecycle_status: "Active"`. Editable afterward through `entity.update` by an Owner or HR Admin. `VPS-F006`, when built, may ask the founder's own questions and correct these defaults in place; this is the interim path that keeps G04 true starting now.
 
 **Entity transfer's audit story is corrected (F221, 22 September 2026).** The Security Considerations section previously claimed Entity transfer is a [[VPS-F004_Silent_Audit_Log|VPS-F004]]-audited event. `VPS-F004`'s `event_type` enum is closed and access-focused and has no category an ordinary permitted write of Tier 0 data fits. The bullet is corrected above: `scoped_to_entity`'s own edge history — already required by G02 and G03 — is the record of every transfer, its actor and its timing, without extending an audit taxonomy built for a different purpose.
+
+**Entity deactivation's field and version contract is corrected (F223, 22 September 2026).** The schema above no longer lists `is_active` — it was a leftover from the `featureOwnedLifecycle` convention other specs use ([[VRS-F018_Leave_Policy_Engine|VRS-F018]], [[VRS-F006_Rate_Card_Engine|VRS-F006]], [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]]), copied in before Entity was registered under the platform's `fixedLifecycle("Active", "Dissolved")` pattern, which every other `fixedLifecycle` node type ([[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s WorkingCalendar, Holiday, WorkingPattern) implements through `lifecycle_status` alone. Deactivation transitions `lifecycle_status` from `Active` to `Dissolved`; G04 and G05's "Active" language means exactly that field. `entity.deactivate`'s API contract above is corrected to carry the caller's base version — `entity.deactivate(entityId, expectedVersion)` — checked first and rejected `stale-state` on a mismatch (`VPS-A003` A003-T54), exactly as `employee.transitionStatus` already does; `Entity` joins `FEATURE_LIFECYCLE_NODE_TYPES` alongside `Employee` so the generic `graph.transitionLifecycle` correctly refuses it in favor of this feature-owned mutation, which alone can enforce G04 and G05.
 
 **`legal_name`, `registered_address` and `registration_number` are added**, because [[VRS-F020_Universal_Contract_Builder|VRS-F020]]'s generated contracts require all three and were previously pre-filling from a node that held none of them.
 
