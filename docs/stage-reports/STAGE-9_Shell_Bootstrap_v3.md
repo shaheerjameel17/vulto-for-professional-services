@@ -1,64 +1,76 @@
-# Stage 9 — the real shell bootstrap, fourth attempt
+# Stage 9 — the real shell bootstrap
 
-**Status:** BLOCKED by F220; F219 ruled and implemented locally, Stage 9 incomplete.
-**Branch:** `stage-9-shell-bootstrap-v3`  
-**Linear:** FDN-117, In Progress  
+**Status:** COMPLETE, awaiting review.
+**Branch:** `stage-9-shell-bootstrap-v3`
+**Linear:** FDN-117
 **Date:** 22 September 2026
 
 ## 1. Summary
 
-The F219 ruling was implemented on the existing v3 branch: `POST /workspace/list-active-memberships` returns only a signed-in person's active confirmed workspaces, and the shell uses it when `session.activeOrganizationId` is null. The server integration test passes. A real browser test then exposed F220: resolving one workspace client-side does not make it the server's active session workspace. Device registration rejects the workspace header, the shape proxy cannot serve the unregistered device, and tRPC creates no principal. Stage 9 stops for a ruling on that transition.
+The Roster shell now uses a real Better Auth session and the graph client. A first confirmed membership sets the active organization in the server transaction. A later sign-in with a null active organization uses two narrow, session-gated routes: one lists only active confirmed memberships, and the other independently confirms a sole membership and establishes it as the server's active session claim. The shell then mounts `createGraphClient`, reads the workspace name from its Tier 0 cache, and shows its real sync status. Confirmed no-session answers go to sign-in; a network-level failure can boot from exactly one `session_hint` cache. Unauthorized and access-revoked outcomes reach the shell as a typed signal for Stage 10.
 
 ## 2. Done-criteria checklist
 
-- [x] First workspace admission sets `session.activeOrganizationId` server-side; integration test passes.
-- [x] The ordinary active-organization shell path mounts a real graph client in the preliminary build; browser test passed before F219.
-- [x] Confirmed no-session response redirects with zero workspace calls; browser test passed before F219.
-- [x] Cold network failure with one cache mounts offline and does not redirect; two caches hold without guessing; TCP proxy browser tests passed before F219.
-- [x] A live client 401 and access-revoked reach the shell signal; browser tests passed before F219.
-- [x] Second workspace creation preserves the existing active organization; integration test passes.
-- [x] F219's new route returns exactly the caller's active confirmed memberships, excluding pending, revoked, suspended and other-user rows; integration test passes.
-- [ ] A session with `activeOrganizationId: null` and exactly one active membership opens a live workspace. The browser receives one correct list result, but the server's active claim stays null (F220).
-- [ ] Stage 9 completion and full gates. Stopped at F220.
+- [x] First workspace creation sets `session.activeOrganizationId` in `confirmWorkspaceAdmission`; a server integration test asserts the persisted value.
+- [x] A later sign-in for an already-confirmed sole membership activates it server-side, registers a device, syncs, and renders the real workspace name in a browser.
+- [x] A confirmed no-session answer redirects to sign-in with zero workspace, device, shape, or tRPC calls.
+- [x] A real TCP connection cut during cold boot does not redirect to sign-in; one cached workspace mounts and reports Offline. Two caches remain unresolved without a silent pick.
+- [x] A live 401 and `access-revoked` each surface at the shell boundary through `SyncState.refusal`.
+- [x] A second workspace created while already active elsewhere does not change the active organization. Zero or multiple active memberships do not activate a null session; an already-set active organization is not overwritten.
+- [x] Home, People, Timesheets, Foundations, and the existing `Offline` component remain unchanged.
 
 ## 3. Spec clauses implemented
 
-The preliminary implementation covers Stage 9 points 1, 2, 4 and 5, and the direct-active-organization path of point 3. F219's new read route and client call are implemented. Point 3's null-active-organization path is blocked downstream by F220. The bootstrap exposes a fresh-client retry for point 6. `Offline`, Home, People, Timesheets and Foundations were not edited.
+| Contract | Implementation | Proof |
+|---|---|---|
+| F217: first sole admission becomes active, never auto-switch on second | `confirmWorkspaceAdmission` | `auth.integration.test.ts` first and second workspace tests |
+| F219: read only caller's active confirmed memberships | `POST /workspace/list-active-memberships` | integration test excludes pending, revoked, suspended and another user's workspace |
+| F220: independently activate sole membership from null | `POST /workspace/activate-sole-membership` | integration tests for sole, repeat, zero and many; later-sign-in browser test |
+| F218: confirmed no-session versus unanswered network request | shell bootstrap's `hasServerAnswer` decision | no-session and TCP-cut browser tests |
+| VPS-A003: one-cache offline boot, no identity-key expansion | worker cache discovery and `session_hint` | single-cache and multi-cache browser tests; existing device-identity unit tests |
+| Stage 9 refusal and Retry seams | `SyncState.refusal`, `ShellBootstrap.retry()` | 401 and access-revoked browser tests; graph worker host reconstructs a revoked session on a new init |
 
 ## 4. Files changed
 
-Local commit `2dbe779` changes `services/api/src/auth/workspace-session.ts` and its integration test for F217. Preliminary, uncommitted implementation changes are in `services/api/src/auth/{http,auth.integration.test}.ts`, `apps/roster-web/src/components/{Shell,shell-bootstrap}.tsx`, `(shell)/layout.tsx`, `lib/auth-client.ts`, `packages/graph/src/sync-client/{client,engine,host,index,protocol,status}.ts`, and `packages/graph/sync-browser-tests/shell-bootstrap.spec.ts`. The F219 ruling's documents from local `main` are present in the working tree, and this report plus `docs/Foundations_Findings.md` record F220. No fixture screen or `Offline` file was edited.
+- `services/api/src/auth/workspace-session.ts`, `http.ts`, and `auth.integration.test.ts`: sole admission write, two narrow session routes, and tests.
+- `apps/roster-web/src/components/shell-bootstrap.tsx`, `Shell.tsx`, `(shell)/layout.tsx`: session decision, workspace resolution, real graph client mount, live name/status and refusal boundary.
+- `packages/graph/src/sync-client/{client,engine,host,index,protocol,status}.ts`: worker-owned cache discovery, public refusal signal and fresh initialization after revocation.
+- `packages/graph/sync-browser-tests/shell-bootstrap.spec.ts`: eight real-browser Stage 9 scenarios.
+- The F219/F220 ruling documents from `main` are carried into the branch; this report replaces its blocked version. `auth-client.ts` matches its original plugin list: no `organizationClient()` remains. The existing `/api/auth/organization/*` guard is unchanged.
 
 ## 5. Database changes
 
-None. F217 uses the existing session field and transaction. The F219 route reads existing session, user, membership and organization rows.
+No migration. Both routes use existing `session`, `user`, `member`, and `organization` rows. The activation route writes only null `session.activeOrganizationId` values for the authenticated user after independently proving exactly one active confirmed membership; it never accepts a workspace ID from the request.
 
 ## 6. Tests and gates
 
-- `pnpm stack:up`: passed earlier with PostgreSQL, Electric and Redis healthy.
-- `pnpm --filter @vulto/api test src/auth/auth.integration.test.ts`: **45 passed**, including the new F219 route test.
-- `pnpm --filter @vulto/api typecheck` and `pnpm --filter roster-web typecheck`: passed after the F219 change.
-- `pnpm pretest:sync-browser`: passed earlier.
-- Initial `pnpm test:sync-browser shell-bootstrap.spec.ts`: **6 passed**, including an actual TCP cut/refusal for cold offline boot, a server 401, and access revocation.
-- F219 retry, `pnpm test:sync-browser shell-bootstrap.spec.ts --grep 'null active|two active'`: **1 passed, 1 failed**. The two-membership holding-state test passes; the one-membership case gets HTTP 200 with exactly one workspace from the new route, but the workspace name never arrives and the shell reports Offline. The server guards explain why (F220).
-- `pnpm install --frozen-lockfile`, final `pnpm stack:up`, `pnpm verify`, `pnpm verify:full`, and the final full browser suite were not run after F220. The project's decision policy requires stopping at this unresolved contract.
+- `pnpm install --frozen-lockfile` — passed.
+- `pnpm stack:up` — passed; Postgres, Electric and Redis healthy.
+- `pnpm verify` — passed: formatting, lint, conformance, architecture check, typecheck and fast tests.
+- `pnpm verify:full` — passed: 15 API test files, **241 passed, 2 skipped**; the auth integration file alone has **47 passed**. Graph has 63 passed; schema has 74 passed and 2 existing todo items.
+- `pnpm test:sync-browser` — **19 passed**, including all eight shell bootstrap tests and the eleven existing sync regression tests. The offline tests use `NetworkSwitch.cut()`, which destroys active TCP sockets and refuses new connections; they do not mock a 401 or empty response.
+- The later-sign-in browser test asserts the real workspace name, `Synced`, persisted active organization on both session rows, and a registered device. The graph's Synced state also proves the shape proxy accepted the workspace claim.
 
 ## 7. Micro-decisions
 
-The F219 read route does not open any Better Auth organization-plugin route. It joins the current session and caller to active confirmed memberships in active organizations and returns only `{ workspaceId, workspaceName }`. The preliminary client uses `SyncState.refusal` (`unauthorized` or `access-revoked`) and exposes `retry()` through shell context; retry refetches the session and reconstructs a client. Cache enumeration remains in the graph worker and adds no device-identity key. These details remain local pending F220's ruling and final review.
+- The membership list is workspace-independent because the active workspace is what it must resolve. It returns only `{ workspaceId, workspaceName }` and exposes no role, membership ID, or pending/revoked row.
+- Activation checks the current session is null, re-derives memberships inside a transaction, and updates only null active-organization fields for that user. A stale or ambiguous answer returns `{ workspaceId: null }`, which the shell treats as unresolved.
+- Offline cache enumeration runs inside the graph worker. If Better Auth could not resolve a user, it checks all `vulto:<workspaceId>:<userId>` caches; when a user is known it filters by that user. The device-identity allowed-key list is untouched.
+- The shell reads the Workspace node's `name` from the cache subscription. It presents a generic label only until that Tier 0 node arrives; the browser test requires the real name to render.
+- Retry is `useShellBootstrap().retry()`: it refetches the session and re-runs resolution, constructing a fresh graph client. The worker host drops a stopped access-revoked session on the next init, so Stage 10 must call this bootstrap Retry rather than retrying work inside the stopped engine.
 
 ## 8. Findings raised
 
-**F219 is closed by the founder's ruling:** the organization-plugin routes stay closed; one narrow session-gated membership list replaces `organizationClient()`. **F220 is open:** a sole list result does not populate `session.activeOrganizationId`. `/devices/register` rejects the client's workspace header while that field is null, the shape proxy requires the device it could not register, and tRPC creates no principal. F220 has a table row and detailed section in `docs/Foundations_Findings.md`.
+F216, F217, F218, F219 and F220 are closed by their recorded founder rulings. F219 and F220 were discovered during this branch's browser runs, recorded, and ruled before implementation resumed. No new finding was needed after F220. The branch preserves the original F217 commit and the later fixes; no earlier abandoned branch was reused.
 
 ## 9. Deviations from this brief
 
-The stage is incomplete, and the branch has preliminary implementation rather than a review-ready build. F219's read route works, but point 3's null-active session path cannot use its result for a live graph client. The four final gates and branch push were not performed because the F220 stop condition fired.
+None. No fixture screen was migrated. `organizationClient()` was removed after F219; the two purpose-built routes are the corrected point 3. `Offline` and Reconnect rendering were not touched.
 
 ## 10. Known limitations and risks
 
-The null-active-organization path cannot sync or write even with a sole confirmed membership. A design choice is required on how, or whether, that selected workspace becomes the server-authoritative active session claim. The partial implementation remains on the same local branch; no reset or discard was attempted after the founder instructed us to preserve it. The branch has not been pushed or merged.
+More than one eligible workspace remains an unresolved holding state until workspace selection is designed; this is F217's deliberate boundary. A network failure with no eligible cache also holds rather than guessing. Feature screens still contain prototype fixtures by Stage 9's explicit scope. The refusal is exposed to the shell but not rendered; Stage 10 owns that UI. An activation response of null after a concurrent change holds and requires a fresh bootstrap, as the F220 ruling specifies.
 
 ## 11. Readiness for the next stage
 
-Not ready. Rule F220 and correct Stage 9 point 3 and `VPS-F001` with the selected transition. Stage 9 can then resume on this branch, rerun every gate, and submit for review. Stage 10 has not started.
+Stage 9 is ready for review. Stage 10 can consume `useShellBootstrap().state.refusal` (`"unauthorized" | "access-revoked"`) and call `useShellBootstrap().retry()` to refetch the session and mount a new client. Stage 10 has not started; do not merge this branch until the founder's “Stage 9 go.”
