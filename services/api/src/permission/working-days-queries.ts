@@ -26,7 +26,14 @@ export const hoursOn = (
   principal: Principal,
   employeeId: string,
   date: string,
-) => hoursOnFromGraph(tx, principal.workspaceId, employeeId, date, readGuard(tx, principal));
+) =>
+  hoursOnFromGraph(
+    tx,
+    principal.workspaceId,
+    employeeId,
+    date,
+    readGuard(tx, principal),
+  );
 
 export const countWorkingDays = (
   tx: GraphTx,
@@ -34,7 +41,15 @@ export const countWorkingDays = (
   employeeId: string,
   from: string,
   to: string,
-) => countWorkingDaysFromGraph(tx, principal.workspaceId, employeeId, from, to, readGuard(tx, principal));
+) =>
+  countWorkingDaysFromGraph(
+    tx,
+    principal.workspaceId,
+    employeeId,
+    from,
+    to,
+    readGuard(tx, principal),
+  );
 
 export const nextWorkingDay = (
   tx: GraphTx,
@@ -42,7 +57,15 @@ export const nextWorkingDay = (
   employeeId: string,
   from: string,
   n: number,
-) => nextWorkingDayFromGraph(tx, principal.workspaceId, employeeId, from, n, readGuard(tx, principal));
+) =>
+  nextWorkingDayFromGraph(
+    tx,
+    principal.workspaceId,
+    employeeId,
+    from,
+    n,
+    readGuard(tx, principal),
+  );
 
 export const addWorkingDays = (
   tx: GraphTx,
@@ -50,4 +73,12 @@ export const addWorkingDays = (
   employeeId: string,
   from: string,
   n: number,
-) => addWorkingDaysFromGraph(tx, principal.workspaceId, employeeId, from, n, readGuard(tx, principal));
+) =>
+  addWorkingDaysFromGraph(
+    tx,
+    principal.workspaceId,
+    employeeId,
+    from,
+    n,
+    readGuard(tx, principal),
+  );

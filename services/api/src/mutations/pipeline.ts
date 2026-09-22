@@ -35,7 +35,14 @@ import {
   entityUpdate,
 } from "./entity.js";
 import { MutationRejection, type ServerMutation } from "./types.js";
-import { calendarUpdate, holidayAdd, holidayCancel, holidayConfirm, patternClear, patternSet } from "./calendar.js";
+import {
+  calendarUpdate,
+  holidayAdd,
+  holidayCancel,
+  holidayConfirm,
+  patternClear,
+  patternSet,
+} from "./calendar.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the

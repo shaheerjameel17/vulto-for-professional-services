@@ -1,4 +1,10 @@
-import { getNode, outgoing, type GraphTx, type StoredEdge, type StoredNode } from "./store.js";
+import {
+  getNode,
+  outgoing,
+  type GraphTx,
+  type StoredEdge,
+  type StoredNode,
+} from "./store.js";
 
 /** G01: resolves the one calendar version in force, following new -> prior supersedes edges. */
 export async function resolveCalendarForEntity(
@@ -11,9 +17,11 @@ export async function resolveCalendarForEntity(
   const calendars: StoredNode[] = [];
   for (const edge of ownership) {
     const node = await getNode(tx, workspaceId, edge.toNodeId);
-    if (node && !node.isSoftDeleted && node.nodeType === "WorkingCalendar") calendars.push(node);
+    if (node && !node.isSoftDeleted && node.nodeType === "WorkingCalendar")
+      calendars.push(node);
   }
-  let current = calendars.find((calendar) => calendar.lifecycleStatus === "Active") ?? null;
+  let current =
+    calendars.find((calendar) => calendar.lifecycleStatus === "Active") ?? null;
   if (!current || asOf === undefined) return current;
   const instant = Date.parse(`${asOf}T23:59:59.999Z`);
   const seen = new Set<string>();

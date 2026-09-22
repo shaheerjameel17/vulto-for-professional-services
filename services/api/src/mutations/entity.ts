@@ -77,8 +77,26 @@ export const entityCreate: ServerMutation<MutationArgs<"entity.create">> = async
   return {
     checks: [
       { target: entityTarget(ctx, entityId), change: { operation: "create" } },
-      { target: { kind: "node", workspaceId: ctx.principal.workspaceId, nodeType: "WorkingCalendar", nodeId: calendarId }, change: { operation: "create" } },
-      { target: { kind: "edge", workspaceId: ctx.principal.workspaceId, edgeType: "governed_by_calendar", fromNodeType: "Entity", toNodeType: "WorkingCalendar", edgeId: calendarEdgeId }, change: { operation: "create" } },
+      {
+        target: {
+          kind: "node",
+          workspaceId: ctx.principal.workspaceId,
+          nodeType: "WorkingCalendar",
+          nodeId: calendarId,
+        },
+        change: { operation: "create" },
+      },
+      {
+        target: {
+          kind: "edge",
+          workspaceId: ctx.principal.workspaceId,
+          edgeType: "governed_by_calendar",
+          fromNodeType: "Entity",
+          toNodeType: "WorkingCalendar",
+          edgeId: calendarEdgeId,
+        },
+        change: { operation: "create" },
+      },
     ],
     async validate() {},
     async apply() {
@@ -103,16 +121,21 @@ export const entityCreate: ServerMutation<MutationArgs<"entity.create">> = async
           ),
         ),
       );
-      await translate(() => createInitialCalendar(ctx.tx, {
-        workspaceId: ctx.principal.workspaceId,
-        entityId: stored.nodeId,
-        jurisdiction: ctx.args.jurisdiction,
-        userId: ctx.principal.userId,
-        now: ctx.now,
-        calendarId,
-        edgeId: calendarEdgeId,
-      }));
-      return { result: { entity_id: stored.nodeId, calendar_id: calendarId }, changedRowIds: [stored.nodeId, calendarId, calendarEdgeId] };
+      await translate(() =>
+        createInitialCalendar(ctx.tx, {
+          workspaceId: ctx.principal.workspaceId,
+          entityId: stored.nodeId,
+          jurisdiction: ctx.args.jurisdiction,
+          userId: ctx.principal.userId,
+          now: ctx.now,
+          calendarId,
+          edgeId: calendarEdgeId,
+        }),
+      );
+      return {
+        result: { entity_id: stored.nodeId, calendar_id: calendarId },
+        changedRowIds: [stored.nodeId, calendarId, calendarEdgeId],
+      };
     },
   };
 };

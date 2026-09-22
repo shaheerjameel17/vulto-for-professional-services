@@ -224,16 +224,48 @@ export const appRouter = t.router({
     ),
   }),
   workingDays: t.router({
-    count: protectedProcedure.input(workingDaysRangeInputSchema).query(({ ctx, input }) =>
-      db.transaction((tx) => countWorkingDays(tx, ctx.principal, input.employee_id, input.from, input.to))),
-    isWorking: protectedProcedure.input(workingDaysDateInputSchema).query(async ({ ctx, input }) =>
-      db.transaction(async (tx) => (await hoursOn(tx, ctx.principal, input.employee_id, input.date)) > 0)),
-    hoursOn: protectedProcedure.input(workingDaysDateInputSchema).query(({ ctx, input }) =>
-      db.transaction((tx) => hoursOn(tx, ctx.principal, input.employee_id, input.date))),
-    next: protectedProcedure.input(workingDaysNextInputSchema).query(({ ctx, input }) =>
-      db.transaction((tx) => nextWorkingDay(tx, ctx.principal, input.employee_id, input.from, input.n ?? 1))),
-    addWorkingDays: protectedProcedure.input(workingDaysAddInputSchema).query(({ ctx, input }) =>
-      db.transaction((tx) => addWorkingDays(tx, ctx.principal, input.employee_id, input.from, input.n))),
+    count: protectedProcedure
+      .input(workingDaysRangeInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          countWorkingDays(tx, ctx.principal, input.employee_id, input.from, input.to),
+        ),
+      ),
+    isWorking: protectedProcedure
+      .input(workingDaysDateInputSchema)
+      .query(async ({ ctx, input }) =>
+        db.transaction(
+          async (tx) =>
+            (await hoursOn(tx, ctx.principal, input.employee_id, input.date)) > 0,
+        ),
+      ),
+    hoursOn: protectedProcedure
+      .input(workingDaysDateInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          hoursOn(tx, ctx.principal, input.employee_id, input.date),
+        ),
+      ),
+    next: protectedProcedure
+      .input(workingDaysNextInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          nextWorkingDay(
+            tx,
+            ctx.principal,
+            input.employee_id,
+            input.from,
+            input.n ?? 1,
+          ),
+        ),
+      ),
+    addWorkingDays: protectedProcedure
+      .input(workingDaysAddInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          addWorkingDays(tx, ctx.principal, input.employee_id, input.from, input.n),
+        ),
+      ),
   }),
   principal: t.router({
     /**

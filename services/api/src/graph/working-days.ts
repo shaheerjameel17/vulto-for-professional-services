@@ -32,7 +32,12 @@ async function patternFor(
     const to = node.record["effective_to"] as string | null;
     if (from <= date && (to === null || date < to)) candidates.push(node);
   }
-  const pattern = candidates.sort((a, b) => String(b.record["effective_from"]).localeCompare(String(a.record["effective_from"])))[0] ?? null;
+  const pattern =
+    candidates.sort((a, b) =>
+      String(b.record["effective_from"]).localeCompare(
+        String(a.record["effective_from"]),
+      ),
+    )[0] ?? null;
   if (pattern && !(await mayRead(pattern))) throw new Error("not-found");
   return pattern;
 }
@@ -43,8 +48,9 @@ async function holidaysFor(
   calendarId: string,
   mayRead: WorkingDaysReadGuard,
 ): Promise<StoredNode[]> {
-  const holidays = (await getNodes(tx, workspaceId, { nodeType: "Holiday", lifecycleStatus: "Active" }))
-    .filter((holiday) => holiday.record["calendar_id"] === calendarId);
+  const holidays = (
+    await getNodes(tx, workspaceId, { nodeType: "Holiday", lifecycleStatus: "Active" })
+  ).filter((holiday) => holiday.record["calendar_id"] === calendarId);
   for (const holiday of holidays) {
     if (!(await mayRead(holiday))) throw new Error("not-found");
   }
@@ -52,28 +58,44 @@ async function holidaysFor(
 }
 
 /** G08: the one implementation of the calendar/holiday/pattern resolution order. */
-export async function hoursOn(
+async function resolveHoursOn(
   tx: GraphTx,
   workspaceId: string,
   employeeId: string,
   date: string,
   mayRead: WorkingDaysReadGuard,
-): Promise<number> {
+): Promise<{ hours: number; standardDailyHours: number }> {
   const employee = await getNode(tx, workspaceId, employeeId);
-  if (!employee || employee.isSoftDeleted || employee.nodeType !== "Employee") throw new Error("not-found");
+  if (!employee || employee.isSoftDeleted || employee.nodeType !== "Employee")
+    throw new Error("not-found");
   if (!(await mayRead(employee))) throw new Error("not-found");
-  const assignment = await resolveEntityAssignment(tx, workspaceId, employeeId, isoInstant(date));
+  const assignment = await resolveEntityAssignment(
+    tx,
+    workspaceId,
+    employeeId,
+    isoInstant(date),
+  );
   if (!assignment) throw new Error("not-found");
   if (!(await mayRead(assignment.entity))) throw new Error("not-found");
-  const calendar = await resolveCalendarForEntity(tx, workspaceId, assignment.entity.nodeId, date);
+  const calendar = await resolveCalendarForEntity(
+    tx,
+    workspaceId,
+    assignment.entity.nodeId,
+    date,
+  );
   if (!calendar) throw new Error("not-found");
   if (!(await mayRead(calendar))) throw new Error("not-found");
   const location = employee.record["location"] as string | null | undefined;
-  const holiday = (await holidaysFor(tx, workspaceId, calendar.nodeId, mayRead)).find((candidate) => {
-    if (candidate.record["date"] !== date) return false;
-    const locations = candidate.record["applies_to_locations"] as string[] | null;
-    return locations === null || (location !== null && location !== undefined && locations.includes(location));
-  });
+  const holiday = (await holidaysFor(tx, workspaceId, calendar.nodeId, mayRead)).find(
+    (candidate) => {
+      if (candidate.record["date"] !== date) return false;
+      const locations = candidate.record["applies_to_locations"] as string[] | null;
+      return (
+        locations === null ||
+        (location !== null && location !== undefined && locations.includes(location))
+      );
+    },
+  );
   const standard = Number(calendar.record["standard_daily_hours"] ?? 8);
   let hours: number;
   if (holiday && holiday.record["is_half_day"] !== true) hours = 0;
@@ -81,17 +103,33 @@ export async function hoursOn(
   else {
     const day = dayNumber(date);
     const pattern = await patternFor(tx, workspaceId, employeeId, date, mayRead);
-    const patternDay = (pattern?.record["working_week"] as WorkingWeek | undefined)?.find((entry) => entry.day === day);
-    const calendarDay = (calendar.record["working_week"] as WorkingWeek).find((entry) => entry.day === day);
+    const patternDay = (
+      pattern?.record["working_week"] as WorkingWeek | undefined
+    )?.find((entry) => entry.day === day);
+    const calendarDay = (calendar.record["working_week"] as WorkingWeek).find(
+      (entry) => entry.day === day,
+    );
     const selected = patternDay ?? calendarDay;
     hours = selected?.is_working ? selected.hours : 0;
   }
   if (hours > 0) {
-    const period = ((calendar.record["reduced_hours_periods"] as ReducedHoursPeriod[] | undefined) ?? [])
-      .find((candidate) => candidate.start_date <= date && date <= candidate.end_date);
+    const period = (
+      (calendar.record["reduced_hours_periods"] as ReducedHoursPeriod[] | undefined) ??
+      []
+    ).find((candidate) => candidate.start_date <= date && date <= candidate.end_date);
     if (period) hours *= period.factor;
   }
-  return hours;
+  return { hours, standardDailyHours: standard };
+}
+
+export async function hoursOn(
+  tx: GraphTx,
+  workspaceId: string,
+  employeeId: string,
+  date: string,
+  mayRead: WorkingDaysReadGuard,
+): Promise<number> {
+  return (await resolveHoursOn(tx, workspaceId, employeeId, date, mayRead)).hours;
 }
 
 export async function countWorkingDays(
@@ -107,13 +145,12 @@ export async function countWorkingDays(
   let hours = 0;
   let days = 0;
   while (date <= to) {
-    const value = await hoursOn(tx, workspaceId, employeeId, date, mayRead);
-    const assignment = await resolveEntityAssignment(tx, workspaceId, employeeId, isoInstant(date));
-    if (!assignment) throw new Error("not-found");
-    const calendar = await resolveCalendarForEntity(tx, workspaceId, assignment.entity.nodeId, date);
-    const standard = Number(calendar?.record["standard_daily_hours"] ?? 8);
-    hours += value;
-    days += standard === 0 ? 0 : value / standard;
+    const resolved = await resolveHoursOn(tx, workspaceId, employeeId, date, mayRead);
+    hours += resolved.hours;
+    days +=
+      resolved.standardDailyHours === 0
+        ? 0
+        : resolved.hours / resolved.standardDailyHours;
     date = addDays(date, 1);
   }
   return { days, hours };
@@ -131,7 +168,11 @@ export async function nextWorkingDay(
   let remaining = n;
   for (let scanned = 0; scanned < 36600; scanned += 1) {
     date = addDays(date, 1);
-    if ((await hoursOn(tx, workspaceId, employeeId, date, mayRead)) > 0 && --remaining === 0) return date;
+    if (
+      (await hoursOn(tx, workspaceId, employeeId, date, mayRead)) > 0 &&
+      --remaining === 0
+    )
+      return date;
   }
   throw new Error("no-working-day");
 }
