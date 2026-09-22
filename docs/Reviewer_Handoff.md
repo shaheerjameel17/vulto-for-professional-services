@@ -73,7 +73,7 @@
 | **8 Spec sweep (priority slice) + RST-33** | **reviewed 22 September (F130 closure confirmed; F215 confirmed; F214 ruled — design accepted, build deferred to Stage 9)** | **`5897b7b`** (merged `--no-ff`, 22 September) |
 | **9 The real shell bootstrap** | **done 22 September** (blocked five times first, all ruled F216–F220; completion report at `08e2873` verified directly against code, no further findings) | **`5a0e9ee`** (merged `--no-ff`, 22 September) |
 | **10 The Reconnect shell state** | **done 22 September** (completion report at `cf59ed5` verified directly against code, no further findings) | **`570b15d`** (merged `--no-ff`, 22 September) |
-| **11 Multi-Entity and Jurisdiction Foundation (VRS-F003)** | **approved for merge 22 September** (completion report at `fb4ef35` verified directly against code, no further findings) | pending — Codex to `--no-ff` merge `codex/stage-11-multi-entity-jurisdiction` |
+| **11 Multi-Entity and Jurisdiction Foundation (VRS-F003)** | **done 22 September** (completion report at `fb4ef35` verified directly against code, no further findings) | **`96d53eb`** (merged `--no-ff`, 22 September) |
 
 **Stage 7 facts to remember:**
 - Branch `stage-7-retire` at `d749c3c`. Green slow lane: https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/35637057091. `main` was green at `961830d`/`4d91705` before branching.
