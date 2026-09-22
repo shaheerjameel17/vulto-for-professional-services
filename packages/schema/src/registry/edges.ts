@@ -98,6 +98,7 @@ export const EDGE_GROUPS = [
     edgeType: "pattern_for",
     owner: "VRS-F004",
     pairs: [["WorkingPattern", "Employee"]],
+    governingPartitions: { Employee: "operational" },
   }),
   edgeGroup({
     edgeType: "holiday_in",

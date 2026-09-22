@@ -35,6 +35,14 @@ import {
   entityUpdate,
 } from "./entity.js";
 import { MutationRejection, type ServerMutation } from "./types.js";
+import {
+  calendarUpdate,
+  holidayAdd,
+  holidayCancel,
+  holidayConfirm,
+  patternClear,
+  patternSet,
+} from "./calendar.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -73,6 +81,12 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "entity.update": entityUpdate as ServerMutation<never>,
   "entity.deactivate": entityDeactivate as ServerMutation<never>,
   "employee.setEntity": employeeSetEntity as ServerMutation<never>,
+  "calendar.update": calendarUpdate as ServerMutation<never>,
+  "holiday.add": holidayAdd as ServerMutation<never>,
+  "holiday.confirm": holidayConfirm as ServerMutation<never>,
+  "holiday.cancel": holidayCancel as ServerMutation<never>,
+  "pattern.set": patternSet as ServerMutation<never>,
+  "pattern.clear": patternClear as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {
@@ -238,7 +252,10 @@ export async function applyMutation(
       return await db.transaction(
         transaction,
         definition?.name === "org.moveEmployee" ||
-          definition?.name === "entity.deactivate"
+          definition?.name === "entity.deactivate" ||
+          definition?.name === "calendar.update" ||
+          definition?.name === "pattern.set" ||
+          definition?.name === "pattern.clear"
           ? { isolationLevel: "serializable" }
           : undefined,
       );

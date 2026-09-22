@@ -300,7 +300,7 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 ## Feature Acceptance Criteria
 
-**GIVEN** an Entity in AE with a Monday-to-Friday calendar
+**GIVEN** an Entity in AE with its Sunday-to-Thursday calendar (F232)
 **WHEN** [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] counts bench days across a period containing a Friday
 **THEN** the Friday is excluded as a non-working day, and no hardcoded Saturday-Sunday assumption appears anywhere in the computation
 

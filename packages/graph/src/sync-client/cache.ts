@@ -147,6 +147,14 @@ export class SqliteCache implements OptimisticCache {
     return rows.map(rowToEdge);
   }
 
+  async edgesTo(nodeId: string, edgeType: string) {
+    const rows = await this.database.all(
+      "SELECT * FROM cache_edges WHERE to_node_id = ? AND edge_type = ? ORDER BY effective_from, edge_id",
+      [nodeId, edgeType],
+    );
+    return rows.map(rowToEdge);
+  }
+
   // ── Replication ───────────────────────────────────────────────────────────
 
   async readCursor(template: ShapeTemplateName): Promise<ShapeCursor> {

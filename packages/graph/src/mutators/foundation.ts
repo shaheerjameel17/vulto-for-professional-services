@@ -6,7 +6,11 @@ import {
   getMutationDefinition,
   isNodeType,
   isTier0Only,
+  initialCalendarEdgeId,
+  initialCalendarId,
+  initialWorkingWeekFor,
   moveEmployeeEdgeId,
+  mutationDerivedId,
   stampNewEdge,
   stampNewNode,
   updateStamp,
@@ -403,7 +407,45 @@ const entityCreate: OptimisticMutator = async (c, raw) => {
     provenance(c),
   );
   await c.cache.putNode(toCachedNode(record, 1));
-  return [{ kind: "node", id: entityId, before: null }];
+  const calendarId = initialCalendarId(c.mutationId);
+  const calendarEdgeId = initialCalendarEdgeId(c.mutationId);
+  const template = initialWorkingWeekFor(args.jurisdiction);
+  const calendar = stampNewNode(
+    {
+      node_id: calendarId,
+      node_type: "WorkingCalendar",
+      schema_version: 1,
+      lifecycle_status: "Active",
+      entity_id: entityId,
+      name: `${args.jurisdiction} working calendar`,
+      ...template,
+      reduced_hours_periods: [],
+    },
+    "WorkingCalendar",
+    provenance(c),
+  );
+  await c.cache.putNode(toCachedNode(calendar, 1));
+  await c.cache.putEdge(
+    toCachedEdge(
+      stampNewEdge(
+        {
+          edge_id: calendarEdgeId,
+          edge_type: "governed_by_calendar",
+          from_node_id: entityId,
+          to_node_id: calendarId,
+          effective_from: c.now,
+          effective_to: null,
+        },
+        provenance(c),
+      ),
+      1,
+    ),
+  );
+  return [
+    { kind: "node", id: entityId, before: null },
+    { kind: "node", id: calendarId, before: null },
+    { kind: "edge", id: calendarEdgeId, before: null },
+  ];
 };
 
 const entityUpdate: OptimisticMutator = async (c, raw) => {
@@ -466,6 +508,257 @@ const employeeSetEntity: OptimisticMutator = async (c, raw) => {
   return [closed, { kind: "edge", id: edgeId, before: null }];
 };
 
+// ── Working calendar and patterns (VRS-F004) ───────────────────────────────
+
+const liveTypedNode = async (cache: OptimisticCache, id: string, type: string) => {
+  const node = await liveNode(cache, id);
+  if (node.nodeType !== type) throw new OptimisticRejection("invalid-args");
+  return node;
+};
+
+const putNewNode = async (
+  c: MutatorContext,
+  id: string,
+  type: NodeType,
+  fields: Record<string, unknown>,
+) => {
+  if (await c.cache.getNode(id)) throw new OptimisticRejection("invalid-args");
+  const record = stampNewNode(
+    { ...fields, node_id: id, node_type: type, schema_version: 1 },
+    type,
+    provenance(c),
+  );
+  await c.cache.putNode(toCachedNode(record, 1));
+  return { kind: "node" as const, id, before: null };
+};
+
+const putNewEdge = async (
+  c: MutatorContext,
+  id: string,
+  fields: Record<string, unknown>,
+) => {
+  if (await c.cache.getEdge(id)) throw new OptimisticRejection("invalid-args");
+  const record = stampNewEdge({ edge_id: id, ...fields }, provenance(c));
+  await c.cache.putEdge(toCachedEdge(record, 1));
+  return { kind: "edge" as const, id, before: null };
+};
+
+const calendarUpdate: OptimisticMutator = async (c, raw) => {
+  const args = parse("calendar.update", raw);
+  const prior = await liveTypedNode(c.cache, args.calendar_id, "WorkingCalendar");
+  if (args.expected_version !== prior.version)
+    throw new OptimisticRejection("stale-state");
+  if (prior.lifecycleStatus !== "Active") throw new OptimisticRejection("not-found");
+  const ownership = (await c.cache.edgesTo(prior.nodeId, "governed_by_calendar"))[0];
+  if (!ownership) throw new OptimisticRejection("not-found");
+  const holidays: CachedNode[] = [];
+  for (const edge of await c.cache.edgesTo(prior.nodeId, "holiday_in")) {
+    const holiday = await c.cache.getNode(edge.fromNodeId);
+    if (
+      holiday &&
+      !holiday.isSoftDeleted &&
+      holiday.nodeType === "Holiday" &&
+      holiday.lifecycleStatus === "Active"
+    )
+      holidays.push(holiday);
+  }
+  holidays.sort((a, b) => a.nodeId.localeCompare(b.nodeId));
+  const nextId = c.mutationId;
+  const undo: UndoEntry[] = [
+    await writeNode(c.cache, prior, {
+      ...prior.record,
+      lifecycle_status: "Superseded",
+      ...updateStamp("WorkingCalendar", provenance(c)),
+    }),
+  ];
+  undo.push(
+    await putNewNode(c, nextId, "WorkingCalendar", {
+      ...prior.record,
+      lifecycle_status: "Active",
+      working_week: args.working_week,
+      standard_daily_hours: args.daily_hours,
+      reduced_hours_periods:
+        args.reduced_hours_periods ?? prior.record["reduced_hours_periods"] ?? [],
+    }),
+  );
+  undo.push(
+    await putNewEdge(c, mutationDerivedId(c.mutationId, 1), {
+      edge_type: "governed_by_calendar",
+      from_node_id: ownership.fromNodeId,
+      to_node_id: nextId,
+      effective_from: c.now,
+      effective_to: null,
+    }),
+  );
+  undo.push(
+    await putNewEdge(c, mutationDerivedId(c.mutationId, 2), {
+      edge_type: "supersedes",
+      from_node_id: nextId,
+      to_node_id: prior.nodeId,
+      effective_from: c.now,
+      effective_to: null,
+    }),
+  );
+  for (const [index, holiday] of holidays.entries()) {
+    const holidayId = mutationDerivedId(c.mutationId, 10 + index * 2);
+    const edgeId = mutationDerivedId(c.mutationId, 11 + index * 2);
+    undo.push(
+      await putNewNode(c, holidayId, "Holiday", {
+        ...holiday.record,
+        calendar_id: nextId,
+        lifecycle_status: "Active",
+      }),
+    );
+    undo.push(
+      await putNewEdge(c, edgeId, {
+        edge_type: "holiday_in",
+        from_node_id: holidayId,
+        to_node_id: nextId,
+        effective_from: c.now,
+        effective_to: null,
+      }),
+    );
+  }
+  return undo;
+};
+
+const holidayAdd: OptimisticMutator = async (c, raw) => {
+  const args = parse("holiday.add", raw);
+  const calendar = await liveTypedNode(c.cache, args.calendar_id, "WorkingCalendar");
+  if (calendar.lifecycleStatus !== "Active") throw new OptimisticRejection("not-found");
+  const holidayId = c.mutationId;
+  const edgeId = moveEmployeeEdgeId(c.mutationId);
+  return [
+    await putNewNode(c, holidayId, "Holiday", {
+      lifecycle_status: "Active",
+      calendar_id: calendar.nodeId,
+      ...args.fields,
+      date: args.fields.date ?? args.fields.estimated_date,
+      confirmed_at: null,
+      confirmed_by: null,
+    }),
+    await putNewEdge(c, edgeId, {
+      edge_type: "holiday_in",
+      from_node_id: holidayId,
+      to_node_id: calendar.nodeId,
+      effective_from: c.now,
+      effective_to: null,
+    }),
+  ];
+};
+
+const activeHolidayCalendar = async (cache: OptimisticCache, holidayId: string) => {
+  const edge = (await cache.edgesFrom(holidayId, "holiday_in"))[0];
+  if (!edge) throw new OptimisticRejection("not-found");
+  const calendar = await liveTypedNode(cache, edge.toNodeId, "WorkingCalendar");
+  if (calendar.lifecycleStatus !== "Active") throw new OptimisticRejection("not-found");
+};
+
+const holidayConfirm: OptimisticMutator = async (c, raw) => {
+  const args = parse("holiday.confirm", raw);
+  const holiday = await liveTypedNode(c.cache, args.holiday_id, "Holiday");
+  await activeHolidayCalendar(c.cache, holiday.nodeId);
+  return [
+    await writeNode(c.cache, holiday, {
+      ...holiday.record,
+      date: args.actual_date,
+      is_provisional: false,
+      confirmed_at: c.now,
+      confirmed_by: c.userId,
+      ...updateStamp("Holiday", provenance(c)),
+    }),
+  ];
+};
+
+const holidayCancel: OptimisticMutator = async (c, raw) => {
+  const args = parse("holiday.cancel", raw);
+  const holiday = await liveTypedNode(c.cache, args.holiday_id, "Holiday");
+  if (args.expected_version !== holiday.version)
+    throw new OptimisticRejection("stale-state");
+  await activeHolidayCalendar(c.cache, holiday.nodeId);
+  return [
+    await writeNode(c.cache, holiday, {
+      ...holiday.record,
+      lifecycle_status: "Canceled",
+      ...updateStamp("Holiday", provenance(c)),
+    }),
+  ];
+};
+
+const currentPattern = async (cache: OptimisticCache, employeeId: string) => {
+  for (const edge of await cache.edgesTo(employeeId, "pattern_for")) {
+    const node = await cache.getNode(edge.fromNodeId);
+    if (
+      node &&
+      !node.isSoftDeleted &&
+      node.nodeType === "WorkingPattern" &&
+      node.lifecycleStatus === "Active"
+    )
+      return node;
+  }
+  return undefined;
+};
+
+const patternSet: OptimisticMutator = async (c, raw) => {
+  const args = parse("pattern.set", raw);
+  await liveEmployee(c.cache, args.employee_id);
+  const prior = await currentPattern(c.cache, args.employee_id);
+  const undo: UndoEntry[] = [];
+  if (prior) {
+    if (args.expected_version !== prior.version)
+      throw new OptimisticRejection("stale-state");
+    if (args.effective_from < String(prior.record["effective_from"]))
+      throw new OptimisticRejection("invalid-args");
+    undo.push(
+      await writeNode(c.cache, prior, {
+        ...prior.record,
+        lifecycle_status: "Superseded",
+        effective_to: args.effective_from,
+        ...updateStamp("WorkingPattern", provenance(c)),
+      }),
+    );
+  } else if (args.expected_version !== undefined)
+    throw new OptimisticRejection("stale-state");
+  undo.push(
+    await putNewNode(c, c.mutationId, "WorkingPattern", {
+      lifecycle_status: "Active",
+      employee_id: args.employee_id,
+      working_week: args.working_week,
+      effective_from: args.effective_from,
+      effective_to: null,
+    }),
+  );
+  undo.push(
+    await putNewEdge(c, moveEmployeeEdgeId(c.mutationId), {
+      edge_type: "pattern_for",
+      from_node_id: c.mutationId,
+      to_node_id: args.employee_id,
+      effective_from: `${args.effective_from}T00:00:00.000Z`,
+      effective_to: null,
+    }),
+  );
+  return undo;
+};
+
+const patternClear: OptimisticMutator = async (c, raw) => {
+  const args = parse("pattern.clear", raw);
+  await liveEmployee(c.cache, args.employee_id);
+  const prior = await currentPattern(c.cache, args.employee_id);
+  if (!prior) throw new OptimisticRejection("not-found");
+  if (args.expected_version !== prior.version)
+    throw new OptimisticRejection("stale-state");
+  if (args.effective_from < String(prior.record["effective_from"]))
+    throw new OptimisticRejection("invalid-args");
+  return [
+    await writeNode(c.cache, prior, {
+      ...prior.record,
+      lifecycle_status: "Superseded",
+      effective_to: args.effective_from,
+      ...updateStamp("WorkingPattern", provenance(c)),
+    }),
+  ];
+};
+
 export const OPTIMISTIC_MUTATORS: Readonly<Record<MutationName, OptimisticMutator>> = {
   "employee.create": employeeCreate,
   "employee.update": employeeUpdate,
@@ -476,6 +769,12 @@ export const OPTIMISTIC_MUTATORS: Readonly<Record<MutationName, OptimisticMutato
   "entity.create": entityCreate,
   "entity.update": entityUpdate,
   "entity.deactivate": entityDeactivate,
+  "calendar.update": calendarUpdate,
+  "holiday.add": holidayAdd,
+  "holiday.confirm": holidayConfirm,
+  "holiday.cancel": holidayCancel,
+  "pattern.set": patternSet,
+  "pattern.clear": patternClear,
   "graph.createNode": createNode,
   "graph.updateNodeFields": updateNodeFields,
   "graph.softDeleteNode": softDeleteNode,
