@@ -320,7 +320,7 @@ describe("the audience follows every change, in the same transaction", () => {
     const owner = await principalOf(fixture.workspaceId, fixture.people.owner!.userId);
     const nodeId = randomUUID();
     const { workspace_id: _w, ...rest } = nodeRecord(
-      "Entity",
+      "Project",
       fixture.workspaceId,
       nodeId,
     );

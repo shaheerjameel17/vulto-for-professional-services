@@ -1269,7 +1269,7 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
     ).toEqual(["Entity", "User", "Workspace", "WorkspaceMembership"]);
     const entities = await db.execute(
       sql`select lifecycle_status, record->>'name' as name, record->>'jurisdiction' as jurisdiction,
-        record->>'default_currency' as currency, record ? 'is_active' as has_is_active
+        record->>'default_currency' as currency
         from graph_nodes where workspace_id = ${created.workspaceId} and node_type = 'Entity'`,
     );
     expect(entities).toEqual([
@@ -1278,7 +1278,6 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
         name: "Acme Advisory",
         jurisdiction: "Global",
         currency: "USD",
-        has_is_active: false,
       },
     ]);
     const audience = await db.execute(

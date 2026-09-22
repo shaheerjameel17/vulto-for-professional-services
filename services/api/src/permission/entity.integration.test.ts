@@ -6,6 +6,7 @@ import { getEdge, getNode, getNodes } from "../graph/store.js";
 import { applyMutation } from "../mutations/pipeline.js";
 import { decideRead } from "./interceptor.js";
 import { resolveMemberPrincipal } from "./member-principal.js";
+import { isManager } from "./roles.js";
 import { makeWorkspace } from "./test-support.js";
 
 afterAll(closeDatabase);
@@ -19,6 +20,8 @@ async function world() {
   const fixture = await makeWorkspace({
     hr: ["hr-admin"],
     finance: ["finance-admin"],
+    boss: ["team-member"],
+    report: ["team-member"],
     team: ["team-member"],
   });
   const principals = {} as Record<
@@ -133,12 +136,39 @@ describe("VRS-F003 — Entity mutations and temporal resolution", () => {
     expect(denied.status).toBe("rejected");
   });
 
-  it("gives Owner and HR Admin Full, and Finance Admin and Team Member Read on an Entity", async () => {
+  it("gives Owner and HR Admin Full, and Finance Admin, Manager and Team Member Read on an Entity", async () => {
     const w = await world();
+    const boss = await createEmployee(w, w.founding.nodeId);
+    const report = await createEmployee(w, w.founding.nodeId);
+    for (const [name, employee] of [
+      ["boss", boss],
+      ["report", report],
+    ] as const) {
+      expect(
+        (
+          await w.apply("owner", "employee.linkUser", {
+            employee_id: employee.employeeId,
+            user_id: w.people[name]!.userId,
+            expected_version: 1,
+          })
+        ).status,
+      ).toBe("applied");
+    }
+    expect(
+      (
+        await w.apply("owner", "org.moveEmployee", {
+          employee_id: report.employeeId,
+          new_manager_id: boss.employeeId,
+          effective_from: FEBRUARY,
+        })
+      ).status,
+    ).toBe("applied");
+    expect(await db.transaction((tx) => isManager(tx, w.principals.boss!))).toBe(true);
     for (const [who, expected] of [
       ["owner", "full"],
       ["hr", "full"],
       ["finance", "read"],
+      ["boss", "read"],
       ["team", "read"],
     ] as const) {
       const decision = await db.transaction((tx) =>
@@ -152,7 +182,7 @@ describe("VRS-F003 — Entity mutations and temporal resolution", () => {
     }
   });
 
-  it("checks stale version first, then separately refuses the last Entity and active employees", async () => {
+  it("rejects a stale version before the deactivation business rules", async () => {
     const w = await world();
     expect(
       (
@@ -162,6 +192,10 @@ describe("VRS-F003 — Entity mutations and temporal resolution", () => {
         })
       ).reason,
     ).toBe("stale-state");
+  });
+
+  it("refuses deactivation of the sole Active Entity even with zero employees", async () => {
+    const w = await world();
     expect(
       (
         await w.apply("owner", "entity.deactivate", {
@@ -170,7 +204,10 @@ describe("VRS-F003 — Entity mutations and temporal resolution", () => {
         })
       ).reason,
     ).toBe("last-active-entity");
+  });
 
+  it("refuses deactivation while an Active employee remains scoped", async () => {
+    const w = await world();
     const ukId = await createEntity(w, "UK", "UK Ltd");
     await createEmployee(w, ukId);
     expect(
@@ -181,6 +218,11 @@ describe("VRS-F003 — Entity mutations and temporal resolution", () => {
         })
       ).reason,
     ).toBe("active-employees:1");
+  });
+
+  it("dissolves an eligible Entity and blocks generic lifecycle paths", async () => {
+    const w = await world();
+    const ukId = await createEntity(w, "UK", "UK Ltd");
     const pakistanId = await createEntity(w, "PK", "Pakistan Ltd");
     const dissolved = await w.apply("owner", "entity.deactivate", {
       entity_id: pakistanId,

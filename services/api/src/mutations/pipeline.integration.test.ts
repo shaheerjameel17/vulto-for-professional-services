@@ -39,8 +39,8 @@ async function setup(
   };
 }
 
-const entityNode = (workspaceId: string, nodeId = randomUUID()) => {
-  const { workspace_id: _w, ...rest } = nodeRecord("Entity", workspaceId, nodeId);
+const genericNode = (workspaceId: string, nodeId = randomUUID()) => {
+  const { workspace_id: _w, ...rest } = nodeRecord("Project", workspaceId, nodeId);
   return { ...rest, workspace_id: workspaceId };
 };
 
@@ -66,7 +66,7 @@ describe("idempotency (A003-T53)", () => {
     const envelope = {
       mutation_id: randomUUID(),
       name: "graph.createNode",
-      args: { node: entityNode(fixture.workspaceId, nodeId) },
+      args: { node: genericNode(fixture.workspaceId, nodeId) },
     };
     const first = await applyMutation(owner, envelope);
     expect(first).toMatchObject({
@@ -92,13 +92,13 @@ describe("idempotency (A003-T53)", () => {
     await applyMutation(owner, {
       mutation_id: id,
       name: "graph.createNode",
-      args: { node: entityNode(fixture.workspaceId) },
+      args: { node: genericNode(fixture.workspaceId) },
     });
     expect(
       await applyMutation(owner, {
         mutation_id: id,
         name: "graph.createNode",
-        args: { node: entityNode(fixture.workspaceId) },
+        args: { node: genericNode(fixture.workspaceId) },
       }),
     ).toEqual({ mutation_id: id, status: "rejected", reason: "mutation-id-conflict" });
     const other = await setup();
@@ -106,7 +106,7 @@ describe("idempotency (A003-T53)", () => {
       await applyMutation(other.owner, {
         mutation_id: id,
         name: "graph.createNode",
-        args: { node: entityNode(other.fixture.workspaceId) },
+        args: { node: genericNode(other.fixture.workspaceId) },
       }),
     ).toEqual({ mutation_id: id, status: "rejected", reason: "mutation-id-conflict" });
   });
@@ -130,7 +130,7 @@ describe("idempotency (A003-T53)", () => {
     const envelope = {
       mutation_id: randomUUID(),
       name: "graph.createNode",
-      args: { node: entityNode(fixture.workspaceId, nodeId) },
+      args: { node: genericNode(fixture.workspaceId, nodeId) },
     };
     const results = await Promise.all([
       applyMutation(owner, envelope),
@@ -145,7 +145,7 @@ describe("a genuine constraint violation is not swallowed as a duplicate", () =>
   const create = (workspaceId: string, nodeId: ReturnType<typeof randomUUID>) => ({
     mutation_id: randomUUID(),
     name: "graph.createNode",
-    args: { node: entityNode(workspaceId, nodeId) },
+    args: { node: genericNode(workspaceId, nodeId) },
   });
 
   it("a different mutation id creating a node that already exists is rejected, in sequence", async () => {
@@ -207,7 +207,7 @@ describe("stale state (A003-T54)", () => {
     await applyMutation(owner, {
       mutation_id: randomUUID(),
       name: "graph.createNode",
-      args: { node: entityNode(fixture.workspaceId, nodeId) },
+      args: { node: genericNode(fixture.workspaceId, nodeId) },
     });
     const update = (expected: number | null, name: string) =>
       applyMutation(owner, {
@@ -349,7 +349,7 @@ describe("authorization and audit", () => {
     const result = await applyMutation(member, {
       mutation_id: randomUUID(),
       name: "graph.createNode",
-      args: { node: entityNode(fixture.workspaceId, nodeId) },
+      args: { node: genericNode(fixture.workspaceId, nodeId) },
     });
     expect(result).toMatchObject({ status: "rejected", reason: "role" });
     expect(await nodeRows(nodeId)).toHaveLength(0);
@@ -374,7 +374,7 @@ describe("authorization and audit", () => {
     const { fixture, owner } = await setup();
     const nodeId = randomUUID();
     const forged = {
-      ...entityNode(fixture.workspaceId, nodeId),
+      ...genericNode(fixture.workspaceId, nodeId),
       created_by: randomUUID(),
       created_at: "2001-01-01T00:00:00.000Z",
     };
@@ -449,7 +449,7 @@ describe("ordered batches", () => {
       {
         mutation_id: ids[0]!,
         name: "graph.createNode",
-        args: { node: entityNode(fixture.workspaceId) },
+        args: { node: genericNode(fixture.workspaceId) },
       },
       {
         mutation_id: ids[1]!,
@@ -459,7 +459,7 @@ describe("ordered batches", () => {
       {
         mutation_id: ids[2]!,
         name: "graph.createNode",
-        args: { node: entityNode(fixture.workspaceId) },
+        args: { node: genericNode(fixture.workspaceId) },
       },
     ]);
     expect(results.map((r) => [r.mutation_id, r.status, r.reason])).toEqual([
@@ -533,7 +533,7 @@ describe("the pipeline's remaining steps", () => {
     const envelope = {
       mutation_id: randomUUID(),
       name: "graph.createNode",
-      args: { node: entityNode(fixture.workspaceId, nodeId) },
+      args: { node: genericNode(fixture.workspaceId, nodeId) },
     };
     await expect(
       applyMutation(owner, envelope, {

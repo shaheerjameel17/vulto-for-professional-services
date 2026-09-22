@@ -126,22 +126,22 @@ const trpc = (
     payload: JSON.stringify(body),
   });
 
-const entity = (workspaceId: string, nodeId: string = randomUUID()) => ({
+const genericNode = (workspaceId: string, nodeId: string = randomUUID()) => ({
   node_id: nodeId,
-  node_type: "Entity",
+  node_type: "Project",
   schema_version: 1,
   lifecycle_status: "Active",
   workspace_id: workspaceId,
 });
 
-const createEntity = (
+const createGenericNode = (
   workspaceId: string,
   mutationId: string = randomUUID(),
   nodeId?: string,
 ) => ({
   mutation_id: mutationId,
   name: "graph.createNode",
-  args: { node: entity(workspaceId, nodeId) },
+  args: { node: genericNode(workspaceId, nodeId) },
 });
 
 const results = (response: LightMyRequestResponse) =>
@@ -153,14 +153,14 @@ const results = (response: LightMyRequestResponse) =>
 describe("1 — a forged mutation_id replay", () => {
   it("the same id with different args is refused and applies nothing", async () => {
     const owner = await person(["owner"]);
-    const first = createEntity(owner.workspaceId);
+    const first = createGenericNode(owner.workspaceId);
     expect(
       results(
         await trpc(owner.cookie, "graph.applyMutations", { mutations: [first] }),
       )[0]?.status,
     ).toBe("applied");
 
-    const forged = { ...first, args: { node: entity(owner.workspaceId) } };
+    const forged = { ...first, args: { node: genericNode(owner.workspaceId) } };
     const replay = results(
       await trpc(owner.cookie, "graph.applyMutations", { mutations: [forged] }),
     )[0];
@@ -172,16 +172,16 @@ describe("1 — a forged mutation_id replay", () => {
       .select()
       .from(graphNodes)
       .where(eq(graphNodes.workspaceId, owner.workspaceId));
-    expect(rows.filter((r) => r.nodeType === "Entity")).toHaveLength(1);
+    expect(rows.filter((r) => r.nodeType === "Project")).toHaveLength(1);
   });
 
   it("another workspace cannot replay, or learn the outcome of, a mutation id it did not make", async () => {
     const a = await person(["owner"]);
     const b = await person(["owner"]);
-    const original = createEntity(a.workspaceId);
+    const original = createGenericNode(a.workspaceId);
     await trpc(a.cookie, "graph.applyMutations", { mutations: [original] });
 
-    const stolen = createEntity(b.workspaceId, original.mutation_id);
+    const stolen = createGenericNode(b.workspaceId, original.mutation_id);
     const attempt = results(
       await trpc(b.cookie, "graph.applyMutations", { mutations: [stolen] }),
     )[0];
@@ -200,7 +200,7 @@ describe("1 — a forged mutation_id replay", () => {
 
   it("the same id with the same args is a duplicate, applied once", async () => {
     const owner = await person(["owner"]);
-    const one = createEntity(owner.workspaceId);
+    const one = createGenericNode(owner.workspaceId);
     await trpc(owner.cookie, "graph.applyMutations", { mutations: [one] });
     const again = results(
       await trpc(owner.cookie, "graph.applyMutations", { mutations: [one] }),
@@ -219,7 +219,7 @@ describe("2 — a principal supplied in client input is ignored", () => {
     const teamMember = await person(["team-member"]);
     const impostor = await person(["owner"], teamMember.workspaceId);
     const mutation = {
-      ...createEntity(teamMember.workspaceId),
+      ...createGenericNode(teamMember.workspaceId),
       principal: { userId: impostor.userId, roles: ["owner"] },
       actor_user_id: impostor.userId,
       roles: ["owner"],
