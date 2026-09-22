@@ -49,7 +49,7 @@ This feature treats a provisional date as a first-class state rather than a data
 
 ### Setting up a calendar
 
-Each Entity has one active WorkingCalendar. During [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s setup, a template is applied from the Entity's jurisdiction — Monday to Friday for UK and US, Monday to Friday for AE, Sunday to Thursday for SA, Monday to Saturday with a half-day Saturday for PK — and the founder confirms or adjusts it. The template is a starting point, never an assumption: a Karachi studio working Monday to Friday changes two toggles and moves on.
+Each Entity has one active WorkingCalendar. During [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s setup, a template is applied from the Entity's jurisdiction — Monday to Friday for UK and US, Monday to Friday for AE, Sunday to Thursday for SA, Monday to Saturday with a half-day Saturday for PK, and Monday to Friday at `standard_daily_hours: 8` for `Global`, `IN` and `SG` (F227) — and the founder confirms or adjusts it. Both an Entity's founding-bootstrap creation and any later `entity.create` write this initial calendar atomically with the Entity itself, never as a follow-up step (F227). The template is a starting point, never an assumption: a Karachi studio working Monday to Friday changes two toggles and moves on.
 
 ### Adjusting the working week
 
@@ -170,6 +170,8 @@ lifecycle_status:    enum: Active, Canceled
 — Universal Node Conventions per VPS-A002 —
 ```
 
+**Holidays are versioned together with their calendar (F230).** `calendar.update` copies every still-`Active` Holiday of the calendar version being superseded onto the new version, with a fresh `holiday_in` edge; a `Canceled` Holiday is not copied forward. The old, now-`Superseded` calendar version keeps its own original Holiday nodes untouched, so `calendar.get(entityId, asOf)` against a historical date resolves exactly the holiday set that was true then. `holiday.confirm` and `holiday.cancel` act only on the current Active calendar's own holidays; either refuses `not-found` against a holiday belonging to a `Superseded` version, since historical holidays are frozen the same way a historical working week is.
+
 ### WorkingPattern
 
 ```
@@ -235,16 +237,20 @@ Everything else — bench days, utilization, capacity forecasts, timesheet expec
 
 ```
 calendar.get(entityId, asOf?)                          -> WorkingCalendar
-calendar.update(calendarId, workingWeek, dailyHours)   -> { calendarId }
-  // Creates a superseding version; never edits in place
+calendar.update(calendarId, workingWeek, dailyHours, expectedVersion) -> { calendarId }
+  // Checks expectedVersion first (F228). Creates a superseding version;
+  // never edits in place. Holidays still Active on the superseded version
+  // are copied forward onto the new one (F230)
 
 holiday.add(calendarId, fields)                        -> { holidayId }
 holiday.confirm(holidayId, actualDate)                 -> { success, affectedRange }
-holiday.cancel(holidayId)                              -> { success }
+holiday.cancel(holidayId, expectedVersion)             -> { success }
 holiday.importForJurisdiction(calendarId, jurisdiction, year) -> { imported, provisional }
 
-pattern.set(employeeId, workingWeek, effectiveFrom)    -> { patternId }
-pattern.clear(employeeId, effectiveFrom)               -> { success }
+pattern.set(employeeId, workingWeek, effectiveFrom, expectedVersion?) -> { patternId }
+  // expectedVersion is the current pattern's version, required whenever one
+  // exists to supersede; omitted only for an employee's first-ever pattern (F228)
+pattern.clear(employeeId, effectiveFrom, expectedVersion) -> { success }
 
 — The interface every other feature uses —
 
@@ -266,10 +272,10 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 | G01 | Exactly one Active WorkingCalendar per Entity. Editing creates a superseding version rather than editing in place |
 | G02 | Every workspace Entity has a calendar from the moment it is created. There is no state in which an employee has no calendar |
 | G03 | A WorkingPattern omitting a weekday inherits that day from the entity calendar. Omission is inheritance, never zero |
-| G04 | WorkingPattern follows single-active-with-history. Overlapping effective ranges for one employee are rejected at write time |
+| G04 | WorkingPattern follows single-active-with-history, sharing `scoped_to_entity`'s own closed-at-the-boundary convention (F229): superseding a pattern sets its `effective_to` to the new pattern's own `effective_from`, never the day before. The one write-time overlap guard this creates is that a new `effective_from` may never precede the pattern it supersedes — an earlier date would overlap already-closed history instead |
 | G05 | Holiday resolution respects `applies_to_locations`. A regional holiday does not remove a working day from an employee elsewhere |
 | G06 | The working-day index is materialized per employee per date across a rolling twelve-months-past to twenty-four-months-future window, rebuilt incrementally on the five defined trigger events. **Deferred to the stage that builds `VRS-F005` (F226)** — this feature's own stage builds `workingDays.*` computed directly against the graph, unindexed |
-| G07 | Confirming a provisional date recalculates everything not exempted, for the affected range — the index-rebuild mechanism itself is deferred with G06 (F226); until the index exists, "recalculates" means `workingDays.*` returns the confirmed values on its next call, computed directly. Closed PayRuns, approved LeaveRequests and signed Contracts are exempt from recalculation per the rules above — this exemption is not deferred and holds from this feature's own stage |
+| G07 | Confirming a provisional date recalculates the live view on its next read, for the affected range — the index-rebuild mechanism itself is deferred with G06 (F226); until the index exists, "recalculates" means `workingDays.*` returns the confirmed values on its next call, computed directly, and this live-view case is what this feature's own stage proves. Closed PayRuns, approved LeaveRequests and signed Contracts are exempt from recalculation per the rules above — a binding rule recorded here for whichever stage builds each of `VRS-F062`, leave and `VRS-F020` respectively, since none of the three exists yet to test against (F231, correcting F226) |
 | G08 | No other feature computes working days, weekends or holidays. All such arithmetic calls this feature's API, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] Standing Rule 9 |
 
 ---
@@ -322,13 +328,13 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 **GIVEN** a PayRun closed before that confirmation, containing a proration across the shifted range
 **WHEN** the confirmation is applied
-**THEN** the PayRun is unchanged, and the difference is raised as an adjustment in the following period per [[VRS-F062_Payroll_Engine_Core|VRS-F062]]
+**THEN** the PayRun is unchanged, and the difference is raised as an adjustment in the following period per [[VRS-F062_Payroll_Engine_Core|VRS-F062]] — **this criterion belongs to `VRS-F062`'s own stage (F231)**; no PayRun exists yet for this feature's own stage to prove it against
 
 ---
 
 **GIVEN** an approved leave request spanning the shifted date
 **WHEN** the confirmation is applied
-**THEN** the deducted day count is unchanged and the approving manager receives a notice describing the discrepancy, rather than the balance changing silently
+**THEN** the deducted day count is unchanged and the approving manager receives a notice describing the discrepancy, rather than the balance changing silently — **this criterion belongs to leave's own stage (F231)**; no LeaveRequest or notice workflow exists yet for this feature's own stage to prove it against
 
 ---
 
@@ -384,7 +390,7 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 **Provisional holidays are a first-class state.** No competing HR product handles lunar holiday confirmation, and in Vulto's primary markets every calendar is wrong for several days a year as a result. This is a small mechanism with disproportionate value in exactly the market this product is built for.
 
-**Recalculation on confirmation has three exemptions**, and each is a deliberate product judgment rather than a technical limit. Reopening a disbursed payroll to correct a holiday creates a worse problem than it solves. Silently adjusting someone's approved leave balance because a moon sighting moved is a decision a person should make. A signed contract was accurate when signed.
+**Recalculation on confirmation has three exemptions**, and each is a deliberate product judgment rather than a technical limit. Reopening a disbursed payroll to correct a holiday creates a worse problem than it solves. Silently adjusting someone's approved leave balance because a moon sighting moved is a decision a person should make. A signed contract was accurate when signed. **Enforcing these three exemptions is each consuming feature's own obligation, not this feature's (F231, correcting F226's initial overreach)** — this feature's own stage proves only that everything else recalculates freely on the next `workingDays.*` read; PayRun, LeaveRequest and Contract don't exist yet for it to prove an adjustment or a notice against, and each inherits this rule when it is built.
 
 **The working-day index is materialized rather than computed — deferred to whichever stage builds `VRS-F005` (F226).** Naive evaluation cannot meet [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s render budget, and the Bench Forecast's whole proposition is that it appears instantly — but nothing in this feature's own build calls `workingDays.*` at that volume, so this feature's own stage computes it directly against the graph and leaves the index to the stage that actually needs the render budget.
 
