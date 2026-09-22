@@ -71,7 +71,7 @@
 | 6 Sync | done, two review rounds (F210–F212) | `961830d` |
 | **7 Retire + harden CI** | **approved 22 September (F210 verified by direct read; F213 ruled — keep the column)** | **`dec4eb3`** (merged `--no-ff`, 22 September) |
 | **8 Spec sweep (priority slice) + RST-33** | **reviewed 22 September (F130 closure confirmed; F215 confirmed; F214 ruled — design accepted, build deferred to Stage 9)** | **`5897b7b`** (merged `--no-ff`, 22 September) |
-| **9 The real shell bootstrap** | **approved for merge 22 September** (blocked five times first, all ruled F216–F220; completion report at `08e2873` verified directly against code, no further findings) | pending — Codex to `--no-ff` merge `stage-9-shell-bootstrap-v3` |
+| **9 The real shell bootstrap** | **done 22 September** (blocked five times first, all ruled F216–F220; completion report at `08e2873` verified directly against code, no further findings) | **`5a0e9ee`** (merged `--no-ff`, 22 September) |
 | **10 The Reconnect shell state** | **briefed (was "Stage 9"); blocked on Stage 9** | — |
 
 **Stage 7 facts to remember:**
