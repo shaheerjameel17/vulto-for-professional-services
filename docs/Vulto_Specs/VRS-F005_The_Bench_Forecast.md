@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee nodes must exist), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (working days — every day count in this feature resolves there), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (Assignment's registry entry), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (local-first rendering and tier-based access), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission-scoped visibility in the intelligence panel, and aggregate disclosure control), [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] (Referenced In context), [[VPS-D001_Design_Foundations|VPS-D001]] (the signature element specified there)
+**Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee nodes must exist), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (working days — every day count in this feature resolves there), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (Assignment's registry entry), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (Tier 0 replicates to the device cache via Electric; Tier 1 and Tier 2 are fetched on demand, per F199 and F236), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission-scoped visibility in the intelligence panel, and aggregate disclosure control), [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] (Referenced In context), [[VPS-D001_Design_Foundations|VPS-D001]] (the signature element specified there)
 **Partial forward dependencies:** [[VRS-F006_Rate_Card_Engine|VRS-F006]] supplies rate resolution; until it exists, `effective_billing_rate` is written as `billing_rate_default` at Assignment write time. [[VRS-F007_Ghost_Resources|VRS-F007]] supplies Ghost rows; until it exists, none are rendered. Neither blocks this feature.
 **Blocks:** [[VRS-F007_Ghost_Resources|VRS-F007]] and [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]] both depend on the Assignment model and the 100% capacity constraint defined here. [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] depends on the bench computation defined here.
 
@@ -56,7 +56,7 @@ Where the filtered cohort falls below the k-anonymity threshold, the aggregate i
 
 ### Selecting a row
 
-Selection opens the Contextual Intelligence Panel, built from a single two-hop traversal of that Employee node, entirely local. What appears depends on the viewer's role and the tier of what is traversed to, governed by [[VPS-A004_Graph_Permission_Layer|VPS-A004]] rather than by logic written here.
+Selection opens the Contextual Intelligence Panel, built from a single two-hop traversal of that Employee node. Its Tier 0 fields resolve from the device's own Electric-replicated cache, no network request; its Tier 2 fields are fetched on demand from the server the moment the Panel opens, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s F199 rewrite — never cached on device (F236). What appears depends on the viewer's role and the tier of what is traversed to, governed by [[VPS-A004_Graph_Permission_Layer|VPS-A004]] rather than by logic written here.
 
 **Opening the Panel scrolls the selected row's live region clear of it.** This is a third Panel behavior, specific to this screen, and it exists because neither of [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]'s two behaviors is acceptable on a canvas where horizontal position carries meaning. At the 1280px design center the Panel overlays the right 360px of an approximately 966px track: displacing the content would cost the Forecast a third of its width, and overlaying it hides a third of the timeline. On any other screen that is an acceptable trade, because the covered region is more of the same list. Here the covered region is *a different span of time*, and a bar whose left edge falls beneath the Panel loses the label naming the project.
 
@@ -201,23 +201,36 @@ An employee working day contributes one unit of available capacity; a 60% Assign
 
 ### The Contextual Intelligence Panel
 
-A single two-hop traversal from the selected Employee, entirely local. What it shows, and to whom, is governed by [[VPS-A004_Graph_Permission_Layer|VPS-A004]] and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], never by conditional logic here:
+A single two-hop traversal from the selected Employee. What it shows, and to whom, is governed by [[VPS-A004_Graph_Permission_Layer|VPS-A004]] and [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], never by conditional logic here. Tier 0 fields resolve from the device's local cache; Tier 2 fields are fetched on demand from the server when the Panel opens and held in memory only, per F199 — the Panel issues one network call for its protected fields, not zero (F236):
 
 - **Skills, open roles, references** — Tier 0, visible to any role with Read on the Employee
 - **BurnoutAlert** — Tier 2, Manager-restricted. Visible to Owner, HR Admin and this employee's own direct manager, not every manager in the workspace
 - **FlightRiskSignal** — Tier 2, Owner and HR Admin only. A manager viewing their own report sees the burnout signal and not this one
-- **WellnessTriggerEvent** — never appears, for any role including Owner. This panel implements no suppression for it; an unauthorized device never holds the data to suppress
+- **WellnessTriggerEvent** — never appears, for any role including Owner. `contextualIntelligence.get` never requests this node type at all; Tier 3 (wellness) stays a deferred end-to-end module per F199 and has no read path in this feature regardless of role (F236)
 
 ### API contracts
 
 ```
 benchForecast.get(workspaceId, window, filters?) -> {
-  rows: EmployeeRow[],        // assignments, derived bench periods, accumulated cost
+  rows: EmployeeRow[],        // assignments, derived bench periods, day counts
   aggregateUtilization: number | Suppressed,
   cohortSize: number
 }
-  // Resolves entirely from the local index. No network round-trip.
-  // Renders within 200ms for 150 active employees
+  // Resolves entirely from the device's local Electric-replicated cache. No
+  // network round-trip. Renders within 200ms for 150 active employees.
+  // Assignment, Project, Client, GhostResource, OpenRole and
+  // effective_billing_rate are all Tier 0; bars, dates and bench-day counts
+  // never require a server call (F236)
+
+benchForecast.getCost(employeeIds, window) -> {
+  costs: Record<employeeId, currencyFigure | null>
+}
+  // Bench cost is compensation-derived (Employee's Tier 1 partition, F199)
+  // and cannot resolve from the local cache. A single batched on-demand
+  // fetch for the visible cohort, issued after the local render and filled
+  // in asynchronously — it never blocks benchForecast.get's 200ms budget.
+  // A null entry means the caller lacks compensation access, never a
+  // billing_rate_default substitute (F236)
 
 assignment.create(employeeId, projectId, startDate, endDate, billablePercentage, rateCardId?)
   -> { assignmentId }        // Enforces the 100% constraint at write time
@@ -225,11 +238,14 @@ assignment.update(assignmentId, fields)  -> { success }
 assignment.cancel(assignmentId)          -> { success }
 
 contextualIntelligence.get(employeeId) -> {
-  skills, openRoles, references,
-  burnoutAlert?,             // present only if the caller passes VPS-A004's check
-  flightRiskSignal?
+  skills, openRoles, references,   // Tier 0, resolved from the local cache
+  burnoutAlert?,             // Tier 2, present only if the caller passes VPS-A004's check
+  flightRiskSignal?          // Tier 2, present only if the caller passes VPS-A004's check
 }
-  // Absent fields are structurally absent, never null placeholders
+  // Absent fields are structurally absent, never null placeholders. The
+  // Tier 2 portion is a genuine server round-trip per F199 — this call is
+  // issued once when the Panel opens, not resolved from the local
+  // traversal that produces skills/openRoles/references (F236)
 ```
 
 ---
@@ -241,7 +257,7 @@ contextualIntelligence.get(employeeId) -> {
 | G01 | Each bar is an Assignment connecting Employee to Project. Bar position derives from `start_date` and `end_date` |
 | G02 | Bench periods are derived as working days with no Active Assignment coverage, less days carrying Pitch-categorized time. Never stored, always computed |
 | G03 | Every day count in this feature resolves through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. No weekday or holiday assumption is made locally |
-| G04 | The Contextual Intelligence Panel is one two-hop traversal from the selected Employee, filtered by node type, time relevance and [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s rules, resolved entirely from the local store |
+| G04 | The Contextual Intelligence Panel is one two-hop traversal from the selected Employee, filtered by node type, time relevance and [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s rules. Its Tier 0 fields resolve from the local cache; its Tier 2 fields (BurnoutAlert, FlightRiskSignal) are fetched on demand from the server per F199, never cached on device (F236) |
 | G05 | Ghost rows are Employee nodes with `employee_type = Ghost`. They participate in Assignment edges identically, including the 100% constraint |
 | G06 | Aggregate utilization is computed live across the filtered cohort, never cached, and passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control before display |
 | G07 | `effective_billing_rate` is resolved and written at Assignment write time. Before [[VRS-F006_Rate_Card_Engine|VRS-F006]] exists it is written as the employee's `billing_rate_default`; this feature never implements a fallback of its own at read time |
@@ -264,7 +280,7 @@ contextualIntelligence.get(employeeId) -> {
 
 **GIVEN** all Employee and Assignment data is in the local graph
 **WHEN** the forecast loads
-**THEN** the full 90-day timeline renders within 200ms with no network request, every active employee visible with correct bars
+**THEN** the full 90-day timeline renders within 200ms with no network request, every active employee visible with correct bars. Bench cost figures populate via `benchForecast.getCost`'s batched on-demand fetch shortly after, without blocking this render (F236)
 
 ---
 
@@ -318,7 +334,7 @@ contextualIntelligence.get(employeeId) -> {
 
 **GIVEN** the device is offline
 **WHEN** the forecast is opened
-**THEN** the full timeline renders from local cache, the Offline indicator shows, and no read functionality is degraded
+**THEN** the full timeline renders from local cache with correct bars, bench regions and day counts, and the Offline indicator shows. Bench cost figures and the Contextual Intelligence Panel's Tier 2 content (BurnoutAlert, FlightRiskSignal) are unavailable and show [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s standard connectivity-required state, per F199 — only Tier 0 reads are guaranteed offline (F236)
 
 ---
 
@@ -330,7 +346,7 @@ contextualIntelligence.get(employeeId) -> {
 - Affected rows re-render within 1 second of an underlying change, no full reload
 - Filter application completes within 50ms from the local graph
 - Ghost rows render within the same budget, no separate render pass
-- Fully functional offline with no read degradation
+- Fully functional offline for Tier 0 data — the timeline, bars, bench regions and day counts. Bench cost figures and the Contextual Intelligence Panel's Tier 2 content require connectivity and degrade gracefully per F199 (F236)
 
 ---
 
