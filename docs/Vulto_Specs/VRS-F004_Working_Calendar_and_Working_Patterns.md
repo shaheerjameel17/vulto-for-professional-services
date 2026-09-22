@@ -217,6 +217,8 @@ This is the performance-critical part of the feature, and it constrains its desi
 
 Rebuilds are incremental and triggered by exactly five events: a calendar edit, a holiday added, canceled or confirmed, a working pattern change, a reduced-hours period change, and an employee's entity scoping change. A rebuild affects only the employees and date range touched.
 
+**This entire index is deferred (F226).** Nothing in this feature's own build needs it — the render budget above belongs to `VRS-F005`, not yet built — so the stage that implements this document computes `workingDays.*` directly against the graph, unindexed, and whichever stage builds `VRS-F005` designs and builds this index against the server-authoritative architecture as it exists then.
+
 ### Provisional confirmation and recalculation
 
 When a provisional holiday or reduced-hours period is confirmed on a different date from its estimate, the working-day index rebuilds for the affected range and consuming features recalculate — **with three deliberate exceptions.**
@@ -266,8 +268,8 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 | G03 | A WorkingPattern omitting a weekday inherits that day from the entity calendar. Omission is inheritance, never zero |
 | G04 | WorkingPattern follows single-active-with-history. Overlapping effective ranges for one employee are rejected at write time |
 | G05 | Holiday resolution respects `applies_to_locations`. A regional holiday does not remove a working day from an employee elsewhere |
-| G06 | The working-day index is materialized per employee per date across a rolling twelve-months-past to twenty-four-months-future window, rebuilt incrementally on the five defined trigger events |
-| G07 | Confirming a provisional date rebuilds the index for the affected range. Closed PayRuns, approved LeaveRequests and signed Contracts are exempt from recalculation per the rules above |
+| G06 | The working-day index is materialized per employee per date across a rolling twelve-months-past to twenty-four-months-future window, rebuilt incrementally on the five defined trigger events. **Deferred to the stage that builds `VRS-F005` (F226)** — this feature's own stage builds `workingDays.*` computed directly against the graph, unindexed |
+| G07 | Confirming a provisional date recalculates everything not exempted, for the affected range — the index-rebuild mechanism itself is deferred with G06 (F226); until the index exists, "recalculates" means `workingDays.*` returns the confirmed values on its next call, computed directly. Closed PayRuns, approved LeaveRequests and signed Contracts are exempt from recalculation per the rules above — this exemption is not deferred and holds from this feature's own stage |
 | G08 | No other feature computes working days, weekends or holidays. All such arithmetic calls this feature's API, per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] Standing Rule 9 |
 
 ---
@@ -314,7 +316,7 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 **GIVEN** that holiday is confirmed on 21 March rather than 20 March
 **WHEN** confirmation is saved
-**THEN** the working-day index rebuilds for the affected range, bench days and utilization recalculate, `estimated_date` is retained showing the shift, and [[VPS-F004_Silent_Audit_Log|VPS-F004]] records the confirmation
+**THEN** bench days and utilization recalculate on their next read (index rebuild deferred, F226), `estimated_date` is retained showing the shift, and `confirmed_at`/`confirmed_by` record who confirmed it and when — no `VPS-F004` `AuditEntry` is written (F225)
 
 ---
 
@@ -338,7 +340,7 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 **GIVEN** a Bench Forecast of 150 employees across 90 days
 **WHEN** it renders
-**THEN** every working-day value is read from the materialized index and the full render completes within [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s 200ms budget
+**THEN** every working-day value is read from the materialized index and the full render completes within [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s 200ms budget — **this criterion is deferred with the index itself (F226)**; it is `VRS-F005`'s own stage to prove, once both the Bench Forecast and the index it depends on exist
 
 ---
 
@@ -350,11 +352,9 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 ## Non-Functional Requirements
 
-- `workingDays.count` returns within 5ms from the materialized index for any range up to 24 months
-- `workingDays.isWorking` returns within 1ms — it is called per cell during timeline renders
-- Incremental index rebuild for a single calendar change across 150 employees completes within 500ms in the worker, without blocking the UI thread per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]
+- **Deferred to the stage that builds `VRS-F005` (F226):** `workingDays.count` returning within 5ms and `workingDays.isWorking` within 1ms from a materialized index, and an incremental index rebuild for a single calendar change across 150 employees completing within 500ms in the worker per [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] — none of these apply until that stage builds the index; this feature's own stage computes `workingDays.*` directly against the graph with no performance NFR of its own
 - Full functionality offline. Holiday seeding is the only network-dependent operation, and a workspace without it is fully usable with manually entered holidays
-- The index survives application restart and rebuilds from the graph if corrupted
+- The index survives application restart and rebuilds from the graph if corrupted — moot until the index exists (F226)
 
 ---
 
@@ -362,7 +362,7 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 - **Calendars are Tier 0 and readable by every workspace member.** An employee must be able to see which days they are expected to work. Write is restricted to Owner and HR Admin per the workspace-configuration pattern in [[VPS-A004_Graph_Permission_Layer|VPS-A004]].
 - **A working pattern reveals something personal.** A three-day week frequently corresponds to caring responsibilities, disability accommodation or a phased return. The pattern itself is Tier 0 and operationally necessary — a project manager must know someone does not work Wednesdays — but **no reason field exists on WorkingPattern**, deliberately. Where a reason must be recorded, it belongs in [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] under HR-restricted access, not on an operational record visible to everyone who schedules work.
-- **Holiday confirmation is audited** per [[VPS-F004_Silent_Audit_Log|VPS-F004]], because it changes computed figures retroactively across the product.
+- **Holiday confirmation is not a `VPS-F004` `AuditEntry` event (F225).** `VPS-F004`'s `event_type` taxonomy is closed and access-focused; an ordinary, permitted HR Admin write recalculating a computed date fits none of its categories, the same reasoning `VRS-F003`'s F221 already applied to Entity transfer. Holiday's own `confirmed_at`/`confirmed_by` fields are the record of who confirmed which holiday and when; the same applies to a `ReducedHoursPeriod`'s confirmation.
 
 ---
 
@@ -386,7 +386,9 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 
 **Recalculation on confirmation has three exemptions**, and each is a deliberate product judgment rather than a technical limit. Reopening a disbursed payroll to correct a holiday creates a worse problem than it solves. Silently adjusting someone's approved leave balance because a moon sighting moved is a decision a person should make. A signed contract was accurate when signed.
 
-**The working-day index is materialized rather than computed.** Naive evaluation cannot meet [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s render budget, and the Bench Forecast's whole proposition is that it appears instantly.
+**The working-day index is materialized rather than computed — deferred to whichever stage builds `VRS-F005` (F226).** Naive evaluation cannot meet [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s render budget, and the Bench Forecast's whole proposition is that it appears instantly — but nothing in this feature's own build calls `workingDays.*` at that volume, so this feature's own stage computes it directly against the graph and leaves the index to the stage that actually needs the render budget.
+
+**Holiday and `ReducedHoursPeriod` confirmation are not `VPS-F004`-audited (F225).** `VPS-F004`'s `event_type` taxonomy is closed and access-focused and was never extended for either event, the same gap `VRS-F003`'s F221 found for Entity transfer. Each node's own `confirmed_at`/`confirmed_by` fields (or, for `ReducedHoursPeriod`, the superseding `WorkingCalendar` version's own stamp) are the record.
 
 **WorkingPattern deliberately carries no reason field.** The pattern must be broadly visible for scheduling to work; the reason for it frequently must not be, and putting the two on the same node would have forced a choice between operational utility and a genuine privacy failure.
 
