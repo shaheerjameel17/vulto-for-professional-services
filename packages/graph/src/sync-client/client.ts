@@ -1,6 +1,11 @@
 import type { GraphQuery } from "../query";
 import type { MutateOutcome, ProtectedReadOutcome, QueryOutcome } from "./engine";
-import type { InitPayload, WorkerMessage, WorkerRequest } from "./protocol";
+import type {
+  CachedWorkspaceHint,
+  InitPayload,
+  WorkerMessage,
+  WorkerRequest,
+} from "./protocol";
 import type { SyncState } from "./status";
 
 /**
@@ -41,6 +46,35 @@ export interface GraphClient {
   dump(): Promise<Record<string, unknown[]>>;
   /** Which kind of worker is serving this tab. */
   readonly workerKind: "shared" | "dedicated";
+}
+
+/** Discovers only identifier hints, inside the sync worker, before a workspace is selected. */
+export async function listCachedWorkspaces(
+  userId?: string,
+): Promise<CachedWorkspaceHint[]> {
+  const shared = typeof SharedWorker !== "undefined";
+  const worker = shared
+    ? new SharedWorker(new URL("./sync-worker.ts", import.meta.url), {
+        type: "module",
+        name: "vulto-sync:discovery",
+      })
+    : new Worker(new URL("./sync-worker.ts", import.meta.url), { type: "module" });
+  const port = shared ? (worker as SharedWorker).port : (worker as Worker);
+  try {
+    return await new Promise<CachedWorkspaceHint[]>((resolve, reject) => {
+      port.onmessage = (event: MessageEvent<WorkerMessage>) => {
+        const message = event.data;
+        if ("event" in message || message.id !== 1) return;
+        if (message.ok) resolve(message.data as CachedWorkspaceHint[]);
+        else reject(new Error(message.error));
+      };
+      if (shared) (port as MessagePort).start();
+      port.postMessage({ id: 1, op: "discoverCaches", payload: { userId } });
+    });
+  } finally {
+    if (shared) (port as MessagePort).close();
+    else (worker as Worker).terminate();
+  }
 }
 
 function defaultWorker(init: InitPayload): {

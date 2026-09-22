@@ -16,9 +16,11 @@ import {
   completePendingErase,
   eraseAllCaches,
   eraseDatabases,
+  isCacheDatabaseName,
   type EraseEnvironment,
 } from "./erasure";
 import type {
+  CachedWorkspaceHint,
   InitPayload,
   WorkerMessage,
   WorkerRequest,
@@ -63,6 +65,35 @@ const eraseEnvironment: EraseEnvironment = {
   readPending: readPendingErase,
   writePending: writePendingErase,
 };
+
+async function discoverCachedWorkspaces(
+  userId?: string,
+): Promise<CachedWorkspaceHint[]> {
+  await completePendingErase(eraseEnvironment);
+  const names = (await listIdbDatabases()) ?? [];
+  const hints: CachedWorkspaceHint[] = [];
+  for (const name of names.filter(isCacheDatabaseName)) {
+    const database = await openSyncDatabase({ kind: "idb", name });
+    try {
+      const [row] = await database.all(
+        "SELECT user_id, workspace_id FROM session_hint WHERE singleton = 1",
+      );
+      const workspaceId = row?.["workspace_id"];
+      const cachedUserId = row?.["user_id"];
+      if (
+        typeof workspaceId === "string" &&
+        typeof cachedUserId === "string" &&
+        cacheDatabaseName(workspaceId, cachedUserId) === name &&
+        (userId === undefined || cachedUserId === userId)
+      ) {
+        hints.push({ workspaceId, userId: cachedUserId });
+      }
+    } finally {
+      await database.close();
+    }
+  }
+  return hints;
+}
 
 async function createSession(
   init: InitPayload,
@@ -172,9 +203,24 @@ export async function handleRequest(
   mode: "shared" | "dedicated",
 ): Promise<WorkerResponse> {
   try {
+    if (request.op === "discoverCaches") {
+      return {
+        id: request.id,
+        ok: true,
+        data: await discoverCachedWorkspaces(request.payload.userId),
+      };
+    }
     if (request.op === "init") {
       const key = lockName(request.payload.workspaceId, request.payload.userId);
       let session = sessions.get(key);
+      if (session?.engine.getState().reason === "access-revoked") {
+        for (const subscriptions of session.subscriptions.values()) {
+          for (const cancel of subscriptions.values()) cancel();
+        }
+        session.channel?.close();
+        sessions.delete(key);
+        session = undefined;
+      }
       if (!session) {
         session = await createSession(request.payload, mode);
         sessions.set(key, session);

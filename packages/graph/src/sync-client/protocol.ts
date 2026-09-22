@@ -12,7 +12,17 @@ export interface InitPayload {
   readonly apiOrigin: string;
 }
 
+export interface CachedWorkspaceHint {
+  readonly workspaceId: string;
+  readonly userId: string;
+}
+
 export type WorkerRequest =
+  | {
+      readonly id: number;
+      readonly op: "discoverCaches";
+      readonly payload: { userId?: string };
+    }
   | { readonly id: number; readonly op: "init"; readonly payload: InitPayload }
   | { readonly id: number; readonly op: "query"; readonly payload: unknown }
   | {

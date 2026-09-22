@@ -35,6 +35,8 @@ export function computeSyncStatus(inputs: SyncStatusInputs): SyncStatus {
 
 export interface SyncState {
   readonly status: SyncStatus;
+  /** An authenticated request was refused; Stage 10 decides how to render it. */
+  readonly refusal?: "unauthorized" | "access-revoked";
   /** Set once the person has signed out or access was revoked; the cache is gone. */
   readonly signedOut: boolean;
   readonly reason?: "signed-out" | "access-revoked";

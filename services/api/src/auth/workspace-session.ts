@@ -202,10 +202,33 @@ export async function confirmWorkspaceAdmission(
           eq(member.projectionState, "pending"),
         ),
       )
-      .returning({ id: member.id, workspaceId: member.organizationId });
+      .returning({
+        id: member.id,
+        userId: member.userId,
+        workspaceId: member.organizationId,
+      });
 
     if (!confirmed) {
       throw new Error("Workspace admission was not pending confirmation");
+    }
+    const activeMemberships = await transaction
+      .select({ id: member.id })
+      .from(member)
+      .innerJoin(organization, eq(organization.id, member.organizationId))
+      .where(
+        and(
+          eq(member.userId, confirmed.userId),
+          eq(member.status, "active"),
+          eq(member.projectionState, "confirmed"),
+          eq(organization.status, "active"),
+        ),
+      )
+      .limit(2);
+    if (activeMemberships.length === 1 && activeMemberships[0]?.id === confirmed.id) {
+      await transaction
+        .update(session)
+        .set({ activeOrganizationId: confirmed.workspaceId })
+        .where(eq(session.userId, confirmed.userId));
     }
     // A confirmed member is now someone the audience is computed for.
     await audienceMaterializer.recomputeWorkspace(transaction, confirmed.workspaceId);

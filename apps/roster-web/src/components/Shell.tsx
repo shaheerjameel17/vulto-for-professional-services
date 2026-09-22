@@ -15,6 +15,7 @@ import { GOTO, NAV_GROUPS } from "../nav";
 import { searchCommandPalette } from "../fixtures/command-palette";
 import { WorkspaceMenuContent } from "./WorkspaceMenuContent";
 import { PanelContext } from "./panel-context";
+import { useShellBootstrap } from "./shell-bootstrap";
 
 /*
  * The application shell per VPS-D004, wrapped around every screen.
@@ -27,6 +28,7 @@ import { PanelContext } from "./panel-context";
 export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
+  const { workspaceName, state } = useShellBootstrap();
   const [collapsed, setCollapsed] = useState(false);
   const [panel, setPanel] = useState<ReactNode>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -86,18 +88,18 @@ export function Shell({ children }: { children: ReactNode }) {
 
   return (
     <PanelContext.Provider value={{ panel, setPanel }}>
+      <div data-testid="shell-refusal" data-refusal={state.refusal ?? ""} hidden />
       <AppShell
         panel={panel}
         sidebar={
           <Sidebar
-            workspaceName="Northgate Studio"
-            entityName="Northgate Ltd · UK"
+            workspaceName={workspaceName}
             groups={NAV_GROUPS}
             activeHref={pathname}
             collapsed={collapsed}
             onNavigate={(href) => router.push(href)}
             workspaceMenu={<WorkspaceMenuContent canManageWorkspace />}
-            syncStatus="Synced"
+            syncStatus={state.status}
           />
         }
       >

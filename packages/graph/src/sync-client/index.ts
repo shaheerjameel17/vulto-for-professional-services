@@ -1,5 +1,6 @@
 export {
   createGraphClient,
+  listCachedWorkspaces,
   type GraphClient,
   type GraphClientOptions,
   type SyncStatusHandle,

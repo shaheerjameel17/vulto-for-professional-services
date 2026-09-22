@@ -12,6 +12,7 @@ import {
   deviceTrustEvent,
   deviceWorkspaceRevocation,
   member,
+  organization,
   session,
   user,
 } from "./schema.js";
@@ -1250,6 +1251,11 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
       .from(member)
       .where(sql`${member.id} = ${created.membershipId}`);
     expect(row).toEqual({ status: "active", projectionState: "confirmed" });
+    const [currentSession] = await db
+      .select({ activeOrganizationId: session.activeOrganizationId })
+      .from(session)
+      .where(sql`${session.userId} = ${owner.userId}`);
+    expect(currentSession?.activeOrganizationId).toBe(created.workspaceId);
     await expect(
       requireCurrentWorkspaceSession(headers(owner.cookie), created.workspaceId),
     ).resolves.toMatchObject({ workspaceId: created.workspaceId, roles: ["owner"] });
@@ -1265,6 +1271,141 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
       sql`select count(*)::int as n from sync_node_audience where workspace_id = ${created.workspaceId} and user_id = ${owner.userId}`,
     );
     expect((audience as unknown as { n: number }[])[0]!.n).toBeGreaterThan(0);
+  });
+
+  it("keeps the first active organization when the same person creates a second workspace", async () => {
+    const owner = await createSignedInAccount();
+    const first = json(
+      await post(owner.cookie, "/workspace/create", { workspaceName: "First Firm" }),
+    ) as { workspaceId: string };
+    const second = json(
+      await post(owner.cookie, "/workspace/create", { workspaceName: "Second Firm" }),
+    ) as { workspaceId: string };
+    expect(second.workspaceId).not.toBe(first.workspaceId);
+    const [currentSession] = await db
+      .select({ activeOrganizationId: session.activeOrganizationId })
+      .from(session)
+      .where(sql`${session.userId} = ${owner.userId}`);
+    expect(currentSession?.activeOrganizationId).toBe(first.workspaceId);
+  });
+
+  it("lists only the caller's active confirmed memberships without a workspace claim", async () => {
+    const owner = await createSignedInAccount();
+    const active = json(
+      await post(owner.cookie, "/workspace/create", { workspaceName: "Active Firm" }),
+    ) as { workspaceId: string };
+    const pending = json(
+      await post(owner.cookie, "/workspace/create", { workspaceName: "Pending Firm" }),
+    ) as { workspaceId: string };
+    const revoked = json(
+      await post(owner.cookie, "/workspace/create", { workspaceName: "Revoked Firm" }),
+    ) as { workspaceId: string };
+    const suspended = json(
+      await post(owner.cookie, "/workspace/create", {
+        workspaceName: "Suspended Firm",
+      }),
+    ) as { workspaceId: string };
+    await db
+      .update(member)
+      .set({ status: "pending", projectionState: "pending" })
+      .where(sql`${member.organizationId} = ${pending.workspaceId}`);
+    await db
+      .update(member)
+      .set({ status: "revoked", projectionState: "confirmed" })
+      .where(sql`${member.organizationId} = ${revoked.workspaceId}`);
+    await db
+      .update(organization)
+      .set({ status: "suspended" })
+      .where(sql`${organization.id} = ${suspended.workspaceId}`);
+    const stranger = await createSignedInAccount();
+    await post(stranger.cookie, "/workspace/create", { workspaceName: "Other Firm" });
+
+    const response = await post(owner.cookie, "/workspace/list-active-memberships", {});
+    expect(response.statusCode, response.body).toBe(200);
+    expect(JSON.parse(response.body)).toEqual([
+      { workspaceId: active.workspaceId, workspaceName: "Active Firm" },
+    ]);
+    const anonymous = await post(undefined, "/workspace/list-active-memberships", {});
+    expect(anonymous.statusCode).toBe(401);
+  });
+
+  it("activates a sole confirmed membership for every null session after a later sign-in", async () => {
+    const owner = await createSignedInAccount();
+    const created = json(
+      await post(owner.cookie, "/workspace/create", { workspaceName: "Only Firm" }),
+    ) as { workspaceId: string };
+    const laterSignIn = await signIn(owner.email);
+    expect(laterSignIn.statusCode).toBe(200);
+    await db
+      .update(session)
+      .set({ activeOrganizationId: null })
+      .where(sql`${session.userId} = ${owner.userId}`);
+
+    const response = await post(
+      cookieHeader(laterSignIn),
+      "/workspace/activate-sole-membership",
+      {},
+    );
+    expect(response.statusCode, response.body).toBe(200);
+    expect(json(response)).toEqual({ workspaceId: created.workspaceId });
+    const sessions = await db
+      .select({ activeOrganizationId: session.activeOrganizationId })
+      .from(session)
+      .where(sql`${session.userId} = ${owner.userId}`);
+    expect(sessions.length).toBeGreaterThanOrEqual(2);
+    expect(
+      sessions.every((row) => row.activeOrganizationId === created.workspaceId),
+    ).toBe(true);
+
+    const repeated = await post(
+      cookieHeader(laterSignIn),
+      "/workspace/activate-sole-membership",
+      {},
+    );
+    expect(json(repeated)).toEqual({ workspaceId: null });
+    expect(
+      (
+        await db
+          .select({ activeOrganizationId: session.activeOrganizationId })
+          .from(session)
+          .where(sql`${session.userId} = ${owner.userId}`)
+      ).every((row) => row.activeOrganizationId === created.workspaceId),
+    ).toBe(true);
+  });
+
+  it("does not activate with zero or multiple active memberships", async () => {
+    const noWorkspace = await createSignedInAccount();
+    const none = await post(
+      noWorkspace.cookie,
+      "/workspace/activate-sole-membership",
+      {},
+    );
+    expect(none.statusCode).toBe(200);
+    expect(json(none)).toEqual({ workspaceId: null });
+    const [emptySession] = await db
+      .select({ activeOrganizationId: session.activeOrganizationId })
+      .from(session)
+      .where(sql`${session.userId} = ${noWorkspace.userId}`);
+    expect(emptySession?.activeOrganizationId).toBeNull();
+
+    const owner = await createSignedInAccount();
+    await post(owner.cookie, "/workspace/create", { workspaceName: "First Firm" });
+    await post(owner.cookie, "/workspace/create", { workspaceName: "Second Firm" });
+    await db
+      .update(session)
+      .set({ activeOrganizationId: null })
+      .where(sql`${session.userId} = ${owner.userId}`);
+    const many = await post(owner.cookie, "/workspace/activate-sole-membership", {});
+    expect(many.statusCode).toBe(200);
+    expect(json(many)).toEqual({ workspaceId: null });
+    const [unselected] = await db
+      .select({ activeOrganizationId: session.activeOrganizationId })
+      .from(session)
+      .where(sql`${session.userId} = ${owner.userId}`);
+    expect(unselected?.activeOrganizationId).toBeNull();
+    expect(
+      (await post(undefined, "/workspace/activate-sole-membership", {})).statusCode,
+    ).toBe(401);
   });
 
   it("refuses an unauthenticated caller and a malformed name", async () => {

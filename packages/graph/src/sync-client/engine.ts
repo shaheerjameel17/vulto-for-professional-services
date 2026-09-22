@@ -84,6 +84,7 @@ export class SyncEngine {
   #uploadFailures = 0;
   /** Set while the server refuses this client's workspace claim; queued work waits, unreverted. */
   #blocked: string | null = null;
+  #refusal: SyncState["refusal"] = undefined;
   #cancelDrainTimer: (() => void) | null = null;
   #stopped = false;
   #state: SyncState = { status: "Syncing", signedOut: false, attention: [] };
@@ -214,6 +215,7 @@ export class SyncEngine {
       }
     });
     this.#connectivity = "online";
+    this.#refusal = undefined;
     this.#restartFailures.set(template, 0);
     await this.#changed(touchedRows);
     if (this.#connectivity === "online") void this.drain();
@@ -237,6 +239,7 @@ export class SyncEngine {
     } else if (failure.kind === "unauthenticated") {
       // The session lapsed. What is cached stays readable; nothing more syncs.
       this.#connectivity = "offline";
+      this.#refusal = "unauthorized";
     }
     await this.#refreshState();
   }
@@ -255,6 +258,7 @@ export class SyncEngine {
       status: "Offline",
       signedOut: true,
       reason: "access-revoked",
+      refusal: "access-revoked",
       attention: [],
     });
   }
@@ -459,6 +463,8 @@ export class SyncEngine {
               () => void this.drain(),
               backoffDelayMs(this.#uploadFailures),
             );
+          } else if (error instanceof ApiError && error.kind === "unauthenticated") {
+            this.#refusal = "unauthorized";
           }
           await this.#refreshState();
           return false;
@@ -466,6 +472,7 @@ export class SyncEngine {
         this.#uploadFailures = 0;
         this.#blocked = null;
         this.#connectivity = "online";
+        this.#refusal = undefined;
         await this.#exclusive(async () => {
           for (const outcome of outcomes) {
             const row = rows.find((r) => r.mutationId === outcome.mutation_id);
@@ -533,6 +540,10 @@ export class SyncEngine {
       }
       if (error instanceof ApiError && error.kind === "forbidden") {
         return { availability: "permission-absence", items: [] };
+      }
+      if (error instanceof ApiError && error.kind === "unauthenticated") {
+        this.#refusal = "unauthorized";
+        await this.#refreshState();
       }
       // Unauthenticated, outdated or a server fault: nothing may be shown, and
       // a connection or a sign-in is what would change that.
@@ -610,7 +621,12 @@ export class SyncEngine {
       this.#blocked === null
         ? attention
         : [...attention, { mutationId: "", name: "sync", reason: this.#blocked }];
-    this.#publish({ status, signedOut: false, attention: shown });
+    this.#publish({
+      status,
+      signedOut: false,
+      attention: shown,
+      ...(this.#refusal ? { refusal: this.#refusal } : {}),
+    });
   }
 
   #publish(state: SyncState): void {
