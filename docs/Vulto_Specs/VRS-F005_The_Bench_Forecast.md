@@ -15,7 +15,7 @@ aliases:
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
 **Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee nodes must exist), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (working days — every day count in this feature resolves there), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (Assignment's registry entry), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (Tier 0 replicates to the device cache via Electric; Tier 1 and Tier 2 are fetched on demand, per F199 and F236), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission-scoped visibility in the intelligence panel, and aggregate disclosure control), [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] (Referenced In context), [[VPS-D001_Design_Foundations|VPS-D001]] (the signature element specified there)
-**Partial forward dependencies:** [[VRS-F006_Rate_Card_Engine|VRS-F006]] supplies rate resolution; until it exists, `effective_billing_rate` is written as `billing_rate_default` at Assignment write time. [[VRS-F007_Ghost_Resources|VRS-F007]] supplies Ghost rows; until it exists, none are rendered. Neither blocks this feature.
+**Partial forward dependencies:** [[VRS-F006_Rate_Card_Engine|VRS-F006]] supplies rate resolution; until it exists, `effective_billing_rate` is written as `billing_rate_default` at Assignment write time. [[VRS-F007_Ghost_Resources|VRS-F007]] supplies Ghost rows; until it exists, none are rendered. [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] and [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] supply Pitch-categorized time; until both exist, the Pitch exclusion in the bench computation below is not applied (F239). None of the three block this feature.
 **Blocks:** [[VRS-F007_Ghost_Resources|VRS-F007]] and [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]] both depend on the Assignment model and the 100% capacity constraint defined here. [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] depends on the bench computation defined here.
 
 This document is the single source of truth for this feature and owns Assignment's complete schema.
@@ -187,7 +187,7 @@ Rejection is the default. [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]] cat
 
 > the set of working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], within the window, for which the employee holds no Active Assignment, **less** any day on which they logged Pitch-categorized time per [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]].
 
-The Pitch exclusion is part of this computation rather than applied downstream. A person pursuing new business is not idle; the days they spend doing it are covered, and a forecast that painted them amber would train users to ignore the color that matters most.
+The Pitch exclusion is part of this computation rather than applied downstream. A person pursuing new business is not idle; the days they spend doing it are covered, and a forecast that painted them amber would train users to ignore the color that matters most. **Until [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] and [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] exist, this exclusion is not applied** — neither can write the TimesheetEntry or Pitch data the exclusion reads, so the computation reduces to Assignment coverage alone. This degrades toward false amber, never toward hiding a real gap, and is corrected the moment both features land (F239).
 
 Accumulated cost for a bench region is the sum of the employee's compensation cost for each uncovered working day. Annual compensation divides by that employee's working days in the relevant calendar year, counted through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] rather than a constant denominator. Monthly compensation is annualized at twelve months and uses the same calendar-year denominator. Hourly compensation multiplies the hourly amount by the contracted hours scheduled for that specific day through the employee's working pattern. A region crossing a calendar year computes each day against its own year. An unauthorized viewer receives no currency figure and no `billing_rate_default` substitute.
 
@@ -255,7 +255,7 @@ contextualIntelligence.get(employeeId) -> {
 | ID | Specification |
 |---|---|
 | G01 | Each bar is an Assignment connecting Employee to Project. Bar position derives from `start_date` and `end_date` |
-| G02 | Bench periods are derived as working days with no Active Assignment coverage, less days carrying Pitch-categorized time. Never stored, always computed |
+| G02 | Bench periods are derived as working days with no Active Assignment coverage, less days carrying Pitch-categorized time once [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]]/[[VRS-F010_Timesheet_Speed-Run|VRS-F010]] exist; until then, Assignment coverage alone (F239). Never stored, always computed |
 | G03 | Every day count in this feature resolves through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. No weekday or holiday assumption is made locally |
 | G04 | The Contextual Intelligence Panel is one two-hop traversal from the selected Employee, filtered by node type, time relevance and [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s rules. Its Tier 0 fields resolve from the local cache; its Tier 2 fields (BurnoutAlert, FlightRiskSignal) are fetched on demand from the server per F199, never cached on device (F236) |
 | G05 | Ghost rows are Employee nodes with `employee_type = Ghost`. They participate in Assignment edges identically, including the 100% constraint |
@@ -292,7 +292,7 @@ contextualIntelligence.get(employeeId) -> {
 
 **GIVEN** an employee with no covering Assignment has logged Pitch-categorized time on six of those days
 **WHEN** the bench region is computed
-**THEN** those six days are excluded, the region covers only the remaining days, and the cost figure reflects the reduction
+**THEN** those six days are excluded, the region covers only the remaining days, and the cost figure reflects the reduction — deferred until [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] and [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] exist; until then this scenario is untestable and out of scope, and no day is incorrectly excluded (F239)
 
 ---
 
@@ -362,6 +362,7 @@ contextualIntelligence.get(employeeId) -> {
 
 - Rate card definition and resolution — [[VRS-F006_Rate_Card_Engine|VRS-F006]]
 - Ghost Resource creation and promotion — [[VRS-F007_Ghost_Resources|VRS-F007]]
+- Pitch-time exclusion from the bench computation — [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] and [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] (F239)
 - Conflict resolution beyond the constraint and its error — [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]]
 - Alerting, escalation and notification on bench periods — [[VRS-F012_Revenue_Gap_Alert|VRS-F012]]
 - Longer-horizon, skill-category capacity forecasting — [[VRS-F051_Team_Capacity_Planner|VRS-F051]]
@@ -373,7 +374,7 @@ contextualIntelligence.get(employeeId) -> {
 
 ## Decisions Recorded
 
-**The bench computation moves here from [[VRS-F012_Revenue_Gap_Alert|VRS-F012]], inverting the previous dependency.** Previously this feature deferred its amber state to the alerting engine, which meant the product's signature element did not exist until feature twelve and that a view depended on an alert to know what to render. The correct layering is the reverse: this feature owns the fact that a bench period exists and what it costs; [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] owns whether that fact warrants escalation. The Pitch exclusion moves with the computation, so it is still implemented once.
+**The bench computation moves here from [[VRS-F012_Revenue_Gap_Alert|VRS-F012]], inverting the previous dependency.** Previously this feature deferred its amber state to the alerting engine, which meant the product's signature element did not exist until feature twelve and that a view depended on an alert to know what to render. The correct layering is the reverse: this feature owns the fact that a bench period exists and what it costs; [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] owns whether that fact warrants escalation. The Pitch exclusion moves with the computation, so it will still be implemented exactly once — the moment [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] and [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] exist to supply it, rather than being retrofitted here later (F239).
 
 **The minimum-cohort question is closed**, and this document's only open item with it. [[VPS-A004_Graph_Permission_Layer|VPS-A004]] now owns one k-anonymity mechanism applied to every aggregate in the product, including this one. The previous framing left the Bench Forecast's filtered utilization entirely unprotected while four other features each built their own threshold.
 
