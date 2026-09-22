@@ -117,6 +117,8 @@ const createNode: OptimisticMutator = async (c, raw) => {
   }
   if (!isTier0Only(type as NodeType))
     throw new OptimisticRejection("requires-feature-mutation");
+  if (FEATURE_LIFECYCLE_NODE_TYPES.has(type))
+    throw new OptimisticRejection("requires-feature-mutation");
   if (await c.cache.getNode(node["node_id"]))
     throw new OptimisticRejection("invalid-args");
   const stamped = stampNewNode(node, type as NodeType, provenance(c));
@@ -127,7 +129,10 @@ const createNode: OptimisticMutator = async (c, raw) => {
 const updateNodeFields: OptimisticMutator = async (c, raw) => {
   const args = parse("graph.updateNodeFields", raw);
   const node = await liveNode(c.cache, args.node_id);
-  if (!isTier0Only(node.nodeType as NodeType)) {
+  if (
+    !isTier0Only(node.nodeType as NodeType) ||
+    FEATURE_LIFECYCLE_NODE_TYPES.has(node.nodeType)
+  ) {
     throw new OptimisticRejection("requires-feature-mutation");
   }
   if (args.expected_version !== null && args.expected_version !== node.version) {
@@ -145,6 +150,8 @@ const updateNodeFields: OptimisticMutator = async (c, raw) => {
 const softDeleteNode: OptimisticMutator = async (c, raw) => {
   const args = parse("graph.softDeleteNode", raw);
   const node = await liveNode(c.cache, args.node_id);
+  if (FEATURE_LIFECYCLE_NODE_TYPES.has(node.nodeType))
+    throw new OptimisticRejection("requires-feature-mutation");
   const anonymous =
     node.record["created_at"] === undefined && node.record["updated_at"] === undefined;
   return [
@@ -367,12 +374,108 @@ const employeeSetCompensation: OptimisticMutator = async (_c, raw) => {
   return [];
 };
 
+// ── Entity (VRS-F003) ───────────────────────────────────────────────────────
+
+const liveEntity = async (cache: OptimisticCache, id: string) => {
+  const node = await liveNode(cache, id);
+  if (node.nodeType !== "Entity") throw new OptimisticRejection("invalid-args");
+  return node;
+};
+
+const entityCreate: OptimisticMutator = async (c, raw) => {
+  const args = parse("entity.create", raw);
+  const entityId = moveEmployeeEdgeId(c.mutationId);
+  if (await c.cache.getNode(entityId)) throw new OptimisticRejection("invalid-args");
+  const record = stampNewNode(
+    {
+      node_id: entityId,
+      node_type: "Entity",
+      schema_version: 1,
+      lifecycle_status: "Active",
+      name: args.name,
+      legal_name: args.fields?.legal_name ?? null,
+      jurisdiction: args.jurisdiction,
+      registered_address: args.fields?.registered_address ?? null,
+      registration_number: args.fields?.registration_number ?? null,
+      default_currency: args.default_currency,
+    },
+    "Entity",
+    provenance(c),
+  );
+  await c.cache.putNode(toCachedNode(record, 1));
+  return [{ kind: "node", id: entityId, before: null }];
+};
+
+const entityUpdate: OptimisticMutator = async (c, raw) => {
+  const args = parse("entity.update", raw);
+  const node = await liveEntity(c.cache, args.entity_id);
+  return [
+    await writeNode(c.cache, node, {
+      ...node.record,
+      ...args.fields,
+      ...updateStamp("Entity", provenance(c)),
+    }),
+  ];
+};
+
+/** G04/G05 are server-only aggregate checks; a refusal uses the existing undo. */
+const entityDeactivate: OptimisticMutator = async (c, raw) => {
+  const args = parse("entity.deactivate", raw);
+  const node = await liveEntity(c.cache, args.entity_id);
+  if (args.expected_version !== node.version)
+    throw new OptimisticRejection("stale-state");
+  return [
+    await writeNode(c.cache, node, {
+      ...node.record,
+      lifecycle_status: "Dissolved",
+      ...updateStamp("Entity", provenance(c)),
+    }),
+  ];
+};
+
+const employeeSetEntity: OptimisticMutator = async (c, raw) => {
+  const args = parse("employee.setEntity", raw);
+  await liveEmployee(c.cache, args.employee_id);
+  const destination = await liveEntity(c.cache, args.entity_id);
+  if (destination.lifecycleStatus !== "Active")
+    throw new OptimisticRejection("entity-dissolved");
+  // F224: the mutation's own mechanical open-edge lookup, never an asOf read.
+  const prior = (await c.cache.edgesFrom(args.employee_id, "scoped_to_entity")).find(
+    (edge) => !edge.isSoftDeleted && edge.effectiveTo === null,
+  );
+  if (!prior) throw new OptimisticRejection("not-found");
+  if (prior.toNodeId === args.entity_id) throw new OptimisticRejection("no-change");
+  const closed = await closeAt(c.cache, prior, args.effective_from);
+  const edgeId = moveEmployeeEdgeId(c.mutationId);
+  await c.cache.putEdge(
+    toCachedEdge(
+      stampNewEdge(
+        {
+          edge_id: edgeId,
+          edge_type: "scoped_to_entity",
+          from_node_id: args.employee_id,
+          to_node_id: args.entity_id,
+          effective_from: args.effective_from,
+          effective_to: null,
+        },
+        provenance(c),
+      ),
+      1,
+    ),
+  );
+  return [closed, { kind: "edge", id: edgeId, before: null }];
+};
+
 export const OPTIMISTIC_MUTATORS: Readonly<Record<MutationName, OptimisticMutator>> = {
   "employee.create": employeeCreate,
   "employee.update": employeeUpdate,
   "employee.transitionStatus": employeeTransitionStatus,
   "employee.linkUser": employeeLinkUser,
   "employee.setCompensation": employeeSetCompensation,
+  "employee.setEntity": employeeSetEntity,
+  "entity.create": entityCreate,
+  "entity.update": entityUpdate,
+  "entity.deactivate": entityDeactivate,
   "graph.createNode": createNode,
   "graph.updateNodeFields": updateNodeFields,
   "graph.softDeleteNode": softDeleteNode,
