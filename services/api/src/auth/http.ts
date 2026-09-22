@@ -1,6 +1,9 @@
 import { passkeyRegistrationInputSchema, WORKSPACE_HEADER } from "@vulto/schema";
+import { and, eq, gt, isNull } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { db } from "../db.js";
 import { auth } from "./config.js";
+import { member, organization, session, user } from "./schema.js";
 import {
   DeviceRevokeDeniedError,
   parseDeviceRevokeRequest,
@@ -73,6 +76,92 @@ function sanitizeAuthResponse(value: unknown): unknown {
 }
 
 export async function registerAuthHttp(app: FastifyInstance): Promise<void> {
+  app.post("/workspace/list-active-memberships", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const current = await auth.api.getSession({
+      headers: requestHeaders(request),
+      query: { disableCookieCache: true },
+    });
+    if (!current) return reply.code(401).send({ error: "A session is required" });
+
+    return db
+      .select({ workspaceId: organization.id, workspaceName: organization.name })
+      .from(session)
+      .innerJoin(user, eq(user.id, session.userId))
+      .innerJoin(member, eq(member.userId, user.id))
+      .innerJoin(organization, eq(organization.id, member.organizationId))
+      .where(
+        and(
+          eq(session.id, current.session.id),
+          eq(session.userId, current.user.id),
+          gt(session.expiresAt, new Date()),
+          eq(user.status, "active"),
+          eq(member.status, "active"),
+          eq(member.projectionState, "confirmed"),
+          eq(organization.status, "active"),
+        ),
+      )
+      .orderBy(organization.id);
+  });
+
+  app.post("/workspace/activate-sole-membership", async (request, reply) => {
+    reply.header("cache-control", "no-store");
+    const current = await auth.api.getSession({
+      headers: requestHeaders(request),
+      query: { disableCookieCache: true },
+    });
+    if (!current) return reply.code(401).send({ error: "A session is required" });
+
+    return db.transaction(async (transaction) => {
+      const [currentSession] = await transaction
+        .select({ activeOrganizationId: session.activeOrganizationId })
+        .from(session)
+        .where(
+          and(
+            eq(session.id, current.session.id),
+            eq(session.userId, current.user.id),
+            gt(session.expiresAt, new Date()),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if (!currentSession || currentSession.activeOrganizationId !== null)
+        return { workspaceId: null };
+
+      const activeMemberships = await transaction
+        .select({ workspaceId: organization.id })
+        .from(session)
+        .innerJoin(user, eq(user.id, session.userId))
+        .innerJoin(member, eq(member.userId, user.id))
+        .innerJoin(organization, eq(organization.id, member.organizationId))
+        .where(
+          and(
+            eq(session.id, current.session.id),
+            eq(session.userId, current.user.id),
+            gt(session.expiresAt, new Date()),
+            eq(user.status, "active"),
+            eq(member.status, "active"),
+            eq(member.projectionState, "confirmed"),
+            eq(organization.status, "active"),
+          ),
+        )
+        .limit(2);
+      if (activeMemberships.length !== 1) return { workspaceId: null };
+
+      const workspaceId = activeMemberships[0]!.workspaceId;
+      await transaction
+        .update(session)
+        .set({ activeOrganizationId: workspaceId })
+        .where(
+          and(
+            eq(session.userId, current.user.id),
+            isNull(session.activeOrganizationId),
+          ),
+        );
+      return { workspaceId };
+    });
+  });
+
   app.post("/api/auth/passkey/registration-context", async (request, reply) => {
     reply.header("cache-control", "no-store");
     const origin = request.headers.origin;
