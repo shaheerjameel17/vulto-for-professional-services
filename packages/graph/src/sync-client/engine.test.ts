@@ -786,6 +786,7 @@ describe("A003-T67 — revocation and sign-out erase the cache", () => {
     h.source("nodes").fail({ kind: "unauthenticated" });
     await new Promise((r) => setTimeout(r, 10));
     expect(h.erased).toEqual([]);
+    expect(h.engine.getState().refusal).toBe("unauthorized");
     expect(
       (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Entity" }))
         .result,
@@ -836,6 +837,27 @@ describe("the schema-version header (A003-T71)", () => {
       }) as typeof fetch,
     });
     await expect(down.applyMutations([])).rejects.toMatchObject({ kind: "network" });
+  });
+
+  it("classifies 5xx and rate limits as server failures, and a timeout as network", async () => {
+    for (const status of [503, 429]) {
+      const api = createApiClient({
+        workspaceId: WORKSPACE,
+        apiOrigin: "https://api.test",
+        fetch: (async () => new Response("Unavailable", { status })) as typeof fetch,
+      });
+      await expect(api.applyMutations([])).rejects.toMatchObject({ kind: "server" });
+    }
+    const timedOut = createApiClient({
+      workspaceId: WORKSPACE,
+      apiOrigin: "https://api.test",
+      fetch: (async () => {
+        throw new DOMException("Timed out", "AbortError");
+      }) as typeof fetch,
+    });
+    await expect(timedOut.applyMutations([])).rejects.toMatchObject({
+      kind: "network",
+    });
   });
 });
 
@@ -894,6 +916,15 @@ describe("review — protectedRead falls back to memory only on a network error"
       availability: "requires-connection",
       items: [held],
     });
+    expect(h.engine.getState().refusal).toBeUndefined();
+  });
+
+  it("server failures never emit the shell refusal signal", async () => {
+    const h = await primed();
+    h.api.failWith = new ApiError("server", "Unavailable");
+    await h.engine.protectedRead(["n1"]);
+    expect(h.engine.getState().refusal).toBeUndefined();
+    expect(h.erased).toEqual([]);
   });
 
   it("access-revoked: erases everything and returns nothing", async () => {

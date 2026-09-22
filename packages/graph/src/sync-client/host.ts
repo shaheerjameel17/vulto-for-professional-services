@@ -224,6 +224,10 @@ export async function handleRequest(
       if (!session) {
         session = await createSession(request.payload, mode);
         sessions.set(key, session);
+      } else if (session.engine.getState().refusal === "unauthorized") {
+        // A bootstrap Retry has a fresh session answer. Reconnect the existing
+        // cache's sources now; an unauthorized source has no restart timer.
+        session.engine.notifyOnline();
       }
       session.ports.add(port);
       port.postMessage({ event: "state", state: session.engine.getState() });

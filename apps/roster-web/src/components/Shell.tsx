@@ -6,6 +6,7 @@ import {
   AppShell,
   CommandPalette,
   Panel,
+  ReconnectState,
   Sidebar,
   Text,
   useShortcuts,
@@ -28,7 +29,7 @@ import { useShellBootstrap } from "./shell-bootstrap";
 export function Shell({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { workspaceName, state } = useShellBootstrap();
+  const { workspaceName, state, retry } = useShellBootstrap();
   const [collapsed, setCollapsed] = useState(false);
   const [panel, setPanel] = useState<ReactNode>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -52,7 +53,7 @@ export function Shell({ children }: { children: ReactNode }) {
     onEscape: () => setPanel(null),
     // Radix owns keyboard behavior while the palette is topmost, including
     // Escape. This prevents one keypress from also closing a panel beneath it.
-    enabled: !paletteOpen,
+    enabled: !paletteOpen && !state.refusal,
   });
 
   function setCommandPaletteOpen(open: boolean) {
@@ -85,6 +86,14 @@ export function Shell({ children }: { children: ReactNode }) {
       </Panel>,
     );
   }
+
+  if (state.refusal)
+    return (
+      <>
+        <div data-testid="shell-refusal" data-refusal={state.refusal} hidden />
+        <ReconnectState onRetry={retry} />
+      </>
+    );
 
   return (
     <PanelContext.Provider value={{ panel, setPanel }}>

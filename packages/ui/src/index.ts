@@ -30,6 +30,7 @@ export {
 } from "./ToggleGroup";
 
 export { AppShell, Content, type AppShellProps, type ContentProps } from "./AppShell";
+export { ReconnectState } from "./ReconnectState";
 export { PageHeader, type PageHeaderProps } from "./PageHeader";
 export { Panel, type PanelProps } from "./Panel";
 export { Sidebar, type SidebarProps, type NavItem, type NavGroup } from "./Sidebar";
