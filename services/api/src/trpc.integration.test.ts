@@ -165,7 +165,7 @@ async function applyMutations(
 }
 
 describe("graph.applyMutations over tRPC", () => {
-  const createEntity = (workspaceId: string) => ({
+  const createGenericNode = (workspaceId: string) => ({
     mutations: [
       {
         mutation_id: randomUUID(),
@@ -173,7 +173,7 @@ describe("graph.applyMutations over tRPC", () => {
         args: {
           node: {
             node_id: randomUUID(),
-            node_type: "Entity",
+            node_type: "Project",
             schema_version: 1,
             lifecycle_status: "Active",
             workspace_id: workspaceId,
@@ -188,7 +188,7 @@ describe("graph.applyMutations over tRPC", () => {
     for (const version of [undefined, "0", "not-a-number"]) {
       const response = await applyMutations(
         owner.cookie,
-        createEntity(owner.workspaceId),
+        createGenericNode(owner.workspaceId),
         version,
       );
       expect(response.statusCode, String(version)).toBe(412);
@@ -200,7 +200,7 @@ describe("graph.applyMutations over tRPC", () => {
 
   it("applies mutations for a current client, as the session's principal", async () => {
     const owner = await signedInOwner();
-    const body = createEntity(owner.workspaceId);
+    const body = createGenericNode(owner.workspaceId);
     const response = await applyMutations(owner.cookie, body, "1");
     expect(response.statusCode, response.body).toBe(200);
     const [result] = JSON.parse(response.body).result.data;
@@ -215,13 +215,13 @@ describe("graph.applyMutations over tRPC", () => {
   it("requires a session and caps a call at 100 mutations", async () => {
     const owner = await signedInOwner();
     expect(
-      (await applyMutations(undefined, createEntity(owner.workspaceId), "1"))
+      (await applyMutations(undefined, createGenericNode(owner.workspaceId), "1"))
         .statusCode,
     ).toBe(401);
     const many = {
       mutations: Array.from(
         { length: 101 },
-        () => createEntity(owner.workspaceId).mutations[0],
+        () => createGenericNode(owner.workspaceId).mutations[0],
       ),
     };
     expect((await applyMutations(owner.cookie, many, "1")).statusCode).toBe(400);
@@ -321,7 +321,7 @@ describe("review — a workspace claim that is not the session's is refused (fai
           args: {
             node: {
               node_id: randomUUID(),
-              node_type: "Entity",
+              node_type: "Project",
               schema_version: 1,
               lifecycle_status: "Active",
               workspace_id: other.workspaceId,

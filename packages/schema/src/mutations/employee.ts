@@ -109,4 +109,7 @@ export const EMPLOYEE_MUTATIONS = {
  * Node types whose lifecycle a feature owns: the generic `graph.transitionLifecycle`
  * refuses them, because it would skip the feature's transition table.
  */
-export const FEATURE_LIFECYCLE_NODE_TYPES: ReadonlySet<string> = new Set(["Employee"]);
+export const FEATURE_LIFECYCLE_NODE_TYPES: ReadonlySet<string> = new Set([
+  "Employee",
+  "Entity",
+]);

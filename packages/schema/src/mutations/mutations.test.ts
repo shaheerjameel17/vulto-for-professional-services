@@ -35,13 +35,17 @@ describe("defineMutation", () => {
 });
 
 describe("the foundation mutation set", () => {
-  it("is the seven building blocks plus the Employee mutations, and only compensation is protected", () => {
+  it("registers the foundation, Employee, and Entity mutations; only compensation is protected", () => {
     expect(Object.keys(MUTATIONS).sort()).toEqual([
       "employee.create",
       "employee.linkUser",
       "employee.setCompensation",
+      "employee.setEntity",
       "employee.transitionStatus",
       "employee.update",
+      "entity.create",
+      "entity.deactivate",
+      "entity.update",
       "graph.closeEdge",
       "graph.createEdge",
       "graph.createNode",
@@ -59,16 +63,18 @@ describe("the foundation mutation set", () => {
     }
   });
 
-  it("marks only the two lifecycle transitions as state transitions", () => {
+  it("marks all three lifecycle transitions as state transitions", () => {
     const transitions = Object.values(MUTATIONS).filter((d) => d.stateTransition);
     expect(transitions.map((d) => d.name).sort()).toEqual([
       "employee.transitionStatus",
+      "entity.deactivate",
       "graph.transitionLifecycle",
     ]);
   });
 
   it("gives a feature-owned lifecycle its own table, and shuts the generic one out", () => {
     expect(FEATURE_LIFECYCLE_NODE_TYPES.has("Employee")).toBe(true);
+    expect(FEATURE_LIFECYCLE_NODE_TYPES.has("Entity")).toBe(true);
     expect(isValidEmployeeTransition("Active", "Inactive")).toBe(true);
     expect(isValidEmployeeTransition("Inactive", "Active")).toBe(true);
     expect(isValidEmployeeTransition("Active", "Converted")).toBe(true);

@@ -19,12 +19,24 @@ const context = (cache: MemoryCache, mutationId = uuid()): MutatorContext => ({
   now: NOW,
 });
 
-const entity = (nodeId = uuid()) => ({
+const genericNode = (nodeId = uuid()) => ({
   node_id: nodeId,
-  node_type: "Entity",
+  node_type: "Project",
   schema_version: 1,
   lifecycle_status: "Active",
 });
+
+const seedEntity = async (cache: MemoryCache, id = uuid(), version = 1) => {
+  await cache.putNode({
+    nodeId: id,
+    nodeType: "Entity",
+    lifecycleStatus: "Active",
+    isSoftDeleted: false,
+    version,
+    record: { node_id: id, node_type: "Entity", lifecycle_status: "Active" },
+  });
+  return id;
+};
 
 const seedEmployee = async (cache: MemoryCache) => {
   const id = uuid();
@@ -46,7 +58,7 @@ const rejects = async (work: Promise<unknown>, reason: string) => {
 describe("the optimistic foundation mutators", () => {
   it("createNode stamps provenance like the server and is undone by its before-image", async () => {
     const cache = new MemoryCache();
-    const node = entity();
+    const node = genericNode();
     const undo = await applyOptimistic(context(cache), "graph.createNode", { node });
     const stored = cache.nodes.get(node.node_id)!;
     expect(stored.version).toBe(1);
@@ -62,21 +74,21 @@ describe("the optimistic foundation mutators", () => {
 
   it("createNode refuses a split, protected or unregistered type, and a duplicate id", async () => {
     const cache = new MemoryCache();
-    for (const type of ["Employee", "PayRun", "HRCase"]) {
+    for (const type of ["Employee", "Entity", "PayRun", "HRCase"]) {
       await rejects(
         applyOptimistic(context(cache), "graph.createNode", {
-          node: { ...entity(), node_type: type },
+          node: { ...genericNode(), node_type: type },
         }),
         "requires-feature-mutation",
       );
     }
     await rejects(
       applyOptimistic(context(cache), "graph.createNode", {
-        node: { ...entity(), node_type: "Nope" },
+        node: { ...genericNode(), node_type: "Nope" },
       }),
       "invalid-args",
     );
-    const node = entity();
+    const node = genericNode();
     await applyOptimistic(context(cache), "graph.createNode", { node });
     await rejects(
       applyOptimistic(context(cache), "graph.createNode", { node }),
@@ -86,7 +98,7 @@ describe("the optimistic foundation mutators", () => {
 
   it("updateNodeFields merges, bumps the version, checks the base version, and reverts", async () => {
     const cache = new MemoryCache();
-    const node = entity();
+    const node = genericNode();
     await applyOptimistic(context(cache), "graph.createNode", { node });
     const undo = await applyOptimistic(context(cache), "graph.updateNodeFields", {
       node_id: node.node_id,
@@ -125,7 +137,7 @@ describe("the optimistic foundation mutators", () => {
 
   it("softDeleteNode marks the row and refuses a second delete", async () => {
     const cache = new MemoryCache();
-    const node = entity();
+    const node = genericNode();
     await applyOptimistic(context(cache), "graph.createNode", { node });
     const undo = await applyOptimistic(context(cache), "graph.softDeleteNode", {
       node_id: node.node_id,
@@ -150,25 +162,25 @@ describe("the optimistic foundation mutators", () => {
     const employee = uuid();
     await cache.putNode({
       nodeId: employee,
-      nodeType: "Entity",
+      nodeType: "Project",
       lifecycleStatus: "Active",
       isSoftDeleted: false,
       version: 1,
-      record: { node_id: employee, node_type: "Entity", lifecycle_status: "Active" },
+      record: { node_id: employee, node_type: "Project", lifecycle_status: "Active" },
     });
     const undo = await applyOptimistic(context(cache), "graph.transitionLifecycle", {
       node_id: employee,
-      to_status: "Inactive",
+      to_status: "Completed",
       expected_version: 1,
     });
     expect(cache.nodes.get(employee)).toMatchObject({
-      lifecycleStatus: "Inactive",
+      lifecycleStatus: "Completed",
       version: 2,
     });
     await rejects(
       applyOptimistic(context(cache), "graph.transitionLifecycle", {
         node_id: employee,
-        to_status: "Converted",
+        to_status: "Archived",
         expected_version: 1,
       }),
       "stale-state",
@@ -254,6 +266,121 @@ describe("the optimistic foundation mutators", () => {
     const after = await cache.edgesFrom(a, "managed_by");
     expect(after).toHaveLength(1);
     expect(after[0]!.effectiveTo).toBeNull();
+  });
+
+  it("creates and updates Entity through its named mutations", async () => {
+    const cache = new MemoryCache();
+    const mutationId = uuid();
+    const entityId = moveEmployeeEdgeId(mutationId);
+    const created = await applyOptimistic(context(cache, mutationId), "entity.create", {
+      name: "Vulto UK",
+      jurisdiction: "UK",
+      default_currency: "GBP",
+    });
+    expect(cache.nodes.get(entityId)).toMatchObject({
+      nodeType: "Entity",
+      lifecycleStatus: "Active",
+      version: 1,
+      record: { name: "Vulto UK", jurisdiction: "UK", default_currency: "GBP" },
+    });
+    const updated = await applyOptimistic(context(cache), "entity.update", {
+      entity_id: entityId,
+      fields: { name: "Vulto London" },
+    });
+    expect(cache.nodes.get(entityId)).toMatchObject({
+      version: 2,
+      record: { name: "Vulto London", default_currency: "GBP" },
+    });
+    await applyUndo(cache, updated);
+    expect(cache.nodes.get(entityId)?.record["name"]).toBe("Vulto UK");
+    await applyUndo(cache, created);
+    expect(cache.nodes.has(entityId)).toBe(false);
+  });
+
+  it("setEntity closes only the currently open edge and opens a deterministic new edge", async () => {
+    const cache = new MemoryCache();
+    const employeeId = await seedEmployee(cache);
+    const uk = await seedEntity(cache);
+    const pk = await seedEntity(cache);
+    const historicalId = uuid();
+    const openId = uuid();
+    const edge = (
+      edgeId: string,
+      toNodeId: string,
+      from: string,
+      to: string | null,
+    ) => ({
+      edgeId,
+      edgeType: "scoped_to_entity",
+      fromNodeId: employeeId,
+      toNodeId,
+      effectiveFrom: from,
+      effectiveTo: to,
+      isSoftDeleted: false,
+      version: 1,
+      record: {
+        edge_id: edgeId,
+        edge_type: "scoped_to_entity",
+        from_node_id: employeeId,
+        to_node_id: toNodeId,
+        effective_from: from,
+        effective_to: to,
+      },
+    });
+    await cache.putEdge(
+      edge(historicalId, uk, "2025-01-01T00:00:00.000Z", "2026-01-01T00:00:00.000Z"),
+    );
+    await cache.putEdge(edge(openId, uk, "2026-01-01T00:00:00.000Z", null));
+    const mutationId = uuid();
+    const transferDate = "2026-03-01T00:00:00.000Z";
+    const undo = await applyOptimistic(
+      context(cache, mutationId),
+      "employee.setEntity",
+      {
+        employee_id: employeeId,
+        entity_id: pk,
+        effective_from: transferDate,
+      },
+    );
+    expect(cache.edges.get(historicalId)?.effectiveTo).toBe("2026-01-01T00:00:00.000Z");
+    expect(cache.edges.get(openId)).toMatchObject({
+      effectiveTo: transferDate,
+      version: 2,
+    });
+    expect(cache.edges.get(moveEmployeeEdgeId(mutationId))).toMatchObject({
+      toNodeId: pk,
+      effectiveFrom: transferDate,
+      effectiveTo: null,
+      version: 1,
+    });
+    await applyUndo(cache, undo);
+    expect(cache.edges.get(openId)).toMatchObject({ effectiveTo: null, version: 1 });
+    expect(cache.edges.has(moveEmployeeEdgeId(mutationId))).toBe(false);
+  });
+
+  it("deactivates a sole Entity optimistically using only its base version", async () => {
+    const cache = new MemoryCache();
+    const entityId = await seedEntity(cache);
+    await rejects(
+      applyOptimistic(context(cache), "entity.deactivate", {
+        entity_id: entityId,
+        expected_version: 2,
+      }),
+      "stale-state",
+    );
+    const undo = await applyOptimistic(context(cache), "entity.deactivate", {
+      entity_id: entityId,
+      expected_version: 1,
+    });
+    expect(cache.nodes.get(entityId)).toMatchObject({
+      lifecycleStatus: "Dissolved",
+      version: 2,
+    });
+    await applyUndo(cache, undo);
+    expect(cache.nodes.get(entityId)).toMatchObject({
+      lifecycleStatus: "Active",
+      version: 1,
+    });
   });
 
   it("refuses unknown mutations and malformed arguments", async () => {

@@ -158,9 +158,9 @@ const upToDate = (offset = "1_0"): ShapeEvent => ({
   cursor: { handle: "h1", offset },
 });
 
-const entityNode = (nodeId = uuid()) => ({
+const genericNode = (nodeId = uuid()) => ({
   node_id: nodeId,
-  node_type: "Entity",
+  node_type: "Project",
   schema_version: 1,
   lifecycle_status: "Active",
 });
@@ -457,7 +457,7 @@ describe("the outbox and optimistic writes", () => {
     const h = await harness();
     await h.source("nodes").emit([upToDate()]);
     await h.source("edges").emit([upToDate()]);
-    const node = entityNode();
+    const node = genericNode();
     const outcome = await h.engine.mutate("graph.createNode", { node });
     expect(outcome).toMatchObject({ accepted: true });
     await h.engine.drain();
@@ -472,7 +472,7 @@ describe("the outbox and optimistic writes", () => {
         await h.engine.query({
           kind: "node-get",
           nodeId: node.node_id,
-          nodeType: "Entity",
+          nodeType: "Project",
         })
       ).result,
     ).toMatchObject({
@@ -485,7 +485,7 @@ describe("the outbox and optimistic writes", () => {
     await h.source("nodes").emit([upToDate()]);
     await h.source("edges").emit([upToDate()]);
     h.api.offline = true;
-    const nodes = [entityNode(), entityNode(), entityNode()];
+    const nodes = [genericNode(), genericNode(), genericNode()];
     for (const node of nodes) await h.engine.mutate("graph.createNode", { node });
     await h.engine.drain();
     expect(h.engine.getState().status).toBe("PendingChanges");
@@ -518,7 +518,7 @@ describe("the outbox and optimistic writes", () => {
     const h = await harness();
     await h.source("nodes").emit([upToDate()]);
     await h.source("edges").emit([upToDate()]);
-    const first = await h.engine.mutate("graph.createNode", { node: entityNode() });
+    const first = await h.engine.mutate("graph.createNode", { node: genericNode() });
     expect(first.accepted).toBe(true);
     // The server already has it (an earlier upload whose reply was lost).
     h.api.applied.set((first as { mutationId: string }).mutationId, {
@@ -552,9 +552,8 @@ describe("the outbox and optimistic writes", () => {
       },
     ]);
     h.api.offline = true; // hold the upload until the rejection is arranged
-    const outcome = await h.engine.mutate("graph.transitionLifecycle", {
-      node_id: id,
-      to_status: "Inactive",
+    const outcome = await h.engine.mutate("entity.deactivate", {
+      entity_id: id,
       expected_version: 1,
     });
     expect(outcome.accepted).toBe(true);
@@ -562,9 +561,12 @@ describe("the outbox and optimistic writes", () => {
       (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Entity" }))
         .result,
     ).toMatchObject({
-      node: { lifecycleStatus: "Inactive", version: 2 },
+      node: { lifecycleStatus: "Dissolved", version: 2 },
     });
-    h.api.reject.set((outcome as { mutationId: string }).mutationId, "stale-state");
+    h.api.reject.set(
+      (outcome as { mutationId: string }).mutationId,
+      "last-active-entity",
+    );
     h.api.offline = false;
     await h.engine.drain();
     expect(
@@ -578,8 +580,8 @@ describe("the outbox and optimistic writes", () => {
     expect(state.attention).toEqual([
       {
         mutationId: (outcome as { mutationId: string }).mutationId,
-        name: "graph.transitionLifecycle",
-        reason: "stale-state",
+        name: "entity.deactivate",
+        reason: "last-active-entity",
       },
     ]);
     // Never silently dropped: it is still in the outbox until the person clears it.
@@ -596,10 +598,10 @@ describe("the outbox and optimistic writes", () => {
     await h.source("nodes").emit([upToDate()]);
     await h.source("edges").emit([upToDate()]);
     h.api.offline = true; // hold the uploads until the rejection is arranged
-    const a = (await h.engine.mutate("graph.createNode", { node: entityNode() })) as {
+    const a = (await h.engine.mutate("graph.createNode", { node: genericNode() })) as {
       mutationId: string;
     };
-    await h.engine.mutate("graph.createNode", { node: entityNode() });
+    await h.engine.mutate("graph.createNode", { node: genericNode() });
     h.api.reject.set(a.mutationId, "role");
     h.api.offline = false;
     await h.engine.drain();
@@ -633,7 +635,7 @@ describe("the outbox and optimistic writes", () => {
     const h = await harness();
     expect(
       await h.engine.mutate("graph.createNode", {
-        node: { ...entityNode(), node_type: "Employee" },
+        node: { ...genericNode(), node_type: "Employee" },
       }),
     ).toEqual({
       accepted: false,
@@ -866,7 +868,9 @@ describe("review — a workspace mismatch fails closed", () => {
     const h = await harness();
     const id = uuid();
     h.api.failWith = new ApiError("workspace-mismatch", "wrong workspace");
-    const outcome = await h.engine.mutate("graph.createNode", { node: entityNode(id) });
+    const outcome = await h.engine.mutate("graph.createNode", {
+      node: genericNode(id),
+    });
     expect(outcome.accepted).toBe(true);
     await h.engine.drain();
     // Still queued, still applied locally, nothing reverted.
@@ -874,7 +878,7 @@ describe("review — a workspace mismatch fails closed", () => {
       { status: "pending" },
     ]);
     expect(
-      (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Entity" }))
+      (await h.engine.query({ kind: "node-get", nodeId: id, nodeType: "Project" }))
         .result,
     ).toMatchObject({
       node: { nodeId: id },
@@ -1022,7 +1026,7 @@ describe("review — a cache version change never discards queued offline change
     first.api.offline = true;
     const ids: string[] = [];
     for (let i = 0; i < 3; i += 1) {
-      const node = entityNode();
+      const node = genericNode();
       ids.push(node.node_id);
       expect((await first.engine.mutate("graph.createNode", { node })).accepted).toBe(
         true,

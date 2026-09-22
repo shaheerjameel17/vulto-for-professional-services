@@ -107,6 +107,15 @@ describe("resolvePermission — default class mapping, transcribed from VPS-A004
 });
 
 describe("resolvePermission — matrix overrides", () => {
+  it("Entity is workspace configuration readable by every role, writable by Owner and HR Admin", () => {
+    for (const role of ["owner", "hr-admin"] as const) {
+      expect(resolvePermission(role, "Entity", "record").outcome).toBe("full");
+    }
+    for (const role of ["finance-admin", "manager", "team-member"] as const) {
+      expect(resolvePermission(role, "Entity", "record").outcome).toBe("read");
+    }
+  });
+
   it("Workspace billing: Restricted for everyone but Owner, with the exact label", () => {
     expect(resolvePermission("owner", "Workspace", "billing")).toEqual({
       outcome: "full",

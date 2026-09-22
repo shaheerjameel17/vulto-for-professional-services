@@ -1260,13 +1260,26 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
       requireCurrentWorkspaceSession(headers(owner.cookie), created.workspaceId),
     ).resolves.toMatchObject({ workspaceId: created.workspaceId, roles: ["owner"] });
 
-    // The five founding records are in the Postgres graph, and the Owner's device-less audience exists.
+    // Six founding records, including the default Entity, share the workspace transaction.
     const nodes = await db.execute(
       sql`select node_type from graph_nodes where workspace_id = ${created.workspaceId} order by node_type`,
     );
     expect(
       (nodes as unknown as { node_type: string }[]).map((n) => n.node_type),
-    ).toEqual(expect.arrayContaining(["Workspace", "User", "WorkspaceMembership"]));
+    ).toEqual(["Entity", "User", "Workspace", "WorkspaceMembership"]);
+    const entities = await db.execute(
+      sql`select lifecycle_status, record->>'name' as name, record->>'jurisdiction' as jurisdiction,
+        record->>'default_currency' as currency
+        from graph_nodes where workspace_id = ${created.workspaceId} and node_type = 'Entity'`,
+    );
+    expect(entities).toEqual([
+      {
+        lifecycle_status: "Active",
+        name: "Acme Advisory",
+        jurisdiction: "Global",
+        currency: "USD",
+      },
+    ]);
     const audience = await db.execute(
       sql`select count(*)::int as n from sync_node_audience where workspace_id = ${created.workspaceId} and user_id = ${owner.userId}`,
     );
