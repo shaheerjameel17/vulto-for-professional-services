@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import {
   createGraphClient,
@@ -73,6 +80,8 @@ export function ShellBootstrapProvider({ children }: { children: ReactNode }) {
   const [attempt, setAttempt] = useState(0);
   const [ready, setReady] = useState<Ready | null>(null);
   const [state, setState] = useState<SyncState | null>(null);
+  const refused = useRef(false);
+  const retryPhase = useRef<"idle" | "refreshing" | "boot">("idle");
   const [workspaceName, setWorkspaceName] = useState("Workspace");
   const [holding, setHolding] = useState(false);
   const userId = data?.user.id;
@@ -87,6 +96,11 @@ export function ShellBootstrapProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (isPending) return;
+    // A session accepted earlier can be refused after Better Auth refreshes its
+    // own snapshot. Keep the refused shell mounted until the person retries.
+    if (retryPhase.current === "refreshing") return;
+    if (refused.current && retryPhase.current !== "boot") return;
+    retryPhase.current = "idle";
     let cancelled = false;
     let unsubscribeState: (() => void) | undefined;
     let unsubscribeWorkspace: (() => void) | undefined;
@@ -129,7 +143,10 @@ export function ShellBootstrapProvider({ children }: { children: ReactNode }) {
           apiOrigin,
         });
         if (cancelled) return;
-        unsubscribeState = client.syncStatus.subscribe(setState);
+        unsubscribeState = client.syncStatus.subscribe((next) => {
+          refused.current = Boolean(next.refusal);
+          setState(next);
+        });
         unsubscribeWorkspace = client.subscribe(
           {
             kind: "node-get",
@@ -163,7 +180,19 @@ export function ShellBootstrapProvider({ children }: { children: ReactNode }) {
           ...ready,
           state,
           workspaceName,
-          retry: () => void refetch().then(() => setAttempt((value) => value + 1)),
+          retry: () => {
+            retryPhase.current = "refreshing";
+            void refetch().then(
+              () => {
+                retryPhase.current = "boot";
+                setAttempt((value) => value + 1);
+              },
+              () => {
+                retryPhase.current = "boot";
+                setAttempt((value) => value + 1);
+              },
+            );
+          },
         }}
       >
         {children}
