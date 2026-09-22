@@ -235,7 +235,9 @@ benchForecast.getCost(employeeIds, window) -> {
 assignment.create(employeeId, projectId, startDate, endDate, billablePercentage, rateCardId?)
   -> { assignmentId }        // Enforces the 100% constraint at write time
 assignment.update(assignmentId, fields)  -> { success }
-assignment.cancel(assignmentId)          -> { success }
+assignment.cancel(assignmentId, expectedVersion) -> { success }
+  // Rejects `stale-state` if expectedVersion does not match the row's
+  // current version, checked before anything else, per A003-T54 (F240)
 
 contextualIntelligence.get(employeeId) -> {
   skills, openRoles, references,   // Tier 0, resolved from the local cache
