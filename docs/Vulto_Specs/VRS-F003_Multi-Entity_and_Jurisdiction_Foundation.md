@@ -148,7 +148,7 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
   // effect then, which is what payroll and contract history require
 ```
 
-`entity.resolveForEmployee` is the contract that matters. No feature reads `scoped_to_entity` directly, so that temporal resolution is implemented once rather than five times with four subtly different interpretations of *as of when*.
+`entity.resolveForEmployee` is the contract that matters. No feature reads `scoped_to_entity` directly, so that temporal resolution is implemented once rather than five times with four subtly different interpretations of *as of when*. It has exactly one implementation, in `services/api`, callable both as a server-side function (payroll, any other backend process) and as the named query a client-side call reads through the replicated Tier 0 cache — never two competing implementations of *as of when*.
 
 ---
 
@@ -159,7 +159,7 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
 | G01 | Entity carries the full schema above |
 | G02 | `scoped_to_entity` follows the single-active-edge-with-history pattern. At most one active edge per Employee; history preserved on change |
 | G03 | Changing an employee's Entity never retroactively alters an already-generated Contract, resolved leave entitlement, or closed PayRun |
-| G04 | Every workspace has at least one Entity. It cannot be reduced to zero |
+| G04 | Every workspace has at least one Entity. It cannot be reduced to zero — see the interim bootstrap ruling below (F222) while [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] does not yet exist |
 | G05 | An Entity with Active scoped employees cannot be deactivated. The refusal names the count |
 | G06 | Consuming features MUST call `entity.resolveForEmployee` rather than traversing `scoped_to_entity` directly, so temporal resolution is implemented once |
 | G07 | Where exactly one Entity exists in a workspace, it is applied automatically at employee creation and the selector is not rendered |
@@ -217,8 +217,8 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
 
 ## Non-Functional Requirements
 
-- `entity.resolveForEmployee` completes within 20ms from the local graph. It is called on every contract generation, leave calculation, working-day computation and payroll line, and a slow implementation compounds across all four
-- Full functionality offline from local cache
+- `entity.resolveForEmployee`'s client-side call completes within 20ms against the device's replicated Tier 0 cache. It is called on every contract-generation and leave-calculation render, and a slow implementation compounds across both. Payroll ([[VRS-F062_Payroll_Engine_Core|VRS-F062]]) and any other server-side process call the identical resolution logic directly against PostgreSQL — there is no device involved in a payroll run and no 20ms budget to meet there, only correctness against `scoped_to_entity`'s history
+- Full functionality offline from the device's Tier 0 cache — reads and, through the outbox, queued writes, exactly as [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s server-authoritative revision defines for any Tier 0 node
 - Entity list renders within 100ms
 
 ---
@@ -227,7 +227,7 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
 
 - **Entity carries no sensitive information.** Standard, Tier 0. A legal entity's name and jurisdiction are basic operational facts, and every employee should be able to see which entity employs them.
 - **Registration numbers are Tier 0 but not casually useful.** A company registration number is public record in every jurisdiction in the enum, so no elevated tier is warranted, but it is displayed only on the Entity record and generated contracts rather than surfaced in search results.
-- **Entity transfer is an audited event** per [[VPS-F004_Silent_Audit_Log|VPS-F004]], because it changes which employment law governs a person and is exactly the sort of change that gets questioned after the fact.
+- **Entity transfer is recorded through `scoped_to_entity`'s own edge history, not the Silent Audit Log (F221, 22 September 2026).** [[VPS-F004_Silent_Audit_Log|VPS-F004]]'s `event_type` taxonomy is closed and permission-focused (`PermissionDenied`, `SensitiveAccessGranted`, `AuthorizedOperationFailed`, `PrivilegedProjectionAuthorized`, `CryptographicErasureExecuted`); an ordinary, permitted Owner/HR-Admin transfer of Tier 0 data fits none of its five categories. Every `scoped_to_entity` edge already carries `created_by`, `created_at`, `effective_from` and `effective_to` per [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Universal Edge Conventions — a permanent, queryable record of who moved which employee to which entity and when, which is what "gets questioned after the fact" actually needs.
 
 ---
 
@@ -251,6 +251,12 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
 **`entity.resolveForEmployee` with temporal resolution is introduced**, and direct traversal of `scoped_to_entity` is prohibited by G06. Without it, five features would each implement *which entity applied at the time* independently, and payroll would eventually disagree with contract history about a transfer date.
 
 **Single-entity transparency is specified.** Most workspaces will have exactly one Entity forever, and a multi-entity feature that makes single-entity firms select from a list of one has added a concept to their product for no benefit.
+
+**The write path's offline and timing claims are corrected for the server-authoritative architecture (F199-consistent correction, 22 September 2026).** The Non-Functional Requirements previously read as a single blanket claim — `entity.resolveForEmployee` completing "within 20ms from the local graph," full functionality "offline from local cache" — without distinguishing the client-side UI call (contract generation, leave policy, reading the device's replicated Tier 0 cache, for which the claim is true and the budget matters) from server-side callers like payroll, which run no "local graph" at all and have no device or 20ms budget to meet. The requirement is corrected to name both callers explicitly; nothing about Entity's Tier 0 classification or its offline availability changes.
+
+**A workspace's first Entity is bootstrapped without waiting for `VPS-F006` (F222, 22 September 2026).** G04 required a first Entity that [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] — not built, not yet briefed as its own stage — was meant to supply from "the founder's own answers." Until that wizard exists, workspace creation writes a sixth founding record alongside its existing five: a default Entity named after the workspace itself, `jurisdiction: "Global"`, `default_currency: "USD"`, `is_active: true`. Editable afterward through `entity.update` by an Owner or HR Admin. `VPS-F006`, when built, may ask the founder's own questions and correct these defaults in place; this is the interim path that keeps G04 true starting now.
+
+**Entity transfer's audit story is corrected (F221, 22 September 2026).** The Security Considerations section previously claimed Entity transfer is a [[VPS-F004_Silent_Audit_Log|VPS-F004]]-audited event. `VPS-F004`'s `event_type` enum is closed and access-focused and has no category an ordinary permitted write of Tier 0 data fits. The bullet is corrected above: `scoped_to_entity`'s own edge history — already required by G02 and G03 — is the record of every transfer, its actor and its timing, without extending an audit taxonomy built for a different purpose.
 
 **`legal_name`, `registered_address` and `registration_number` are added**, because [[VRS-F020_Universal_Contract_Builder|VRS-F020]]'s generated contracts require all three and were previously pre-filling from a node that held none of them.
 
