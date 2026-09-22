@@ -1250,6 +1250,11 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
       .from(member)
       .where(sql`${member.id} = ${created.membershipId}`);
     expect(row).toEqual({ status: "active", projectionState: "confirmed" });
+    const [currentSession] = await db
+      .select({ activeOrganizationId: session.activeOrganizationId })
+      .from(session)
+      .where(sql`${session.userId} = ${owner.userId}`);
+    expect(currentSession?.activeOrganizationId).toBe(created.workspaceId);
     await expect(
       requireCurrentWorkspaceSession(headers(owner.cookie), created.workspaceId),
     ).resolves.toMatchObject({ workspaceId: created.workspaceId, roles: ["owner"] });
@@ -1265,6 +1270,22 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
       sql`select count(*)::int as n from sync_node_audience where workspace_id = ${created.workspaceId} and user_id = ${owner.userId}`,
     );
     expect((audience as unknown as { n: number }[])[0]!.n).toBeGreaterThan(0);
+  });
+
+  it("keeps the first active organization when the same person creates a second workspace", async () => {
+    const owner = await createSignedInAccount();
+    const first = json(
+      await post(owner.cookie, "/workspace/create", { workspaceName: "First Firm" }),
+    ) as { workspaceId: string };
+    const second = json(
+      await post(owner.cookie, "/workspace/create", { workspaceName: "Second Firm" }),
+    ) as { workspaceId: string };
+    expect(second.workspaceId).not.toBe(first.workspaceId);
+    const [currentSession] = await db
+      .select({ activeOrganizationId: session.activeOrganizationId })
+      .from(session)
+      .where(sql`${session.userId} = ${owner.userId}`);
+    expect(currentSession?.activeOrganizationId).toBe(first.workspaceId);
   });
 
   it("refuses an unauthenticated caller and a malformed name", async () => {
