@@ -140,7 +140,10 @@ entity.deactivate(entityId, expectedVersion)                -> { success }
   // stale-state, or where any Active employee remains scoped to it
 
 employee.setEntity(employeeId, entityId, effectiveFrom)     -> { edgeId }
-  // Closes the prior active edge, creates a new one
+  // Closes the prior active edge, creates a new one. Its client-side
+  // optimistic handler finds that open edge directly in the device
+  // cache (G02's single-active-edge invariant, not G06's temporal
+  // resolution) — see F224
 
 entity.resolveForEmployee(employeeId, asOf?)                -> Entity
   // The single call every consuming feature makes.
@@ -161,7 +164,7 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
 | G03 | Changing an employee's Entity never retroactively alters an already-generated Contract, resolved leave entitlement, or closed PayRun |
 | G04 | Every workspace has at least one Entity with `lifecycle_status = "Active"`. It cannot be reduced to zero — see the interim bootstrap ruling below (F222) while [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] does not yet exist |
 | G05 | An Entity with Active (`lifecycle_status = "Active"`) scoped employees cannot be deactivated. The refusal names the count — see F223 below for `entity.deactivate`'s corrected signature |
-| G06 | Consuming features MUST call `entity.resolveForEmployee` rather than traversing `scoped_to_entity` directly, so temporal resolution is implemented once |
+| G06 | Consuming features MUST call `entity.resolveForEmployee` rather than traversing `scoped_to_entity` directly for *temporal* resolution — which Entity applied as of a date. It does not restrict the mechanical, non-temporal "which edge is open now" lookup a single-active-edge-with-history mutation performs on its own state before it can act — see F224 |
 | G07 | Where exactly one Entity exists in a workspace, it is applied automatically at employee creation and the selector is not rendered |
 
 ---
@@ -259,6 +262,8 @@ entity.resolveForEmployee(employeeId, asOf?)                -> Entity
 **Entity transfer's audit story is corrected (F221, 22 September 2026).** The Security Considerations section previously claimed Entity transfer is a [[VPS-F004_Silent_Audit_Log|VPS-F004]]-audited event. `VPS-F004`'s `event_type` enum is closed and access-focused and has no category an ordinary permitted write of Tier 0 data fits. The bullet is corrected above: `scoped_to_entity`'s own edge history — already required by G02 and G03 — is the record of every transfer, its actor and its timing, without extending an audit taxonomy built for a different purpose.
 
 **Entity deactivation's field and version contract is corrected (F223, 22 September 2026).** The schema above no longer lists `is_active` — it was a leftover from the `featureOwnedLifecycle` convention other specs use ([[VRS-F018_Leave_Policy_Engine|VRS-F018]], [[VRS-F006_Rate_Card_Engine|VRS-F006]], [[VPS-F010_Custom_Fields_and_Workspace_Extensibility|VPS-F010]]), copied in before Entity was registered under the platform's `fixedLifecycle("Active", "Dissolved")` pattern, which every other `fixedLifecycle` node type ([[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s WorkingCalendar, Holiday, WorkingPattern) implements through `lifecycle_status` alone. Deactivation transitions `lifecycle_status` from `Active` to `Dissolved`; G04 and G05's "Active" language means exactly that field. `entity.deactivate`'s API contract above is corrected to carry the caller's base version — `entity.deactivate(entityId, expectedVersion)` — checked first and rejected `stale-state` on a mismatch (`VPS-A003` A003-T54), exactly as `employee.transitionStatus` already does; `Entity` joins `FEATURE_LIFECYCLE_NODE_TYPES` alongside `Employee` so the generic `graph.transitionLifecycle` correctly refuses it in favor of this feature-owned mutation, which alone can enforce G04 and G05.
+
+**G06's temporal-resolution boundary is distinguished from mechanical edge lookups (F224, 22 September 2026).** G06 forbids reimplementing *which Entity applied as of a date* outside `entity.resolveForEmployee` — the concern that matters, because four subtly different `asOf` interpretations would eventually disagree. It was read, incorrectly, as also forbidding the offline Tier 0 write path's own mechanical check of its own state: `employee.setEntity`'s client-side optimistic handler finding the one currently-open `scoped_to_entity` edge it must close, which needs no `asOf` and has exactly one answer by G02's single-active-edge-with-history invariant — the same shape `org.moveEmployee`'s already-shipping optimistic mutator uses for `managed_by`, with no comparable restriction. G06's text is corrected above to name the distinction. `entity.create` and `entity.update` get ordinary node-write optimistic mutators; `entity.deactivate`'s optimistic handler checks only its base version and leaves G04/G05's workspace-wide counts to the server, relying on the sync outbox's existing rejection-and-undo path for the rare case a client-optimistic deactivation is later refused.
 
 **`legal_name`, `registered_address` and `registration_number` are added**, because [[VRS-F020_Universal_Contract_Builder|VRS-F020]]'s generated contracts require all three and were previously pre-filling from a node that held none of them.
 
