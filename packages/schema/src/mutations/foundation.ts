@@ -3,6 +3,7 @@ import { jsonValueSchema, utcTimestampSchema, uuidV4Schema } from "../records";
 import { defineMutation, type MutationDefinition } from "./define";
 import { EMPLOYEE_MUTATIONS } from "./employee";
 import { ENTITY_MUTATIONS } from "./entity";
+import { CALENDAR_MUTATIONS } from "./calendar";
 
 const jsonObject = z.record(z.string(), jsonValueSchema);
 const version = z.int().positive();
@@ -100,6 +101,7 @@ export const MUTATIONS = {
   "org.moveEmployee": orgMoveEmployee,
   ...EMPLOYEE_MUTATIONS,
   ...ENTITY_MUTATIONS,
+  ...CALENDAR_MUTATIONS,
 } as const;
 
 export type MutationName = keyof typeof MUTATIONS;
@@ -125,6 +127,23 @@ export function moveEmployeeEdgeId(mutationId: string): string {
   const head = (Number.parseInt(mutationId.slice(0, 8), 16) ^ 0xa5a5a5a5) >>> 0;
   return `${head.toString(16).padStart(8, "0")}${mutationId.slice(8)}`;
 }
+
+function xorUuidHead(id: string, mask: number): string {
+  const head = (Number.parseInt(id.slice(0, 8), 16) ^ mask) >>> 0;
+  return `${head.toString(16).padStart(8, "0")}${id.slice(8)}`;
+}
+
+/** F233: deterministic initial calendar id shared by both halves of entity.create. */
+export const initialCalendarId = (mutationId: string): string =>
+  xorUuidHead(mutationId, 0xc3c3c3c3);
+
+/** F233: deterministic Entity -> WorkingCalendar edge id. */
+export const initialCalendarEdgeId = (mutationId: string): string =>
+  xorUuidHead(mutationId, 0x5a5a5a5a);
+
+/** Additional rows of one optimistic/server mutation use stable distinct ordinals. */
+export const mutationDerivedId = (mutationId: string, ordinal: number): string =>
+  xorUuidHead(mutationId, Math.imul(ordinal + 1, 0x9e3779b9) >>> 0);
 
 /**
  * Whether making `newManager` the manager of `employee` would close a loop.

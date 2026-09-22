@@ -1260,13 +1260,13 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
       requireCurrentWorkspaceSession(headers(owner.cookie), created.workspaceId),
     ).resolves.toMatchObject({ workspaceId: created.workspaceId, roles: ["owner"] });
 
-    // Six founding records, including the default Entity, share the workspace transaction.
+    // Eight founding graph records include the default Entity and its calendar.
     const nodes = await db.execute(
       sql`select node_type from graph_nodes where workspace_id = ${created.workspaceId} order by node_type`,
     );
     expect(
       (nodes as unknown as { node_type: string }[]).map((n) => n.node_type),
-    ).toEqual(["Entity", "User", "Workspace", "WorkspaceMembership"]);
+    ).toEqual(["Entity", "User", "WorkingCalendar", "Workspace", "WorkspaceMembership"]);
     const entities = await db.execute(
       sql`select lifecycle_status, record->>'name' as name, record->>'jurisdiction' as jurisdiction,
         record->>'default_currency' as currency

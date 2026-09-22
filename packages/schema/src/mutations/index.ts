@@ -19,6 +19,9 @@ export {
   graphTransitionLifecycle,
   graphUpdateNodeFields,
   moveEmployeeEdgeId,
+  initialCalendarId,
+  initialCalendarEdgeId,
+  mutationDerivedId,
   orgMoveEmployee,
   wouldCreateCycle,
   type MutationArgs,
@@ -41,3 +44,18 @@ export {
   employeeUpdate,
 } from "./employee";
 export { ENTITY_MUTATIONS, JURISDICTIONS } from "./entity";
+export {
+  CALENDAR_MUTATIONS,
+  calendarGetInputSchema,
+  workingDaysDateInputSchema,
+  workingDaysRangeInputSchema,
+  workingDaysNextInputSchema,
+  workingDaysAddInputSchema,
+  initialWorkingWeekFor,
+  workingDaySchema,
+  workingWeekSchema,
+  partialWorkingWeekSchema,
+  reducedHoursPeriodSchema,
+  type WorkingWeek,
+  type ReducedHoursPeriod,
+} from "./calendar";

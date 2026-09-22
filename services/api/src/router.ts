@@ -4,12 +4,25 @@ import {
   employeeGetInputSchema,
   employeeListInputSchema,
   protectedReadInputSchema,
+  calendarGetInputSchema,
+  workingDaysDateInputSchema,
+  workingDaysRangeInputSchema,
+  workingDaysNextInputSchema,
+  workingDaysAddInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
 import { getEmployee, listEmployees } from "./permission/employee-queries.js";
 import { readProtected } from "./protected/read.js";
 import { applyMutations } from "./mutations/pipeline.js";
+import { resolveCalendarForEntity } from "./graph/calendar-resolution.js";
+import {
+  addWorkingDays,
+  countWorkingDays,
+  hoursOn,
+  nextWorkingDay,
+} from "./permission/working-days-queries.js";
+import { authorizeRead } from "./permission/interceptor.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -188,6 +201,39 @@ export const appRouter = t.router({
           getEmployee(tx, getKeyServices(), ctx.principal, input.employee_id),
         );
       }),
+  }),
+  calendar: t.router({
+    get: protectedProcedure.input(calendarGetInputSchema).query(({ ctx, input }) =>
+      db.transaction(async (tx) => {
+        const calendar = await resolveCalendarForEntity(
+          tx,
+          ctx.principal.workspaceId,
+          input.entity_id,
+          input.as_of,
+        );
+        if (!calendar) return null;
+        const decision = await authorizeRead(tx, ctx.principal, {
+          workspaceId: ctx.principal.workspaceId,
+          nodeType: "WorkingCalendar",
+          nodeId: calendar.nodeId,
+        });
+        return decision.access === "read" || decision.access === "full"
+          ? calendar
+          : null;
+      }),
+    ),
+  }),
+  workingDays: t.router({
+    count: protectedProcedure.input(workingDaysRangeInputSchema).query(({ ctx, input }) =>
+      db.transaction((tx) => countWorkingDays(tx, ctx.principal, input.employee_id, input.from, input.to))),
+    isWorking: protectedProcedure.input(workingDaysDateInputSchema).query(async ({ ctx, input }) =>
+      db.transaction(async (tx) => (await hoursOn(tx, ctx.principal, input.employee_id, input.date)) > 0)),
+    hoursOn: protectedProcedure.input(workingDaysDateInputSchema).query(({ ctx, input }) =>
+      db.transaction((tx) => hoursOn(tx, ctx.principal, input.employee_id, input.date))),
+    next: protectedProcedure.input(workingDaysNextInputSchema).query(({ ctx, input }) =>
+      db.transaction((tx) => nextWorkingDay(tx, ctx.principal, input.employee_id, input.from, input.n ?? 1))),
+    addWorkingDays: protectedProcedure.input(workingDaysAddInputSchema).query(({ ctx, input }) =>
+      db.transaction((tx) => addWorkingDays(tx, ctx.principal, input.employee_id, input.from, input.n))),
   }),
   principal: t.router({
     /**

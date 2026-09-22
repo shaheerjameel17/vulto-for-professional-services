@@ -27,4 +27,9 @@ export class MemoryCache implements OptimisticCache {
       (e) => e.fromNodeId === nodeId && e.edgeType === edgeType,
     );
   }
+  async edgesTo(nodeId: string, edgeType: string) {
+    return [...this.edges.values()].filter(
+      (e) => e.toNodeId === nodeId && e.edgeType === edgeType,
+    );
+  }
 }

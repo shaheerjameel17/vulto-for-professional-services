@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { WorkspaceRole } from "@vulto/schema";
 import { writeMembershipUser } from "./membership-projection.js";
 import { insertEdge, insertNode, type GraphTx } from "./store.js";
+import { createInitialCalendar } from "../mutations/calendar.js";
 
 export interface FoundingRecords {
   readonly workspaceId: string;
@@ -22,9 +23,9 @@ export function canonicalRoles(roles: readonly WorkspaceRole[]): string {
 }
 
 /**
- * Writes the six records every workspace starts with — the Workspace and
- * default Entity nodes, the founding member's User node, the WorkspaceMembership node, and the
- * `membership_of` and `membership_in` edges — in the caller's transaction, so
+ * Writes the eight graph records every workspace starts with — the Workspace,
+ * default Entity and WorkingCalendar nodes, the founding member's User node,
+ * the WorkspaceMembership node, and their three founding edges — in the caller's transaction, so
  * they commit or roll back together with the central membership row.
  *
  * The User node is one row per workspace (F204); its record carries no
@@ -53,9 +54,10 @@ export async function writeFoundingRecords(
     tx,
     base(input.workspaceId, "Workspace", { name: input.workspaceName }),
   );
+  const entityId = randomUUID();
   await insertNode(
     tx,
-    base(randomUUID(), "Entity", {
+    base(entityId, "Entity", {
       workspace_id: input.workspaceId,
       name: input.workspaceName,
       legal_name: null,
@@ -65,6 +67,15 @@ export async function writeFoundingRecords(
       default_currency: "USD",
     }),
   );
+  await createInitialCalendar(tx, {
+    workspaceId: input.workspaceId,
+    entityId,
+    jurisdiction: "Global",
+    userId: input.userId,
+    now: input.occurredAt,
+    calendarId: randomUUID(),
+    edgeId: randomUUID(),
+  });
   await writeMembershipUser(tx, input.workspaceId, base(input.userId, "User", {}));
   await insertNode(
     tx,

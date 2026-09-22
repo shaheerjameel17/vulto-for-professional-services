@@ -1,4 +1,8 @@
-import { moveEmployeeEdgeId } from "@vulto/schema";
+import {
+  initialCalendarEdgeId,
+  initialCalendarId,
+  moveEmployeeEdgeId,
+} from "@vulto/schema";
 import { describe, expect, it } from "vitest";
 import { applyUndo, type MutatorContext } from "./index";
 import { applyOptimistic, OptimisticRejection } from "./foundation";
@@ -283,6 +287,19 @@ describe("the optimistic foundation mutators", () => {
       version: 1,
       record: { name: "Vulto UK", jurisdiction: "UK", default_currency: "GBP" },
     });
+    expect(cache.nodes.get(initialCalendarId(mutationId))).toMatchObject({
+      nodeType: "WorkingCalendar",
+      lifecycleStatus: "Active",
+      record: {
+        entity_id: entityId,
+        standard_daily_hours: 8,
+      },
+    });
+    expect(cache.edges.get(initialCalendarEdgeId(mutationId))).toMatchObject({
+      edgeType: "governed_by_calendar",
+      fromNodeId: entityId,
+      toNodeId: initialCalendarId(mutationId),
+    });
     const updated = await applyOptimistic(context(cache), "entity.update", {
       entity_id: entityId,
       fields: { name: "Vulto London" },
@@ -295,6 +312,54 @@ describe("the optimistic foundation mutators", () => {
     expect(cache.nodes.get(entityId)?.record["name"]).toBe("Vulto UK");
     await applyUndo(cache, created);
     expect(cache.nodes.has(entityId)).toBe(false);
+    expect(cache.nodes.has(initialCalendarId(mutationId))).toBe(false);
+    expect(cache.edges.has(initialCalendarEdgeId(mutationId))).toBe(false);
+  });
+
+  it("supersedes a calendar optimistically and carries or replaces reduced hours", async () => {
+    const cache = new MemoryCache();
+    const entityId = await seedEntity(cache);
+    const calendarId = uuid();
+    await cache.putNode({
+      nodeId: calendarId,
+      nodeType: "WorkingCalendar",
+      lifecycleStatus: "Active",
+      isSoftDeleted: false,
+      version: 1,
+      record: {
+        node_id: calendarId,
+        node_type: "WorkingCalendar",
+        lifecycle_status: "Active",
+        working_week: [1, 2, 3, 4, 5, 6, 7].map((day) => ({ day, is_working: day <= 5, hours: day <= 5 ? 8 : 0 })),
+        standard_daily_hours: 8,
+        reduced_hours_periods: [{ name: "Ramadan", start_date: "2026-02-18", end_date: "2026-03-19", factor: 0.75, is_provisional: false, estimated_start_date: null }],
+      },
+    });
+    const ownershipId = uuid();
+    await cache.putEdge({
+      edgeId: ownershipId,
+      edgeType: "governed_by_calendar",
+      fromNodeId: entityId,
+      toNodeId: calendarId,
+      effectiveFrom: NOW,
+      effectiveTo: null,
+      isSoftDeleted: false,
+      version: 1,
+      record: { edge_id: ownershipId, edge_type: "governed_by_calendar", from_node_id: entityId, to_node_id: calendarId, effective_from: NOW, effective_to: null },
+    });
+    const mutationId = uuid();
+    const week = [1, 2, 3, 4, 5, 6, 7].map((day) => ({ day, is_working: day <= 4, hours: day <= 4 ? 8 : 0 }));
+    const undo = await applyOptimistic(context(cache, mutationId), "calendar.update", {
+      calendar_id: calendarId,
+      working_week: week,
+      daily_hours: 8,
+      expected_version: 1,
+    });
+    expect(cache.nodes.get(calendarId)).toMatchObject({ lifecycleStatus: "Superseded", version: 2 });
+    expect(cache.nodes.get(mutationId)?.record["reduced_hours_periods"]).toEqual(cache.nodes.get(calendarId)?.record["reduced_hours_periods"]);
+    await applyUndo(cache, undo);
+    expect(cache.nodes.get(calendarId)).toMatchObject({ lifecycleStatus: "Active", version: 1 });
+    expect(cache.nodes.has(mutationId)).toBe(false);
   });
 
   it("setEntity closes only the currently open edge and opens a deterministic new edge", async () => {

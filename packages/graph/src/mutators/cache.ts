@@ -32,6 +32,7 @@ export interface OptimisticCache {
   putEdge(edge: CachedEdge): Promise<void>;
   deleteEdge(edgeId: string): Promise<void>;
   edgesFrom(nodeId: string, edgeType: string): Promise<readonly CachedEdge[]>;
+  edgesTo(nodeId: string, edgeType: string): Promise<readonly CachedEdge[]>;
 }
 
 /** The before-image of a row, so a rejected mutation can be reverted (A003-T64). */

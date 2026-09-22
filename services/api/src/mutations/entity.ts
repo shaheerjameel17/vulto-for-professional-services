@@ -1,10 +1,13 @@
 import {
+  initialCalendarEdgeId,
+  initialCalendarId,
   moveEmployeeEdgeId,
   stampNewEdge,
   stampNewNode,
   updateStamp,
   type MutationArgs,
 } from "@vulto/schema";
+import { createInitialCalendar } from "./calendar.js";
 import {
   countActiveEmployeesForEntity,
   resolveEntityAssignment,
@@ -69,8 +72,14 @@ export const entityCreate: ServerMutation<MutationArgs<"entity.create">> = async
   ctx,
 ) => {
   const entityId = moveEmployeeEdgeId(ctx.mutationId);
+  const calendarId = initialCalendarId(ctx.mutationId);
+  const calendarEdgeId = initialCalendarEdgeId(ctx.mutationId);
   return {
-    checks: [{ target: entityTarget(ctx, entityId), change: { operation: "create" } }],
+    checks: [
+      { target: entityTarget(ctx, entityId), change: { operation: "create" } },
+      { target: { kind: "node", workspaceId: ctx.principal.workspaceId, nodeType: "WorkingCalendar", nodeId: calendarId }, change: { operation: "create" } },
+      { target: { kind: "edge", workspaceId: ctx.principal.workspaceId, edgeType: "governed_by_calendar", fromNodeType: "Entity", toNodeType: "WorkingCalendar", edgeId: calendarEdgeId }, change: { operation: "create" } },
+    ],
     async validate() {},
     async apply() {
       const stored = await translate(() =>
@@ -94,7 +103,16 @@ export const entityCreate: ServerMutation<MutationArgs<"entity.create">> = async
           ),
         ),
       );
-      return { result: { entity_id: stored.nodeId }, changedRowIds: [stored.nodeId] };
+      await translate(() => createInitialCalendar(ctx.tx, {
+        workspaceId: ctx.principal.workspaceId,
+        entityId: stored.nodeId,
+        jurisdiction: ctx.args.jurisdiction,
+        userId: ctx.principal.userId,
+        now: ctx.now,
+        calendarId,
+        edgeId: calendarEdgeId,
+      }));
+      return { result: { entity_id: stored.nodeId, calendar_id: calendarId }, changedRowIds: [stored.nodeId, calendarId, calendarEdgeId] };
     },
   };
 };

@@ -3,10 +3,13 @@ import { z } from "zod";
 import { isValidEmployeeTransition } from "../employee";
 import { defineMutation } from "./define";
 import { FEATURE_LIFECYCLE_NODE_TYPES } from "./employee";
+import { initialWorkingWeekFor } from "./calendar";
 import {
   MUTATIONS,
   getMutationDefinition,
   moveEmployeeEdgeId,
+  initialCalendarId,
+  initialCalendarEdgeId,
   wouldCreateCycle,
 } from "./foundation";
 
@@ -37,6 +40,7 @@ describe("defineMutation", () => {
 describe("the foundation mutation set", () => {
   it("registers the foundation, Employee, and Entity mutations; only compensation is protected", () => {
     expect(Object.keys(MUTATIONS).sort()).toEqual([
+      "calendar.update",
       "employee.create",
       "employee.linkUser",
       "employee.setCompensation",
@@ -52,7 +56,12 @@ describe("the foundation mutation set", () => {
       "graph.softDeleteNode",
       "graph.transitionLifecycle",
       "graph.updateNodeFields",
+      "holiday.add",
+      "holiday.cancel",
+      "holiday.confirm",
       "org.moveEmployee",
+      "pattern.clear",
+      "pattern.set",
     ]);
     for (const definition of Object.values(MUTATIONS)) {
       expect(definition.tier).toBe(
@@ -63,13 +72,17 @@ describe("the foundation mutation set", () => {
     }
   });
 
-  it("marks all three lifecycle transitions as state transitions", () => {
+  it("marks every lifecycle transition as a state transition", () => {
     const transitions = Object.values(MUTATIONS).filter((d) => d.stateTransition);
     expect(transitions.map((d) => d.name).sort()).toEqual([
       "employee.transitionStatus",
       "entity.deactivate",
       "graph.transitionLifecycle",
-    ]);
+      "holiday.cancel",
+      "pattern.clear",
+      "pattern.set",
+      "calendar.update",
+    ].sort());
   });
 
   it("gives a feature-owned lifecycle its own table, and shuts the generic one out", () => {
@@ -98,6 +111,14 @@ describe("move helpers", () => {
       moveEmployeeEdgeId("22222222-2222-4222-8222-222222222222"),
     );
     expect(z.uuidv4().safeParse(moveEmployeeEdgeId(id)).success).toBe(true);
+  });
+
+  it("derives distinct Entity/calendar/ownership ids and shares jurisdiction templates", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    expect(new Set([moveEmployeeEdgeId(id), initialCalendarId(id), initialCalendarEdgeId(id)]).size).toBe(3);
+    expect(initialWorkingWeekFor("AE").working_week.filter((day) => day.is_working).map((day) => day.day)).toEqual([1, 2, 3, 4, 7]);
+    expect(initialWorkingWeekFor("PK").working_week.reduce((total, day) => total + day.hours, 0)).toBe(44);
+    expect(initialWorkingWeekFor("Global")).toEqual(initialWorkingWeekFor("IN"));
   });
 
   it("detects a direct and a longer management loop, and allows a clean move", async () => {
