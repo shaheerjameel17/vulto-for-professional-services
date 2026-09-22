@@ -1266,7 +1266,13 @@ describe("Stage 7 — workspace creation is one server transaction (the dual wri
     );
     expect(
       (nodes as unknown as { node_type: string }[]).map((n) => n.node_type),
-    ).toEqual(["Entity", "User", "WorkingCalendar", "Workspace", "WorkspaceMembership"]);
+    ).toEqual([
+      "Entity",
+      "User",
+      "WorkingCalendar",
+      "Workspace",
+      "WorkspaceMembership",
+    ]);
     const entities = await db.execute(
       sql`select lifecycle_status, record->>'name' as name, record->>'jurisdiction' as jurisdiction,
         record->>'default_currency' as currency

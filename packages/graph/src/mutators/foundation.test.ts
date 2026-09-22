@@ -55,6 +55,29 @@ const seedEmployee = async (cache: MemoryCache) => {
   return id;
 };
 
+const seedCalendar = async (cache: MemoryCache, id = uuid()) => {
+  await cache.putNode({
+    nodeId: id,
+    nodeType: "WorkingCalendar",
+    lifecycleStatus: "Active",
+    isSoftDeleted: false,
+    version: 1,
+    record: {
+      node_id: id,
+      node_type: "WorkingCalendar",
+      lifecycle_status: "Active",
+      working_week: [1, 2, 3, 4, 5, 6, 7].map((day) => ({
+        day,
+        is_working: day <= 5,
+        hours: day <= 5 ? 8 : 0,
+      })),
+      standard_daily_hours: 8,
+      reduced_hours_periods: [],
+    },
+  });
+  return id;
+};
+
 const rejects = async (work: Promise<unknown>, reason: string) => {
   await expect(work).rejects.toMatchObject({ name: "OptimisticRejection", reason });
 };
@@ -330,9 +353,22 @@ describe("the optimistic foundation mutators", () => {
         node_id: calendarId,
         node_type: "WorkingCalendar",
         lifecycle_status: "Active",
-        working_week: [1, 2, 3, 4, 5, 6, 7].map((day) => ({ day, is_working: day <= 5, hours: day <= 5 ? 8 : 0 })),
+        working_week: [1, 2, 3, 4, 5, 6, 7].map((day) => ({
+          day,
+          is_working: day <= 5,
+          hours: day <= 5 ? 8 : 0,
+        })),
         standard_daily_hours: 8,
-        reduced_hours_periods: [{ name: "Ramadan", start_date: "2026-02-18", end_date: "2026-03-19", factor: 0.75, is_provisional: false, estimated_start_date: null }],
+        reduced_hours_periods: [
+          {
+            name: "Ramadan",
+            start_date: "2026-02-18",
+            end_date: "2026-03-19",
+            factor: 0.75,
+            is_provisional: false,
+            estimated_start_date: null,
+          },
+        ],
       },
     });
     const ownershipId = uuid();
@@ -345,21 +381,157 @@ describe("the optimistic foundation mutators", () => {
       effectiveTo: null,
       isSoftDeleted: false,
       version: 1,
-      record: { edge_id: ownershipId, edge_type: "governed_by_calendar", from_node_id: entityId, to_node_id: calendarId, effective_from: NOW, effective_to: null },
+      record: {
+        edge_id: ownershipId,
+        edge_type: "governed_by_calendar",
+        from_node_id: entityId,
+        to_node_id: calendarId,
+        effective_from: NOW,
+        effective_to: null,
+      },
     });
     const mutationId = uuid();
-    const week = [1, 2, 3, 4, 5, 6, 7].map((day) => ({ day, is_working: day <= 4, hours: day <= 4 ? 8 : 0 }));
+    const week = [1, 2, 3, 4, 5, 6, 7].map((day) => ({
+      day,
+      is_working: day <= 4,
+      hours: day <= 4 ? 8 : 0,
+    }));
     const undo = await applyOptimistic(context(cache, mutationId), "calendar.update", {
       calendar_id: calendarId,
       working_week: week,
       daily_hours: 8,
       expected_version: 1,
     });
-    expect(cache.nodes.get(calendarId)).toMatchObject({ lifecycleStatus: "Superseded", version: 2 });
-    expect(cache.nodes.get(mutationId)?.record["reduced_hours_periods"]).toEqual(cache.nodes.get(calendarId)?.record["reduced_hours_periods"]);
+    expect(cache.nodes.get(calendarId)).toMatchObject({
+      lifecycleStatus: "Superseded",
+      version: 2,
+    });
+    expect(cache.nodes.get(mutationId)?.record["reduced_hours_periods"]).toEqual(
+      cache.nodes.get(calendarId)?.record["reduced_hours_periods"],
+    );
     await applyUndo(cache, undo);
-    expect(cache.nodes.get(calendarId)).toMatchObject({ lifecycleStatus: "Active", version: 1 });
+    expect(cache.nodes.get(calendarId)).toMatchObject({
+      lifecycleStatus: "Active",
+      version: 1,
+    });
     expect(cache.nodes.has(mutationId)).toBe(false);
+
+    const replacementId = uuid();
+    const replaced = await applyOptimistic(
+      context(cache, replacementId),
+      "calendar.update",
+      {
+        calendar_id: calendarId,
+        working_week: week,
+        daily_hours: 8,
+        expected_version: 1,
+        reduced_hours_periods: [],
+      },
+    );
+    expect(cache.nodes.get(replacementId)?.record["reduced_hours_periods"]).toEqual([]);
+    await applyUndo(cache, replaced);
+  });
+
+  it("applies and undoes every Holiday and WorkingPattern handler", async () => {
+    const cache = new MemoryCache();
+    const calendarId = await seedCalendar(cache);
+    const employeeId = await seedEmployee(cache);
+
+    const holidayId = uuid();
+    const added = await applyOptimistic(context(cache, holidayId), "holiday.add", {
+      calendar_id: calendarId,
+      fields: {
+        name: "Moon Day",
+        holiday_type: "Public",
+        is_provisional: true,
+        estimated_date: "2026-05-04",
+      },
+    });
+    expect(cache.nodes.get(holidayId)?.record).toMatchObject({
+      date: "2026-05-04",
+      estimated_date: "2026-05-04",
+      is_provisional: true,
+    });
+
+    const confirmed = await applyOptimistic(context(cache), "holiday.confirm", {
+      holiday_id: holidayId,
+      actual_date: "2026-05-05",
+    });
+    expect(cache.nodes.get(holidayId)?.record).toMatchObject({
+      date: "2026-05-05",
+      estimated_date: "2026-05-04",
+      is_provisional: false,
+      confirmed_by: USER,
+    });
+    await rejects(
+      applyOptimistic(context(cache), "holiday.cancel", {
+        holiday_id: holidayId,
+        expected_version: 1,
+      }),
+      "stale-state",
+    );
+    const canceled = await applyOptimistic(context(cache), "holiday.cancel", {
+      holiday_id: holidayId,
+      expected_version: 2,
+    });
+    expect(cache.nodes.get(holidayId)).toMatchObject({
+      lifecycleStatus: "Canceled",
+      version: 3,
+    });
+    await applyUndo(cache, canceled);
+    await applyUndo(cache, confirmed);
+    await applyUndo(cache, added);
+    expect(cache.nodes.has(holidayId)).toBe(false);
+
+    const firstPatternId = uuid();
+    const first = await applyOptimistic(context(cache, firstPatternId), "pattern.set", {
+      employee_id: employeeId,
+      working_week: [{ day: 3, is_working: false, hours: 0 }],
+      effective_from: "2026-03-01",
+    });
+    expect(cache.edges.get(moveEmployeeEdgeId(firstPatternId))).toMatchObject({
+      edgeType: "pattern_for",
+      fromNodeId: firstPatternId,
+      toNodeId: employeeId,
+    });
+    await rejects(
+      applyOptimistic(context(cache), "pattern.set", {
+        employee_id: employeeId,
+        working_week: [],
+        effective_from: "2026-02-28",
+        expected_version: 999,
+      }),
+      "stale-state",
+    );
+    const secondPatternId = uuid();
+    const second = await applyOptimistic(
+      context(cache, secondPatternId),
+      "pattern.set",
+      {
+        employee_id: employeeId,
+        working_week: [],
+        effective_from: "2026-03-01",
+        expected_version: 1,
+      },
+    );
+    expect(cache.nodes.get(firstPatternId)).toMatchObject({
+      lifecycleStatus: "Superseded",
+      record: { effective_to: "2026-03-01" },
+    });
+    const cleared = await applyOptimistic(context(cache), "pattern.clear", {
+      employee_id: employeeId,
+      effective_from: "2026-04-01",
+      expected_version: 1,
+    });
+    expect(cache.nodes.get(secondPatternId)).toMatchObject({
+      lifecycleStatus: "Superseded",
+      record: { effective_to: "2026-04-01" },
+    });
+    await applyUndo(cache, cleared);
+    await applyUndo(cache, second);
+    await applyUndo(cache, first);
+    expect(cache.nodes.has(firstPatternId)).toBe(false);
+    expect(cache.nodes.has(secondPatternId)).toBe(false);
   });
 
   it("setEntity closes only the currently open edge and opens a deterministic new edge", async () => {
