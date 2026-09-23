@@ -1,9 +1,9 @@
 # Stage 15 — Ghost Resources (`VRS-F007`)
 
-**Status:** COMPLETE, awaiting review.  
-**Branch:** `codex/stage-15-ghost-resources`  
-**Linear:** FDN-122  
-**Date:** 24 September 2026
+- **Status:** COMPLETE, awaiting review.
+- **Branch:** `codex/stage-15-ghost-resources`
+- **Linear:** FDN-122
+- **Date:** 24 September 2026
 
 ## 1. Summary
 
