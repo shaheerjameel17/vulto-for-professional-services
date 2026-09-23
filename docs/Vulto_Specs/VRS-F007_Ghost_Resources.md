@@ -139,7 +139,7 @@ Ghosts deliberately reuse Employee's existing `job_title` and `start_date` rathe
 
 **`placeholder_for`**, GhostResource to OpenRole: at most one active edge. Relinking closes the prior edge and creates a new one rather than accumulating links.
 
-**`promoted_to`**, GhostResource to Employee: created exactly once, at promotion, never modified. It is the permanent record that a given employee originated as a placeholder — useful years later when someone asks how long a role took to fill.
+**`promoted_to`**, GhostResource to Employee: created exactly once, at promotion, never modified. It is the permanent record that a given employee originated as a placeholder — useful years later when someone asks how long a role took to fill. Its governing partition on the split Employee endpoint is `operational` (F254) — promotion writes only Tier 0 identity fields, never compensation, per `VPS-A002`'s governing-partitions table.
 
 ### The promotion transaction, and its deliberate exception to [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
 
