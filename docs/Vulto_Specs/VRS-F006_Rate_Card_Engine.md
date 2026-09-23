@@ -120,7 +120,7 @@ is_active:      boolean, default true
 ### RateCardLine
 
 ```
-line_id:         UUID v4
+line_id:         UUID v4-shaped, deterministic — see below (F247)
 workspace_id:    UUID
 rate_card_id:    UUID, FK — a direct scalar field only. Unlike Assignment's
                  parallel `governed_by` edge to RateCard (F243), RateCardLine
@@ -138,12 +138,14 @@ monthly_rate:    decimal, computed = daily × 22, not independently editable
 
 At most one line per seniority level within a card. A level with no line has no rate under that card, and resolution falls through.
 
+**`line_id` is deterministic, not a random UUID v4 (F247).** `rate_card_id`/`seniority_level` are protected Tier 1 fields with no edge and no index over their decrypted content — `readProtected` is a lookup by node id only — so `rateCard.getPreview` and `resolveAssignmentRate` (below) need a `line_id` they can compute rather than discover. `line_id = deterministicUuid(\`rate_card_line:${rateCardId}:${seniorityLevel}\`)`, the same SHA-256-derived, UUID-v4-shaped scheme `services/api/src/auth/membership-edge-ids.ts` already uses for `membership_of`/`membership_in` and F233's `initialCalendarId` already uses for `WorkingCalendar` — still UUID v4-shaped (A002-T02), never a full-workspace decrypt-and-filter scan (A002-T03). `rateCard.create`/`update` compute this id server-side, in `apply()`, for every line written. A side effect: two lines for the same seniority under the same card always compute the identical id and overwrite the same fragment, so "at most one line per seniority level" (G05) is enforced by construction, not by separate duplicate-detection code.
+
 ### Rate resolution
 
 Run on Assignment write, in strict order:
 
 1. `rate_override_hourly` if set
-2. Else, the RateCardLine matching the employee's `seniority_level` under the Assignment's `rate_card_id`
+2. Else, the RateCardLine matching the employee's `seniority_level` under the Assignment's `rate_card_id` — read via the same deterministic `line_id` lookup as `rateCard.getPreview` (F247), never a scan
 3. Else, the employee's `billing_rate_default` per [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]], converted at 8 hours per day since that field is daily and this one is hourly
 
 The resolved figure writes to `effective_billing_rate` on the Assignment at creation, and again whenever `rate_card_id`, `rate_override_hourly` or the employee's `seniority_level` changes. **It is never recomputed retroactively when a card is superseded.** An assignment keeps the figure that was true when it was resolved.
@@ -168,6 +170,9 @@ rateCard.update(rateCardId, expectedVersion, lines)          -> { newRateCardId 
   // not an edit to its content) — see G02, G08.
 rateCard.list(workspaceId)                  -> RateCard[]
 rateCard.getPreview(rateCardId, seniority)  -> { hourlyRate, dailyRate, monthlyRate }
+  // Computes line_id = deterministicUuid(`rate_card_line:${rateCardId}:${seniority}`)
+  // and reads that one node id (F247) — never a scan. No matching line reads
+  // back nothing, matching "resolution falls through."
 rateCard.usageCount(rateCardId)             -> { activeAssignments }
   // Counts incoming governed_by edges with effective_to: null (F243), never
   // an Assignment scan
@@ -192,6 +197,7 @@ assignment.clearRateOverride(assignmentId)                     -> { effectiveBil
 | G07 | Assignment's `governed_by` edge to RateCard is written alongside its scalar `rate_card_id` field by `assignment.setRateCard`/`assignment.create`, managed manually (close-then-open, no `historyPolicy`) the same way `governed_by_calendar` is managed. `rateCard.usageCount` and the version-history active-assignment count resolve via `incoming(..., "governed_by")`, never an Assignment scan (F243) |
 | G08 | `rateCard.update` requires `expectedVersion`, checked first (`stale-state` before anything else). `name` and `currency` are never accepted by `update`; the new version copies both from the prior card (F245) |
 | G09 | The `governed_by` edge (G07) is written exclusively in the mutation's server-side `apply()` step, never by an optimistic handler. `assignment.create`'s optimistic handler is unchanged from Stage 13: `rate_card_id` writes as a plain scalar, `effective_billing_rate` always defaults to `billing_rate_default` locally, corrected by the server's response once confirmed — `assignment.create` needs no conditional `onlineOnly` behavior (F246) |
+| G10 | `RateCardLine.line_id` is a deterministic, UUID v4-shaped id derived from `(rate_card_id, seniority_level)`, not a random UUID v4 — computed server-side in `rateCard.create`/`update`'s `apply()`. `rateCard.getPreview` and `resolveAssignmentRate` compute the same id and read it as a single-id `readProtected` lookup; no edge and no index are added for RateCardLine (F247) |
 
 ---
 
