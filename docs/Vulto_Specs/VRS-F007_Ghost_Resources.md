@@ -117,7 +117,11 @@ Employee node — per VRS-F002's full schema:
   employment_status: 'Active'
   seniority_level:   optional, used by VRS-F006's rate resolution
   billing_rate_default: optional, the expected rate
-  — every other field null until promotion
+  — employee_code, full_name, email and employment_type are null until promotion
+    (built by a Ghost-specific record constructor, not the real-Employee create path — F253)
+  — contracted_hours defaults to 40, the same default a real Employee gets when
+    unspecified: a capacity assumption the Bench Forecast needs a real number for,
+    not an identity fact (F253)
 
 GhostResource node:
   ghost_id:          UUID v4
@@ -155,7 +159,7 @@ ghostResource.create(roleTitle, projectedStartDate, seniorityLevel?, targetSkill
   // Both nodes atomic; fully functional offline
 
 ghostResource.linkOpenRole(ghostId, openRoleId) -> { success }
-ghostResource.promote(ghostId, expectedVersion, { fullName, email, employmentType, startDate })
+ghostResource.promote(ghostId, expectedVersion, { employeeCode, fullName, email, employmentType, startDate, contractedHours? })
   -> { status: 'promoted' | 'pending_confirmation' }
   // The `{ existingEmployeeId }` alternative named below is deferred (F249): no edge-
   // reconciliation mechanics are defined for linking a second, already-existing
@@ -163,6 +167,11 @@ ghostResource.promote(ghostId, expectedVersion, { fullName, email, employmentTyp
   // `expectedVersion` is required per VPS-A003 A003-T54 (F250): a stale version is
   // rejected outright, and — specifically when the cause is that the Ghost was
   // already promoted — the rejection names who promoted it and when (G07).
+  // `employeeCode` is required (F253): there is no auto-generation mechanism for it
+  // anywhere in this codebase, the same human-entered, workspace-unique fact real
+  // hiring already requires, checked for a clash the same way employee.create already
+  // checks it. `contractedHours` is optional; omitted, the Ghost's existing value
+  // (40 by default) carries forward unchanged.
 ghostResource.cancel(ghostId, expectedVersion)  -> { success }
 ghostResource.list(workspaceId, status?)        -> GhostResource[]
 ```
@@ -283,6 +292,8 @@ ghostResource.list(workspaceId, status?)        -> GhostResource[]
 **Seniority and expected rate are added to the creation form.** [[VRS-F006_Rate_Card_Engine|VRS-F006]]'s resolution matches on `seniority_level`, so a Ghost without one cannot be priced, and a Ghost that cannot be priced contributes nothing to the margin forecast it exists to inform.
 
 **The projected-versus-actual start difference is surfaced at promotion.** A hire landing three weeks later than planned changes the forecast the founder has been making decisions against, and the previous flow committed that change without showing it.
+
+**A Ghost's linked Employee node is built by a Ghost-specific record constructor, not the real-Employee create path (F253).** `employeeOperationalRecord` (Stage 8, `VRS-F002`) requires `employee_code`, `full_name`, `email` and `employment_type` — facts a Ghost genuinely does not have yet. Rather than weaken that contract for every Employee, a second, narrower constructor exists for Ghosts only, nulling exactly those four fields and nothing else. `contracted_hours` still defaults to 40, the same default a real employee gets — it is a capacity assumption, not an identity fact, and the Bench Forecast needs a real number for it.
 
 **Manager's Creating-a-Ghost access is granted by extending `GhostResource`'s existing policy override, not by adding a new one (F251).** Stage 13 had already added explicit `MATRIX_OVERRIDES` rows for `GhostResource` and `OpenRole` granting Manager and Team Member read; Manager's `full` grant needed for this feature's own Creating a Ghost flow is a one-cell change to that existing row, keeping Team Member and `OpenRole` exactly as Stage 13 left them.
 
