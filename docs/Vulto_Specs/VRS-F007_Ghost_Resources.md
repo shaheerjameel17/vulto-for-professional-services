@@ -155,12 +155,15 @@ ghostResource.create(roleTitle, projectedStartDate, seniorityLevel?, targetSkill
   // Both nodes atomic; fully functional offline
 
 ghostResource.linkOpenRole(ghostId, openRoleId) -> { success }
-ghostResource.promote(ghostId, { fullName, email, employmentType, startDate })
+ghostResource.promote(ghostId, expectedVersion, { fullName, email, employmentType, startDate })
   -> { status: 'promoted' | 'pending_confirmation' }
   // The `{ existingEmployeeId }` alternative named below is deferred (F249): no edge-
   // reconciliation mechanics are defined for linking a second, already-existing
   // Employee node, so it is rejected with a clear "not yet supported" error for now.
-ghostResource.cancel(ghostId)                   -> { success }
+  // `expectedVersion` is required per VPS-A003 A003-T54 (F250): a stale version is
+  // rejected outright, and — specifically when the cause is that the Ghost was
+  // already promoted — the rejection names who promoted it and when (G07).
+ghostResource.cancel(ghostId, expectedVersion)  -> { success }
 ghostResource.list(workspaceId, status?)        -> GhostResource[]
 ```
 
