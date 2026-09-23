@@ -212,15 +212,27 @@ A single two-hop traversal from the selected Employee. What it shows, and to who
 
 ```
 benchForecast.get(workspaceId, window, filters?) -> {
-  rows: EmployeeRow[],        // assignments, derived bench periods, day counts
-  aggregateUtilization: number | Suppressed,
-  cohortSize: number
+  rows: EmployeeRow[]        // assignments, derived bench periods, day counts
 }
   // Resolves entirely from the device's local Electric-replicated cache. No
   // network round-trip. Renders within 200ms for 150 active employees.
   // Assignment, Project, Client, GhostResource, OpenRole and
   // effective_billing_rate are all Tier 0; bars, dates and bench-day counts
-  // never require a server call (F236)
+  // never require a server call (F236). Aggregate utilization and cohort
+  // size are not part of this call — see benchForecast.getAggregate below.
+  // VPS-A004 requires disclosure control to run through the server-side
+  // interceptor and prohibits a client-side check (F241)
+
+benchForecast.getAggregate(workspaceId, window, filters?) -> {
+  aggregateUtilization: number | Suppressed,
+  cohortSize: number
+}
+  // The filtered cohort's utilization, gated by applyDisclosureControl and
+  // the permission interceptor (VPS-A004) — a genuine server round-trip,
+  // never resolved on-device, because disclosure control may not run as a
+  // client-side rule. A single on-demand call issued after
+  // benchForecast.get's local render, reissued when the filter changes, and
+  // never blocking it — the same non-blocking shape as getCost below (F241)
 
 benchForecast.getCost(employeeIds, window) -> {
   costs: Record<employeeId, currencyFigure | null>
@@ -261,7 +273,7 @@ contextualIntelligence.get(employeeId) -> {
 | G03 | Every day count in this feature resolves through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. No weekday or holiday assumption is made locally |
 | G04 | The Contextual Intelligence Panel is one two-hop traversal from the selected Employee, filtered by node type, time relevance and [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s rules. Its Tier 0 fields resolve from the local cache; its Tier 2 fields (BurnoutAlert, FlightRiskSignal) are fetched on demand from the server per F199, never cached on device (F236) |
 | G05 | Ghost rows are Employee nodes with `employee_type = Ghost`. They participate in Assignment edges identically, including the 100% constraint |
-| G06 | Aggregate utilization is computed live across the filtered cohort, never cached, and passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control before display |
+| G06 | Aggregate utilization is computed live across the filtered cohort by `benchForecast.getAggregate`, a server-side call through the same permission interceptor as every other protected read — never cached, never computed on-device — and passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control before display (F241) |
 | G07 | `effective_billing_rate` is resolved and written at Assignment write time. Before [[VRS-F006_Rate_Card_Engine|VRS-F006]] exists it is written as the employee's `billing_rate_default`; this feature never implements a fallback of its own at read time |
 
 ---
@@ -306,7 +318,7 @@ contextualIntelligence.get(employeeId) -> {
 
 **GIVEN** a filter for skill, seniority and availability together
 **WHEN** it is applied
-**THEN** only matching employees show, aggregate utilization recalculates for the filtered cohort, and it completes within 50ms
+**THEN** only matching employees show within 50ms, resolved entirely from the local graph; aggregate utilization for the filtered cohort follows via `benchForecast.getAggregate`'s separate, non-blocking on-demand call, gated by disclosure control and never bound to the local filter's 50ms budget (F241)
 
 ---
 
@@ -336,7 +348,7 @@ contextualIntelligence.get(employeeId) -> {
 
 **GIVEN** the device is offline
 **WHEN** the forecast is opened
-**THEN** the full timeline renders from local cache with correct bars, bench regions and day counts, and the Offline indicator shows. Bench cost figures and the Contextual Intelligence Panel's Tier 2 content (BurnoutAlert, FlightRiskSignal) are unavailable and show [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s standard connectivity-required state, per F199 — only Tier 0 reads are guaranteed offline (F236)
+**THEN** the full timeline renders from local cache with correct bars, bench regions and day counts, and the Offline indicator shows. Bench cost figures, aggregate utilization/cohort size, and the Contextual Intelligence Panel's Tier 2 content (BurnoutAlert, FlightRiskSignal) are unavailable and show [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s standard connectivity-required state, per F199 — only Tier 0 reads are guaranteed offline (F236). Aggregate utilization additionally requires connectivity because VPS-A004 prohibits its disclosure control from running as a client-side check, not because its underlying rows are protected (F241)
 
 ---
 
@@ -346,16 +358,16 @@ contextualIntelligence.get(employeeId) -> {
 - Vertical scroll maintains 60fps at all times
 - Horizontal scroll across a 180-day window maintains 60fps through virtualization
 - Affected rows re-render within 1 second of an underlying change, no full reload
-- Filter application completes within 50ms from the local graph
+- Filter application (which employees match) completes within 50ms from the local graph; the filtered cohort's aggregate utilization is a separate, non-blocking on-demand call gated by disclosure control, not bound to this budget (F241)
 - Ghost rows render within the same budget, no separate render pass
-- Fully functional offline for Tier 0 data — the timeline, bars, bench regions and day counts. Bench cost figures and the Contextual Intelligence Panel's Tier 2 content require connectivity and degrade gracefully per F199 (F236)
+- Fully functional offline for Tier 0 data — the timeline, bars, bench regions and day counts. Bench cost figures, aggregate utilization/cohort size, and the Contextual Intelligence Panel's Tier 2 content require connectivity and degrade gracefully per F199 (F236, F241)
 
 ---
 
 ## Security Considerations
 
 - **The Contextual Intelligence Panel must never construct permission logic of its own.** It queries through the same interceptor as everything else. An engineer adding a new signal registers that node's tier and Privacy Class in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] first, rather than adding a bespoke visibility check here.
-- **Aggregate utilization passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control**, including the differencing protection. A filtered view of eleven people and one of twelve must not allow the twelfth person's status to be recovered by subtraction.
+- **Aggregate utilization passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control**, including the differencing protection. A filtered view of eleven people and one of twelve must not allow the twelfth person's status to be recovered by subtraction. This runs exclusively through `benchForecast.getAggregate`'s server-side call — `VPS-A004`'s own rule that "a client-side visibility rule... is prohibited" as a second answer to who may read what applies here as much as to any protected node read (F241).
 - **Bench cost is compensation-derived and tier-scoped.** A viewer without compensation access sees the bench region and its day count, not the currency figure. The existence of bench time is operational; its cost is not universally readable.
 
 ---
