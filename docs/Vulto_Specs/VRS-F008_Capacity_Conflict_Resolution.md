@@ -240,7 +240,7 @@ conflictResolution.sweepOvercommitted(workspaceId)
 - `conflictCheck.evaluate` returns within 100ms from the local graph, before any save is attempted
 - The suggested fit is recomputed against current data at the moment the panel opens, never a stale figure from an earlier check
 - The sweep covers all active employees within 2 minutes for workspaces up to 150 people, the same budget [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] holds
-- Computation, panel and override all function fully offline. The sweep is best-effort and runs on next connectivity
+- Computation, panel and override all function fully offline. The sweep is best-effort and runs on next connectivity. **(F259)** `conflictCheck.evaluate` runs as a portable local query against the device's own replicated cache, the same pattern [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s local row query already uses — best-effort and advisory, since capacity is deliberately server-only (one device may not have another device's newest Assignment yet, the same reason `assignment.create`'s own optimistic write never checks capacity locally either). `overrideAndProceed` writes optimistically like `assignment.create` does, using a local `managed_by` check to decide whether to attempt the write; the server re-verifies that gate and the capacity figure authoritatively and can reject via the ordinary undo path.
 
 ---
 
