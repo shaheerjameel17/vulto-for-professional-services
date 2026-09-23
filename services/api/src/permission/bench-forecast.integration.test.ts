@@ -240,7 +240,11 @@ describe("VRS-F005 — The Bench Forecast", () => {
     );
     // Five of six is below the differencing threshold, so the full cohort's
     // value is returned rather than disclosing the sixth employee by subtraction.
-    expect(visible).toEqual({ aggregateUtilization: 1 / 6, cohortSize: 5 });
+    expect(visible).toEqual({
+      aggregateUtilization: 1 / 6,
+      ghostContribution: 0,
+      cohortSize: 5,
+    });
     const suppressed = await db.transaction((tx) =>
       getBenchForecastAggregate(
         tx,
@@ -255,6 +259,7 @@ describe("VRS-F005 — The Bench Forecast", () => {
     );
     expect(suppressed).toEqual({
       aggregateUtilization: { state: "suppressed" },
+      ghostContribution: { state: "suppressed" },
       cohortSize: 1,
     });
     const workspace = await db.transaction((tx) =>
@@ -263,6 +268,57 @@ describe("VRS-F005 — The Bench Forecast", () => {
     expect(workspace?.record).toMatchObject({
       k_anonymity_minimum: 5,
       k_anonymity_minimum_sensitive: 8,
+    });
+  });
+
+  it("keeps real utilization unchanged and reports Ghost covered capacity over the real denominator", async () => {
+    const w = await world();
+    const employees: string[] = [];
+    for (let index = 0; index < 5; index += 1) employees.push(await employee(w, null));
+    await w.apply("hr", "assignment.create", {
+      employee_id: employees[0],
+      project_id: w.projectId,
+      start_date: "2026-10-05",
+      end_date: "2026-10-09",
+      billable_percentage: 100,
+    });
+    const input = { window: { from_date: "2026-10-05", to_date: "2026-10-09" } };
+    const before = await db.transaction((tx) =>
+      getBenchForecastAggregate(tx, w.principals.owner!, input, {}, NOW),
+    );
+    expect(before).toEqual({
+      aggregateUtilization: 0.2,
+      ghostContribution: 0,
+      cohortSize: 5,
+    });
+    const created = await w.apply("hr", "ghostResource.create", {
+      role_title: "Planned consultant",
+      projected_start_date: "2026-10-01",
+      seniority_level: "Senior",
+    });
+    expect(created.status, JSON.stringify(created)).toBe("applied");
+    const ghostEmployeeId = (created.result as { employeeId: string }).employeeId;
+    await db.transaction((tx) =>
+      insertEdge(
+        tx,
+        w.workspaceId,
+        edgeRecord("scoped_to_entity", ghostEmployeeId, w.entity.nodeId),
+      ),
+    );
+    await w.apply("hr", "assignment.create", {
+      employee_id: ghostEmployeeId,
+      project_id: w.projectId,
+      start_date: "2026-10-05",
+      end_date: "2026-10-09",
+      billable_percentage: 50,
+    });
+    const after = await db.transaction((tx) =>
+      getBenchForecastAggregate(tx, w.principals.owner!, input, {}, NOW),
+    );
+    expect(after).toEqual({
+      aggregateUtilization: 0.2,
+      ghostContribution: 0.1,
+      cohortSize: 5,
     });
   });
 

@@ -1,6 +1,7 @@
 import {
   MUTATIONS,
   employeeOperationalRecord,
+  ghostEmployeeOperationalRecord,
   employeeTransitionOutcome,
   FEATURE_LIFECYCLE_NODE_TYPES,
   getMutationDefinition,
@@ -543,6 +544,111 @@ const putNewEdge = async (
   return { kind: "edge" as const, id, before: null };
 };
 
+// ── Ghost Resources (VRS-F007) ─────────────────────────────────────────────
+
+const ghostResourceCreate: OptimisticMutator = async (c, raw) => {
+  const args = parse("ghostResource.create", raw);
+  const ghostId = c.mutationId;
+  const employeeId = mutationDerivedId(c.mutationId, 1);
+  if ((await c.cache.getNode(ghostId)) || (await c.cache.getNode(employeeId)))
+    throw new OptimisticRejection("invalid-args");
+  const skillIds = [...new Set(args.target_skill_ids ?? [])];
+  for (const skillId of skillIds) {
+    const skill = await liveNode(c.cache, skillId);
+    if (skill.nodeType !== "Skill") throw new OptimisticRejection("invalid-args");
+  }
+  if (args.open_role_id) {
+    const openRole = await liveNode(c.cache, args.open_role_id);
+    if (openRole.nodeType !== "OpenRole") throw new OptimisticRejection("invalid-args");
+  }
+  const undo: UndoEntry[] = [];
+  undo.push(
+    await putNewNode(c, employeeId, "Employee", {
+      ...ghostEmployeeOperationalRecord({
+        job_title: args.role_title,
+        start_date: args.projected_start_date,
+        ...(args.seniority_level === undefined
+          ? {}
+          : { seniority_level: args.seniority_level }),
+        ...(args.expected_rate === undefined
+          ? {}
+          : { billing_rate_default: args.expected_rate }),
+      }),
+      lifecycle_status: "Active",
+    }),
+  );
+  undo.push(
+    await putNewNode(c, ghostId, "GhostResource", {
+      ghost_employee_id: employeeId,
+      notes: null,
+      lifecycle_status: "Active",
+    }),
+  );
+  for (const [index, skillId] of skillIds.entries()) {
+    undo.push(
+      await putNewEdge(c, mutationDerivedId(c.mutationId, 10 + index), {
+        edge_type: "has_skill",
+        from_node_id: employeeId,
+        to_node_id: skillId,
+        effective_from: c.now,
+        effective_to: null,
+      }),
+    );
+  }
+  if (args.open_role_id) {
+    undo.push(
+      await putNewEdge(c, mutationDerivedId(c.mutationId, 2), {
+        edge_type: "placeholder_for",
+        from_node_id: ghostId,
+        to_node_id: args.open_role_id,
+        effective_from: c.now,
+        effective_to: null,
+      }),
+    );
+  }
+  return undo;
+};
+
+const ghostResourceCancel: OptimisticMutator = async (c, raw) => {
+  const args = parse("ghostResource.cancel", raw);
+  const ghost = await liveNode(c.cache, args.ghost_id);
+  if (ghost.nodeType !== "GhostResource") throw new OptimisticRejection("invalid-args");
+  if (ghost.version !== args.expected_version)
+    throw new OptimisticRejection("stale-state");
+  if (ghost.lifecycleStatus !== "Active")
+    throw new OptimisticRejection("invalid-transition");
+  return [
+    await writeNode(c.cache, ghost, {
+      ...ghost.record,
+      lifecycle_status: "Canceled",
+      ...updateStamp("GhostResource", provenance(c)),
+    }),
+  ];
+};
+
+const ghostResourceLinkOpenRole: OptimisticMutator = async (c, raw) => {
+  const args = parse("ghostResource.linkOpenRole", raw);
+  const ghost = await liveNode(c.cache, args.ghost_id);
+  const openRole = await liveNode(c.cache, args.open_role_id);
+  if (ghost.nodeType !== "GhostResource" || openRole.nodeType !== "OpenRole")
+    throw new OptimisticRejection("invalid-args");
+  const prior = (await c.cache.edgesFrom(ghost.nodeId, "placeholder_for")).find(
+    (edge) => !edge.isSoftDeleted && edge.effectiveTo === null,
+  );
+  const undo: UndoEntry[] = [];
+  if (prior) undo.push(await closeAt(c.cache, prior, c.now));
+  undo.push(
+    await putNewEdge(c, c.mutationId, {
+      edge_type: "placeholder_for",
+      from_node_id: ghost.nodeId,
+      to_node_id: openRole.nodeId,
+      effective_from: c.now,
+      effective_to: null,
+    }),
+  );
+  return undo;
+};
+
 const calendarUpdate: OptimisticMutator = async (c, raw) => {
   const args = parse("calendar.update", raw);
   const prior = await liveTypedNode(c.cache, args.calendar_id, "WorkingCalendar");
@@ -904,6 +1010,9 @@ export const OPTIMISTIC_MUTATORS: Readonly<
   "assignment.setRateCard": assignmentSetRateCard,
   "assignment.setRateOverride": assignmentSetRateOverride,
   "assignment.clearRateOverride": assignmentClearRateOverride,
+  "ghostResource.create": ghostResourceCreate,
+  "ghostResource.cancel": ghostResourceCancel,
+  "ghostResource.linkOpenRole": ghostResourceLinkOpenRole,
   "graph.createNode": createNode,
   "graph.updateNodeFields": updateNodeFields,
   "graph.softDeleteNode": softDeleteNode,

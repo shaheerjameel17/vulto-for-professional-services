@@ -10,6 +10,8 @@ const ids = {
   project: "10000000-0000-4000-8000-000000000004",
   assignment: "10000000-0000-4000-8000-000000000005",
   skill: "10000000-0000-4000-8000-000000000006",
+  ghostEmployee: "10000000-0000-4000-8000-000000000007",
+  ghostAssignment: "10000000-0000-4000-8000-000000000008",
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -39,6 +41,14 @@ describe("the local Bench Forecast query", () => {
       department: "Engineering",
       location: null,
     });
+    await put(ids.ghostEmployee, "Employee", {
+      full_name: null,
+      employee_type: "Ghost",
+      job_title: "Planned consultant",
+      seniority_level: "Senior",
+      department: "Engineering",
+      location: null,
+    });
     await put(ids.entity, "Entity", { name: "Entity" });
     await put(ids.calendar, "WorkingCalendar", {
       working_week: [1, 2, 3, 4, 5, 6, 7].map((day) => ({
@@ -53,6 +63,13 @@ describe("the local Bench Forecast query", () => {
     await put(ids.skill, "Skill", { name: "TypeScript" });
     await put(ids.assignment, "Assignment", {
       employee_id: ids.employee,
+      project_id: ids.project,
+      start_date: "2026-03-02",
+      end_date: "2026-03-03",
+      billable_percentage: 100,
+    });
+    await put(ids.ghostAssignment, "Assignment", {
+      employee_id: ids.ghostEmployee,
       project_id: ids.project,
       start_date: "2026-03-02",
       end_date: "2026-03-03",
@@ -89,6 +106,18 @@ describe("the local Bench Forecast query", () => {
       ids.entity,
     );
     await edge(
+      "20000000-0000-4000-8000-000000000004",
+      "scoped_to_entity",
+      ids.ghostEmployee,
+      ids.entity,
+    );
+    await edge(
+      "20000000-0000-4000-8000-000000000005",
+      "has_skill",
+      ids.ghostEmployee,
+      ids.skill,
+    );
+    await edge(
       "20000000-0000-4000-8000-000000000002",
       "governed_by_calendar",
       ids.entity,
@@ -115,9 +144,16 @@ describe("the local Bench Forecast query", () => {
       now: "2026-03-01T00:00:00.000Z",
     });
     expect(fetch).not.toHaveBeenCalled();
-    expect(result.rows).toHaveLength(1);
+    expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({
       employeeId: ids.employee,
+      benchDayCount: 3,
+      assignments: [{ projectId: ids.project, projectName: "Alpha" }],
+      benchPeriods: [{ fromDate: "2026-03-04", toDate: "2026-03-06", workingDays: 3 }],
+    });
+    expect(result.rows[1]).toMatchObject({
+      employeeId: ids.ghostEmployee,
+      employee: { employee_type: "Ghost" },
       benchDayCount: 3,
       assignments: [{ projectId: ids.project, projectName: "Alpha" }],
       benchPeriods: [{ fromDate: "2026-03-04", toDate: "2026-03-06", workingDays: 3 }],

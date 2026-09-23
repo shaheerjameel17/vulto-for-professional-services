@@ -81,7 +81,7 @@ const employeeTarget = (
   }) as const;
 
 /** Email and code are unique within a workspace, not globally (VRS-F002). */
-async function requireUnique(
+export async function requireUnique(
   ctx: MutationContext<unknown>,
   fields: { email?: string; employee_code?: string },
   excludeNodeId?: string,

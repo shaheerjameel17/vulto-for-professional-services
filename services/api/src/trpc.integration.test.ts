@@ -252,6 +252,7 @@ describe("benchForecast.getAggregate over tRPC", () => {
     expect(response.statusCode, response.body).toBe(200);
     expect(JSON.parse(response.body).result.data).toEqual({
       aggregateUtilization: { state: "suppressed" },
+      ghostContribution: { state: "suppressed" },
       cohortSize: 0,
     });
   });

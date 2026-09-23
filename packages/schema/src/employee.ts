@@ -112,6 +112,18 @@ export const employeeCreateFieldsSchema = z
 
 export type EmployeeCreateFields = z.infer<typeof employeeCreateFieldsSchema>;
 
+/** The identity-light operational facts available when planning a Ghost hire. */
+export const ghostEmployeeCreateFieldsSchema = z
+  .object({
+    job_title: operationalShape.job_title,
+    start_date: operationalShape.start_date,
+    seniority_level: operationalShape.seniority_level.optional(),
+    billing_rate_default: operationalShape.billing_rate_default.optional(),
+  })
+  .strict();
+
+export type GhostEmployeeCreateFields = z.infer<typeof ghostEmployeeCreateFieldsSchema>;
+
 /**
  * What update accepts: any operational field except the ones with their own
  * mutation. `employee_code` is fixed at creation, `end_date` belongs to the
@@ -224,6 +236,44 @@ export function employeeOperationalRecord(
     timezone: fields.timezone ?? null,
     location: fields.location ?? null,
     notes: fields.notes ?? null,
+  };
+}
+
+/**
+ * The complete Tier 0 Employee record paired with a GhostResource. Identity
+ * facts remain explicitly null until promotion; capacity still has a concrete
+ * 40-hour default so the Bench Forecast can use the row immediately.
+ */
+export function ghostEmployeeOperationalRecord(
+  fields: GhostEmployeeCreateFields,
+): Record<string, unknown> {
+  return {
+    employee_code: null,
+    user_id: null,
+    employee_type: "Ghost",
+    full_name: null,
+    preferred_name: null,
+    email: null,
+    phone: null,
+    avatar_url: null,
+    job_title: fields.job_title,
+    department: null,
+    employment_type: null,
+    seniority_level: fields.seniority_level ?? null,
+    start_date: fields.start_date,
+    end_date: null,
+    probation_end_date: null,
+    probation_status: null,
+    probation_extension_reason: null,
+    contract_end_date: null,
+    contract_renewal_status: null,
+    billing_rate_default: fields.billing_rate_default ?? null,
+    contracted_hours: 40,
+    billability_target_override: null,
+    working_pattern_id: null,
+    timezone: null,
+    location: null,
+    notes: null,
   };
 }
 
