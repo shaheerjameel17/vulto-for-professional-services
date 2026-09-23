@@ -372,5 +372,17 @@ describe("VRS-F005 — The Bench Forecast", () => {
       burnoutAlert: { severity: "High" },
       flightRiskSignal: { risk: "High" },
     });
+    const hrView = await db.transaction((tx) =>
+      getProtectedContextualIntelligence(
+        tx,
+        getKeyServices(),
+        w.principals.hr!,
+        report,
+      ),
+    );
+    expect(hrView).toEqual({
+      burnoutAlert: { severity: "High" },
+      flightRiskSignal: { risk: "High" },
+    });
   });
 });
