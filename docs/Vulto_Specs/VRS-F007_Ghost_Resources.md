@@ -258,6 +258,7 @@ ghostResource.list(workspaceId, status?)        -> GhostResource[]
 ## Security Considerations
 
 - **Ghost Resources carry no elevated privacy concern.** Both node types are Tier 0. The only security-relevant behavior here is the promotion race handling, which is a data-integrity concern rather than a confidentiality one.
+- **Manager's write access is node-type-scoped, not mutation-scoped (F251).** `GhostResource`'s policy row grants Manager `full`, the same cell that authorizes `ghostResource.create`, `.cancel` and `.promote` alike — this codebase has no mechanism to grant "full" for one named mutation on a node type while withholding it from another on the same type. Manager being able to promote or cancel a Ghost, not only create one, is an accepted consequence of that model, not a gap: the two operations above already disclaim any confidentiality concern, and promotion is audited regardless of actor.
 - **A Ghost's expected billing rate follows the same tier rules as a real employee's.** A placeholder is not an exemption from [[VRS-F006_Rate_Card_Engine|VRS-F006]]'s treatment of rates.
 - **Promotion is audited** per [[VPS-F004_Silent_Audit_Log|VPS-F004]], because it converts a planning artifact into an employment record and both the timing and the actor matter afterwards.
 
@@ -282,6 +283,8 @@ ghostResource.list(workspaceId, status?)        -> GhostResource[]
 **Seniority and expected rate are added to the creation form.** [[VRS-F006_Rate_Card_Engine|VRS-F006]]'s resolution matches on `seniority_level`, so a Ghost without one cannot be priced, and a Ghost that cannot be priced contributes nothing to the margin forecast it exists to inform.
 
 **The projected-versus-actual start difference is surfaced at promotion.** A hire landing three weeks later than planned changes the forecast the founder has been making decisions against, and the previous flow committed that change without showing it.
+
+**Manager's Creating-a-Ghost access is granted by extending `GhostResource`'s existing policy override, not by adding a new one (F251).** Stage 13 had already added explicit `MATRIX_OVERRIDES` rows for `GhostResource` and `OpenRole` granting Manager and Team Member read; Manager's `full` grant needed for this feature's own Creating a Ghost flow is a one-cell change to that existing row, keeping Team Member and `OpenRole` exactly as Stage 13 left them.
 
 ---
 
