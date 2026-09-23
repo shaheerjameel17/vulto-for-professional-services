@@ -15,6 +15,7 @@ aliases:
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
 **Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (working days — overlap is measured in working days, not calendar days), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (Assignment, the 100% capacity constraint and its `ConflictError`, extended here to support a deliberate override), [[VRS-F007_Ghost_Resources|VRS-F007]] (Ghosts, subject to the identical constraint), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (Assignment's existing write permissions; the override is an application-layer authorization check, not a new permission row)
+**Partial forward dependencies (F258):** [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] supplies the BullMQ job queue the safety-net sweep's four-hourly cadence names; until it exists, `conflictResolution.sweepOvercommitted` ships as a complete, callable read query with no periodic trigger wired to it. Does not block this feature.
 **Blocks:** Nothing structurally. [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]] reuses this feature's overlap computation for its own leave-versus-assignment surface.
 
 This document is the single source of truth for this feature.
@@ -69,7 +70,7 @@ Below 100% but above `near_capacity_warning_threshold`, default 90, a save succe
 
 The constraint is enforced at every interactive write, so overcommitment should be rare. But [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s bulk import, a direct API call through [[VPS-F009_Vulto_Sync_API|VPS-F009]], or migrated data could bypass it.
 
-A sweep on the same four-hourly cadence [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] uses checks for any employee over 100% with no recorded override and surfaces them in an admin list. A safety net, not a first-class signal, so it introduces no new node type and queries Assignment data directly.
+A sweep on the same four-hourly cadence [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] uses checks for any employee over 100% with no recorded override and surfaces them in an admin list. A safety net, not a first-class signal, so it introduces no new node type and queries Assignment data directly. **The read query itself ships complete and callable on demand (F258).** The periodic four-hourly trigger depends on [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s BullMQ job queue, which does not exist yet for any feature, [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] included; wiring the schedule is deferred to whichever stage builds that queue.
 
 ---
 
@@ -120,9 +121,9 @@ Below 1280px the panel overlays the form and the capacity strip stacks above the
 
 ### The conflict computation
 
-Given an employee and a proposed Assignment, the engine sums `billable_percentage` across every other Assignment whose date range overlaps — **exactly the aggregation [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s constraint already performs, reused rather than reimplemented.**
+Given an employee and a proposed Assignment, the engine sums `billable_percentage` across every other Assignment whose date range overlaps — **exactly the aggregation [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s constraint already performs, reused rather than reimplemented (F256).**
 
-Overlap is measured in working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. Two assignments that share only a weekend, or only a public holiday, do not overlap in any sense that matters, and treating them as conflicting would produce warnings a manager learns to dismiss.
+Overlap is measured in working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. Two assignments that share only a weekend, or only a public holiday, do not overlap in any sense that matters, and treating them as conflicting would produce warnings a manager learns to dismiss. **`VRS-F005`'s own `validateCapacity` is corrected to filter through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s `resolveWorkingDay`/`resolvedDayOn` mechanism before this feature reuses it (F256)** — it aggregated plain calendar days until now, which is what "reused" means here: the correction lands once, in the shared function, not twice.
 
 The result compares against 100 for a hard conflict and against `near_capacity_warning_threshold` for a soft warning.
 
@@ -247,7 +248,7 @@ conflictResolution.sweepOvercommitted(workspaceId)
 
 - **The override gate is an application-layer check, not a new permission row.** Assignment's tier and write permissions are unchanged. This feature restricts which already-authorized users may invoke one additional action — the same pattern [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] uses for its three-Owner cap.
 - **The override reason is mandatory and not private.** It is visible to anyone who could already see the Assignment. The point is accountability for a deliberate decision, not a hidden justification.
-- **Overrides are audited** per [[VPS-F004_Silent_Audit_Log|VPS-F004]]. An employee working above full capacity for a sustained period is a fact that surfaces later in [[VRS-F052_Workload_Strain_Signal|VRS-F052]], and the record of who authorized it matters.
+- **The override is recorded on the Assignment itself, not separately audited (F257).** `capacity_override_reason`, `capacity_override_by` and `capacity_override_at` are written alongside the Assignment; no [[VPS-F004_Silent_Audit_Log|VPS-F004]] event exists for an ordinary successful Tier 0 write, the same reasoning already applied to Ghost promotion. An employee working above full capacity for a sustained period is a fact that surfaces later in [[VRS-F052_Workload_Strain_Signal|VRS-F052]], and the record of who authorized it matters — it is just kept on the record, not in the audit log.
 
 ---
 

@@ -179,7 +179,7 @@ capacity_override_at:     timestamp, nullable
 
 ### The 100% capacity constraint
 
-An employee — real or Ghost — cannot hold Assignments whose combined `billable_percentage` exceeds 100 on any overlapping date range. An attempt is rejected at write time with a `ConflictError` naming the current total and the attempted addition, never caught later by a report.
+An employee — real or Ghost — cannot hold Assignments whose combined `billable_percentage` exceeds 100 on any overlapping date range. An attempt is rejected at write time with a `ConflictError` naming the current total and the attempted addition, never caught later by a report. **The overlap this constraint aggregates is measured in working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (F256)** — corrected from an earlier calendar-day aggregation once [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]] required reusing this same function without inheriting that gap.
 
 Rejection is the default. [[VRS-F008_Capacity_Conflict_Resolution|VRS-F008]] catches this same error and offers a deliberate, justified, logged override as one resolution path, for the genuine crunch week a flat rejection cannot express. The constraint and its default are unchanged by that; an override is an explicit action, never a silent bypass.
 
