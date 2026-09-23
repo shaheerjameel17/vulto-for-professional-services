@@ -107,7 +107,7 @@ describe("resolvePermission — default class mapping, transcribed from VPS-A004
 });
 
 describe("resolvePermission — matrix overrides", () => {
-  it.each(["Assignment", "Project", "Client", "GhostResource", "OpenRole"] as const)(
+  it.each(["Assignment", "Project", "Client", "OpenRole"] as const)(
     "%s is workspace staffing data readable by Manager and Team Member",
     (nodeType) => {
       expect(resolvePermission("manager", nodeType, "record").outcome).toBe("read");
@@ -116,6 +116,19 @@ describe("resolvePermission — matrix overrides", () => {
       expect(resolvePermission("hr-admin", nodeType, "record").outcome).toBe("full");
     },
   );
+
+  it("gives GhostResource its ruled workspace staffing access", () => {
+    expect(resolvePermission("manager", "GhostResource", "record").outcome).toBe(
+      "full",
+    );
+    expect(resolvePermission("team-member", "GhostResource", "record").outcome).toBe(
+      "read",
+    );
+    expect(resolvePermission("owner", "GhostResource", "record").outcome).toBe("full");
+    expect(resolvePermission("hr-admin", "GhostResource", "record").outcome).toBe(
+      "full",
+    );
+  });
 
   it("Entity is workspace configuration readable by every role, writable by Owner and HR Admin", () => {
     for (const role of ["owner", "hr-admin"] as const) {

@@ -6,6 +6,7 @@ import { ENTITY_MUTATIONS } from "./entity";
 import { CALENDAR_MUTATIONS } from "./calendar";
 import { ASSIGNMENT_MUTATIONS } from "./assignment";
 import { RATE_CARD_MUTATIONS } from "./rateCard";
+import { GHOST_RESOURCE_MUTATIONS } from "./ghostResource";
 
 const jsonObject = z.record(z.string(), jsonValueSchema);
 const version = z.int().positive();
@@ -106,6 +107,7 @@ export const MUTATIONS = {
   ...CALENDAR_MUTATIONS,
   ...ASSIGNMENT_MUTATIONS,
   ...RATE_CARD_MUTATIONS,
+  ...GHOST_RESOURCE_MUTATIONS,
 } as const;
 
 export type MutationName = keyof typeof MUTATIONS;

@@ -140,6 +140,7 @@ async function authorizedCohort(
   filters: BenchForecastFilters | undefined,
   now: string,
   context: InterceptorContext,
+  employeeType: "Employee" | "Ghost",
 ): Promise<CohortEmployee[]> {
   const listed = await listEmployees(
     tx,
@@ -155,7 +156,7 @@ async function authorizedCohort(
     : window.to_date;
   const cohort: CohortEmployee[] = [];
   for (const summary of listed) {
-    if (summary.record["employee_type"] === "Ghost") continue;
+    if (summary.record["employee_type"] !== employeeType) continue;
     const node = await getNode(tx, principal.workspaceId, summary.employeeId);
     if (node) {
       cohort.push(
@@ -166,13 +167,18 @@ async function authorizedCohort(
   return cohort;
 }
 
-async function utilization(
+interface UtilizationTotals {
+  readonly capacity: number;
+  readonly billable: number;
+}
+
+async function utilizationTotals(
   tx: GraphTx,
   principal: Principal,
   cohort: readonly CohortEmployee[],
   window: BenchForecastWindow,
   context: InterceptorContext,
-): Promise<number> {
+): Promise<UtilizationTotals> {
   const guard = readGuard(tx, principal, context);
   let capacity = 0;
   let billable = 0;
@@ -202,7 +208,7 @@ async function utilization(
       billable += (percentage / 100) * day.dayFraction;
     }
   }
-  return capacity === 0 ? 0 : billable / capacity;
+  return { capacity, billable };
 }
 
 export async function getBenchForecastAggregate(
@@ -222,16 +228,48 @@ export async function getBenchForecastAggregate(
     input.filters,
     now,
     context,
+    "Employee",
+  );
+  const ghosts = await authorizedCohort(
+    tx,
+    principal,
+    input.window,
+    input.filters,
+    now,
+    context,
+    "Ghost",
   );
   const filtered = base.filter((employee) =>
     matchesBenchForecastFilters(employee.candidate, input.filters),
   );
+  const filteredGhosts = ghosts.filter((employee) =>
+    matchesBenchForecastFilters(employee.candidate, input.filters),
+  );
   const workspace = await getNode(tx, principal.workspaceId, principal.workspaceId);
   const threshold = readKAnonymityThreshold(workspace?.record["k_anonymity_minimum"]);
-  const [filteredValue, unfilteredValue] = await Promise.all([
-    utilization(tx, principal, filtered, input.window, context),
-    utilization(tx, principal, base, input.window, context),
-  ]);
+  const [filteredTotals, unfilteredTotals, filteredGhostTotals, ghostTotals] =
+    await Promise.all([
+      utilizationTotals(tx, principal, filtered, input.window, context),
+      utilizationTotals(tx, principal, base, input.window, context),
+      utilizationTotals(tx, principal, filteredGhosts, input.window, context),
+      utilizationTotals(tx, principal, ghosts, input.window, context),
+    ]);
+  const filteredValue =
+    filteredTotals.capacity === 0
+      ? 0
+      : filteredTotals.billable / filteredTotals.capacity;
+  const unfilteredValue =
+    unfilteredTotals.capacity === 0
+      ? 0
+      : unfilteredTotals.billable / unfilteredTotals.capacity;
+  const filteredGhostContribution =
+    filteredTotals.capacity === 0
+      ? 0
+      : filteredGhostTotals.billable / filteredTotals.capacity;
+  const unfilteredGhostContribution =
+    unfilteredTotals.capacity === 0
+      ? 0
+      : ghostTotals.billable / unfilteredTotals.capacity;
   const controlled = applyDisclosureControl({
     cohortSize: filtered.length,
     unfilteredCohortSize: base.length,
@@ -239,11 +277,22 @@ export async function getBenchForecastAggregate(
     computeFiltered: () => filteredValue,
     computeUnfiltered: () => unfilteredValue,
   });
+  const controlledGhost = applyDisclosureControl({
+    cohortSize: filtered.length,
+    unfilteredCohortSize: base.length,
+    threshold,
+    computeFiltered: () => filteredGhostContribution,
+    computeUnfiltered: () => unfilteredGhostContribution,
+  });
   return {
     aggregateUtilization:
       controlled.state === "suppressed"
         ? ({ state: "suppressed" } as const)
         : controlled.value,
+    ghostContribution:
+      controlledGhost.state === "suppressed"
+        ? ({ state: "suppressed" } as const)
+        : controlledGhost.value,
     cohortSize: filtered.length,
   };
 }

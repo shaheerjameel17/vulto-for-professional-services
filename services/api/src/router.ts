@@ -16,6 +16,7 @@ import {
   rateCardListInputSchema,
   rateCardPreviewInputSchema,
   rateCardUsageInputSchema,
+  ghostResourceListInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -41,6 +42,7 @@ import {
   listRateCards,
   RateCardAccessDenied,
 } from "./permission/rate-card-queries.js";
+import { listGhostResources } from "./permission/ghost-resource-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -217,6 +219,20 @@ export const appRouter = t.router({
         ctx.res.header("Cache-Control", "no-store");
         return db.transaction((tx) =>
           getEmployee(tx, getKeyServices(), ctx.principal, input.employee_id),
+        );
+      }),
+  }),
+  ghostResource: t.router({
+    list: protectedProcedure
+      .input(ghostResourceListInputSchema)
+      .query(({ ctx, input }) => {
+        if (input.workspace_id !== ctx.principal.workspaceId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
+        }
+        return db.transaction((tx) =>
+          listGhostResources(tx, ctx.principal, {
+            ...(input.status === undefined ? {} : { lifecycleStatus: input.status }),
+          }),
         );
       }),
   }),

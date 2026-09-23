@@ -56,6 +56,10 @@ describe("the foundation mutation set", () => {
       "entity.create",
       "entity.deactivate",
       "entity.update",
+      "ghostResource.cancel",
+      "ghostResource.create",
+      "ghostResource.linkOpenRole",
+      "ghostResource.promote",
       "graph.closeEdge",
       "graph.createEdge",
       "graph.createNode",
@@ -80,7 +84,9 @@ describe("the foundation mutation set", () => {
           : 0,
       );
       // A protected write can never be queued offline.
-      expect(definition.onlineOnly).toBe(definition.tier > 0);
+      expect(definition.onlineOnly).toBe(
+        definition.tier > 0 || definition.name === "ghostResource.promote",
+      );
     }
   });
 
@@ -97,6 +103,8 @@ describe("the foundation mutation set", () => {
         "calendar.update",
         "assignment.cancel",
         "rateCard.update",
+        "ghostResource.cancel",
+        "ghostResource.promote",
       ].sort(),
     );
   });

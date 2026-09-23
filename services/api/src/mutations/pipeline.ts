@@ -52,6 +52,12 @@ import {
   assignmentUpdate,
 } from "./assignment.js";
 import { rateCardCreate, rateCardUpdate } from "./rate-card.js";
+import {
+  ghostResourceCancel,
+  ghostResourceCreate,
+  ghostResourceLinkOpenRole,
+  ghostResourcePromote,
+} from "./ghost-resource.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -104,6 +110,10 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "assignment.clearRateOverride": assignmentClearRateOverride as ServerMutation<never>,
   "rateCard.create": rateCardCreate as ServerMutation<never>,
   "rateCard.update": rateCardUpdate as ServerMutation<never>,
+  "ghostResource.create": ghostResourceCreate as ServerMutation<never>,
+  "ghostResource.cancel": ghostResourceCancel as ServerMutation<never>,
+  "ghostResource.linkOpenRole": ghostResourceLinkOpenRole as ServerMutation<never>,
+  "ghostResource.promote": ghostResourcePromote as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {
@@ -277,7 +287,8 @@ export async function applyMutation(
           definition?.name === "assignment.update" ||
           definition?.name === "assignment.cancel" ||
           definition?.name === "assignment.setRateCard" ||
-          definition?.name === "rateCard.update"
+          definition?.name === "rateCard.update" ||
+          definition?.name === "ghostResource.promote"
           ? { isolationLevel: "serializable" }
           : undefined,
       );

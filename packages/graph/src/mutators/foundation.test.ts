@@ -2,6 +2,7 @@ import {
   initialCalendarEdgeId,
   initialCalendarId,
   moveEmployeeEdgeId,
+  mutationDerivedId,
 } from "@vulto/schema";
 import { describe, expect, it } from "vitest";
 import { applyUndo, type MutatorContext } from "./index";
@@ -618,6 +619,69 @@ describe("the optimistic foundation mutators", () => {
       lifecycleStatus: "Active",
       version: 1,
     });
+  });
+
+  it("creates the complete Ghost pair offline and leaves promotion for server confirmation", async () => {
+    const cache = new MemoryCache();
+    const skillId = uuid();
+    await cache.putNode({
+      nodeId: skillId,
+      nodeType: "Skill",
+      lifecycleStatus: "Active",
+      isSoftDeleted: false,
+      version: 1,
+      record: { node_id: skillId, node_type: "Skill", lifecycle_status: "Active" },
+    });
+    const mutationId = uuid();
+    const undo = await applyOptimistic(
+      context(cache, mutationId),
+      "ghostResource.create",
+      {
+        role_title: "Senior React Developer",
+        projected_start_date: "2026-06-01",
+        seniority_level: "Senior",
+        target_skill_ids: [skillId],
+        expected_rate: 1_200,
+      },
+    );
+    const employeeId = mutationDerivedId(mutationId, 1);
+    expect(cache.nodes.get(employeeId)?.record).toMatchObject({
+      employee_type: "Ghost",
+      employee_code: null,
+      full_name: null,
+      email: null,
+      employment_type: null,
+      contracted_hours: 40,
+      job_title: "Senior React Developer",
+      start_date: "2026-06-01",
+      seniority_level: "Senior",
+      billing_rate_default: 1_200,
+    });
+    expect(cache.nodes.get(mutationId)?.record).toMatchObject({
+      ghost_employee_id: employeeId,
+    });
+    expect(cache.edges.get(mutationDerivedId(mutationId, 10))).toMatchObject({
+      edgeType: "has_skill",
+      fromNodeId: employeeId,
+      toNodeId: skillId,
+    });
+    expect(
+      await applyOptimistic(context(cache), "ghostResource.promote", {
+        ghost_id: mutationId,
+        expected_version: 1,
+        details: {
+          employee_code: "E-1",
+          full_name: "Person",
+          email: "person@example.test",
+          employment_type: "FullTime",
+          start_date: "2026-06-22",
+        },
+      }),
+    ).toEqual([]);
+    expect(cache.nodes.get(mutationId)?.lifecycleStatus).toBe("Active");
+    await applyUndo(cache, undo);
+    expect(cache.nodes.has(employeeId)).toBe(false);
+    expect(cache.nodes.has(mutationId)).toBe(false);
   });
 
   it("refuses unknown mutations and malformed arguments", async () => {

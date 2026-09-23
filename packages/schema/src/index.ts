@@ -1,6 +1,8 @@
 /** Canonical VPS-A002 graph contracts. No runtime mutation API is exposed. */
 import "./registry/validate";
 
+export * from "./ghost-resource";
+
 export {
   NODE_REGISTRY,
   NODE_TYPES,

@@ -117,10 +117,7 @@ export async function getBenchForecast(
   const derivedDates = isoDatesInclusive(derivedFrom, derivedTo);
   const rows: BenchForecastRow[] = [];
   for (const employee of nodes.filter(
-    (node) =>
-      node.nodeType === "Employee" &&
-      node.lifecycleStatus === "Active" &&
-      node.record["employee_type"] !== "Ghost",
+    (node) => node.nodeType === "Employee" && node.lifecycleStatus === "Active",
   )) {
     const entityEdge = currentOpenEdge(edges, employee.nodeId, "scoped_to_entity", now);
     const entityId = entityEdge?.toNodeId ?? null;

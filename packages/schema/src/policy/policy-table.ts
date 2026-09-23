@@ -267,7 +267,7 @@ const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
     owner: FULL_ANY(),
     "hr-admin": FULL_ANY(),
     "finance-admin": READ_ANY(),
-    manager: READ_ANY(),
+    manager: FULL_ANY(),
     "team-member": READ_ANY(),
   },
   OpenRole: {
