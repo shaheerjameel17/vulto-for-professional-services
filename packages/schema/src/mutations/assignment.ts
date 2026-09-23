@@ -60,8 +60,41 @@ export const assignmentCancel = defineMutation({
   stateTransition: true,
 });
 
+export const assignmentSetRateCard = defineMutation({
+  name: "assignment.setRateCard",
+  input: z.object({ assignment_id: uuidV4Schema, rate_card_id: uuidV4Schema }).strict(),
+  tier: 0,
+  onlineOnly: false,
+  stateTransition: false,
+});
+
+export const assignmentSetRateOverride = defineMutation({
+  name: "assignment.setRateOverride",
+  input: z
+    .object({
+      assignment_id: uuidV4Schema,
+      hourly: z.number().nonnegative(),
+      reason: z.string().trim().min(1),
+    })
+    .strict(),
+  tier: 0,
+  onlineOnly: false,
+  stateTransition: false,
+});
+
+export const assignmentClearRateOverride = defineMutation({
+  name: "assignment.clearRateOverride",
+  input: z.object({ assignment_id: uuidV4Schema }).strict(),
+  tier: 0,
+  onlineOnly: false,
+  stateTransition: false,
+});
+
 export const ASSIGNMENT_MUTATIONS = {
   "assignment.create": assignmentCreate,
   "assignment.update": assignmentUpdate,
   "assignment.cancel": assignmentCancel,
+  "assignment.setRateCard": assignmentSetRateCard,
+  "assignment.setRateOverride": assignmentSetRateOverride,
+  "assignment.clearRateOverride": assignmentClearRateOverride,
 } as const;

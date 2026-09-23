@@ -830,7 +830,59 @@ const assignmentCancel: OptimisticMutator = async (c, raw) => {
   ];
 };
 
-export const OPTIMISTIC_MUTATORS: Readonly<Record<MutationName, OptimisticMutator>> = {
+const assignmentSetRateCard: OptimisticMutator = async (c, raw) => {
+  const args = parse("assignment.setRateCard", raw);
+  const assignment = await liveTypedNode(c.cache, args.assignment_id, "Assignment");
+  return [
+    await writeNode(c.cache, assignment, {
+      ...assignment.record,
+      rate_card_id: args.rate_card_id,
+      ...updateStamp("Assignment", provenance(c)),
+    }),
+  ];
+};
+
+const assignmentSetRateOverride: OptimisticMutator = async (c, raw) => {
+  const args = parse("assignment.setRateOverride", raw);
+  const assignment = await liveTypedNode(c.cache, args.assignment_id, "Assignment");
+  return [
+    await writeNode(c.cache, assignment, {
+      ...assignment.record,
+      rate_override_hourly: args.hourly,
+      rate_override_reason: args.reason,
+      effective_billing_rate: args.hourly,
+      ...updateStamp("Assignment", provenance(c)),
+    }),
+  ];
+};
+
+const assignmentClearRateOverride: OptimisticMutator = async (c, raw) => {
+  const args = parse("assignment.clearRateOverride", raw);
+  const assignment = await liveTypedNode(c.cache, args.assignment_id, "Assignment");
+  let effectiveBillingRate = assignment.record["effective_billing_rate"];
+  if (assignment.record["rate_card_id"] === null) {
+    const employee = await liveTypedNode(
+      c.cache,
+      String(assignment.record["employee_id"]),
+      "Employee",
+    );
+    const daily = employee.record["billing_rate_default"] as number | null | undefined;
+    effectiveBillingRate = daily == null ? null : daily / 8;
+  }
+  return [
+    await writeNode(c.cache, assignment, {
+      ...assignment.record,
+      rate_override_hourly: null,
+      rate_override_reason: null,
+      effective_billing_rate: effectiveBillingRate,
+      ...updateStamp("Assignment", provenance(c)),
+    }),
+  ];
+};
+
+export const OPTIMISTIC_MUTATORS: Readonly<
+  Partial<Record<MutationName, OptimisticMutator>>
+> = {
   "employee.create": employeeCreate,
   "employee.update": employeeUpdate,
   "employee.transitionStatus": employeeTransitionStatus,
@@ -849,6 +901,9 @@ export const OPTIMISTIC_MUTATORS: Readonly<Record<MutationName, OptimisticMutato
   "assignment.create": assignmentCreate,
   "assignment.update": assignmentUpdate,
   "assignment.cancel": assignmentCancel,
+  "assignment.setRateCard": assignmentSetRateCard,
+  "assignment.setRateOverride": assignmentSetRateOverride,
+  "assignment.clearRateOverride": assignmentClearRateOverride,
   "graph.createNode": createNode,
   "graph.updateNodeFields": updateNodeFields,
   "graph.softDeleteNode": softDeleteNode,
@@ -864,6 +919,12 @@ export async function applyOptimistic(
   name: string,
   args: unknown,
 ): Promise<UndoEntry[]> {
-  if (!getMutationDefinition(name)) throw new OptimisticRejection("unknown-mutation");
-  return OPTIMISTIC_MUTATORS[name as MutationName](context, args);
+  const definition = getMutationDefinition(name);
+  if (!definition) throw new OptimisticRejection("unknown-mutation");
+  const mutator = OPTIMISTIC_MUTATORS[name as MutationName];
+  if (!mutator) {
+    if (definition.onlineOnly) return [];
+    throw new OptimisticRejection("missing-optimistic-mutator");
+  }
+  return mutator(context, args);
 }

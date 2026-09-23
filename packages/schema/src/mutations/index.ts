@@ -60,3 +60,10 @@ export {
   type ReducedHoursPeriod,
 } from "./calendar";
 export { ASSIGNMENT_MUTATIONS } from "./assignment";
+export {
+  RATE_CARD_MUTATIONS,
+  rateCardLineInputSchema,
+  rateCardListInputSchema,
+  rateCardPreviewInputSchema,
+  rateCardUsageInputSchema,
+} from "./rateCard";

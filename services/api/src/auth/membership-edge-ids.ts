@@ -6,7 +6,7 @@ import { createHash } from "node:crypto";
  * ids). Computed server-side and carried in the grant — the graph Worker
  * never derives an id of its own.
  */
-function deterministicUuid(seed: string): string {
+export function deterministicUuid(seed: string): string {
   const h = createHash("sha256").update(seed, "utf8").digest();
   h[6] = (h[6]! & 0x0f) | 0x40;
   h[8] = (h[8]! & 0x3f) | 0x80;
