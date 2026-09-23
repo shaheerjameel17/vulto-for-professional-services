@@ -54,6 +54,8 @@ A user filters by skill, seniority, department, entity, availability window, or 
 
 Where the filtered cohort falls below the k-anonymity threshold, the aggregate is suppressed per [[VPS-A004_Graph_Permission_Layer|VPS-A004]] rather than displayed for a group small enough to identify someone.
 
+**The filter contract.** `BenchForecastFilters` is `{ skillIds?, seniorityLevels?, departments?, entityIds?, availability? }`; every specified field combines with every other by AND, and multiple values within one field combine with OR — a two-skill selection means either skill, not both. An omitted `filters` argument, or one with every field omitted, applies no narrowing at all: it returns the caller's full authorized cohort, exactly as viewing the forecast with no filter selected does. `skillIds` matches `has_skill`; `seniorityLevels` matches `Employee.seniority_level`'s closed enum; `departments` matches `Employee.department` by exact string equality, since the Filters row's own Select populates its options from the workspace's existing values rather than accepting typed text — there is no normalization question; `entityIds` matches the employee's currently active `scoped_to_entity` edge, not entity membership at any point in a historical window, consistent with this feature computing everything live at render time; `availability` is `{ fromDate, toDate }` and matches an employee with at least one G02 bench day inside that inclusive range — the same derivation this feature already computes, not a second definition of "available" (F242).
+
 ### Selecting a row
 
 Selection opens the Contextual Intelligence Panel, built from a single two-hop traversal of that Employee node. Its Tier 0 fields resolve from the device's own Electric-replicated cache, no network request; its Tier 2 fields are fetched on demand from the server the moment the Panel opens, per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s F199 rewrite — never cached on device (F236). What appears depends on the viewer's role and the tier of what is traversed to, governed by [[VPS-A004_Graph_Permission_Layer|VPS-A004]] rather than by logic written here.
@@ -211,6 +213,19 @@ A single two-hop traversal from the selected Employee. What it shows, and to who
 ### API contracts
 
 ```
+BenchForecastFilters = {
+  skillIds?: string[],         // has_skill; OR within the field
+  seniorityLevels?: SeniorityLevel[],  // Employee.seniority_level; OR within the field
+  departments?: string[],      // Employee.department, exact string equality; OR within the field
+  entityIds?: string[],        // employee's currently active scoped_to_entity edge; OR within the field
+  availability?: { fromDate: string, toDate: string }  // at least one G02 bench day in range
+}
+  // AND across fields; an omitted field, or an omitted/empty filters argument, applies no
+  // narrowing. One portable matchesBenchForecastFilters(candidate, filters) function in
+  // packages/schema, alongside resolveWorkingDay (F237) and applyDisclosureControl (F238), is
+  // called identically by benchForecast.get's local query and benchForecast.getAggregate below,
+  // so the two can never derive different cohorts (F242)
+
 benchForecast.get(workspaceId, window, filters?) -> {
   rows: EmployeeRow[]        // assignments, derived bench periods, day counts
 }
@@ -232,7 +247,10 @@ benchForecast.getAggregate(workspaceId, window, filters?) -> {
   // never resolved on-device, because disclosure control may not run as a
   // client-side rule. A single on-demand call issued after
   // benchForecast.get's local render, reissued when the filter changes, and
-  // never blocking it — the same non-blocking shape as getCost below (F241)
+  // never blocking it — the same non-blocking shape as getCost below (F241).
+  // Derives both the filtered and unfiltered comparison cohorts itself, from
+  // the caller's own authorized base cohort via matchesBenchForecastFilters
+  // — never from a client-supplied employee-ID list (F242)
 
 benchForecast.getCost(employeeIds, window) -> {
   costs: Record<employeeId, currencyFigure | null>
@@ -275,6 +293,7 @@ contextualIntelligence.get(employeeId) -> {
 | G05 | Ghost rows are Employee nodes with `employee_type = Ghost`. They participate in Assignment edges identically, including the 100% constraint |
 | G06 | Aggregate utilization is computed live across the filtered cohort by `benchForecast.getAggregate`, a server-side call through the same permission interceptor as every other protected read — never cached, never computed on-device — and passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control before display (F241) |
 | G07 | `effective_billing_rate` is resolved and written at Assignment write time. Before [[VRS-F006_Rate_Card_Engine|VRS-F006]] exists it is written as the employee's `billing_rate_default`; this feature never implements a fallback of its own at read time |
+| G08 | `filters` is one shared `BenchForecastFilters` object — skill/seniority/department/entity/availability, AND across fields, OR within a field — matched by one portable `matchesBenchForecastFilters` function called identically by the local row query and `benchForecast.getAggregate`, so the two can never derive different cohorts (F242) |
 
 ---
 
@@ -367,7 +386,7 @@ contextualIntelligence.get(employeeId) -> {
 ## Security Considerations
 
 - **The Contextual Intelligence Panel must never construct permission logic of its own.** It queries through the same interceptor as everything else. An engineer adding a new signal registers that node's tier and Privacy Class in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] first, rather than adding a bespoke visibility check here.
-- **Aggregate utilization passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control**, including the differencing protection. A filtered view of eleven people and one of twelve must not allow the twelfth person's status to be recovered by subtraction. This runs exclusively through `benchForecast.getAggregate`'s server-side call — `VPS-A004`'s own rule that "a client-side visibility rule... is prohibited" as a second answer to who may read what applies here as much as to any protected node read (F241).
+- **Aggregate utilization passes through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control**, including the differencing protection. A filtered view of eleven people and one of twelve must not allow the twelfth person's status to be recovered by subtraction. This runs exclusively through `benchForecast.getAggregate`'s server-side call — `VPS-A004`'s own rule that "a client-side visibility rule... is prohibited" as a second answer to who may read what applies here as much as to any protected node read (F241). Both the filtered and unfiltered cohorts behind that comparison are derived by the server from the caller's own authorized base cohort — never from a client-supplied employee-ID list, which would let a device choose its own disclosure cohort (F242).
 - **Bench cost is compensation-derived and tier-scoped.** A viewer without compensation access sees the bench region and its day count, not the currency figure. The existence of bench time is operational; its cost is not universally readable.
 
 ---
