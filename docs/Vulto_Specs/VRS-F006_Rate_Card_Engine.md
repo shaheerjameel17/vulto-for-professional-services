@@ -122,8 +122,12 @@ is_active:      boolean, default true
 ```
 line_id:         UUID v4
 workspace_id:    UUID
-rate_card_id:    UUID, FK — a direct scalar field, the same lightweight pattern
-                 Assignment uses, not a first-class edge
+rate_card_id:    UUID, FK — a direct scalar field only. Unlike Assignment's
+                 parallel `governed_by` edge to RateCard (F243), RateCardLine
+                 carries no edge of its own: nothing ever needs to traverse
+                 backward from a RateCard to "every line under it" except
+                 through the card's own lines, so no reverse query exists to
+                 serve
 seniority_level: enum matching Employee.seniority_level exactly — the matching key
 hourly_rate:     decimal, required
 daily_rate:      decimal, computed = hourly × 8, not independently editable
@@ -144,6 +148,8 @@ Run on Assignment write, in strict order:
 
 The resolved figure writes to `effective_billing_rate` on the Assignment at creation, and again whenever `rate_card_id`, `rate_override_hourly` or the employee's `seniority_level` changes. **It is never recomputed retroactively when a card is superseded.** An assignment keeps the figure that was true when it was resolved.
 
+**Alongside the scalar field, a `governed_by` edge (F243).** `VPS-A002` registers `governed_by: Assignment → RateCard`, owned by this feature, mirroring the dual scalar-plus-edge shape Assignment already carries for `employee_id`/`assignment_of` and `project_id`/`assigned_to`. Every write that sets `rate_card_id` — `assignment.create` when the parameter is provided, and `assignment.setRateCard` — also writes this edge: the Assignment's existing active `governed_by` edge, if any, is closed (`effective_to` at the write's timestamp) and a new one opened, the same manual singularity management `services/api/src/mutations/calendar.ts` already uses for `governed_by_calendar`, since `governed_by` carries no `historyPolicy: "single-active-outgoing"`. The scalar field remains what the resolution algorithm above reads; the edge exists solely so RateCard-side queries can traverse back to their Assignments.
+
 ### Why the resolved figure sits on Assignment at Tier 0
 
 RateCard and RateCardLine are Finance-restricted and Tier 1, correctly — the full rate structure across every client is competitively sensitive, and in a small agency it is also close to a compensation disclosure.
@@ -159,6 +165,8 @@ rateCard.update(rateCardId, lines)          -> { newRateCardId }
 rateCard.list(workspaceId)                  -> RateCard[]
 rateCard.getPreview(rateCardId, seniority)  -> { hourlyRate, dailyRate, monthlyRate }
 rateCard.usageCount(rateCardId)             -> { activeAssignments }
+  // Counts incoming governed_by edges with effective_to: null (F243), never
+  // an Assignment scan
 
 assignment.setRateCard(assignmentId, rateCardId)               -> { effectiveBillingRate }
 assignment.setRateOverride(assignmentId, hourly, reason)       -> { effectiveBillingRate }
@@ -177,6 +185,7 @@ assignment.clearRateOverride(assignmentId)                     -> { effectiveBil
 | G04 | `effective_billing_rate` resolves in strict order: override, matching line, `billing_rate_default`. Computed at write time, never recomputed retroactively |
 | G05 | At most one line per seniority level per card. A duplicate write replaces the rate rather than creating a second line |
 | G06 | A rate card's `currency` defaults from the Entity's `default_currency` per [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] and is never inferred from the workspace |
+| G07 | Assignment's `governed_by` edge to RateCard is written alongside its scalar `rate_card_id` field by `assignment.setRateCard`/`assignment.create`, managed manually (close-then-open, no `historyPolicy`) the same way `governed_by_calendar` is managed. `rateCard.usageCount` and the version-history active-assignment count resolve via `incoming(..., "governed_by")`, never an Assignment scan (F243) |
 
 ---
 
