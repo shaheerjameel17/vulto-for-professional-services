@@ -144,6 +144,7 @@ export const EDGE_GROUPS = [
     edgeType: "promoted_to",
     owner: "VPS-A002",
     pairs: [["GhostResource", "Employee"]],
+    governingPartitions: { Employee: "operational" },
   }),
   edgeGroup({
     edgeType: "logged_against",
