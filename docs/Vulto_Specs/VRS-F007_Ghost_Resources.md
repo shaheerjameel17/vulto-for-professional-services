@@ -15,6 +15,7 @@ aliases:
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
 **Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee's `employee_type` and full schema), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (the Assignment model and the 100% capacity constraint, consumed here without redefinition), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (`placeholder_for` and `promoted_to`), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (sync and conflict resolution, with one deliberate exception), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission enforcement — unremarkable, both node types are Tier 0)
+**Partial forward dependencies (F248):** [[VRS-F028_Recruitment_Pipeline|VRS-F028]] supplies OpenRole creation; until it exists, `openRoleId` has no real targets to link, and every Ghost is created without one. Does not block this feature.
 **Blocks:** Nothing structurally. [[VRS-F005_The_Bench_Forecast|VRS-F005]] renders without this feature; it simply has no Ghost rows.
 
 This document is the single source of truth for this feature.
@@ -57,7 +58,7 @@ Ghost capacity is included in aggregate utilization, with the Ghost contribution
 
 ### Promoting to a real employee
 
-An Owner or HR Admin selects **Promote to employee**. A modal collects real name, email, employment type and start date, or links an existing Employee node where one already exists — the common case being a candidate hired through [[VRS-F028_Recruitment_Pipeline|VRS-F028]].
+An Owner or HR Admin selects **Promote to employee**. A modal collects real name, email, employment type and start date. (Linking an existing Employee node instead — the common case being a candidate hired through [[VRS-F028_Recruitment_Pipeline|VRS-F028]] — is deferred; see F249 and Out of Scope.)
 
 Confirming runs the promotion transaction. The row transitions from placeholder to live styling with no re-assignment step; every Assignment edge the Ghost held is preserved unchanged.
 
@@ -154,8 +155,11 @@ ghostResource.create(roleTitle, projectedStartDate, seniorityLevel?, targetSkill
   // Both nodes atomic; fully functional offline
 
 ghostResource.linkOpenRole(ghostId, openRoleId) -> { success }
-ghostResource.promote(ghostId, { fullName, email, employmentType, startDate } | { existingEmployeeId })
+ghostResource.promote(ghostId, { fullName, email, employmentType, startDate })
   -> { status: 'promoted' | 'pending_confirmation' }
+  // The `{ existingEmployeeId }` alternative named below is deferred (F249): no edge-
+  // reconciliation mechanics are defined for linking a second, already-existing
+  // Employee node, so it is rejected with a clear "not yet supported" error for now.
 ghostResource.cancel(ghostId)                   -> { success }
 ghostResource.list(workspaceId, status?)        -> GhostResource[]
 ```
@@ -260,6 +264,7 @@ ghostResource.list(workspaceId, status?)        -> GhostResource[]
 
 - Ghosts assigned beyond the 100% constraint — [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s constraint governs both identically, so no separate rule exists
 - Ghosts as candidates in the hiring pipeline — a Ghost is a capacity placeholder, not a hiring record. The connection to hiring is the OpenRole link; the pipeline is [[VRS-F028_Recruitment_Pipeline|VRS-F028]]
+- Promoting a Ghost by linking it to a second, already-existing Employee node (the `existingEmployeeId` path) — deferred per F249; no edge-reconciliation mechanics are defined for it yet. Stage 15 builds only the fully-specified path: real name, email, employment type and start date filled into the Ghost's own linked Employee node
 - Automatic Ghost creation from a won pitch or a skill gap — [[VRS-F036_Opportunity-to-Draft_Hiring_Trigger|VRS-F036]]
 - Requisition approval and headcount budgeting — [[VRS-F027_Headcount_Plan_and_Requisition_Approval|VRS-F027]]
 - Bulk Ghost creation — [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]] handles bulk data; this is not a bulk-authoring surface
