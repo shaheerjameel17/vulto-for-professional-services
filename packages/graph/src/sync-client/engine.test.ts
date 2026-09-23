@@ -1,5 +1,3 @@
-import { MUTATIONS, defineMutation } from "@vulto/schema";
-import { z } from "zod";
 import { describe, expect, it } from "vitest";
 import {
   ApiError,
@@ -615,20 +613,18 @@ describe("the outbox and optimistic writes", () => {
 
   it("refuses an online-only mutation immediately while offline", async () => {
     const h = await harness();
-    (MUTATIONS as Record<string, unknown>)["test.onlineOnly"] = defineMutation({
-      name: "test.onlineOnly",
-      input: z.object({}),
-      tier: 1,
-      onlineOnly: false,
-      stateTransition: false,
-    });
     h.source("nodes").fail({ kind: "network" });
     await new Promise((r) => setTimeout(r, 10));
-    expect(await h.engine.mutate("test.onlineOnly", {})).toEqual({
+    expect(
+      await h.engine.mutate("rateCard.create", {
+        name: "Standard",
+        currency: "USD",
+        lines: [],
+      }),
+    ).toEqual({
       accepted: false,
       reason: "requires-connection",
     });
-    delete (MUTATIONS as Record<string, unknown>)["test.onlineOnly"];
   });
 
   it("refuses what the optimistic layer refuses, without queuing it", async () => {

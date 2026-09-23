@@ -805,6 +805,30 @@ describe("FDN-89 (partial) — reader sets and subject exclusion", () => {
     });
   });
 
+  it("ignores an inapplicable own-scope cell on a fixed-class node with no subject", async () => {
+    const fixture = await makeWorkspace({
+      hr: ["hr-admin"],
+      finance: ["finance-admin"],
+      plain: ["team-member"],
+    });
+    await db.transaction(async (tx) => {
+      const readers = await resolveReaderSet(tx, {
+        workspaceId: fixture.workspaceId,
+        nodeType: "RateCard",
+        partitionKey: "record",
+        subjectEmployeeId: null,
+      });
+      expect(readers).toEqual({
+        kind: "resolved",
+        userIds: [
+          fixture.people.owner!.userId,
+          fixture.people.hr!.userId,
+          fixture.people.finance!.userId,
+        ].sort(),
+      });
+    });
+  });
+
   it("is unresolvable where a grant is row-scoped and the Employee link is absent", async () => {
     const fixture = await makeWorkspace();
     await db.transaction(async (tx) => {

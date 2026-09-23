@@ -1,7 +1,11 @@
 import { mutationDerivedId } from "@vulto/schema";
 import { describe, expect, it } from "vitest";
 import { applyUndo } from "./cache";
-import { applyOptimistic, type MutatorContext } from "./foundation";
+import {
+  applyOptimistic,
+  OPTIMISTIC_MUTATORS,
+  type MutatorContext,
+} from "./foundation";
 import { MemoryCache } from "./memory-cache";
 
 const WORKSPACE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -77,5 +81,80 @@ describe("Assignment optimistic mutators", () => {
       expected_version: 1,
     });
     expect(cache.nodes.get(MUTATION)?.lifecycleStatus).toBe("Canceled");
+  });
+
+  it("updates only device-knowable rate fields and never writes governed_by", async () => {
+    const cache = new MemoryCache();
+    const assignment = "10000000-0000-4000-8000-000000000004";
+    const card = "10000000-0000-4000-8000-000000000005";
+    await seed(cache, EMPLOYEE, "Employee", { billing_rate_default: 800 });
+    await seed(cache, assignment, "Assignment", {
+      employee_id: EMPLOYEE,
+      rate_card_id: null,
+      rate_override_hourly: null,
+      rate_override_reason: null,
+      effective_billing_rate: 100,
+    });
+
+    await applyOptimistic(context(cache), "assignment.setRateCard", {
+      assignment_id: assignment,
+      rate_card_id: card,
+    });
+    expect(cache.nodes.get(assignment)?.record).toMatchObject({
+      rate_card_id: card,
+      effective_billing_rate: 100,
+    });
+    expect(
+      [...cache.edges.values()].some((edge) => edge.edgeType === "governed_by"),
+    ).toBe(false);
+
+    await applyOptimistic(context(cache), "assignment.setRateOverride", {
+      assignment_id: assignment,
+      hourly: 155,
+      reason: "Negotiated",
+    });
+    expect(cache.nodes.get(assignment)?.record).toMatchObject({
+      rate_override_hourly: 155,
+      rate_override_reason: "Negotiated",
+      effective_billing_rate: 155,
+    });
+
+    await applyOptimistic(context(cache), "assignment.clearRateOverride", {
+      assignment_id: assignment,
+    });
+    expect(cache.nodes.get(assignment)?.record).toMatchObject({
+      rate_override_hourly: null,
+      rate_override_reason: null,
+      effective_billing_rate: 155,
+    });
+  });
+
+  it("resolves clearRateOverride locally only when no card lookup is needed", async () => {
+    const cache = new MemoryCache();
+    const assignment = "10000000-0000-4000-8000-000000000004";
+    await seed(cache, EMPLOYEE, "Employee", { billing_rate_default: 800 });
+    await seed(cache, assignment, "Assignment", {
+      employee_id: EMPLOYEE,
+      rate_card_id: null,
+      rate_override_hourly: 140,
+      rate_override_reason: "Temporary",
+      effective_billing_rate: 140,
+    });
+    await applyOptimistic(context(cache), "assignment.clearRateOverride", {
+      assignment_id: assignment,
+    });
+    expect(cache.nodes.get(assignment)?.record["effective_billing_rate"]).toBe(100);
+  });
+
+  it("has no optimistic RateCard handler", async () => {
+    expect(OPTIMISTIC_MUTATORS["rateCard.create"]).toBeUndefined();
+    expect(OPTIMISTIC_MUTATORS["rateCard.update"]).toBeUndefined();
+    expect(
+      await applyOptimistic(context(new MemoryCache()), "rateCard.create", {
+        name: "Standard",
+        currency: "USD",
+        lines: [],
+      }),
+    ).toEqual([]);
   });
 });
