@@ -59,3 +59,4 @@ export {
   type WorkingWeek,
   type ReducedHoursPeriod,
 } from "./calendar";
+export { ASSIGNMENT_MUTATIONS } from "./assignment";

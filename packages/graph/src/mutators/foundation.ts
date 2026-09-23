@@ -759,6 +759,77 @@ const patternClear: OptimisticMutator = async (c, raw) => {
   ];
 };
 
+// ── Assignments (VRS-F005) ────────────────────────────────────────────────
+
+const assignmentCreate: OptimisticMutator = async (c, raw) => {
+  const args = parse("assignment.create", raw);
+  const employee = await liveTypedNode(c.cache, args.employee_id, "Employee");
+  const project = await liveTypedNode(c.cache, args.project_id, "Project");
+  // Capacity is deliberately server-only: one device may not have another
+  // device's newest Assignment yet. A refusal uses the outbox's undo path.
+  return [
+    await putNewNode(c, c.mutationId, "Assignment", {
+      lifecycle_status: "Active",
+      employee_id: employee.nodeId,
+      project_id: project.nodeId,
+      start_date: args.start_date,
+      end_date: args.end_date,
+      billable_percentage: args.billable_percentage,
+      rate_card_id: args.rate_card_id ?? null,
+      rate_override_hourly: null,
+      rate_override_reason: null,
+      effective_billing_rate:
+        (employee.record["billing_rate_default"] as number | null | undefined) ?? null,
+      capacity_override_reason: null,
+      capacity_override_by: null,
+      capacity_override_at: null,
+    }),
+    await putNewEdge(c, mutationDerivedId(c.mutationId, 1), {
+      edge_type: "assignment_of",
+      from_node_id: c.mutationId,
+      to_node_id: employee.nodeId,
+      effective_from: `${args.start_date}T00:00:00.000Z`,
+      effective_to: null,
+    }),
+    await putNewEdge(c, mutationDerivedId(c.mutationId, 2), {
+      edge_type: "assigned_to",
+      from_node_id: c.mutationId,
+      to_node_id: project.nodeId,
+      effective_from: `${args.start_date}T00:00:00.000Z`,
+      effective_to: null,
+    }),
+  ];
+};
+
+const assignmentUpdate: OptimisticMutator = async (c, raw) => {
+  const args = parse("assignment.update", raw);
+  const assignment = await liveTypedNode(c.cache, args.assignment_id, "Assignment");
+  const start = args.fields.start_date ?? String(assignment.record["start_date"]);
+  const end = args.fields.end_date ?? String(assignment.record["end_date"]);
+  if (end < start) throw new OptimisticRejection("invalid-args");
+  return [
+    await writeNode(c.cache, assignment, {
+      ...assignment.record,
+      ...args.fields,
+      ...updateStamp("Assignment", provenance(c)),
+    }),
+  ];
+};
+
+const assignmentCancel: OptimisticMutator = async (c, raw) => {
+  const args = parse("assignment.cancel", raw);
+  const assignment = await liveTypedNode(c.cache, args.assignment_id, "Assignment");
+  if (assignment.version !== args.expected_version)
+    throw new OptimisticRejection("stale-state");
+  return [
+    await writeNode(c.cache, assignment, {
+      ...assignment.record,
+      lifecycle_status: "Canceled",
+      ...updateStamp("Assignment", provenance(c)),
+    }),
+  ];
+};
+
 export const OPTIMISTIC_MUTATORS: Readonly<Record<MutationName, OptimisticMutator>> = {
   "employee.create": employeeCreate,
   "employee.update": employeeUpdate,
@@ -775,6 +846,9 @@ export const OPTIMISTIC_MUTATORS: Readonly<Record<MutationName, OptimisticMutato
   "holiday.cancel": holidayCancel,
   "pattern.set": patternSet,
   "pattern.clear": patternClear,
+  "assignment.create": assignmentCreate,
+  "assignment.update": assignmentUpdate,
+  "assignment.cancel": assignmentCancel,
   "graph.createNode": createNode,
   "graph.updateNodeFields": updateNodeFields,
   "graph.softDeleteNode": softDeleteNode,

@@ -76,21 +76,18 @@ interface RowScopeContext {
  *  - `direct-reports`: the caller is the row's active manager.
  *  - `own-plus-team`: `own`, or the row shares the caller's active manager.
  *
- * Every other scope, and every row that is not an Employee, still resolves to
- * unsatisfied: those need a subject path this function does not follow yet, and
- * "cannot tell" is answered conservatively, never by guessing.
+ * BurnoutAlert's registered `triggered_by` path is also resolved here because
+ * VRS-F005's protected Contextual Intelligence call is the first real caller
+ * that must decide its Manager-restricted direct-report scope. Other node
+ * types still resolve conservatively until their owning feature supplies a
+ * registered subject path.
  */
 async function rowScopeSatisfied(
   scope: PolicyScope,
   row?: RowScopeContext,
 ): Promise<boolean> {
   if (scope === "any") return true;
-  if (
-    row === undefined ||
-    row.principal.kind !== "member" ||
-    row.nodeType !== "Employee" ||
-    row.nodeId === null
-  ) {
+  if (row === undefined || row.principal.kind !== "member" || row.nodeId === null) {
     return false;
   }
   const { tx, principal, nodeId, context } = row;
@@ -98,15 +95,31 @@ async function rowScopeSatisfied(
     context.roleDependencies?.resolveEmployeeForUser ?? resolveEmployeeForUser;
   const me = await resolve(tx, principal.workspaceId, principal.userId);
   if (me === null) return false;
-  if (scope === "own") return me === nodeId;
   const asOf = (context.now ?? nowIso)();
+  let subjectEmployeeId: string;
+  if (row.nodeType === "Employee") {
+    subjectEmployeeId = nodeId;
+  } else if (row.nodeType === "BurnoutAlert") {
+    const [subject] = await outgoing(
+      tx,
+      principal.workspaceId,
+      nodeId,
+      "triggered_by",
+      asOf,
+    );
+    if (!subject) return false;
+    subjectEmployeeId = subject.toNodeId;
+  } else {
+    return false;
+  }
+  if (scope === "own") return me === subjectEmployeeId;
   const managerOf = async (employeeId: string) =>
     (await outgoing(tx, principal.workspaceId, employeeId, "managed_by", asOf))[0]
       ?.toNodeId ?? null;
-  if (scope === "direct-reports") return (await managerOf(nodeId)) === me;
+  if (scope === "direct-reports") return (await managerOf(subjectEmployeeId)) === me;
   if (scope === "own-plus-team") {
-    if (me === nodeId) return true;
-    const theirs = await managerOf(nodeId);
+    if (me === subjectEmployeeId) return true;
+    const theirs = await managerOf(subjectEmployeeId);
     return theirs !== null && theirs === (await managerOf(me));
   }
   return false;

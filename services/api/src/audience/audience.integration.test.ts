@@ -336,7 +336,11 @@ describe("the audience follows every change, in the same transaction", () => {
       .where(eq(syncNodeAudience.nodeId, nodeId));
     const holders = rows.map((r) => r.userId).sort();
     expect(holders).toEqual(
-      [fixture.people.owner!.userId, fixture.people.hr!.userId].sort(),
+      [
+        fixture.people.owner!.userId,
+        fixture.people.hr!.userId,
+        fixture.people.plain!.userId,
+      ].sort(),
     );
   });
 

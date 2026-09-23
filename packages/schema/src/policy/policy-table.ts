@@ -249,6 +249,34 @@ const DEFAULT_CLASS_MAPPING: Readonly<
  * this table is even consulted — see the module doc comment's third bullet.
  */
 const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
+  Project: {
+    owner: FULL_ANY(),
+    "hr-admin": FULL_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: READ_ANY(),
+    "team-member": READ_ANY(),
+  },
+  Client: {
+    owner: FULL_ANY(),
+    "hr-admin": FULL_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: READ_ANY(),
+    "team-member": READ_ANY(),
+  },
+  GhostResource: {
+    owner: FULL_ANY(),
+    "hr-admin": FULL_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: READ_ANY(),
+    "team-member": READ_ANY(),
+  },
+  OpenRole: {
+    owner: FULL_ANY(),
+    "hr-admin": FULL_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: READ_ANY(),
+    "team-member": READ_ANY(),
+  },
   Entity: {
     owner: FULL_ANY(),
     "hr-admin": FULL_ANY(),
@@ -376,7 +404,7 @@ const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
     owner: FULL_ANY(),
     "hr-admin": FULL_ANY(),
     "finance-admin": READ_ANY(),
-    manager: FULL_ANY(),
+    manager: READ_ANY(),
     "team-member": READ_ANY(),
   },
   TimesheetEntry: {

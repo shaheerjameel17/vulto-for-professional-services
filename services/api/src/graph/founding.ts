@@ -52,7 +52,11 @@ export async function writeFoundingRecords(
 
   await insertNode(
     tx,
-    base(input.workspaceId, "Workspace", { name: input.workspaceName }),
+    base(input.workspaceId, "Workspace", {
+      name: input.workspaceName,
+      k_anonymity_minimum: 5,
+      k_anonymity_minimum_sensitive: 8,
+    }),
   );
   const entityId = randomUUID();
   await insertNode(

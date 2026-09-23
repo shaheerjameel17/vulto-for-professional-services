@@ -15,6 +15,17 @@ export class MutationRejection extends Error {
   }
 }
 
+/** VRS-F005's capacity refusal, retaining both figures in its stable reason. */
+export class ConflictError extends MutationRejection {
+  constructor(
+    readonly currentTotal: number,
+    readonly attemptedAddition: number,
+  ) {
+    super(`capacity-conflict:current=${currentTotal}:attempted=${attemptedAddition}`);
+    this.name = "ConflictError";
+  }
+}
+
 export interface MutationContext<Args> {
   readonly tx: GraphTx;
   readonly principal: MemberPrincipal;

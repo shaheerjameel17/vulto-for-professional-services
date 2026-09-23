@@ -28,3 +28,11 @@ export {
   SUBJECT_EXCLUSIONS,
   getSubjectExclusion,
 } from "./subject-exclusion";
+export {
+  K_ANONYMITY_FLOOR,
+  K_ANONYMITY_MINIMUM_DEFAULT,
+  K_ANONYMITY_MINIMUM_SENSITIVE_DEFAULT,
+  applyDisclosureControl,
+  readKAnonymityThreshold,
+  type DisclosureControlResult,
+} from "./disclosure-control";

@@ -228,6 +228,35 @@ describe("graph.applyMutations over tRPC", () => {
   });
 });
 
+describe("benchForecast.getAggregate over tRPC", () => {
+  it("exists only as an authenticated server call and derives its own cohort", async () => {
+    const owner = await signedInOwner();
+    const input = encodeURIComponent(
+      JSON.stringify({
+        workspace_id: owner.workspaceId,
+        window: { from_date: "2026-10-01", to_date: "2026-10-31" },
+        filters: { departments: ["Engineering"] },
+      }),
+    );
+    const unauthenticated = await app.inject({
+      method: "GET",
+      url: `/trpc/benchForecast.getAggregate?input=${input}`,
+      headers: { origin: ORIGIN },
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+    const response = await app.inject({
+      method: "GET",
+      url: `/trpc/benchForecast.getAggregate?input=${input}`,
+      headers: { cookie: owner.cookie, origin: ORIGIN },
+    });
+    expect(response.statusCode, response.body).toBe(200);
+    expect(JSON.parse(response.body).result.data).toEqual({
+      aggregateUtilization: { state: "suppressed" },
+      cohortSize: 0,
+    });
+  });
+});
+
 describe("protected.read over tRPC", () => {
   const SECRET = "SENTINEL-over-http-9271";
 
