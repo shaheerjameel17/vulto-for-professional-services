@@ -159,9 +159,13 @@ RateCard and RateCardLine are Finance-restricted and Tier 1, correctly — the f
 ### API contracts
 
 ```
-rateCard.create(name, currency, lines)      -> { rateCardId }
-rateCard.update(rateCardId, lines)          -> { newRateCardId }
-  // Creates a superseding version; never mutates the existing node
+rateCard.create(name, currency, lines)                       -> { rateCardId }
+rateCard.update(rateCardId, expectedVersion, lines)          -> { newRateCardId }
+  // expectedVersion checked first (stale-state) (F245). Creates a
+  // superseding version; name and currency copy forward from the prior
+  // card unchanged — update accepts neither as a parameter. The prior
+  // card's is_active becomes false (a permitted lifecycle-only change,
+  // not an edit to its content) — see G02, G08.
 rateCard.list(workspaceId)                  -> RateCard[]
 rateCard.getPreview(rateCardId, seniority)  -> { hourlyRate, dailyRate, monthlyRate }
 rateCard.usageCount(rateCardId)             -> { activeAssignments }
@@ -180,12 +184,14 @@ assignment.clearRateOverride(assignmentId)                     -> { effectiveBil
 | ID | Specification |
 |---|---|
 | G01 | RateCard and RateCardLine are Finance-restricted, Tier 1 |
-| G02 | Updating rates creates a new RateCard linked by `supersedes`. The prior node is never edited in place |
+| G02 | Updating rates creates a new RateCard linked by `supersedes`. The prior node's content (name, currency, lines) is never edited in place; its `is_active` lifecycle flag is the one permitted exception, set to `false` on supersession (F245) |
 | G03 | Assignments retain their `rate_card_id` through an update. No bulk migration occurs; an assignment moves to a newer version only through an explicit `assignment.setRateCard` |
 | G04 | `effective_billing_rate` resolves in strict order: override, matching line, `billing_rate_default`. Computed at write time, never recomputed retroactively |
 | G05 | At most one line per seniority level per card. A duplicate write replaces the rate rather than creating a second line |
 | G06 | A rate card's `currency` defaults from the Entity's `default_currency` per [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] and is never inferred from the workspace |
 | G07 | Assignment's `governed_by` edge to RateCard is written alongside its scalar `rate_card_id` field by `assignment.setRateCard`/`assignment.create`, managed manually (close-then-open, no `historyPolicy`) the same way `governed_by_calendar` is managed. `rateCard.usageCount` and the version-history active-assignment count resolve via `incoming(..., "governed_by")`, never an Assignment scan (F243) |
+| G08 | `rateCard.update` requires `expectedVersion`, checked first (`stale-state` before anything else). `name` and `currency` are never accepted by `update`; the new version copies both from the prior card (F245) |
+| G09 | The `governed_by` edge (G07) is written exclusively in the mutation's server-side `apply()` step, never by an optimistic handler. `assignment.create`'s optimistic handler is unchanged from Stage 13: `rate_card_id` writes as a plain scalar, `effective_billing_rate` always defaults to `billing_rate_default` locally, corrected by the server's response once confirmed — `assignment.create` needs no conditional `onlineOnly` behavior (F246) |
 
 ---
 
