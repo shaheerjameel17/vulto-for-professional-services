@@ -43,6 +43,7 @@ import {
   patternClear,
   patternSet,
 } from "./calendar.js";
+import { assignmentCancel, assignmentCreate, assignmentUpdate } from "./assignment.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -87,6 +88,9 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "holiday.cancel": holidayCancel as ServerMutation<never>,
   "pattern.set": patternSet as ServerMutation<never>,
   "pattern.clear": patternClear as ServerMutation<never>,
+  "assignment.create": assignmentCreate as ServerMutation<never>,
+  "assignment.update": assignmentUpdate as ServerMutation<never>,
+  "assignment.cancel": assignmentCancel as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {
@@ -255,7 +259,10 @@ export async function applyMutation(
           definition?.name === "entity.deactivate" ||
           definition?.name === "calendar.update" ||
           definition?.name === "pattern.set" ||
-          definition?.name === "pattern.clear"
+          definition?.name === "pattern.clear" ||
+          definition?.name === "assignment.create" ||
+          definition?.name === "assignment.update" ||
+          definition?.name === "assignment.cancel"
           ? { isolationLevel: "serializable" }
           : undefined,
       );

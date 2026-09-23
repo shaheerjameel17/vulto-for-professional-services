@@ -1,4 +1,5 @@
 import { sql } from "./db.js";
+import { TRPCError } from "@trpc/server";
 import {
   applyMutationsInputSchema,
   employeeGetInputSchema,
@@ -9,6 +10,9 @@ import {
   workingDaysRangeInputSchema,
   workingDaysNextInputSchema,
   workingDaysAddInputSchema,
+  benchForecastGetInputSchema,
+  benchForecastCostInputSchema,
+  contextualIntelligenceInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -23,6 +27,11 @@ import {
   nextWorkingDay,
 } from "./permission/working-days-queries.js";
 import { authorizeRead } from "./permission/interceptor.js";
+import {
+  getBenchForecastAggregate,
+  getBenchForecastCosts,
+} from "./permission/bench-forecast-queries.js";
+import { getProtectedContextualIntelligence } from "./permission/contextual-intelligence-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -266,6 +275,47 @@ export const appRouter = t.router({
           addWorkingDays(tx, ctx.principal, input.employee_id, input.from, input.n),
         ),
       ),
+  }),
+  benchForecast: t.router({
+    getAggregate: protectedProcedure
+      .input(benchForecastGetInputSchema)
+      .query(({ ctx, input }) => {
+        if (input.workspace_id !== ctx.principal.workspaceId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
+        }
+        return db.transaction((tx) =>
+          getBenchForecastAggregate(tx, ctx.principal, {
+            window: input.window,
+            ...(input.filters === undefined ? {} : { filters: input.filters }),
+          }),
+        );
+      }),
+    getCost: protectedProcedure
+      .input(benchForecastCostInputSchema)
+      .query(async ({ ctx, input }) => {
+        ctx.res.header("Cache-Control", "no-store");
+        return db.transaction((tx) =>
+          getBenchForecastCosts(tx, getKeyServices(), ctx.principal, {
+            employeeIds: input.employee_ids,
+            window: input.window,
+          }),
+        );
+      }),
+  }),
+  contextualIntelligence: t.router({
+    getProtected: protectedProcedure
+      .input(contextualIntelligenceInputSchema)
+      .query(async ({ ctx, input }) => {
+        ctx.res.header("Cache-Control", "no-store");
+        return db.transaction((tx) =>
+          getProtectedContextualIntelligence(
+            tx,
+            getKeyServices(),
+            ctx.principal,
+            input.employee_id,
+          ),
+        );
+      }),
   }),
   principal: t.router({
     /**

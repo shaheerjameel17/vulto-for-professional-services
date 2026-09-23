@@ -1,4 +1,9 @@
-import type { ReducedHoursPeriod, WorkingWeek } from "@vulto/schema";
+import {
+  resolveWorkingDay,
+  type ReducedHoursPeriod,
+  type ResolvedWorkingDay,
+  type WorkingWeek,
+} from "@vulto/schema";
 import { resolveEntityAssignment } from "./entity-resolution.js";
 import { resolveCalendarForEntity } from "./calendar-resolution.js";
 import { getNode, getNodes, incoming, type GraphTx, type StoredNode } from "./store.js";
@@ -6,10 +11,6 @@ import { getNode, getNodes, incoming, type GraphTx, type StoredNode } from "./st
 export type WorkingDaysReadGuard = (node: StoredNode) => Promise<boolean>;
 
 const isoInstant = (date: string) => `${date}T12:00:00.000Z`;
-const dayNumber = (date: string) => {
-  const day = new Date(`${date}T00:00:00.000Z`).getUTCDay();
-  return day === 0 ? 7 : day;
-};
 const addDays = (date: string, amount: number) => {
   const value = new Date(`${date}T00:00:00.000Z`);
   value.setUTCDate(value.getUTCDate() + amount);
@@ -58,13 +59,13 @@ async function holidaysFor(
 }
 
 /** G08: the one implementation of the calendar/holiday/pattern resolution order. */
-async function resolveHoursOn(
+export async function resolvedDayOn(
   tx: GraphTx,
   workspaceId: string,
   employeeId: string,
   date: string,
   mayRead: WorkingDaysReadGuard,
-): Promise<{ hours: number; standardDailyHours: number }> {
+): Promise<ResolvedWorkingDay> {
   const employee = await getNode(tx, workspaceId, employeeId);
   if (!employee || employee.isSoftDeleted || employee.nodeType !== "Employee")
     throw new Error("not-found");
@@ -86,40 +87,30 @@ async function resolveHoursOn(
   if (!calendar) throw new Error("not-found");
   if (!(await mayRead(calendar))) throw new Error("not-found");
   const location = employee.record["location"] as string | null | undefined;
-  const holiday = (await holidaysFor(tx, workspaceId, calendar.nodeId, mayRead)).find(
-    (candidate) => {
-      if (candidate.record["date"] !== date) return false;
-      const locations = candidate.record["applies_to_locations"] as string[] | null;
-      return (
-        locations === null ||
-        (location !== null && location !== undefined && locations.includes(location))
-      );
+  const pattern = await patternFor(tx, workspaceId, employeeId, date, mayRead);
+  const holidays = await holidaysFor(tx, workspaceId, calendar.nodeId, mayRead);
+  return resolveWorkingDay({
+    calendar: {
+      workingWeek: calendar.record["working_week"] as WorkingWeek,
+      standardDailyHours: Number(calendar.record["standard_daily_hours"] ?? 8),
+      reducedHoursPeriods:
+        (calendar.record["reduced_hours_periods"] as
+          ReducedHoursPeriod[] | undefined) ?? [],
     },
-  );
-  const standard = Number(calendar.record["standard_daily_hours"] ?? 8);
-  let hours: number;
-  if (holiday && holiday.record["is_half_day"] !== true) hours = 0;
-  else if (holiday) hours = standard * 0.5;
-  else {
-    const day = dayNumber(date);
-    const pattern = await patternFor(tx, workspaceId, employeeId, date, mayRead);
-    const patternDay = (
-      pattern?.record["working_week"] as WorkingWeek | undefined
-    )?.find((entry) => entry.day === day);
-    const calendarDay = (calendar.record["working_week"] as WorkingWeek).find(
-      (entry) => entry.day === day,
-    );
-    const selected = patternDay ?? calendarDay;
-    hours = selected?.is_working ? selected.hours : 0;
-  }
-  if (hours > 0) {
-    const period = (
-      (calendar.record["reduced_hours_periods"] as ReducedHoursPeriod[] | undefined) ??
-      []
-    ).find((candidate) => candidate.start_date <= date && date <= candidate.end_date);
-    if (period) hours *= period.factor;
-  }
-  return { hours, standardDailyHours: standard };
+    pattern:
+      pattern === null
+        ? null
+        : { workingWeek: pattern.record["working_week"] as WorkingWeek },
+    holidays: holidays.map((candidate) => ({
+      date: String(candidate.record["date"]),
+      appliesToLocations:
+        (candidate.record["applies_to_locations"] as string[] | null | undefined) ??
+        null,
+      isHalfDay: candidate.record["is_half_day"] === true,
+    })),
+    date,
+    location: location ?? null,
+  });
 }
 
 export async function hoursOn(
@@ -129,7 +120,7 @@ export async function hoursOn(
   date: string,
   mayRead: WorkingDaysReadGuard,
 ): Promise<number> {
-  return (await resolveHoursOn(tx, workspaceId, employeeId, date, mayRead)).hours;
+  return (await resolvedDayOn(tx, workspaceId, employeeId, date, mayRead)).hours;
 }
 
 export async function countWorkingDays(
@@ -145,12 +136,9 @@ export async function countWorkingDays(
   let hours = 0;
   let days = 0;
   while (date <= to) {
-    const resolved = await resolveHoursOn(tx, workspaceId, employeeId, date, mayRead);
+    const resolved = await resolvedDayOn(tx, workspaceId, employeeId, date, mayRead);
     hours += resolved.hours;
-    days +=
-      resolved.standardDailyHours === 0
-        ? 0
-        : resolved.hours / resolved.standardDailyHours;
+    days += resolved.dayFraction;
     date = addDays(date, 1);
   }
   return { days, hours };
