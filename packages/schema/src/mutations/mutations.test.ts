@@ -38,8 +38,11 @@ describe("defineMutation", () => {
 });
 
 describe("the foundation mutation set", () => {
-  it("registers the foundation, Employee, and Entity mutations; only compensation is protected", () => {
+  it("registers every named foundation mutation; only compensation is protected", () => {
     expect(Object.keys(MUTATIONS).sort()).toEqual([
+      "assignment.cancel",
+      "assignment.create",
+      "assignment.update",
       "calendar.update",
       "employee.create",
       "employee.linkUser",
@@ -83,6 +86,7 @@ describe("the foundation mutation set", () => {
         "pattern.clear",
         "pattern.set",
         "calendar.update",
+        "assignment.cancel",
       ].sort(),
     );
   });
