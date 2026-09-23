@@ -96,7 +96,20 @@ export async function resolveReaderSet(
     // the record concerns, if they hold the role and have a login. Every other
     // row-dependent scope, and a derived Manager, is still unresolvable.
     if (role === "manager") return UNRESOLVABLE;
-    if (cell.scope === "own" && input.subjectEmployeeId !== null) {
+    if (cell.scope === "own") {
+      if (input.subjectEmployeeId === null) {
+        // A fixed-class node with no subject relationship has no "own" reader.
+        // The scoped grant contributes nobody; it does not make the concrete
+        // any-scope readers unknowable. Employee and registered subject-exclusion
+        // types do have a subject and remain fail-closed while it is unresolved.
+        if (
+          input.nodeType === "Employee" ||
+          getSubjectExclusion(input.nodeType) !== undefined
+        ) {
+          return UNRESOLVABLE;
+        }
+        continue;
+      }
       const owner = await resolveUserForEmployee(
         tx,
         input.workspaceId,

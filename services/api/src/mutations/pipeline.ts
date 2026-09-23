@@ -43,7 +43,15 @@ import {
   patternClear,
   patternSet,
 } from "./calendar.js";
-import { assignmentCancel, assignmentCreate, assignmentUpdate } from "./assignment.js";
+import {
+  assignmentCancel,
+  assignmentClearRateOverride,
+  assignmentCreate,
+  assignmentSetRateCard,
+  assignmentSetRateOverride,
+  assignmentUpdate,
+} from "./assignment.js";
+import { rateCardCreate, rateCardUpdate } from "./rate-card.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -91,6 +99,11 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "assignment.create": assignmentCreate as ServerMutation<never>,
   "assignment.update": assignmentUpdate as ServerMutation<never>,
   "assignment.cancel": assignmentCancel as ServerMutation<never>,
+  "assignment.setRateCard": assignmentSetRateCard as ServerMutation<never>,
+  "assignment.setRateOverride": assignmentSetRateOverride as ServerMutation<never>,
+  "assignment.clearRateOverride": assignmentClearRateOverride as ServerMutation<never>,
+  "rateCard.create": rateCardCreate as ServerMutation<never>,
+  "rateCard.update": rateCardUpdate as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {
@@ -262,7 +275,9 @@ export async function applyMutation(
           definition?.name === "pattern.clear" ||
           definition?.name === "assignment.create" ||
           definition?.name === "assignment.update" ||
-          definition?.name === "assignment.cancel"
+          definition?.name === "assignment.cancel" ||
+          definition?.name === "assignment.setRateCard" ||
+          definition?.name === "rateCard.update"
           ? { isolationLevel: "serializable" }
           : undefined,
       );

@@ -13,6 +13,9 @@ import {
   benchForecastGetInputSchema,
   benchForecastCostInputSchema,
   contextualIntelligenceInputSchema,
+  rateCardListInputSchema,
+  rateCardPreviewInputSchema,
+  rateCardUsageInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -32,6 +35,12 @@ import {
   getBenchForecastCosts,
 } from "./permission/bench-forecast-queries.js";
 import { getProtectedContextualIntelligence } from "./permission/contextual-intelligence-queries.js";
+import {
+  getRateCardPreview,
+  getRateCardUsageCount,
+  listRateCards,
+  RateCardAccessDenied,
+} from "./permission/rate-card-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -315,6 +324,58 @@ export const appRouter = t.router({
             input.employee_id,
           ),
         );
+      }),
+  }),
+  rateCard: t.router({
+    list: protectedProcedure
+      .input(rateCardListInputSchema)
+      .query(async ({ ctx, input }) => {
+        if (input.workspace_id !== ctx.principal.workspaceId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
+        }
+        ctx.res.header("Cache-Control", "no-store");
+        try {
+          return await db.transaction((tx) =>
+            listRateCards(tx, getKeyServices(), ctx.principal),
+          );
+        } catch (error) {
+          if (error instanceof RateCardAccessDenied)
+            throw new TRPCError({ code: "FORBIDDEN", message: error.message });
+          throw error;
+        }
+      }),
+    getPreview: protectedProcedure
+      .input(rateCardPreviewInputSchema)
+      .query(async ({ ctx, input }) => {
+        ctx.res.header("Cache-Control", "no-store");
+        try {
+          return await db.transaction((tx) =>
+            getRateCardPreview(
+              tx,
+              getKeyServices(),
+              ctx.principal,
+              input.rate_card_id,
+              input.seniority,
+            ),
+          );
+        } catch (error) {
+          if (error instanceof RateCardAccessDenied)
+            throw new TRPCError({ code: "FORBIDDEN", message: error.message });
+          throw error;
+        }
+      }),
+    usageCount: protectedProcedure
+      .input(rateCardUsageInputSchema)
+      .query(async ({ ctx, input }) => {
+        try {
+          return await db.transaction((tx) =>
+            getRateCardUsageCount(tx, ctx.principal, input.rate_card_id),
+          );
+        } catch (error) {
+          if (error instanceof RateCardAccessDenied)
+            throw new TRPCError({ code: "FORBIDDEN", message: error.message });
+          throw error;
+        }
       }),
   }),
   principal: t.router({

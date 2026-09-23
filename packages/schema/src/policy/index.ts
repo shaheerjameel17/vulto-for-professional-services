@@ -1,5 +1,6 @@
 /** VPS-A004's policy table — the sole input to the interceptor (A004-T21). */
 export {
+  __TESTING__,
   POLICY_ROLES,
   resolvePermission,
   resolvePolicyCell,

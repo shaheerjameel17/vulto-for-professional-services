@@ -38,10 +38,13 @@ describe("defineMutation", () => {
 });
 
 describe("the foundation mutation set", () => {
-  it("registers every named foundation mutation; only compensation is protected", () => {
+  it("registers every named mutation and keeps protected writes online-only", () => {
     expect(Object.keys(MUTATIONS).sort()).toEqual([
       "assignment.cancel",
+      "assignment.clearRateOverride",
       "assignment.create",
+      "assignment.setRateCard",
+      "assignment.setRateOverride",
       "assignment.update",
       "calendar.update",
       "employee.create",
@@ -65,10 +68,16 @@ describe("the foundation mutation set", () => {
       "org.moveEmployee",
       "pattern.clear",
       "pattern.set",
+      "rateCard.create",
+      "rateCard.update",
     ]);
     for (const definition of Object.values(MUTATIONS)) {
       expect(definition.tier).toBe(
-        definition.name === "employee.setCompensation" ? 1 : 0,
+        definition.name === "employee.setCompensation" ||
+          definition.name === "rateCard.create" ||
+          definition.name === "rateCard.update"
+          ? 1
+          : 0,
       );
       // A protected write can never be queued offline.
       expect(definition.onlineOnly).toBe(definition.tier > 0);
@@ -87,8 +96,37 @@ describe("the foundation mutation set", () => {
         "pattern.set",
         "calendar.update",
         "assignment.cancel",
+        "rateCard.update",
       ].sort(),
     );
+  });
+
+  it("keeps rateCard.update versioned and unable to rename or recurrency a card", () => {
+    const id = "11111111-1111-4111-8111-111111111111";
+    const line = { seniority_level: "Senior", hourly_rate: 100 };
+    expect(
+      MUTATIONS["rateCard.update"].input.safeParse({
+        rate_card_id: id,
+        expected_version: 1,
+        lines: [line],
+      }).success,
+    ).toBe(true);
+    expect(
+      MUTATIONS["rateCard.update"].input.safeParse({
+        rate_card_id: id,
+        expected_version: 1,
+        lines: [line],
+        currency: "USD",
+      }).success,
+    ).toBe(false);
+    expect(
+      MUTATIONS["rateCard.update"].input.safeParse({
+        rate_card_id: id,
+        lines: [line],
+      }).success,
+    ).toBe(false);
+    expect(MUTATIONS["rateCard.create"].onlineOnly).toBe(true);
+    expect(MUTATIONS["rateCard.update"].onlineOnly).toBe(true);
   });
 
   it("gives a feature-owned lifecycle its own table, and shuts the generic one out", () => {

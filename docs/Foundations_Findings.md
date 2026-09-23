@@ -3142,6 +3142,3 @@ Raised 23 September 2026 while resuming Stage 14 (`FDN-121`) after F245 and F246
 `VRS-F006`'s Technical Architecture (the RateCardLine block) and API contracts are corrected to state the deterministic id explicitly, as a new G10.
 
 **Status: closed.** Stage 14 is unblocked; `rateCard.getPreview` and `resolveAssignmentRate` both have a real, scan-free lookup path, and G05 is enforced by construction.
-
-
-

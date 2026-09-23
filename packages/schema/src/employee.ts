@@ -34,6 +34,7 @@ export const SENIORITY_LEVELS = [
   "Director",
   "CLevel",
 ] as const;
+export type SeniorityLevel = (typeof SENIORITY_LEVELS)[number];
 export const PROBATION_STATUSES = [
   "Pending",
   "Confirmed",

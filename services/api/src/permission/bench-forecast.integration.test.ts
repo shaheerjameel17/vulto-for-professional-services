@@ -145,7 +145,7 @@ describe("VRS-F005 — The Bench Forecast", () => {
     const stored = await db.transaction((tx) =>
       getNode(tx, w.workspaceId, assignmentId),
     );
-    expect(stored?.record).toMatchObject({ effective_billing_rate: 1000 });
+    expect(stored?.record).toMatchObject({ effective_billing_rate: 125 });
     const conflict = await w.apply("hr", "assignment.create", {
       employee_id: employeeId,
       project_id: w.projectId,
