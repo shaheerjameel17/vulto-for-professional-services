@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee — `billing_rate_default` and `seniority_level`, the fallback and the matching key), [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] (Entity — `default_currency`), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (Assignment, which carries this feature's resolved rate), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (RateCard and RateCardLine registry entries), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (Tier 1 sync and encryption), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (the Finance-restricted default mapping, no override required)
+**Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee — `billing_rate_default` and `seniority_level`, the fallback and the matching key), [[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]] (Entity — `default_currency`), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (Assignment, which carries this feature's resolved rate), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (RateCard and RateCardLine registry entries), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (Tier 1 fetch-on-demand and encryption), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (the Finance-restricted default mapping, no override required)
 **Blocks:** Nothing structurally. [[VRS-F005_The_Bench_Forecast|VRS-F005]] renders without it, writing `billing_rate_default` into `effective_billing_rate` until this feature supplies resolution.
 
 This document is the single source of truth for this feature.
@@ -91,7 +91,7 @@ Standard list and form bindings from [[VPS-D003_Interaction_Motion_and_Keyboard_
 |---|---|
 | Syncing | Skeleton rows |
 | Restricted | Managers and Team Members never reach this screen. It does not render in the sidebar for them, rather than rendering and refusing |
-| Aged out | Superseded cards outside [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s Tier 1 window render dashed with **Fetch** |
+| Aged out | Not applicable. Every read is fetched fresh (F244); nothing is cached on-device to age out of |
 | Empty | *No rate cards yet. Assignments will use each person's default billing rate.* with **Create rate card** — naming what happens without one, rather than implying the product is incomplete |
 | Error | A duplicate seniority line replaces rather than erroring |
 
@@ -242,7 +242,7 @@ assignment.clearRateOverride(assignmentId)                     -> { effectiveBil
 
 - Rate preview resolves within 200ms of selecting a card and seniority level
 - `effective_billing_rate` recomputation completes atomically with the Assignment write, never as a separate eventually-consistent step
-- RateCard and RateCardLine sync only to Owner, Finance Admin and HR Admin devices per [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]
+- RateCard and RateCardLine are Tier 1 — fetched on demand by Owner, Finance Admin and HR Admin roles through the permission interceptor, and never cached or persisted on any device (F244)
 - No mechanism exists, or should exist, for a rate card update to alter an already-resolved rate on an existing Assignment
 
 ---
