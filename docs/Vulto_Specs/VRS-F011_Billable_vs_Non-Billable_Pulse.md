@@ -118,7 +118,8 @@ The dashboard chart becomes a scrollable list of rows below 1024px, each with a 
 snapshot_id:                UUID v4
 workspace_id:               UUID
 employee_id:                UUID
-week_start_date:            date — the first working day of the week per VRS-F004
+week_start_date:            date — per VRS-F004's WorkingCalendar.week_start_day (F276),
+                            resolved via the same weekStartForEmployee this feature's engine calls
 
 expected_hours:             decimal — available working hours for this employee
                             this week, from VRS-F004. The denominator
@@ -152,7 +153,7 @@ It does not traverse Employee → Assignment → entry. That path cannot reach a
 
 ### Expected hours
 
-`expected_hours` comes from `workingDays.count(employeeId, weekStart, weekEnd)` per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. It accounts for the employee's working pattern, their entity's calendar, public holidays and reduced-hours periods automatically.
+`expected_hours` is computed by the identical mechanism [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s own `getWeek` already uses for the same employee and week (F277), never a second, independently-written traversal: `hoursOn(tx, principal, employeeId, date)` summed across the seven dates from `weekStartForEmployee` — accounting for the employee's working pattern, their entity's calendar, public holidays and reduced-hours periods automatically, per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. Two separately-implemented computations of "expected hours for this employee this week" is precisely the silent-disagreement risk this document's own Related Notes section already names for the Bench Forecast's figure; it applies with equal force here.
 
 Approved leave reduces expected hours once [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]] exists. Until then, a person on holiday shows a depressed utilization rate, and this is stated as a known limitation rather than left to be discovered.
 
@@ -270,7 +271,7 @@ utilizationDashboard.getAgencyAggregate(workspaceId, weekStartDate?, filters?) -
 
 ## Security Considerations
 
-- **UtilizationSnapshot follows Employee's Standard, Tier 0 visibility**: Owner and HR Admin full, Manager scoped to direct reports, Team Member their own. A deliberate reuse of an existing rule, not a new category.
+- **UtilizationSnapshot's policy row is Tier 0, composed from the matching cell of each of Employee's two existing Tier 0 rows, not a literal copy of either (F278):** Owner and HR Admin full (both rows agree); Manager `Full (direct reports)`, `Employee:operational`'s own cell; Team Member `Read (own only)`, `Employee:compensation`'s own cell — the closer analog for an individually-sensitive per-person figure than general profile data; Finance Admin `Read (any)`, `Employee:operational`'s own Tier 0 default for a role this feature does not otherwise restrict. Neither existing row alone matches the shape stated below and in the System States table above — `Employee:operational`'s Team Member cell is own-plus-team, and `Employee:compensation`'s Manager cell is restricted to Finance Admin.
 - **Every aggregate passes [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control**, including differencing protection. A dashboard filtered to a team of eleven and one filtered to twelve must not allow the twelfth person's figure to be recovered by subtraction.
 - **The per-employee comparison is a ranked list of colleagues**, which carries real social weight. It is restricted to Owner, HR Admin and Manager-for-their-reports. A Team Member sees their own bar and the agency aggregate, never the ranking.
 
@@ -289,6 +290,12 @@ utilizationDashboard.getAgencyAggregate(workspaceId, weekStartDate?, filters?) -
 ---
 
 ## Decisions Recorded
+
+**`week_start_date` and `expected_hours` corrected to name the real, already-built mechanisms — F277, 25 September 2026.** This document was written before [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s Stage 18 build existed, and still described the week key as "the first working day of the week" and `expected_hours` as coming from a `workingDays.count` function that was never built under that name or that day-count semantics. Corrected to name `weekStartForEmployee` (F276) and `hoursOn`/`isoDatesInclusive` (the same functions `getWeek` already calls) directly, and to require `utilizationSnapshot.compute` to reuse `getWeek`'s own `expectedWeeklyHours` computation rather than reimplement it.
+
+**UtilizationSnapshot's policy row composed from each existing Employee row's matching cell, not a literal reuse of either — F278, 25 September 2026.** "A deliberate reuse of an existing rule" was ambiguous about which rule: neither `Employee:operational` nor `Employee:compensation` alone produces the access shape this document itself describes. See the corrected Security Considerations section above for the composed row.
+
+**`billability_target`'s workspace-level default stays a hardcoded constant (0.75) for now, pending [[VPS-F005_Workspace_Configuration_Console|VPS-F005]]**, on the identical precedent [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s own `overtime_flag_threshold` already established (settled before that stage's brief was written): a registered [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] configuration key with no console yet built to edit it gains nothing from being written into `Workspace`'s own record ahead of that console's existence, and the two thresholds should stay consistent with each other in how they're carried until then.
 
 **The denominator changes from logged hours to expected hours.** The previous specification computed billable over total logged, which gives 100% utilization to an employee who logs only billable work — making the person with the worst logging discipline appear to be the best performer. It also contradicted [[VRS-F005_The_Bench_Forecast|VRS-F005]], which would show that same person accumulating bench cost. Utilization now divides by available hours from [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], which is both the standard professional services definition and the only one consistent with the rest of this product.
 
