@@ -2,7 +2,7 @@
 
 - **Status:** Complete, awaiting founder review.
 - **Branch:** `codex/stage-17-time-classification-taxonomy` from `main` at `2ed07e6`.
-- **Linear:** FDN-124.
+- **Linear:** RST-45.
 - **Date:** 24 September 2026.
 
 ## Summary
@@ -46,7 +46,7 @@ F265 updates `VRS-F009`, `VPS-A002`, and the Stage 17 brief with the second gove
 
 The validator is deliberately inert until `VRS-F010` incorporates it into a real TimesheetEntry mutation and performs graph-dependent checks. The selector's access gate is `Employee:operational`; its data projection stays narrow even for Owner. Staffing writes are optimistic and may be rejected by the server if permissions change before commit, with the existing undo path reversing the local effect.
 
-The branch is ready for founder review. FDN-124 moves to In Review; merge and Stage 18 remain at the founder's stage boundary.
+The branch is ready for founder review. RST-45 moves to In Review; merge and Stage 18 remain at the founder's stage boundary.
 
 ## Verification addendum — 24 September 2026
 

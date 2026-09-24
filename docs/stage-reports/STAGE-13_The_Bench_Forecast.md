@@ -2,7 +2,7 @@
 
 **Status:** COMPLETE, awaiting review.
 **Branch:** `codex/stage-13-bench-forecast`
-**Linear:** FDN-120
+**Linear:** RST-41
 **Date:** 23 September 2026
 
 ## 1. Summary
@@ -104,4 +104,4 @@ None from the final corrected Stage 13 brief. The implementation deliberately om
 
 ## 11. Readiness for the next stage
 
-Stage 13 is ready for direct code review on `codex/stage-13-bench-forecast`. FDN-120 should move to Done only after approval and merge. The branch is intentionally unmerged, and no subsequent stage has started.
+Stage 13 is ready for direct code review on `codex/stage-13-bench-forecast`. RST-41 should move to Done only after approval and merge. The branch is intentionally unmerged, and no subsequent stage has started.

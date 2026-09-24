@@ -2851,7 +2851,7 @@ Raised 22 September 2026 during the same Stage 11 brief. `VRS-F003`'s G04 states
 
 ### F223 — Entity deactivation has no defined state transition or base version
 
-Raised 22 September 2026 while tracing the Stage 11 brief before implementation (FDN-118). The brief instructs the builder to add `entity.deactivate(entityId)` and enforce the separate G04 and G05 refusals. `VRS-F003` gives exactly that API signature. Its Entity schema has both `is_active: boolean` and `lifecycle_status: Active | Dissolved`, but it does not define whether deactivation sets `is_active` to false, moves the lifecycle to `Dissolved`, or does both. Those choices lead to different definitions of the “remaining Active Entity” counted by G04, and different behavior for later reads and updates.
+Raised 22 September 2026 while tracing the Stage 11 brief before implementation (RST-39). The brief instructs the builder to add `entity.deactivate(entityId)` and enforce the separate G04 and G05 refusals. `VRS-F003` gives exactly that API signature. Its Entity schema has both `is_active: boolean` and `lifecycle_status: Active | Dissolved`, but it does not define whether deactivation sets `is_active` to false, moves the lifecycle to `Dissolved`, or does both. Those choices lead to different definitions of the “remaining Active Entity” counted by G04, and different behavior for later reads and updates.
 
 There is a separate contract conflict in the same operation. `VPS-A003`'s Conflict resolution section and A003-T54 require every state-transition mutation to carry the base `version` on which the decision was made, rejecting a changed version with `stale-state`. The Stage 4 brief implemented that rule for `graph.transitionLifecycle` through required `expected_version`, and Stage 8's `employee.transitionStatus` follows it. Deactivation is a change from active to inactive or dissolved, yet neither Stage 11's brief nor `VRS-F003` gives `entity.deactivate` a version argument or an exception to A003-T54. Marking it `stateTransition: false` or silently using the current database version would evade the existing concurrency rule; adding a required argument would change the stated API contract. Neither choice is authorized by the brief.
 
@@ -2899,7 +2899,7 @@ Raised 22 September 2026 while briefing Stage 12, tracing `VRS-F004`'s Technical
 
 ### F227 — no defined working week for the founding Global Entity or two allowed jurisdictions
 
-Raised 22 September 2026 tracing Stage 12 (`FDN-119`) before implementation. `VRS-F004` G02 and the Stage 12 Done criteria require an Active WorkingCalendar the moment *every* Entity is created. The two creation paths are Stage 11's `writeFoundingRecords` (a `Global` Entity in the workspace-creation transaction) and `entity.create`, whose closed jurisdiction enum also allows `IN` and `SG`. `VRS-F004`'s setup flow gives templates for PK, UK, US, AE and SA only. It gives no working week for `Global`, `IN` or `SG`; `VRS-F003` says `Global` uses the workspace's own default calendar, but neither the existing founding records nor the registered `Entity`→`WorkingCalendar` edge provides a separate workspace default. Neither creation API accepts the seven weekdays, and `VPS-F006`'s setup wizard, which would ask the founder, is not built. An implementation cannot create the required calendar without choosing a seven-day template and daily hours that the founder has not specified. Reusing a PK/UK template for `Global`, or silently using Monday–Friday for all three, would be a new product decision.
+Raised 22 September 2026 tracing Stage 12 (`RST-40`) before implementation. `VRS-F004` G02 and the Stage 12 Done criteria require an Active WorkingCalendar the moment *every* Entity is created. The two creation paths are Stage 11's `writeFoundingRecords` (a `Global` Entity in the workspace-creation transaction) and `entity.create`, whose closed jurisdiction enum also allows `IN` and `SG`. `VRS-F004`'s setup flow gives templates for PK, UK, US, AE and SA only. It gives no working week for `Global`, `IN` or `SG`; `VRS-F003` says `Global` uses the workspace's own default calendar, but neither the existing founding records nor the registered `Entity`→`WorkingCalendar` edge provides a separate workspace default. Neither creation API accepts the seven weekdays, and `VPS-F006`'s setup wizard, which would ask the founder, is not built. An implementation cannot create the required calendar without choosing a seven-day template and daily hours that the founder has not specified. Reusing a PK/UK template for `Global`, or silently using Monday–Friday for all three, would be a new product decision.
 
 **Ruling — closed 22 September 2026.** `Global`, `IN` and `SG` all get the same initial template UK and US already use: Monday to Friday, `standard_daily_hours: 8` — the schema's own existing default for that field. This is not a new pattern; it is the same shape two of the five named templates already use, applied to the three the spec left unnamed, and it is editable afterward through `calendar.update` by an Owner or HR Admin, the same escape hatch F222 already established for the founding Entity's own placeholder defaults (`jurisdiction: "Global"`, `default_currency: "USD"`). Both creation paths write the calendar atomically with the Entity it belongs to, never as a follow-up: `entity.create`'s implementation and Stage 11's `writeFoundingRecords` (F222's founding bootstrap) both call one shared internal helper — `createInitialCalendar(tx, entityId, jurisdiction)` — that selects PK/UK/US/AE/SA's own named template when the jurisdiction matches, and the Monday-to-Friday/8-hour default otherwise, in the same transaction as the Entity write. `VRS-F004`'s setup-flow prose and its G02 are corrected to name this default explicitly rather than leaving `Global`/`IN`/`SG` unaddressed. AE's own named template is itself corrected from Monday-to-Friday to Sunday-to-Thursday the same day (F232), once tracing found it contradicted the feature's own Friday-exclusion acceptance criterion; the Global/IN/SG default above is unaffected by that fix. The jurisdiction-template selection this helper performs is also exported as a plain, portable function so the client's optimistic `entity.create` handler can select the identical template without a round trip (F233).
 
@@ -2939,7 +2939,7 @@ F226 defers only the materialized index and its rebuild mechanism. Its detailed 
 
 ### F232 — AE's named template includes Friday while its acceptance criterion excludes Friday
 
-Raised 22 September 2026 while resuming Stage 12 (`FDN-119`) on the F227–F231 rulings, before implementation. `VRS-F004`'s setup flow defines the named AE template as Monday through Friday, and F227 explicitly uses AE as one of the existing Monday-through-Friday templates. The same feature's first acceptance criterion says that, for an AE Entity with that Monday-to-Friday calendar, a Friday in the evaluated range is excluded as a non-working day. Stage 12's Done criteria require that exact “AE Friday exclusion” proof. ISO Friday is day 5, so one template cannot both mark it working and exclude it as non-working. The remaining likely templates are product choices: Sunday–Thursday, Monday–Thursday, or a different configured example rather than the initial template.
+Raised 22 September 2026 while resuming Stage 12 (`RST-40`) on the F227–F231 rulings, before implementation. `VRS-F004`'s setup flow defines the named AE template as Monday through Friday, and F227 explicitly uses AE as one of the existing Monday-through-Friday templates. The same feature's first acceptance criterion says that, for an AE Entity with that Monday-to-Friday calendar, a Friday in the evaluated range is excluded as a non-working day. Stage 12's Done criteria require that exact “AE Friday exclusion” proof. ISO Friday is day 5, so one template cannot both mark it working and exclude it as non-working. The remaining likely templates are product choices: Sunday–Thursday, Monday–Thursday, or a different configured example rather than the initial template.
 
 **Ruling — closed 22 September 2026.** The acceptance criterion is correct; the named-template line was the error. AE's real weekend has historically run Friday-Saturday (this document's own background section says so), the same reasoning that already gives Saudi Arabia its own Sunday-to-Thursday template. AE's named template is corrected to match: Sunday to Thursday, the same as SA. `createInitialCalendar`'s AE branch and the setup-flow prose (the line naming the five named templates) are both corrected; the Friday-exclusion acceptance criterion needs no change, since it was right all along. F227's own already-closed ruling is corrected in step: its "plurality template already used by UK/US/AE" rationale for the Global/IN/SG default is no longer accurate once AE moves — the Global/IN/SG Monday-to-Friday default itself is unaffected and stands on its own (the same default UK and US already use), only the supporting sentence is reworded.
 
@@ -2967,7 +2967,7 @@ Under `VPS-A003`, the graph can be written only through a named mutation. An int
 
 ### F235 — `pattern_for` has no governing Employee partition, so no pattern can be written
 
-Raised 23 September 2026 during Stage 12 implementation (`FDN-119`) when the first real `pattern.set` integration test reached the server interceptor. The mutation successfully constructs its WorkingPattern node and required `pattern_for` edge check, but `authorizeWrite` refuses the edge with `reason: "role"` before apply. This is deterministic under the existing F136 rule, rather than a missing role-matrix row: `pattern_for` connects `WorkingPattern` to `Employee`; Employee has two protection partitions (`operational` and `compensation`); and `packages/schema/src/registry/edges.ts` declares no `governingPartitions` entry for this relationship. `edgeRoleDecision` therefore refuses it before considering whether any caller has Full access. Owner, HR Admin, and every other role are equally unable to create the edge.
+Raised 23 September 2026 during Stage 12 implementation (`RST-40`) when the first real `pattern.set` integration test reached the server interceptor. The mutation successfully constructs its WorkingPattern node and required `pattern_for` edge check, but `authorizeWrite` refuses the edge with `reason: "role"` before apply. This is deterministic under the existing F136 rule, rather than a missing role-matrix row: `pattern_for` connects `WorkingPattern` to `Employee`; Employee has two protection partitions (`operational` and `compensation`); and `packages/schema/src/registry/edges.ts` declares no `governingPartitions` entry for this relationship. `edgeRoleDecision` therefore refuses it before considering whether any caller has Full access. Owner, HR Admin, and every other role are equally unable to create the edge.
 
 The Stage 12 brief says the existing WorkingCalendar, Holiday and WorkingPattern edge registrations are complete and need no changes. They are structurally registered, but `pattern_for` is not writable through the server-authoritative interceptor. This is the same class of omission F208 found for `managed_by` and `scoped_to_entity`; that finding required an explicit founder ruling before both relationships were assigned Employee's `operational` partition and the declaration was recorded in `VPS-A002`. WorkingPattern is Tier 0 scheduling data and `VRS-F004` describes it as operationally necessary, so `operational` is the direct precedent, but assigning the reviewed partition is an authorization decision and must not be inferred silently by implementation.
 
@@ -3038,7 +3038,7 @@ Stage 13 Do item 3 defines the local query over `Assignment`, `Project`, `Client
 
 ### F240 — Assignment cancellation omits the mandatory state-transition base version
 
-Raised 23 September 2026 while resuming Stage 13 (`FDN-120`) on F239's ruling, before any product code was written.
+Raised 23 September 2026 while resuming Stage 13 (`RST-41`) on F239's ruling, before any product code was written.
 
 **The conflict.** Stage 13 Do item 1 and `VRS-F005`'s API contract both specify `assignment.cancel(assignmentId) -> { success }`. Cancellation changes the Assignment's state from `Active` to `Canceled`; `VRS-F005` names those values in Assignment's schema, and the registry uses the fixed lifecycle policy for this node type. `VPS-A003` A003-T54 requires every state-transition mutation to carry the base `version` the decision was made against and requires the server to reject `stale-state` when that version has changed. The shared mutation envelope carries no implicit base version.
 
@@ -3051,7 +3051,7 @@ This is the exact contract gap F223 resolved for `entity.deactivate` and F228 re
 
 ### F241 — Bench aggregate locality contradicts VPS-A004's single-enforcement-point rule for disclosure control
 
-Raised 23 September 2026 while resuming Stage 13 (`FDN-120`) on F240's ruling, before any product code was written.
+Raised 23 September 2026 while resuming Stage 13 (`RST-41`) on F240's ruling, before any product code was written.
 
 **The conflict.** `VRS-F005`'s `benchForecast.get` contract bundles `aggregateUtilization` and `cohortSize` into the same call as `rows`, with a comment claiming the whole call "resolves entirely from the device's local Electric-replicated cache. No network round-trip." Its offline acceptance criterion and the "Filter application completes within 50ms from the local graph" NFR repeat the same local claim for the filtered aggregate specifically. Stage 13 Do item 4 already computes aggregate utilization server-side and passes it through the shared `applyDisclosureControl` function (item 5) — but returns it "from `benchForecast.get`'s aggregate portion," naming no separate endpoint, so the two reviewer-authoritative documents describe the same return value as both local and server-computed.
 
@@ -3072,7 +3072,7 @@ This is the same class of correction F236 already made once in this spec: `bench
 
 ### F242 — The Bench Forecast's `filters` argument has no defined schema or matching semantics
 
-Raised 23 September 2026 while resuming Stage 13 (`FDN-120`) on F241's ruling, before any product code was written.
+Raised 23 September 2026 while resuming Stage 13 (`RST-41`) on F241's ruling, before any product code was written.
 
 **The gap.** F241 established `benchForecast.getAggregate(workspaceId, window, filters?)` as the authoritative server call for filtered aggregate utilization, alongside the same `filters?` parameter already present on the local `benchForecast.get`. `VRS-F005`'s Filtering section names five user-facing filter dimensions — skill, seniority, department, entity, availability window — in prose, but neither it nor the API contracts define field names, value types, empty-filter behavior, how multiple values within one dimension combine, how the five dimensions combine with each other, or what an "availability window" match actually means: at least one bench day in the window, wholly unassigned throughout it, available on its first day, or available by its end date all produce different cohorts.
 
@@ -3126,7 +3126,7 @@ Raised 23 September 2026 while checking the code directly before writing the Sta
 
 ### F245 — `rateCard.update` cannot express the update Stage 14 requires and has no stale-state contract
 
-Raised 23 September 2026 while tracing the corrected Stage 14 brief (`FDN-121`) into the named-mutation registry, before any product code was written.
+Raised 23 September 2026 while tracing the corrected Stage 14 brief (`RST-42`) into the named-mutation registry, before any product code was written.
 
 **The gap.** The authoritative API contract and Stage 14 Do item 1 both name `rateCard.update(rateCardId, lines)`. The same Do item then said `currency` is caller-supplied on both create and update, while the editor specification presents both name and currency as editable fields — but the update contract's own signature accepts neither. Separately, marking the prior card `is_active: false` on supersession carries no caller base version, even though `VPS-A003` A003-T54 requires one for every state transition and the brief said to mirror `calendar.update`'s supersession pattern; and G02 states the prior node is never edited in place, which the `is_active` change appears to contradict without an explicit exception.
 
@@ -3158,7 +3158,7 @@ Raised 23 September 2026 in the same Stage 14 contract trace, before any product
 
 ### F247 — RateCardLine has no traversable or indexed path from its RateCard
 
-Raised 23 September 2026 while resuming Stage 14 (`FDN-121`) after F245 and F246 were ruled, before any product code was written.
+Raised 23 September 2026 while resuming Stage 14 (`RST-42`) after F245 and F246 were ruled, before any product code was written.
 
 **The gap.** `VRS-F006` makes `RateCardLine` a fixed Tier 1 node whose substantive fields — `rate_card_id`, `seniority_level`, `hourly_rate`, `daily_rate`, `monthly_rate` — live entirely inside the protected partition. Stage 14 requires two point lookups against those fields: `rateCard.getPreview(rateCardId, seniority)` and `resolveAssignmentRate`, which must find the line matching an Assignment's `rate_card_id` and its Employee's `seniority_level`. The spec said RateCardLine carries no edge of its own because nothing needs to traverse *backward* from a RateCard except through its own lines — true, but it never defined how the *forward* lookup those two callers need actually reaches a line. `services/api/src/protected/read.ts`'s `readProtected` accepts only `nodeIds`, filtered by `inArray(ownerId, ids)` — a point lookup by id, never a predicate over decrypted content — so without an id to ask for, neither caller has an address. The only alternative, enumerating every RateCardLine in the workspace and decrypting each to filter in memory, is exactly the implicit foreign-key scan A002-T03 prohibits, the same rule F243 was closed on for Assignment-side `rate_card_id`.
 
@@ -3195,7 +3195,7 @@ Raised 23 September 2026 while checking `VRS-F007` directly against the code bef
 
 ### F250 — Ghost lifecycle transitions omit the required base version, and promotion's stated guard is not concurrency-safe
 
-Raised 23 September 2026 while tracing the corrected Stage 15 brief (`FDN-122`) into the mutation registry, before any product code was written.
+Raised 23 September 2026 while tracing the corrected Stage 15 brief (`RST-43`) into the mutation registry, before any product code was written.
 
 **The gap.** `VRS-F007` and the Stage 15 brief define `ghostResource.cancel(ghostId)` and `ghostResource.promote(ghostId, { fullName, email, employmentType, startDate })`. Both operations transition `GhostResource.lifecycle_status` (`Active -> Canceled` and `Active -> Promoted`), but neither signature carries the base version the person acted against. That directly contradicts `VPS-A003` A003-T54: "Every state-transition mutation MUST carry the base `version` it was decided against, and the server MUST reject it with `stale-state` if the record's version has changed." The mutation registry encodes the same rule in `MutationDefinition.stateTransition`, and every current `stateTransition: true` definition carries `expected_version`, including `entity.deactivate` (F223), `holiday.cancel`/`calendar.update`/`pattern.set`/`pattern.clear` (F228), `assignment.cancel` (F240), and `rateCard.update` (F245).
 
@@ -3216,7 +3216,7 @@ The two requirements also leave rejection precedence unresolved. A003-T54 says a
 
 ### F251 — Stage 15's “no permission override” requirement contradicts the Stage 13 policy rows it inherits
 
-Raised 23 September 2026 while resuming Stage 15 (`FDN-122`) on F250's ruling, before any product code was written.
+Raised 23 September 2026 while resuming Stage 15 (`RST-43`) on F250's ruling, before any product code was written.
 
 **The gap.** Stage 15 says three times that `GhostResource` and `OpenRole` have no `MATRIX_OVERRIDES` entry: its opening code trace says both already fall through to the default policy class, Do item 9 requires a test proving “zero `MATRIX_OVERRIDES` entry for either,” and the Done criteria require Owner/HR Admin full plus Manager/Team Member read-only “per the existing default class.” The live code says the opposite. `packages/schema/src/policy/policy-table.ts` already contains explicit `GhostResource` and `OpenRole` overrides granting Owner/HR Admin full and Finance Admin/Manager/Team Member read. Stage 13's authoritative brief Do item 8 explicitly required those exact five workspace-staffing rows (`Assignment`, `Project`, `Client`, `GhostResource`, `OpenRole`); commit `f2d928d` added them, the policy test exercises them, the Stage 13 report records them as completed, and the independent review approved the stage.
 
@@ -3237,7 +3237,7 @@ There is a second product-level conflict in the same decision. `VRS-F007`'s Crea
 
 ### F252 — Ghost promotion requires a successful audit event that VPS-F004 does not define
 
-Raised 23 September 2026 while resuming Stage 15 (`FDN-122`) on F251's ruling, before any product code was written.
+Raised 23 September 2026 while resuming Stage 15 (`RST-43`) on F251's ruling, before any product code was written.
 
 **The gap.** `VRS-F007`'s Security Considerations say promotion is audited per `VPS-F004` because the actor and timing matter. Stage 15 Do item 5 is more specific: “reuse the existing `appendAudit` call already wired into every named mutation's `apply()` step,” adding no event type, operation or target. The live code has no such per-mutation call. `services/api/src/mutations/pipeline.ts` delegates audit behavior to `authorizeWrite`; the interceptor audits every denial and successful Tier 1/2/3-sensitive operation according to its rules, but deliberately writes no successful Tier 0 audit entry. Both the GhostResource transition and the linked Employee's operational update are Tier 0.
 
@@ -3255,7 +3255,7 @@ This is the same class of taxonomy gap F221 and F225 exposed: a feature requires
 
 ### F253 — Ghost creation cannot satisfy Employee's required fields, and promotion never supplies an employee code
 
-Raised 23 September 2026 while resuming Stage 15 (`FDN-122`) on F252's ruling, before any product code was written.
+Raised 23 September 2026 while resuming Stage 15 (`RST-43`) on F252's ruling, before any product code was written.
 
 **The gap.** Stage 15 Do item 1 says the Ghost's linked Employee node uses `employeeOperationalRecord`'s existing shape, with `employee_type: "Ghost"`, `job_title`, `start_date`, Active status, optional seniority/rate, and “every other field null.” `VRS-F007`'s Technical Architecture states the same rule. The helper cannot construct that record: its `EmployeeCreateFields` input requires `employee_code`, `full_name`, `email`, `job_title`, `employment_type` and `start_date`, and it always writes required `contracted_hours` (default 40). `VRS-F002`'s canonical Employee schema independently declares `employee_code`, `full_name`, `email`, `job_title`, `employment_type`, `start_date` and `contracted_hours` required for every Employee; only `employee_type` distinguishes a Ghost.
 
@@ -3275,7 +3275,7 @@ The live graph's generic node parser does not validate feature fields, so an imp
 
 ### F254 — `promoted_to` has no governing Employee partition, so no Ghost can be promoted
 
-Raised 24 September 2026 during Stage 15 implementation (`FDN-122`) when the first real `ghostResource.promote` integration test reached the server permission interceptor.
+Raised 24 September 2026 during Stage 15 implementation (`RST-43`) when the first real `ghostResource.promote` integration test reached the server permission interceptor.
 
 **The gap.** `promoted_to` is registered as `GhostResource → Employee` in `packages/schema/src/registry/edges.ts`, but it declares no `governingPartitions` entry. Employee is tier-split into `operational` and `compensation`. `services/api/src/permission/interceptor.ts`'s `edgeRoleDecision` deliberately refuses an edge write with `reason: "role"` whenever a split endpoint has no reviewed governing partition; it does so before considering the caller's role. The real Stage 15 integration test therefore reaches the authoritative interceptor and rejects promotion for HR Admin, and the same structural check rejects Owner too. The GhostResource and linked Employee node updates never begin.
 

@@ -2,7 +2,7 @@
 
 **Status:** COMPLETE, awaiting review.  
 **Branch:** `codex/stage-12-working-calendar` (local; not pushed).  
-**Linear:** FDN-119  
+**Linear:** RST-40  
 **Date:** 23 September 2026
 
 ## 1. Summary
@@ -89,4 +89,4 @@ None from the final corrected Stage 12 brief. F225 removes the unsupported audit
 
 ## 11. Readiness for the next stage
 
-Stage 12 is ready for direct code review. FDN-119 should move to Done only after approval and merge. The local Stage 12 branch is intentionally unpushed and unmerged; the next stage has not started.
+Stage 12 is ready for direct code review. RST-40 should move to Done only after approval and merge. The local Stage 12 branch is intentionally unpushed and unmerged; the next stage has not started.

@@ -2,7 +2,7 @@
 
 **Status:** BLOCKED
 **Branch:** `codex/stage-18-timesheet-speed-run` @ `77839f5`
-**Linear issues:** FDN-125
+**Linear issues:** RST-46
 **Date:** 2026-09-24
 
 ## 1. Summary

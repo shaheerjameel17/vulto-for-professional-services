@@ -2,7 +2,7 @@
 
 **Status:** COMPLETE, awaiting review.  
 **Branch:** `codex/stage-14-rate-card-engine`  
-**Linear:** FDN-121  
+**Linear:** RST-42  
 **Date:** 23 September 2026
 
 ## 1. Summary
@@ -94,4 +94,4 @@ None from the final corrected Stage 14 brief. The implementation adds no UI, Ent
 
 ## 11. Readiness for the next stage
 
-Stage 14 is ready for direct code review on `codex/stage-14-rate-card-engine`. FDN-121 should move to Done only after approval and merge. The branch is intentionally unmerged, and no subsequent stage has started.
+Stage 14 is ready for direct code review on `codex/stage-14-rate-card-engine`. RST-42 should move to Done only after approval and merge. The branch is intentionally unmerged, and no subsequent stage has started.

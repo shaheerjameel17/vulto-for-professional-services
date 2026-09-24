@@ -2,7 +2,7 @@
 
 - **Status:** COMPLETE, awaiting review.
 - **Branch:** `codex/stage-15-ghost-resources`
-- **Linear:** FDN-122
+- **Linear:** RST-43
 - **Date:** 24 September 2026
 
 ## 1. Summary
@@ -99,4 +99,4 @@ None from the final corrected Stage 15 brief. The implementation does not create
 
 ## 11. Readiness for the next stage
 
-Stage 15 is ready for direct code review on `codex/stage-15-ghost-resources`. FDN-122 should move to Done only after approval and merge. The branch is intentionally unmerged, and no subsequent stage has started.
+Stage 15 is ready for direct code review on `codex/stage-15-ghost-resources`. RST-43 should move to Done only after approval and merge. The branch is intentionally unmerged, and no subsequent stage has started.
