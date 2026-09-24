@@ -1,18 +1,18 @@
 # Stage 18 — Timesheet Speed-Run
 
 **Status:** BLOCKED
-**Branch:** `codex/stage-18-timesheet-speed-run` @ `3cda786` (F270–F273 infrastructure committed; report amendment follows)
+**Branch:** `codex/stage-18-timesheet-speed-run` (merged current `main` through F274 at `eddbb96`; F274 mechanism partially implemented)
 **Linear issues:** RST-46
 **Date:** 2026-09-24
 
 ## 1. Summary
 
-The F267 Pitch edge declaration and F268/F269 subject-resolution correction are committed. F270–F273 are ruled and merged from `main`; the F273 marker registration, F270/F271 system grants, F272 reserved-identity helper, and timesheet schemas are committed at `3cda786`. Before building the feature mutations, tracing the first Team Member `saveCell` and zero-entry marker create exposed F274: their row-scoped `Full (own)` authorization reads the subject from a stored row, but the pipeline authorizes before either new row exists. Implementation stopped for a reviewer ruling; no app code or protected documentation was directly edited.
+F267–F273 infrastructure remains committed. F274 was ruled on `main` at `eddbb96` and merged here. Its create-time declared-subject plumbing and independent post-apply row re-check have been implemented and API-typechecked, but the mutation plan-builders and rollback test have not yet been built. Tracing the required ordinary Team Member `saveCell` path exposed F275: the `logged_against` edge's Assignment and Pitch endpoints reject the Team Member regardless of the F274 subject fix. Implementation stopped for a reviewer ruling; no app code or protected documentation was directly edited.
 
 ## 2. Done-criteria checklist
 
-- [ ] `logged_against` declares `Pitch: "identifying"` — the declaration is committed in `packages/schema/src/registry/edges.ts`; the required real-interceptor Pitch save test awaits the blocked mutation path.
-- [ ] The F268/F269 row-scope branches are proven against the real interceptor — code committed in `2cd5b03`, extended for the week marker in `3cda786`, but creation tests await F274.
+- [ ] `logged_against` declares `Pitch: "identifying"` — the declaration is committed in `packages/schema/src/registry/edges.ts`; the required real-interceptor Pitch save is additionally blocked by F275's endpoint grant.
+- [ ] The F268/F269 row-scope branches are proven against the real interceptor — code committed in `2cd5b03`, extended for the week marker in `3cda786` and the F274 create case in this resume, but creation tests await the mutation path.
 - [ ] `saveCell` rejects a 25-hour date total before storage and the optimistic mutator surfaces `GraphValidationError` — not started.
 - [ ] `submitWeek` transitions all Draft entries atomically with an injected-failure rollback proof — not started.
 - [ ] `getWeek` and shortcuts use `resolveWorkingDay` across six-day, four-day and half-day cases — not started.
@@ -37,10 +37,11 @@ The F267 Pitch edge declaration and F268/F269 subject-resolution correction are 
 | F270/F271 system authority | `packages/schema/src/policy/principal-policy.ts`, `services/api/src/permission/interceptor.ts` | Schema/API typecheck only; end-to-end flag tests await the mutation |
 | F272 reserved identity | `services/api/src/graph/system-actor.ts` | API typecheck only; first system write awaits the mutation |
 | F273 marker registration | `packages/schema/src/registry/nodes.ts`, `packages/schema/src/policy/policy-table.ts`, `packages/schema/src/timesheet.ts` | Registry suite 24/24; schema suite 95 passed, 2 todo |
+| F274 create-time subject mechanism | `services/api/src/permission/interceptor.ts`, `services/api/src/mutations/pipeline.ts` | API typecheck only; plan-builder declarations and deliberate-mismatch rollback test are not yet built |
 
 ## 4. Files changed
 
-Relative to current `main`: F267's edge registry; F268/F269 and F270/F271's interceptor; F270/F272's policy tables; F272's reserved identity helper; F273's node registry, policy row, schemas, registry-count checks; and this report. The F270–F273 ruling documents were merged from `main`, not edited here.
+Relative to current `main`: F267's edge registry; F268/F269, F270/F271 and partial F274 interceptor work; F274 pipeline re-check; F270/F272 policy tables; F272 reserved identity helper; F273 node registry, policy row, schemas and registry-count checks; and this report. F270–F274 ruling documents were merged from `main`, not edited here.
 
 ## 5. Database changes
 
@@ -48,7 +49,7 @@ None.
 
 ## 6. Tests and gates
 
-The four required gates were not run: `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, and `pnpm verify:full`. Stage 18 cannot be COMPLETE until F274 is ruled and implementation resumes. Narrow checks on `3cda786` passed: schema tests 95 passed/2 todo (including registry 24/24), schema and API typechecks, and `git diff --check`. Mutation and query handlers have not been built; the four full gates would therefore not be meaningful yet.
+The four required gates were not run: `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, and `pnpm verify:full`. Stage 18 cannot be COMPLETE until F275 is ruled and implementation resumes. Narrow checks on `3cda786` passed: schema tests 95 passed/2 todo (including registry 24/24), schema and API typechecks, and `git diff --check`. This resume also passed `pnpm --filter @vulto/api typecheck` after the partial F274 implementation. Mutation and query handlers have not been built; the four full gates would therefore not be meaningful yet.
 
 ## 7. Micro-decisions
 
@@ -88,18 +89,24 @@ The reviewer ruled a registered Tier 0 `TimesheetWeekSubmission` marker on `Poli
 
 ### F274 — row-scoped own grant cannot authorize the creation of its own row
 
-**Status: open; reviewer ruling required.** `TimesheetEntry` gives a Team Member `Full (own)` and F273 gives `TimesheetWeekSubmission` the identical cell. `services/api/src/mutations/pipeline.ts` calls `authorizeWrite` on every planned check before `apply()` inserts anything. In `services/api/src/permission/interceptor.ts`, `authorizeWrite` Gate 1 passes the new target's `nodeId` into `bestCell`/`rowScopeSatisfied`; for both node types the F268/F273 branch reads `employee_id` by `getNode(tx, workspaceId, nodeId)`. On a create, no row exists yet, so `getNode` returns null and row scope returns false. Passing `nodeId: null` also fails at `rowScopeSatisfied`'s entry guard. Therefore a Team Member cannot save their first cell or submit an empty week under their own grant, even though both operations are explicitly required and their policy rows are deliberately own-scoped. Owner/HR Admin's unscoped Full masks this in privileged tests but does not fix the normal path.
+**Status: closed on `main` at `eddbb96`; mechanism partially implemented.** `TimesheetEntry` gives a Team Member `Full (own)` and F273 gives `TimesheetWeekSubmission` the identical cell. `services/api/src/mutations/pipeline.ts` calls `authorizeWrite` on every planned check before `apply()` inserts anything. In `services/api/src/permission/interceptor.ts`, `authorizeWrite` Gate 1 passes the new target's `nodeId` into `bestCell`/`rowScopeSatisfied`; for both node types the F268/F273 branch reads `employee_id` by `getNode(tx, workspaceId, nodeId)`. On a create, no row exists yet, so `getNode` returns null and row scope returns false. Passing `nodeId: null` also fails at `rowScopeSatisfied`'s entry guard. Therefore a Team Member cannot save their first cell or submit an empty week under their own grant, even though both operations are explicitly required and their policy rows are deliberately own-scoped. Owner/HR Admin's unscoped Full masks this in privileged tests but does not fix the normal path.
 
-`WriteChange.subjectEmployeeId` currently reaches only Gate 3's reader-set check; Gate 1 does not use it. A reviewer must rule how a creation check securely conveys the proposed row's `employee_id` to the interceptor without trusting an arbitrary claimed subject or moving authorization after insertion. The F268 direct-field resolution still correctly governs reads and updates of stored rows; this is the new-row half of the same mechanism. No feature-local permission check, privileged-principal substitution, or authorize-after-write workaround was added.
+The founder ruled a new `WriteChange.declaredSubjectEmployeeId`, set from parsed mutation args, used only for the create-time Gate 1 row scope on TimesheetEntry and TimesheetWeekSubmission. The pipeline independently re-reads each declared create's stored subject after `apply()` and rejects a mismatch with `subject-mismatch` inside the transaction. The shared stored-row resolver, create-time branch and pipeline re-check are implemented and typechecked. The `saveCell`/empty-week plan-builders that supply the declaration and the deliberate-mismatch rollback test remain unbuilt because F275 stops the required edge-write path.
+
+### F275 — `logged_against` endpoint authority denies ordinary Team Member cells
+
+**Status: open; reviewer ruling required.** The Stage 18 brief requires an ordinary Team Member to save their own Billable and Pitch cells. Both write a `logged_against` edge, from the newly created or updated TimesheetEntry to Assignment or Pitch. F274 resolves the TimesheetEntry endpoint's `Full (own)` check at create time, but `services/api/src/permission/interceptor.ts`'s `edgeRoleDecision` requires `Full` on *both* endpoints unless an endpoint is registered as `readSufficientEndpoints`. The `logged_against` registration in `packages/schema/src/registry/edges.ts` has no such declaration. `packages/schema/src/policy/policy-table.ts` gives Team Member only `READ_ANY()` on Assignment and `NONE_ANY()` on `Pitch:identifying`; the Pitch pair is explicitly governed by that partition (F267). Thus Billable is refused at Assignment, and Pitch is refused at Pitch, before either edge can be written. NonBillable writes no edge and does not exercise this gap. Owner/HR Admin tests would mask it.
+
+F262's `assigned_to` precedent permits a read-sufficient Project endpoint, which may address Assignment if the reviewer rules that shape appropriate here. It cannot by itself address Pitch, because Team Member has **no** generic `Pitch:identifying` read grant; `pitch.listStaffedFor` deliberately exposes identifying fields through a special staffed-employee path, not the generic Pitch policy row. A broader Team Member Pitch grant, a staffed-only edge authority, or a narrowly authorized mutation-specific edge rule are materially different security choices. The builder has not selected one, changed the policy matrix, or bypassed `edgeRoleDecision`. The reviewer should rule and record the intended authority for each endpoint and correct the Stage 18 brief/spec before implementation resumes.
 
 ## 9. Deviations from this brief
 
-None implemented beyond the ruled F270–F273 infrastructure. The incomplete stage is blocked by F274 rather than worked around.
+No unruled change was implemented. F274's ruled mechanism is only partial; the incomplete stage is blocked by F275 rather than worked around.
 
 ## 10. Known limitations and risks
 
-The F267 registry declaration, F268/F269 interceptor change, and F270–F273 infrastructure are committed but have not yet reached real mutation tests. No TimesheetEntry or TimesheetAnomalyFlag creation path exists on this branch.
+The F267 registry declaration, F268/F269 interceptor change, F270–F273 infrastructure, and partial F274 mechanism have not yet reached real mutation tests. No TimesheetEntry or TimesheetAnomalyFlag creation path exists on this branch. F275 prevents the required ordinary Team Member Billable/Pitch path under current policy.
 
 ## 11. Readiness for the next stage
 
-No. Stage 18 must resume after the reviewer rules F274; Stage 19 is not started.
+No. Stage 18 must resume after the reviewer rules F275; Stage 19 is not started.

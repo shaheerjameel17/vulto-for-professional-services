@@ -65,6 +65,30 @@ interface RowScopeContext {
   readonly nodeType: NodeType;
   readonly nodeId: string | null;
   readonly context: InterceptorContext;
+  /** Only a pre-write create may use the mutation's declared subject. */
+  readonly creating?: boolean;
+  readonly declaredSubjectEmployeeId?: string | null;
+}
+
+/** The stored-row subject path shared by reads, updates, and post-create verification. */
+export async function resolveStoredSubjectEmployeeId(
+  tx: GraphTx,
+  workspaceId: string,
+  nodeType: NodeType,
+  nodeId: string,
+  asOf: string,
+): Promise<string | null> {
+  if (nodeType === "Employee") return nodeId;
+  if (nodeType === "BurnoutAlert" || nodeType === "TimesheetAnomalyFlag") {
+    const [subject] = await outgoing(tx, workspaceId, nodeId, "triggered_by", asOf);
+    return subject?.toNodeId ?? null;
+  }
+  if (nodeType === "TimesheetEntry" || nodeType === "TimesheetWeekSubmission") {
+    const node = await getNode(tx, workspaceId, nodeId);
+    const employeeId = node?.record["employee_id"];
+    return typeof employeeId === "string" ? employeeId : null;
+  }
+  return null;
 }
 
 /**
@@ -96,33 +120,18 @@ async function rowScopeSatisfied(
   const me = await resolve(tx, principal.workspaceId, principal.userId);
   if (me === null) return false;
   const asOf = (context.now ?? nowIso)();
-  let subjectEmployeeId: string;
-  if (row.nodeType === "Employee") {
-    subjectEmployeeId = nodeId;
-  } else if (
-    row.nodeType === "BurnoutAlert" ||
-    row.nodeType === "TimesheetAnomalyFlag"
-  ) {
-    const [subject] = await outgoing(
-      tx,
-      principal.workspaceId,
-      nodeId,
-      "triggered_by",
-      asOf,
-    );
-    if (!subject) return false;
-    subjectEmployeeId = subject.toNodeId;
-  } else if (
-    row.nodeType === "TimesheetEntry" ||
-    row.nodeType === "TimesheetWeekSubmission"
-  ) {
-    const node = await getNode(tx, principal.workspaceId, nodeId);
-    const employeeId = node?.record["employee_id"];
-    if (typeof employeeId !== "string") return false;
-    subjectEmployeeId = employeeId;
-  } else {
-    return false;
-  }
+  const subjectEmployeeId =
+    row.creating === true &&
+    (row.nodeType === "TimesheetEntry" || row.nodeType === "TimesheetWeekSubmission")
+      ? (row.declaredSubjectEmployeeId ?? null)
+      : await resolveStoredSubjectEmployeeId(
+          tx,
+          principal.workspaceId,
+          row.nodeType,
+          nodeId,
+          asOf,
+        );
+  if (subjectEmployeeId === null) return false;
   if (scope === "own") return me === subjectEmployeeId;
   const managerOf = async (employeeId: string) =>
     (await outgoing(tx, principal.workspaceId, employeeId, "managed_by", asOf))[0]
@@ -679,6 +688,8 @@ export interface WriteChange {
   readonly application?: string;
   /** The Employee a subject-excluding record concerns, when the caller knows it. */
   readonly subjectEmployeeId?: string | null;
+  /** F274: validated plan-builder subject for a new self-service row (Gate 1). */
+  readonly declaredSubjectEmployeeId?: string | null;
 }
 
 export type WriteRefusalReason =
@@ -724,6 +735,7 @@ async function edgeRoleDecision(
   principal: Principal,
   roles: readonly PolicyRole[],
   target: Extract<WriteTarget, { kind: "edge" }>,
+  change: WriteChange,
   context: InterceptorContext,
 ): Promise<"role" | "unregistered-relationship" | null> {
   let registration;
@@ -756,7 +768,15 @@ async function edgeRoleDecision(
     const row: RowScopeContext | undefined =
       nodeId === undefined || nodeId === null
         ? undefined
-        : { tx, principal, nodeType, nodeId, context };
+        : {
+            tx,
+            principal,
+            nodeType,
+            nodeId,
+            context,
+            creating: change.operation === "create",
+            declaredSubjectEmployeeId: change.declaredSubjectEmployeeId,
+          };
     const outcome = (await bestCell(roles, nodeType, partitionKey, row)).outcome;
     const sufficient =
       outcome === "full" ||
@@ -888,11 +908,20 @@ export async function authorizeWrite(
         nodeType: target.nodeType,
         nodeId: target.nodeId,
         context,
+        creating: change.operation === "create",
+        declaredSubjectEmployeeId: change.declaredSubjectEmployeeId,
       });
       if (best.outcome !== "full") return refuse("role");
       role = best.role;
     } else {
-      const failure = await edgeRoleDecision(tx, principal, gateRoles, target, context);
+      const failure = await edgeRoleDecision(
+        tx,
+        principal,
+        gateRoles,
+        target,
+        change,
+        context,
+      );
       if (failure === "unregistered-relationship") return refuse(failure);
       if (failure !== null) return refuse("role");
     }
