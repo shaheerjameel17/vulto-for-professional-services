@@ -1,18 +1,18 @@
 # Stage 18 — Timesheet Speed-Run
 
 **Status:** BLOCKED
-**Branch:** `codex/stage-18-timesheet-speed-run` @ `3837102` (F270 ruling merged; report amendment follows)
+**Branch:** `codex/stage-18-timesheet-speed-run` @ `5eafcc9` (F271 ruling merged; report amendment follows)
 **Linear issues:** RST-46
 **Date:** 2026-09-24
 
 ## 1. Summary
 
-The F267 Pitch edge declaration and F268/F269 subject-resolution correction are committed. F270's founder ruling was merged from `main` at `6f4b80a`, resolving the anomaly writer's authority. Before implementing it, tracing G09/G09b exposed F271: the evaluator must inspect existing Tier 2 flag fields to avoid duplicate flags and honor ApprovedOvertime clearance, but the newly authorized system principal has only a write operation and no audited protected-read grant. Implementation stopped for a reviewer ruling; no app code or protected documentation was directly edited.
+The F267 Pitch edge declaration and F268/F269 subject-resolution correction are committed. F270 and F271 are ruled and merged from `main` at `6f4b80a` and `50dca6a`. Tracing the now-authorized system write into the graph's universal record schema exposed F272: a system principal has no User UUID to place in the mandatory `created_by`/`updated_by` fields on TimesheetAnomalyFlag and `created_by` on its `triggered_by` edge. Implementation stopped for a reviewer ruling; no app code or protected documentation was directly edited.
 
 ## 2. Done-criteria checklist
 
 - [ ] `logged_against` declares `Pitch: "identifying"` — the declaration is committed in `packages/schema/src/registry/edges.ts`; the required real-interceptor Pitch save test awaits the blocked mutation path.
-- [ ] The F268/F269 row-scope branches are proven against the real interceptor — code committed in `2cd5b03`, but the required anomaly creation and direct-report test await F271.
+- [ ] The F268/F269 row-scope branches are proven against the real interceptor — code committed in `2cd5b03`, but the required anomaly creation and direct-report test await F272.
 - [ ] `saveCell` rejects a 25-hour date total before storage and the optimistic mutator surfaces `GraphValidationError` — not started.
 - [ ] `submitWeek` transitions all Draft entries atomically with an injected-failure rollback proof — not started.
 - [ ] `getWeek` and shortcuts use `resolveWorkingDay` across six-day, four-day and half-day cases — not started.
@@ -33,11 +33,11 @@ The F267 Pitch edge declaration and F268/F269 subject-resolution correction are 
 | Spec ID | Where implemented | Test proving it |
 |---|---|---|
 | VRS-F010 Edges / F267 | `packages/schema/src/registry/edges.ts` | Not yet: real-interceptor Pitch save test depends on the unbuilt mutation |
-| F268/F269 row-scope resolution | `services/api/src/permission/interceptor.ts` | Not yet: real flag-creation test depends on F271 |
+| F268/F269 row-scope resolution | `services/api/src/permission/interceptor.ts` | Not yet: real flag-creation test depends on F272 |
 
 ## 4. Files changed
 
-Relative to current `main`: `packages/schema/src/registry/edges.ts` (F267), `services/api/src/permission/interceptor.ts` (F268/F269), and this report. The F270 ruling documents were merged from `main`, not edited here.
+Relative to current `main`: `packages/schema/src/registry/edges.ts` (F267), `services/api/src/permission/interceptor.ts` (F268/F269), and this report. The F270/F271 ruling documents were merged from `main`, not edited here.
 
 ## 5. Database changes
 
@@ -45,7 +45,7 @@ None.
 
 ## 6. Tests and gates
 
-The four required gates were not run: `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, and `pnpm verify:full`. Stage 18 cannot be COMPLETE until F271 is ruled and implementation resumes. Narrow checks on the committed F267/F268/F269 changes passed in the previous stop: `git diff --check` exited 0, and `pnpm exec prettier --check` on the two code files exited 0.
+The four required gates were not run: `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, and `pnpm verify:full`. Stage 18 cannot be COMPLETE until F272 is ruled and implementation resumes. Narrow checks on the committed F267/F268/F269 changes passed in the previous stop: `git diff --check` exited 0, and `pnpm exec prettier --check` on the two code files exited 0.
 
 ## 7. Micro-decisions
 
@@ -67,13 +67,19 @@ The founder ruled a distinct `authorizeWrite` Gate 1 path for a new `timesheet-a
 
 ### F271 — anomaly evaluation has no authorized read of prior Tier 2 flags
 
-**Status: open; reviewer ruling required.** `VRS-F010` G09 requires at most one Active uncleared flag per employee, week and reason, with a repeat trigger updating `detail`. G09b and the Stage 18 done criteria require an `ApprovedOvertime`-cleared HoursExceedExpected flag never to reappear on later evaluation. Both behaviors require inspecting prior flags' `employee_id`, `week_start_date`, `flag_reason`, `cleared_at`, and `clearance_outcome` before a create/update decision. `TimesheetAnomalyFlag` is Tier 2 (`packages/schema/src/registry/nodes.ts`); `services/api/src/graph/store.ts` stores its feature fields in encrypted `graph_protected_fragments`, not the plain `graph_nodes.record`. Its `triggered_by` edge identifies the Employee but reveals none of the week, reason, or clearance data.
+**Status: closed on `main` at `50dca6a`.** `VRS-F010` G09 requires at most one Active uncleared flag per employee, week and reason, with a repeat trigger updating `detail`. G09b and the Stage 18 done criteria require an `ApprovedOvertime`-cleared HoursExceedExpected flag never to reappear on later evaluation. Both behaviors require inspecting prior flags' `employee_id`, `week_start_date`, `flag_reason`, `cleared_at`, and `clearance_outcome` before a create/update decision. `TimesheetAnomalyFlag` is Tier 2 (`packages/schema/src/registry/nodes.ts`); `services/api/src/graph/store.ts` stores its feature fields in encrypted `graph_protected_fragments`, not the plain `graph_nodes.record`. Its `triggered_by` edge identifies the Employee but reveals none of the week, reason, or clearance data.
 
-The only established decrypt path is `services/api/src/protected/read.ts`'s audited `readProtected`: it calls `authorizeRead` before decrypting. `services/api/src/permission/interceptor.ts` gives system principals no policy roles for reads, so `readProtected` releases no flag content to F270's new `timesheet-anomaly-evaluate` principal. That principal's one operation, `timesheet-anomaly.create-flag`, is explicitly write-only. The submitting Team Member has `NONE` on TimesheetAnomalyFlag in `packages/schema/src/policy/policy-table.ts`; using that member to read the prior flags fails too. Direct decryption or a fabricated HR Admin principal would bypass the audited permission boundary. A deterministic flag ID or edge lookup cannot distinguish a cleared ApprovedOvertime flag from an uncleared one because clearance fields remain encrypted. The reviewer must rule a narrow, audited protected-read authority or another spec-compatible mechanism before the evaluator can satisfy G09/G09b. No read grant or workaround has been invented on this branch.
+The only established decrypt path is `services/api/src/protected/read.ts`'s audited `readProtected`: it calls `authorizeRead` before decrypting. At the time F271 was raised, `services/api/src/permission/interceptor.ts` gave system principals no policy roles for reads, so `readProtected` released no flag content to F270's new `timesheet-anomaly-evaluate` principal. The submitting Team Member has `NONE` on TimesheetAnomalyFlag in `packages/schema/src/policy/policy-table.ts`; using that member to read prior flags fails too. The reviewer ruled a second closed-table operation, `timesheet-anomaly.read-flags`, and the read-side counterpart in `decideRead`. The evaluator must use `readProtected` under that same system principal. The authoritative ruling and revised brief were merged, not edited on this branch; implementation awaits F272.
+
+### F272 — system-authored graph records require a User UUID for provenance
+
+**Status: open; reviewer ruling required.** F270 requires `timesheetAnomaly.evaluate` to create or update a Tier 2 TimesheetAnomalyFlag and its `triggered_by` edge under `{ kind: "system", name: "timesheet-anomaly-evaluate", workspaceId }`, not the submitting Team Member's principal. Yet `VPS-A002`'s universal node and edge conventions make `created_by` and `updated_by` (node), and `created_by` (edge), required `user_id UUID` fields, with exceptions explicitly closed to only AuditEntry and the two anonymous contribution types. `packages/schema/src/records.ts` enforces UUID v4 in the standard shapes; `stampNewNode`/`stampNewEdge` take a `Provenance.userId`; `services/api/src/permission/principal.ts`'s `SystemPrincipal` has only `name` and `workspaceId`, no User UUID. `graph_mutations.actor_user_id` and `writeProtected`'s actor parameter can be null, so neither resolves the universal graph-record requirement.
+
+The obvious values imply different, unruled meanings: attributing `created_by`/`updated_by` to the submitter would say that person wrote a flag they are deliberately unauthorized even to read; inventing a system UUID without a User row would violate the `user_id` semantics; creating a service User or changing the universal record convention would expand the schema and trust model. The existing system jobs only write infrastructure tables and have no graph-node precedent. Please rule how a system-principal graph write records universal provenance before this first system-authored node/edge is built. The narrow F270/F271 authority edits attempted during this resume were removed once this blocker surfaced; the branch retains only the already committed F267/F268/F269 code and merged ruling documents.
 
 ## 9. Deviations from this brief
 
-None implemented. The incomplete stage is blocked by F271 rather than worked around.
+None implemented. The incomplete stage is blocked by F272 rather than worked around.
 
 ## 10. Known limitations and risks
 
@@ -81,4 +87,4 @@ The F267 registry declaration and F268/F269 interceptor change are committed but
 
 ## 11. Readiness for the next stage
 
-No. Stage 18 must resume after the reviewer rules F271; Stage 19 is not started.
+No. Stage 18 must resume after the reviewer rules F272; Stage 19 is not started.
