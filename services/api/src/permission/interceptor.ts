@@ -651,6 +651,8 @@ export type WriteTarget =
       readonly fromNodeType: NodeType;
       readonly toNodeType: NodeType;
       readonly edgeId: string | null;
+      readonly fromNodeId?: string | null;
+      readonly toNodeId?: string | null;
     };
 
 export interface WriteChange {
@@ -700,8 +702,11 @@ const RESERVED_PROJECTION_EDGE_TYPES: ReadonlySet<string> = new Set([
 
 /** Gate 1 for an edge: Full on both endpoint node types, through each governing partition. */
 async function edgeRoleDecision(
+  tx: GraphTx,
+  principal: Principal,
   roles: readonly PolicyRole[],
   target: Extract<WriteTarget, { kind: "edge" }>,
+  context: InterceptorContext,
 ): Promise<"role" | "unregistered-relationship" | null> {
   let registration;
   try {
@@ -713,7 +718,10 @@ async function edgeRoleDecision(
   } catch {
     return "unregistered-relationship";
   }
-  for (const nodeType of [target.fromNodeType, target.toNodeType]) {
+  for (const [nodeType, nodeId] of [
+    [target.fromNodeType, target.fromNodeId],
+    [target.toNodeType, target.toNodeId],
+  ] as const) {
     const partitions = getProtectionPartitions(nodeType);
     let partitionKey: string;
     if (partitions.length === 1) {
@@ -727,9 +735,15 @@ async function edgeRoleDecision(
     } else {
       return "role";
     }
-    // No row is named here, so a row-qualified grant never authorizes an edge write.
-    if ((await bestCell(roles, nodeType, partitionKey)).outcome !== "full")
-      return "role";
+    const row: RowScopeContext | undefined =
+      nodeId === undefined || nodeId === null
+        ? undefined
+        : { tx, principal, nodeType, nodeId, context };
+    const outcome = (await bestCell(roles, nodeType, partitionKey, row)).outcome;
+    const sufficient =
+      outcome === "full" ||
+      (outcome === "read" && registration.readSufficientEndpoints[nodeType] === true);
+    if (!sufficient) return "role";
   }
   return null;
 }
@@ -852,7 +866,7 @@ export async function authorizeWrite(
     if (best.outcome !== "full") return refuse("role");
     role = best.role;
   } else {
-    const failure = await edgeRoleDecision(gateRoles, target);
+    const failure = await edgeRoleDecision(tx, principal, gateRoles, target, context);
     if (failure === "unregistered-relationship") return refuse(failure);
     if (failure !== null) return refuse("role");
   }

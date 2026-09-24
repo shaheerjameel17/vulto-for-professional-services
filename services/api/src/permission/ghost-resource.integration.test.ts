@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { mutationDerivedId } from "@vulto/schema";
 import { closeDatabase, db } from "../db.js";
-import { getNode, incoming, insertEdge, insertNode, outgoing } from "../graph/store.js";
+import {
+  getNode,
+  getNodes,
+  incoming,
+  insertEdge,
+  insertNode,
+  outgoing,
+} from "../graph/store.js";
 import { applyMutation } from "../mutations/pipeline.js";
 import { resolveMemberPrincipal } from "./member-principal.js";
 import { edgeRecord, makeWorkspace, nodeRecord } from "./test-support.js";
@@ -191,11 +198,26 @@ describe("VRS-F007 — Ghost Resources", () => {
   it("promotes in place, preserves every Assignment and skill edge, and enforces uniqueness", async () => {
     const w = await world();
     const ids = await createGhost(w);
+    const entity = (
+      await db.transaction((tx) =>
+        getNodes(tx, w.workspaceId, {
+          nodeType: "Entity",
+          lifecycleStatus: "Active",
+        }),
+      )
+    )[0]!;
+    await db.transaction((tx) =>
+      insertEdge(
+        tx,
+        w.workspaceId,
+        edgeRecord("scoped_to_entity", ids.employeeId, entity.nodeId, NOW),
+      ),
+    );
     const assignment = await w.apply("hr", "assignment.create", {
       employee_id: ids.employeeId,
       project_id: w.projectId,
-      start_date: "2026-07-01",
-      end_date: "2026-07-31",
+      start_date: "2027-07-01",
+      end_date: "2027-07-31",
       billable_percentage: 80,
     });
     expect(assignment.status, JSON.stringify(assignment)).toBe("applied");

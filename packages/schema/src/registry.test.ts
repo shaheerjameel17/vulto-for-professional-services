@@ -106,7 +106,22 @@ describe("canonical registry", () => {
     ).toMatchObject({
       fromNodeType: "Assignment",
       toNodeType: "Project",
+      readSufficientEndpoints: { Project: true },
     });
+    expect(
+      EDGE_REGISTRY.filter(
+        ({ readSufficientEndpoints }) =>
+          Object.keys(readSufficientEndpoints).length > 0,
+      ).map(({ edgeType, readSufficientEndpoints }) => ({
+        edgeType,
+        readSufficientEndpoints,
+      })),
+    ).toEqual([
+      {
+        edgeType: "assigned_to",
+        readSufficientEndpoints: { Project: true },
+      },
+    ]);
     expect(
       assertRegisteredRelationship("affects", "Insight", "Employee"),
     ).toMatchObject({ toNodeType: "Any non-anonymity-protected node" });

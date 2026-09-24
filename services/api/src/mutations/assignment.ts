@@ -61,6 +61,7 @@ const edgeTarget = (
   edgeType: "assignment_of" | "assigned_to" | "governed_by",
   toNodeType: "Employee" | "Project" | "RateCard",
   edgeId: string,
+  toNodeId?: string,
 ) => ({
   kind: "edge" as const,
   workspaceId: ctx.principal.workspaceId,
@@ -68,6 +69,7 @@ const edgeTarget = (
   fromNodeType: "Assignment" as const,
   toNodeType,
   edgeId,
+  ...(toNodeId === undefined ? {} : { toNodeId }),
 });
 
 async function requireNode(
@@ -258,11 +260,23 @@ export async function buildAssignmentCreatePlan(
     checks: [
       { target: assignmentTarget(ctx, assignmentId), change: { operation: "create" } },
       {
-        target: edgeTarget(ctx, "assignment_of", "Employee", employeeEdgeId),
+        target: edgeTarget(
+          ctx,
+          "assignment_of",
+          "Employee",
+          employeeEdgeId,
+          employee.nodeId,
+        ),
         change: { operation: "create" },
       },
       {
-        target: edgeTarget(ctx, "assigned_to", "Project", projectEdgeId),
+        target: edgeTarget(
+          ctx,
+          "assigned_to",
+          "Project",
+          projectEdgeId,
+          project.nodeId,
+        ),
         change: { operation: "create" },
       },
       ...(rateCard

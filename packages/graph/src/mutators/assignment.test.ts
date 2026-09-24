@@ -1,5 +1,5 @@
 import { mutationDerivedId } from "@vulto/schema";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { applyUndo } from "./cache";
 import {
   applyOptimistic,
@@ -13,6 +13,8 @@ const USER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const EMPLOYEE = "10000000-0000-4000-8000-000000000001";
 const PROJECT = "10000000-0000-4000-8000-000000000002";
 const MUTATION = "10000000-0000-4000-8000-000000000003";
+
+afterEach(() => vi.restoreAllMocks());
 
 const context = (cache: MemoryCache): MutatorContext => ({
   cache,
@@ -93,6 +95,9 @@ describe("Assignment optimistic mutators", () => {
   });
 
   it("gates an offline override from membership/manager facts and rolls it back", async () => {
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockRejectedValue(new TypeError("network cut"));
     const membership = "10000000-0000-4000-8000-000000000010";
     const manager = "10000000-0000-4000-8000-000000000011";
     const membershipEdge = "20000000-0000-4000-8000-000000000010";
@@ -132,6 +137,7 @@ describe("Assignment optimistic mutators", () => {
     });
     await applyUndo(ownerCache, undo);
     expect(ownerCache.nodes.has(MUTATION)).toBe(false);
+    expect(fetch).not.toHaveBeenCalled();
 
     const managerCache = new MemoryCache();
     await seed(managerCache, EMPLOYEE, "Employee", { employee_type: "Ghost" });

@@ -43,6 +43,11 @@ interface EdgeGroupShape {
    * independently.
    */
   readonly governingPartitions?: Readonly<Partial<Record<NodeType, string>>>;
+  /**
+   * F262. Endpoint types for which an edge write may be authorized by Read as
+   * well as Full. Absent by default; every exception is declared per edge.
+   */
+  readonly readSufficientEndpoints?: Readonly<Partial<Record<NodeType, true>>>;
 }
 
 const edgeGroup = <const T extends EdgeGroupShape>(group: T): T => group;
@@ -124,6 +129,7 @@ export const EDGE_GROUPS = [
     edgeType: "assigned_to",
     owner: "VRS-F005",
     pairs: [["Assignment", "Project"]],
+    readSufficientEndpoints: { Project: true },
   }),
   edgeGroup({
     edgeType: "belongs_to",
@@ -556,6 +562,8 @@ export interface EdgeRegistration {
   readonly historyPolicy: "single-active-outgoing" | "none-specified";
   /** `{}` when the edge group declares none. See `EdgeGroupShape`. */
   readonly governingPartitions: Readonly<Partial<Record<NodeType, string>>>;
+  /** `{}` unless the edge explicitly permits Read on a named endpoint (F262). */
+  readonly readSufficientEndpoints: Readonly<Partial<Record<NodeType, true>>>;
 }
 
 export const EDGE_TYPES = EDGE_GROUPS.map(
@@ -576,6 +584,8 @@ export const EDGE_REGISTRY: readonly EdgeRegistration[] = EDGE_GROUPS.flatMap((g
     historyPolicy: "historyPolicy" in group ? group.historyPolicy : "none-specified",
     governingPartitions:
       "governingPartitions" in group ? group.governingPartitions : {},
+    readSufficientEndpoints:
+      "readSufficientEndpoints" in group ? group.readSufficientEndpoints : {},
   })),
 );
 

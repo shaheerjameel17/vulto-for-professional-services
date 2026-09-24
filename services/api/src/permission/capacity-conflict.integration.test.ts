@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterAll, describe, expect, it } from "vitest";
 import { closeDatabase, db } from "../db.js";
 import { graphEdges, graphNodes } from "../graph/schema.js";
-import { getNode, getNodes, insertEdge, insertNode } from "../graph/store.js";
+import { getNode, getNodes, insertEdge, insertNode, outgoing } from "../graph/store.js";
 import { capacityTotalsFor } from "../mutations/assignment.js";
 import { applyMutation } from "../mutations/pipeline.js";
 import { sweepOvercommitted } from "./conflict-resolution-queries.js";
@@ -210,6 +210,18 @@ describe("VRS-F008 — Capacity Conflict Resolution", () => {
       capacity_override_by: w.people.manager!.userId,
       capacity_override_at: NOW,
     });
+    const structuralEdges = await db.transaction(async (tx) => [
+      ...(await outgoing(tx, w.workspaceId, assignmentId, "assignment_of")),
+      ...(await outgoing(tx, w.workspaceId, assignmentId, "assigned_to")),
+    ]);
+    expect(
+      structuralEdges.map(({ edgeType, toNodeId }) => ({ edgeType, toNodeId })),
+    ).toEqual(
+      expect.arrayContaining([
+        { edgeType: "assignment_of", toNodeId: reportId },
+        { edgeType: "assigned_to", toNodeId: w.projectId },
+      ]),
+    );
 
     const rejectedId = randomUUID();
     const rejected = await w.apply(
@@ -224,6 +236,41 @@ describe("VRS-F008 — Capacity Conflict Resolution", () => {
     expect(rejected).toMatchObject({ status: "rejected", reason: "not-authorized" });
     expect(
       await db.transaction((tx) => getNode(tx, w.workspaceId, rejectedId)),
+    ).toBeNull();
+  });
+
+  it("refuses an unrelated manager at assignment_of before any write", async () => {
+    const w = await world();
+    const targetManagerId = await employee(w, "manager");
+    const targetId = await employee(w);
+    const unrelatedManagerId = await employee(w, "outsider");
+    const unrelatedReportId = await employee(w);
+    for (const [employeeId, managerId] of [
+      [targetId, targetManagerId],
+      [unrelatedReportId, unrelatedManagerId],
+    ] as const) {
+      expect(
+        (
+          await w.apply("owner", "org.moveEmployee", {
+            employee_id: employeeId,
+            new_manager_id: managerId,
+            effective_from: NOW,
+          })
+        ).status,
+      ).toBe("applied");
+    }
+
+    const refusedEdgeId = randomUUID();
+    expect(
+      await w.apply(
+        "outsider",
+        "assignment.create",
+        proposed(targetId, w.projectId, 1),
+        refusedEdgeId,
+      ),
+    ).toMatchObject({ status: "rejected", reason: "role" });
+    expect(
+      await db.transaction((tx) => getNode(tx, w.workspaceId, refusedEdgeId)),
     ).toBeNull();
   });
 
