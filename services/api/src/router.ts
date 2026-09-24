@@ -17,6 +17,7 @@ import {
   rateCardPreviewInputSchema,
   rateCardUsageInputSchema,
   ghostResourceListInputSchema,
+  conflictResolutionSweepInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -43,6 +44,7 @@ import {
   RateCardAccessDenied,
 } from "./permission/rate-card-queries.js";
 import { listGhostResources } from "./permission/ghost-resource-queries.js";
+import { sweepOvercommitted } from "./permission/conflict-resolution-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -234,6 +236,16 @@ export const appRouter = t.router({
             ...(input.status === undefined ? {} : { lifecycleStatus: input.status }),
           }),
         );
+      }),
+  }),
+  conflictResolution: t.router({
+    sweepOvercommitted: protectedProcedure
+      .input(conflictResolutionSweepInputSchema)
+      .query(({ ctx, input }) => {
+        if (input.workspace_id !== ctx.principal.workspaceId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
+        }
+        return db.transaction((tx) => sweepOvercommitted(tx, ctx.principal));
       }),
   }),
   calendar: t.router({

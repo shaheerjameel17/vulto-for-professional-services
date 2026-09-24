@@ -47,6 +47,7 @@ describe("the foundation mutation set", () => {
       "assignment.setRateOverride",
       "assignment.update",
       "calendar.update",
+      "conflictResolution.overrideAndProceed",
       "employee.create",
       "employee.linkUser",
       "employee.setCompensation",

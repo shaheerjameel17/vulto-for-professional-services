@@ -22,6 +22,32 @@ const context = (cache: MemoryCache): MutatorContext => ({
   now: "2026-03-01T00:00:00.000Z",
 });
 
+const seedEdge = async (
+  cache: MemoryCache,
+  id: string,
+  type: string,
+  from: string,
+  to: string,
+) =>
+  cache.putEdge({
+    edgeId: id,
+    edgeType: type,
+    fromNodeId: from,
+    toNodeId: to,
+    effectiveFrom: "2026-01-01T00:00:00.000Z",
+    effectiveTo: null,
+    isSoftDeleted: false,
+    version: 1,
+    record: {
+      edge_id: id,
+      edge_type: type,
+      from_node_id: from,
+      to_node_id: to,
+      effective_from: "2026-01-01T00:00:00.000Z",
+      effective_to: null,
+    },
+  });
+
 const seed = async (cache: MemoryCache, id: string, type: string, record = {}) =>
   cache.putNode({
     nodeId: id,
@@ -64,6 +90,81 @@ describe("Assignment optimistic mutators", () => {
     );
     await applyUndo(cache, undo);
     expect(cache.nodes.has(MUTATION)).toBe(false);
+  });
+
+  it("gates an offline override from membership/manager facts and rolls it back", async () => {
+    const membership = "10000000-0000-4000-8000-000000000010";
+    const manager = "10000000-0000-4000-8000-000000000011";
+    const membershipEdge = "20000000-0000-4000-8000-000000000010";
+    const managerEdge = "20000000-0000-4000-8000-000000000011";
+    const args = {
+      proposed: {
+        employee_id: EMPLOYEE,
+        project_id: PROJECT,
+        start_date: "2026-03-10",
+        end_date: "2026-03-20",
+        billable_percentage: 50,
+      },
+      reason: "Short launch sprint",
+    };
+
+    const ownerCache = new MemoryCache();
+    await seed(ownerCache, EMPLOYEE, "Employee", { employee_type: "Ghost" });
+    await seed(ownerCache, PROJECT, "Project");
+    await seed(ownerCache, membership, "WorkspaceMembership", { role: "owner" });
+    await seedEdge(ownerCache, membershipEdge, "membership_of", membership, USER);
+    await seed(ownerCache, "10000000-0000-4000-8000-000000000012", "Assignment", {
+      employee_id: EMPLOYEE,
+      start_date: "2026-03-01",
+      end_date: "2026-03-31",
+      billable_percentage: 100,
+    });
+    const undo = await applyOptimistic(
+      context(ownerCache),
+      "conflictResolution.overrideAndProceed",
+      args,
+    );
+    expect(ownerCache.nodes.get(MUTATION)?.record).toMatchObject({
+      employee_id: EMPLOYEE,
+      capacity_override_reason: "Short launch sprint",
+      capacity_override_by: USER,
+      capacity_override_at: "2026-03-01T00:00:00.000Z",
+    });
+    await applyUndo(ownerCache, undo);
+    expect(ownerCache.nodes.has(MUTATION)).toBe(false);
+
+    const managerCache = new MemoryCache();
+    await seed(managerCache, EMPLOYEE, "Employee", { employee_type: "Ghost" });
+    await seed(managerCache, PROJECT, "Project");
+    await seed(managerCache, membership, "WorkspaceMembership", {
+      role: "team-member",
+    });
+    await seed(managerCache, manager, "Employee", { user_id: USER });
+    await seedEdge(managerCache, membershipEdge, "membership_of", membership, USER);
+    await seedEdge(managerCache, managerEdge, "managed_by", EMPLOYEE, manager);
+    await expect(
+      applyOptimistic(
+        context(managerCache),
+        "conflictResolution.overrideAndProceed",
+        args,
+      ),
+    ).resolves.toHaveLength(3);
+
+    const deniedCache = new MemoryCache();
+    await seed(deniedCache, EMPLOYEE, "Employee");
+    await seed(deniedCache, PROJECT, "Project");
+    await seed(deniedCache, membership, "WorkspaceMembership", {
+      role: "team-member",
+    });
+    await seedEdge(deniedCache, membershipEdge, "membership_of", membership, USER);
+    await expect(
+      applyOptimistic(
+        context(deniedCache),
+        "conflictResolution.overrideAndProceed",
+        args,
+      ),
+    ).rejects.toMatchObject({ reason: "not-authorized" });
+    expect(deniedCache.nodes.has(MUTATION)).toBe(false);
   });
 
   it("checks the cancellation version before changing status", async () => {
