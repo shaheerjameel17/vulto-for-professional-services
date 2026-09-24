@@ -1059,6 +1059,21 @@ const assignmentCancel: OptimisticMutator = async (c, raw) => {
   ];
 };
 
+const revenueGapAlertDismiss: OptimisticMutator = async (c, raw) => {
+  const args = parse("revenueGapAlert.dismiss", raw);
+  const alert = await liveTypedNode(c.cache, args.alert_id, "RevenueGapAlert");
+  if (alert.record["lifecycle_status"] === "Resolved")
+    throw new OptimisticRejection("invalid-transition");
+  if (alert.record["dismissed_at"] !== null) throw new OptimisticRejection("no-change");
+  return [
+    await writeNode(c.cache, alert, {
+      ...alert.record,
+      dismissed_at: c.now,
+      ...updateStamp("RevenueGapAlert", provenance(c)),
+    }),
+  ];
+};
+
 const assignmentSetRateCard: OptimisticMutator = async (c, raw) => {
   const args = parse("assignment.setRateCard", raw);
   const assignment = await liveTypedNode(c.cache, args.assignment_id, "Assignment");
@@ -1325,6 +1340,7 @@ export const OPTIMISTIC_MUTATORS: Readonly<
   "assignment.create": assignmentCreate,
   "assignment.update": assignmentUpdate,
   "assignment.cancel": assignmentCancel,
+  "revenueGapAlert.dismiss": revenueGapAlertDismiss,
   "assignment.setRateCard": assignmentSetRateCard,
   "assignment.setRateOverride": assignmentSetRateOverride,
   "assignment.clearRateOverride": assignmentClearRateOverride,

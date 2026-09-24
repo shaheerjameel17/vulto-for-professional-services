@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { sql } from "./db.js";
 import { TRPCError } from "@trpc/server";
 import {
@@ -25,12 +26,15 @@ import {
   timesheetAnomalyListInputSchema,
   utilizationGetIndividualInputSchema,
   utilizationGetAgencyInputSchema,
+  revenueGapAlertListInputSchema,
+  revenueGapAlertSweepInputSchema,
+  revenueGapAlertDismissInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
 import { getEmployee, listEmployees } from "./permission/employee-queries.js";
 import { readProtected } from "./protected/read.js";
-import { applyMutations } from "./mutations/pipeline.js";
+import { applyMutation, applyMutations } from "./mutations/pipeline.js";
 import { resolveCalendarForEntity } from "./graph/calendar-resolution.js";
 import {
   addWorkingDays,
@@ -60,6 +64,10 @@ import {
 } from "./permission/timesheet-queries.js";
 import { listActiveAnomalies } from "./permission/timesheet-anomaly-queries.js";
 import { getIndividual, getAgencyAggregate } from "./permission/utilization-queries.js";
+import {
+  listActiveRevenueGapAlerts,
+  sweepRevenueGapAlerts,
+} from "./permission/revenue-gap-alert-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -340,6 +348,31 @@ export const appRouter = t.router({
           throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
         }
         return db.transaction((tx) => sweepOvercommitted(tx, ctx.principal));
+      }),
+  }),
+  revenueGapAlert: t.router({
+    dismiss: protectedProcedure
+      .input(revenueGapAlertDismissInputSchema)
+      .mutation(({ ctx, input }) =>
+        applyMutation(ctx.principal, {
+          mutation_id: randomUUID(),
+          name: "revenueGapAlert.dismiss",
+          args: input,
+        }),
+      ),
+    listActive: protectedProcedure
+      .input(revenueGapAlertListInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          listActiveRevenueGapAlerts(tx, ctx.principal, input.workspace_id),
+        ),
+      ),
+    sweep: protectedProcedure
+      .input(revenueGapAlertSweepInputSchema)
+      .mutation(({ ctx, input }) => {
+        if (input.workspace_id !== ctx.principal.workspaceId)
+          throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
+        return sweepRevenueGapAlerts(ctx.principal.workspaceId);
       }),
   }),
   calendar: t.router({

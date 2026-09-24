@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import { getKeyServices } from "../crypto/keys.js";
 import { closeDatabase, db } from "../db.js";
-import { getNode, insertEdge, insertNode } from "../graph/store.js";
+import { getNode, getNodes, insertEdge, insertNode } from "../graph/store.js";
 import { applyMutation } from "../mutations/pipeline.js";
+import { revenueGapAlertEvaluate } from "../mutations/revenue-gap-alert.js";
 import { writeProtected } from "../protected/write.js";
 import {
   compensationCostForBenchDay,
+  computeBenchStatus,
   getBenchForecastAggregate,
   getBenchForecastCosts,
 } from "./bench-forecast-queries.js";
@@ -100,6 +102,58 @@ async function employee(
 }
 
 describe("VRS-F005 — The Bench Forecast", () => {
+  it("excludes every Pitch working day from the shared bench computation (F283)", async () => {
+    const w = await world();
+    const employeeId = await employee(w, "report");
+    const created = await w.apply("owner", "pitch.create", { name: "Forecast pitch" });
+    expect(created.status).toBe("applied");
+    const pitchId = (created.result as { pitchId: string }).pitchId;
+    expect(
+      (
+        await w.apply("owner", "pitch.staffEmployee", {
+          pitch_id: pitchId,
+          employee_id: employeeId,
+        })
+      ).status,
+    ).toBe("applied");
+    for (const date of [
+      "2026-01-01",
+      "2026-01-02",
+      "2026-01-05",
+      "2026-01-06",
+      "2026-01-07",
+      "2026-01-08",
+      "2026-01-09",
+    ]) {
+      const saved = await w.apply("report", "timesheet.saveCell", {
+        employee_id: employeeId,
+        date,
+        row_context: { kind: "pitch", pitch_id: pitchId },
+        hours: 1,
+      });
+      expect(saved.status, JSON.stringify(saved)).toBe("applied");
+    }
+    const status = await db.transaction((tx) =>
+      computeBenchStatus(tx, w.workspaceId, employeeId, "2026-01-09", async () => true),
+    );
+    expect(status).toEqual({ benchDays: [], benchStartDate: null });
+    expect(
+      (
+        await revenueGapAlertEvaluate(
+          w.workspaceId,
+          employeeId,
+          "2026-01-09T12:00:00.000Z",
+        )
+      ).alertId,
+    ).toBeNull();
+    expect(
+      await db.transaction((tx) =>
+        getNodes(tx, w.workspaceId, {
+          nodeType: "RevenueGapAlert",
+        }),
+      ),
+    ).toHaveLength(0);
+  });
   it("uses the specified annual, monthly and hourly compensation formulas", () => {
     expect(
       compensationCostForBenchDay({

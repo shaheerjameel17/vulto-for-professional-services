@@ -270,6 +270,13 @@ const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
     manager: FULL_ANY(),
     "team-member": READ_ANY(),
   },
+  RevenueGapAlert: {
+    owner: FULL_ANY(),
+    "hr-admin": FULL_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: FULL_ANY(),
+    "team-member": READ_ANY(),
+  },
   "Pitch:identifying": {
     owner: FULL_ANY(),
     "hr-admin": FULL_ANY(),

@@ -78,6 +78,7 @@ describe("the foundation mutation set", () => {
       "pitch.unstaffEmployee",
       "rateCard.create",
       "rateCard.update",
+      "revenueGapAlert.dismiss",
       "timesheet.saveCell",
       "timesheet.submitWeek",
       "timesheet.unlockWeek",

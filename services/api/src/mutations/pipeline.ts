@@ -70,6 +70,7 @@ import {
   timesheetUnlockWeek,
 } from "./timesheet.js";
 import { timesheetAnomalyClear } from "./timesheet-anomaly.js";
+import { revenueGapAlertDismiss } from "./revenue-gap-alert.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -135,6 +136,7 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "timesheet.submitWeek": timesheetSubmitWeek as ServerMutation<never>,
   "timesheet.unlockWeek": timesheetUnlockWeek as ServerMutation<never>,
   "timesheetAnomaly.clear": timesheetAnomalyClear as ServerMutation<never>,
+  "revenueGapAlert.dismiss": revenueGapAlertDismiss as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {

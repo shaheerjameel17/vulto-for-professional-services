@@ -962,10 +962,15 @@ export async function authorizeWrite(
             target.nodeType,
             partitionKey,
           )
-        : isSystemOperationPermitted(principal.name, "timesheet-anomaly.create-flag") &&
-          target.edgeType === "triggered_by" &&
-          target.fromNodeType === "TimesheetAnomalyFlag" &&
-          target.toNodeType === "Employee";
+        : target.edgeType === "triggered_by" &&
+          target.toNodeType === "Employee" &&
+          ((isSystemOperationPermitted(
+            principal.name,
+            "timesheet-anomaly.create-flag",
+          ) &&
+            target.fromNodeType === "TimesheetAnomalyFlag") ||
+            (isSystemOperationPermitted(principal.name, "revenue-gap-alert.write") &&
+              target.fromNodeType === "RevenueGapAlert"));
     if (!permitted) return refuse("role");
   } else {
     const gateRoles: readonly PolicyRole[] =

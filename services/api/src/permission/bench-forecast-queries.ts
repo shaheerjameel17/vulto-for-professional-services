@@ -1,4 +1,5 @@
 import {
+  addIsoDays,
   applyDisclosureControl,
   isoDatesInclusive,
   matchesBenchForecastFilters,
@@ -83,6 +84,90 @@ async function assignmentsFor(
   ).filter((node) => node.record["employee_id"] === employeeId);
 }
 
+/** VRS-F005's single bench-day calculation, shared by the cohort and F012. */
+async function benchDaysForWindow(
+  tx: GraphTx,
+  workspaceId: string,
+  employeeId: string,
+  window: { readonly fromDate: string; readonly toDate: string },
+  guard: WorkingDaysReadGuard,
+): Promise<string[]> {
+  const assignments = await assignmentsFor(tx, workspaceId, employeeId);
+  // F283: a Pitch day is neither an Assignment day nor an uncovered bench day.
+  // This trusted Tier 0 input read exposes only derived days to the caller.
+  const pitchDates = new Set(
+    (await getNodes(tx, workspaceId, { nodeType: "TimesheetEntry" }))
+      .filter(
+        (entry) =>
+          entry.record["employee_id"] === employeeId &&
+          entry.record["time_category"] === "Pitch" &&
+          typeof entry.record["date"] === "string" &&
+          window.fromDate <= entry.record["date"] &&
+          entry.record["date"] <= window.toDate,
+      )
+      .map((entry) => String(entry.record["date"])),
+  );
+  const benchDays: string[] = [];
+  for (const date of isoDatesInclusive(window.fromDate, window.toDate)) {
+    const day = await resolvedDayOn(tx, workspaceId, employeeId, date, guard);
+    if (
+      day.isWorking &&
+      !assignments.some((assignment) => assignmentCovers(assignment, date)) &&
+      !pitchDates.has(date)
+    ) {
+      benchDays.push(date);
+    }
+  }
+  return benchDays;
+}
+
+/** F283: the current bench period, using precisely the cohort's exclusions. */
+export async function computeBenchStatus(
+  tx: GraphTx,
+  workspaceId: string,
+  employeeId: string,
+  asOfDate: string,
+  guard: WorkingDaysReadGuard,
+): Promise<{ benchDays: readonly string[]; benchStartDate: string | null }> {
+  const employee = await getNode(tx, workspaceId, employeeId);
+  if (!employee || employee.isSoftDeleted || employee.nodeType !== "Employee")
+    return { benchDays: [], benchStartDate: null };
+  const assignments = (
+    await getNodes(tx, workspaceId, { nodeType: "Assignment" })
+  ).filter(
+    (assignment) =>
+      assignment.record["employee_id"] === employeeId &&
+      assignment.lifecycleStatus !== "Canceled",
+  );
+  if (assignments.some((assignment) => assignmentCovers(assignment, asOfDate)))
+    return { benchDays: [], benchStartDate: null };
+  const latestEnded = assignments
+    .filter((assignment) => String(assignment.record["end_date"]) < asOfDate)
+    .sort((left, right) =>
+      String(right.record["end_date"]).localeCompare(String(left.record["end_date"])),
+    )[0];
+  const fromDate = latestEnded
+    ? addIsoDays(String(latestEnded.record["end_date"]), 1)
+    : String(employee.record["start_date"] ?? asOfDate);
+  if (fromDate > asOfDate) return { benchDays: [], benchStartDate: null };
+  const benchDays = await benchDaysForWindow(
+    tx,
+    workspaceId,
+    employeeId,
+    { fromDate, toDate: asOfDate },
+    guard,
+  );
+  return {
+    benchDays,
+    benchStartDate:
+      benchDays.length === 0
+        ? null
+        : latestEnded
+          ? String(latestEnded.record["end_date"])
+          : benchDays[0]!,
+  };
+}
+
 async function cohortEmployee(
   tx: GraphTx,
   principal: Principal,
@@ -92,23 +177,13 @@ async function cohortEmployee(
   context: InterceptorContext,
 ): Promise<CohortEmployee> {
   const guard = readGuard(tx, principal, context);
-  const assignments = await assignmentsFor(tx, principal.workspaceId, employee.nodeId);
-  const benchDays: string[] = [];
-  for (const date of isoDatesInclusive(derivedWindow.fromDate, derivedWindow.toDate)) {
-    const day = await resolvedDayOn(
-      tx,
-      principal.workspaceId,
-      employee.nodeId,
-      date,
-      guard,
-    );
-    if (
-      day.isWorking &&
-      !assignments.some((assignment) => assignmentCovers(assignment, date))
-    ) {
-      benchDays.push(date);
-    }
-  }
+  const benchDays = await benchDaysForWindow(
+    tx,
+    principal.workspaceId,
+    employee.nodeId,
+    derivedWindow,
+    guard,
+  );
   const skills = (
     await outgoing(tx, principal.workspaceId, employee.nodeId, "has_skill")
   )
