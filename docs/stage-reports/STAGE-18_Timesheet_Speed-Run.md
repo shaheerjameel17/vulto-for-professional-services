@@ -1,17 +1,17 @@
 # Stage 18 — Timesheet Speed-Run
 
 **Status:** BLOCKED
-**Branch:** `codex/stage-18-timesheet-speed-run` (merged current `main` through F274 at `eddbb96`; F274 mechanism partially implemented)
+**Branch:** `codex/stage-18-timesheet-speed-run` (merged current `main` through F275 at `93c8cf1`; F275 mechanism implemented)
 **Linear issues:** RST-46
 **Date:** 2026-09-24
 
 ## 1. Summary
 
-F267–F273 infrastructure remains committed. F274 was ruled on `main` at `eddbb96` and merged here. Its create-time declared-subject plumbing and independent post-apply row re-check have been implemented and API-typechecked, but the mutation plan-builders and rollback test have not yet been built. Tracing the required ordinary Team Member `saveCell` path exposed F275: the `logged_against` edge's Assignment and Pitch endpoints reject the Team Member regardless of the F274 subject fix. Implementation stopped for a reviewer ruling; no app code or protected documentation was directly edited.
+F267–F274 infrastructure remains committed. F275 was ruled on `main` at `93c8cf1` and merged here. The `logged_against` Assignment read-sufficient declaration and the reusable, active-edge-backed Pitch participant grant are implemented and proven against the real interceptor and PostgreSQL. While beginning `saveCell`, F276 surfaced: the required `week_start_date` cannot be uniquely derived for every working-week shape the existing schema permits. No feature mutation code was retained pending a reviewer ruling; no app code or protected documentation was directly edited.
 
 ## 2. Done-criteria checklist
 
-- [ ] `logged_against` declares `Pitch: "identifying"` — the declaration is committed in `packages/schema/src/registry/edges.ts`; the required real-interceptor Pitch save is additionally blocked by F275's endpoint grant.
+- [ ] `logged_against` declares `Pitch: "identifying"` and `readSufficientEndpoints: { Assignment: true }`; interceptor-level Assignment and Pitch endpoint tests pass, but the required `saveCell` end-to-end test awaits F276's week-key ruling and mutation implementation.
 - [ ] The F268/F269 row-scope branches are proven against the real interceptor — code committed in `2cd5b03`, extended for the week marker in `3cda786` and the F274 create case in this resume, but creation tests await the mutation path.
 - [ ] `saveCell` rejects a 25-hour date total before storage and the optimistic mutator surfaces `GraphValidationError` — not started.
 - [ ] `submitWeek` transitions all Draft entries atomically with an injected-failure rollback proof — not started.
@@ -38,10 +38,11 @@ F267–F273 infrastructure remains committed. F274 was ruled on `main` at `eddbb
 | F272 reserved identity | `services/api/src/graph/system-actor.ts` | API typecheck only; first system write awaits the mutation |
 | F273 marker registration | `packages/schema/src/registry/nodes.ts`, `packages/schema/src/policy/policy-table.ts`, `packages/schema/src/timesheet.ts` | Registry suite 24/24; schema suite 95 passed, 2 todo |
 | F274 create-time subject mechanism | `services/api/src/permission/interceptor.ts`, `services/api/src/mutations/pipeline.ts` | API typecheck only; plan-builder declarations and deliberate-mismatch rollback test are not yet built |
+| F275 endpoint authority | `packages/schema/src/registry/edges.ts`, `packages/schema/src/registry/participant-grants.ts`, `services/api/src/permission/interceptor.ts` | `pitch.integration.test.ts`: ordinary Team Member Assignment edge write succeeds; Pitch edge write denied, allowed after staffing, denied after unstaffing, allowed after restaffing; generic Pitch read remains denied |
 
 ## 4. Files changed
 
-Relative to current `main`: F267's edge registry; F268/F269, F270/F271 and partial F274 interceptor work; F274 pipeline re-check; F270/F272 policy tables; F272 reserved identity helper; F273 node registry, policy row, schemas and registry-count checks; and this report. F270–F274 ruling documents were merged from `main`, not edited here.
+Relative to current `main`: F267/F275 edge registry; F275 participant-grant registry and focused integration test; F268/F269, F270/F271, partial F274 and F275 interceptor work; F274 pipeline re-check; F270/F272 policy tables; F272 reserved identity helper; F273 node registry, policy row, schemas and registry-count checks; and this report. F270–F275 ruling documents were merged from `main`, not edited here.
 
 ## 5. Database changes
 
@@ -49,7 +50,7 @@ None.
 
 ## 6. Tests and gates
 
-The four required gates were not run: `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, and `pnpm verify:full`. Stage 18 cannot be COMPLETE until F275 is ruled and implementation resumes. Narrow checks on `3cda786` passed: schema tests 95 passed/2 todo (including registry 24/24), schema and API typechecks, and `git diff --check`. This resume also passed `pnpm --filter @vulto/api typecheck` after the partial F274 implementation. Mutation and query handlers have not been built; the four full gates would therefore not be meaningful yet.
+The four required gates were not run: `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, and `pnpm verify:full`. Stage 18 cannot be COMPLETE until F276 is ruled and implementation resumes. Narrow checks on `3cda786` passed: schema tests 95 passed/2 todo (including registry 24/24), schema and API typechecks, and `git diff --check`. This resume passed schema and API typechecks, `git diff --check`, and the real-PostgreSQL `pitch.integration.test.ts` (5/5). Mutation and query handlers have not been built; the four full gates would therefore not be meaningful yet.
 
 ## 7. Micro-decisions
 
@@ -95,18 +96,24 @@ The founder ruled a new `WriteChange.declaredSubjectEmployeeId`, set from parsed
 
 ### F275 — `logged_against` endpoint authority denies ordinary Team Member cells
 
-**Status: open; reviewer ruling required.** The Stage 18 brief requires an ordinary Team Member to save their own Billable and Pitch cells. Both write a `logged_against` edge, from the newly created or updated TimesheetEntry to Assignment or Pitch. F274 resolves the TimesheetEntry endpoint's `Full (own)` check at create time, but `services/api/src/permission/interceptor.ts`'s `edgeRoleDecision` requires `Full` on *both* endpoints unless an endpoint is registered as `readSufficientEndpoints`. The `logged_against` registration in `packages/schema/src/registry/edges.ts` has no such declaration. `packages/schema/src/policy/policy-table.ts` gives Team Member only `READ_ANY()` on Assignment and `NONE_ANY()` on `Pitch:identifying`; the Pitch pair is explicitly governed by that partition (F267). Thus Billable is refused at Assignment, and Pitch is refused at Pitch, before either edge can be written. NonBillable writes no edge and does not exercise this gap. Owner/HR Admin tests would mask it.
+**Status: closed on `main` at `93c8cf1`; implemented and tested.** The Stage 18 brief requires an ordinary Team Member to save their own Billable and Pitch cells. Both write a `logged_against` edge, from the newly created or updated TimesheetEntry to Assignment or Pitch. F274 resolves the TimesheetEntry endpoint's `Full (own)` check at create time, but `services/api/src/permission/interceptor.ts`'s `edgeRoleDecision` requires `Full` on *both* endpoints unless an endpoint is registered as `readSufficientEndpoints`. The `logged_against` registration in `packages/schema/src/registry/edges.ts` had no such declaration. `packages/schema/src/policy/policy-table.ts` gives Team Member only `READ_ANY()` on Assignment and `NONE_ANY()` on `Pitch:identifying`; the Pitch pair is explicitly governed by that partition (F267). Thus Billable was refused at Assignment, and Pitch at Pitch. NonBillable writes no edge and does not exercise this gap. Owner/HR Admin tests would mask it.
 
-F262's `assigned_to` precedent permits a read-sufficient Project endpoint, which may address Assignment if the reviewer rules that shape appropriate here. It cannot by itself address Pitch, because Team Member has **no** generic `Pitch:identifying` read grant; `pitch.listStaffedFor` deliberately exposes identifying fields through a special staffed-employee path, not the generic Pitch policy row. A broader Team Member Pitch grant, a staffed-only edge authority, or a narrowly authorized mutation-specific edge rule are materially different security choices. The builder has not selected one, changed the policy matrix, or bypassed `edgeRoleDecision`. The reviewer should rule and record the intended authority for each endpoint and correct the Stage 18 brief/spec before implementation resumes.
+The reviewer ruled `readSufficientEndpoints: { Assignment: true }` on `logged_against`, matching F262's `assigned_to` precedent, plus a closed `PARTICIPANT_GRANTS` registry for Pitch's staffed-Employee relationship. `participantGrantSatisfied` is wired only into `edgeRoleDecision`, as an independent active-edge path; no generic Pitch read or Team Member role cell changed. The focused real-interceptor test proves Assignment read-sufficiency, Pitch denial before staffing, grant while staffed, denial after `pitch.unstaffEmployee`, and grant after restaffing.
+
+### F276 — week-start key is not derivable for every permitted working-week shape
+
+**Status: open; reviewer ruling required.** `VRS-F010` G05 and the Stage 18 brief require every `TimesheetEntry.week_start_date` to be the employee's “first working day of the week,” including Sunday-to-Thursday workspaces. `timesheet.saveCell(employeeId, date, rowContext, hours, category?)` supplies a date but no week key, so the server must derive the key before storing the entry; `submitWeek`, `getWeek`, compliance, and the empty-week marker subsequently group by it. `VRS-F004`'s seven-row `working_week` and `packages/schema/src/mutations/calendar.ts`'s `workingWeekSchema` accept any seven booleans, including seven working days or multiple separated working blocks. Neither that schema nor the corrected Stage 18 brief nor `VRS-F010` defines which day begins a week in those cases. The code has no `week_start_day` or equivalent field/helper. A seven-working-day pattern has no rest break from which to identify a first day. A split pattern (for example Sunday, Monday, Wednesday and Friday) has multiple “first working day after a rest day” candidates. Moreover, `resolveWorkingDay` includes holidays: if Sunday is a holiday in a Sunday-to-Thursday workspace, the text does not say whether that week's key shifts to Monday or remains Sunday. Shifting a key per holiday would change which entries `submitWeek` locks and which marker a later query finds.
+
+A deterministic rest-gap rule with a tie/fallback, a configured week anchor, or an invariant restricting supported schedules are materially different domain choices; none is prescribed. The builder did not choose a hidden Monday default or a longest-gap heuristic. The reviewer should define a stable week-boundary rule and its behavior under patterns/holidays (and when schedule configuration changes), then correct the owning spec and brief. The incomplete `timesheet` mutation-schema draft was removed; no mutation handler was registered or left as a stub.
 
 ## 9. Deviations from this brief
 
-No unruled change was implemented. F274's ruled mechanism is only partial; the incomplete stage is blocked by F275 rather than worked around.
+No unruled change was implemented. F274's ruled mechanism remains partial; F275 is implemented; the incomplete stage is blocked by F276 rather than worked around.
 
 ## 10. Known limitations and risks
 
-The F267 registry declaration, F268/F269 interceptor change, F270–F273 infrastructure, and partial F274 mechanism have not yet reached real mutation tests. No TimesheetEntry or TimesheetAnomalyFlag creation path exists on this branch. F275 prevents the required ordinary Team Member Billable/Pitch path under current policy.
+The F267 registry declaration, F268/F269 interceptor change, F270–F273 infrastructure, and partial F274 mechanism have not yet reached real mutation tests. F275's endpoint authority has a real interceptor/database test, but no TimesheetEntry or TimesheetAnomalyFlag creation path exists on this branch. F276 prevents a trustworthy week key for the required mutation path.
 
 ## 11. Readiness for the next stage
 
-No. Stage 18 must resume after the reviewer rules F275; Stage 19 is not started.
+No. Stage 18 must resume after the reviewer rules F276; Stage 19 is not started.

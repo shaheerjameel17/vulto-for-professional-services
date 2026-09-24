@@ -4,6 +4,7 @@ import {
   getProtectionPartitions,
   getSubjectExclusion,
   isSystemOperationPermitted,
+  PARTICIPANT_GRANTS,
   POLICY_ROLES,
   resolvePolicyCell,
   type AuditEntry,
@@ -729,7 +730,33 @@ const RESERVED_PROJECTION_EDGE_TYPES: ReadonlySet<string> = new Set([
   "membership_in",
 ]);
 
-/** Gate 1 for an edge: Full on both endpoint node types, through each governing partition. */
+/** Resolve a declared participant grant through the caller's own active edge. */
+async function participantGrantSatisfied(
+  tx: GraphTx,
+  principal: Principal,
+  nodeType: NodeType,
+  nodeId: string,
+  asOf: string,
+  context: InterceptorContext,
+): Promise<boolean> {
+  if (principal.kind !== "member") return false;
+  const grant = PARTICIPANT_GRANTS[nodeType];
+  if (grant === undefined || grant.fromNodeType !== "Employee") return false;
+  const resolve =
+    context.roleDependencies?.resolveEmployeeForUser ?? resolveEmployeeForUser;
+  const employeeId = await resolve(tx, principal.workspaceId, principal.userId);
+  if (employeeId === null) return false;
+  const active = await outgoing(
+    tx,
+    principal.workspaceId,
+    employeeId,
+    grant.viaEdgeType,
+    asOf,
+  );
+  return active.some((edge) => edge.toNodeId === nodeId);
+}
+
+/** Gate 1 for an edge: role-based or declared participant endpoint authority. */
 async function edgeRoleDecision(
   tx: GraphTx,
   principal: Principal,
@@ -778,9 +805,20 @@ async function edgeRoleDecision(
             declaredSubjectEmployeeId: change.declaredSubjectEmployeeId,
           };
     const outcome = (await bestCell(roles, nodeType, partitionKey, row)).outcome;
-    const sufficient =
+    const roleSufficient =
       outcome === "full" ||
       (outcome === "read" && registration.readSufficientEndpoints[nodeType] === true);
+    const sufficient =
+      roleSufficient ||
+      (nodeId != null &&
+        (await participantGrantSatisfied(
+          tx,
+          principal,
+          nodeType,
+          nodeId,
+          (context.now ?? nowIso)(),
+          context,
+        )));
     if (!sufficient) return "role";
   }
   return null;

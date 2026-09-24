@@ -31,6 +31,10 @@ export {
   type EndpointSet,
   type RegistryEndpoint,
 } from "./registry/edges";
+export {
+  PARTICIPANT_GRANTS,
+  type ParticipantGrant,
+} from "./registry/participant-grants";
 
 export {
   ANONYMITY_REGISTRY,

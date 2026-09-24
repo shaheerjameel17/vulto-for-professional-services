@@ -166,6 +166,7 @@ export const EDGE_GROUPS = [
       ["TimesheetEntry", "Pitch"],
     ],
     governingPartitions: { Pitch: "identifying" },
+    readSufficientEndpoints: { Assignment: true },
   }),
   edgeGroup({
     edgeType: "processed_in",
