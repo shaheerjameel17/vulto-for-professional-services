@@ -23,6 +23,7 @@ import {
 } from "../graph/store.js";
 import { readRateCardLine } from "../permission/rate-card-queries.js";
 import { resolvedDayOn } from "../graph/working-days.js";
+import { revenueGapAlertEvaluate } from "./revenue-gap-alert.js";
 import {
   ConflictError,
   MutationRejection,
@@ -397,6 +398,13 @@ export async function buildAssignmentCreatePlan(
         ],
       };
     },
+    afterCommit: async () => {
+      await revenueGapAlertEvaluate(
+        ctx.principal.workspaceId,
+        employee.nodeId,
+        ctx.now,
+      );
+    },
   };
 }
 
@@ -604,6 +612,9 @@ export const assignmentUpdate: ServerMutation<
   const attempted =
     ctx.args.fields.billable_percentage ??
     Number(assignment.record["billable_percentage"]);
+  const datesChanged =
+    startDate !== assignment.record["start_date"] ||
+    endDate !== assignment.record["end_date"];
   return {
     checks: [
       {
@@ -635,6 +646,17 @@ export const assignmentUpdate: ServerMutation<
         changedRowIds: [updated.nodeId],
       };
     },
+    ...(datesChanged
+      ? {
+          afterCommit: async () => {
+            await revenueGapAlertEvaluate(
+              ctx.principal.workspaceId,
+              String(assignment.record["employee_id"]),
+              ctx.now,
+            );
+          },
+        }
+      : {}),
   };
 };
 
@@ -672,6 +694,13 @@ export const assignmentCancel: ServerMutation<
         result: { success: true, version: updated.version },
         changedRowIds: [updated.nodeId],
       };
+    },
+    afterCommit: async () => {
+      await revenueGapAlertEvaluate(
+        ctx.principal.workspaceId,
+        String(assignment.record["employee_id"]),
+        ctx.now,
+      );
     },
   };
 };

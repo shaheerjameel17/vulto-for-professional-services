@@ -112,4 +112,5 @@ export const EMPLOYEE_MUTATIONS = {
 export const FEATURE_LIFECYCLE_NODE_TYPES: ReadonlySet<string> = new Set([
   "Employee",
   "Entity",
+  "RevenueGapAlert",
 ]);

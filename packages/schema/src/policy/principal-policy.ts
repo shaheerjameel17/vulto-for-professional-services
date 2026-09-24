@@ -17,6 +17,7 @@ export const SYSTEM_PRINCIPAL_NAMES = [
   "key-rotation",
   "timesheet-anomaly-evaluate",
   "utilization-snapshot-compute",
+  "revenue-gap-alert-evaluate",
 ] as const;
 
 export type SystemPrincipalName = (typeof SYSTEM_PRINCIPAL_NAMES)[number];
@@ -31,6 +32,7 @@ export const SYSTEM_PRINCIPAL_DISPLAY_NAMES: Readonly<
   "key-rotation": "Key Rotation",
   "timesheet-anomaly-evaluate": "Automatic Review",
   "utilization-snapshot-compute": "Utilization Snapshot",
+  "revenue-gap-alert-evaluate": "Revenue Gap Alert",
 };
 
 export const SYSTEM_OPERATIONS = [
@@ -41,6 +43,7 @@ export const SYSTEM_OPERATIONS = [
   "timesheet-anomaly.read-flags",
   "utilization-snapshot.compute",
   "utilization-snapshot.read-cohort",
+  "revenue-gap-alert.write",
 ] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
@@ -67,6 +70,7 @@ export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
     "utilization-snapshot.compute",
     "utilization-snapshot.read-cohort",
   ],
+  "revenue-gap-alert-evaluate": ["revenue-gap-alert.write"],
 };
 
 export interface SystemOperationTarget {
@@ -91,6 +95,7 @@ export const SYSTEM_OPERATION_TARGETS: Readonly<
     { nodeType: "Employee", partitionKey: "operational" },
     { nodeType: "UtilizationSnapshot", partitionKey: "record" },
   ],
+  "revenue-gap-alert.write": [{ nodeType: "RevenueGapAlert", partitionKey: "record" }],
 };
 
 export function isSystemOperationPermitted(

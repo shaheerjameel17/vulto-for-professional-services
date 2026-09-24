@@ -112,6 +112,26 @@ describe("resolvePermission — default class mapping, transcribed from VPS-A004
 });
 
 describe("resolvePermission — matrix overrides", () => {
+  it("makes RevenueGapAlert workspace-visible but writable only by Owner, HR Admin, and Manager", () => {
+    expect(resolvePolicyCell("owner", "RevenueGapAlert", "record")).toMatchObject({
+      outcome: "full",
+      scope: "any",
+    });
+    expect(resolvePolicyCell("hr-admin", "RevenueGapAlert", "record")).toMatchObject({
+      outcome: "full",
+      scope: "any",
+    });
+    expect(
+      resolvePolicyCell("finance-admin", "RevenueGapAlert", "record"),
+    ).toMatchObject({ outcome: "read", scope: "any" });
+    expect(resolvePolicyCell("manager", "RevenueGapAlert", "record")).toMatchObject({
+      outcome: "full",
+      scope: "any",
+    });
+    expect(resolvePolicyCell("team-member", "RevenueGapAlert", "record")).toMatchObject(
+      { outcome: "read", scope: "any" },
+    );
+  });
   it("composes UtilizationSnapshot's own-only Team Member row", () => {
     expect(resolvePolicyCell("owner", "UtilizationSnapshot", "record")).toMatchObject({
       outcome: "full",

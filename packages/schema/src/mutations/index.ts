@@ -65,6 +65,7 @@ export { GHOST_RESOURCE_MUTATIONS } from "./ghostResource";
 export { PITCH_MUTATIONS } from "./pitch";
 export { TIMESHEET_MUTATIONS, timesheetRowContextSchema } from "./timesheet";
 export { utilizationSnapshotComputeDefinition } from "./utilization-snapshot";
+export { revenueGapAlertEvaluateDefinition } from "./revenue-gap-alert";
 export { CONFLICT_RESOLUTION_MUTATIONS } from "./conflict-resolution";
 export {
   RATE_CARD_MUTATIONS,

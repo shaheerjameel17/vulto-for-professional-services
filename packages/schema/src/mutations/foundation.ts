@@ -10,6 +10,7 @@ import { GHOST_RESOURCE_MUTATIONS } from "./ghostResource";
 import { CONFLICT_RESOLUTION_MUTATIONS } from "./conflict-resolution";
 import { PITCH_MUTATIONS } from "./pitch";
 import { TIMESHEET_MUTATIONS } from "./timesheet";
+import { REVENUE_GAP_ALERT_MUTATIONS } from "./revenue-gap-alert";
 
 const jsonObject = z.record(z.string(), jsonValueSchema);
 const version = z.int().positive();
@@ -114,6 +115,7 @@ export const MUTATIONS = {
   ...CONFLICT_RESOLUTION_MUTATIONS,
   ...PITCH_MUTATIONS,
   ...TIMESHEET_MUTATIONS,
+  ...REVENUE_GAP_ALERT_MUTATIONS,
 } as const;
 
 export type MutationName = keyof typeof MUTATIONS;

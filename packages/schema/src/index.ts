@@ -7,6 +7,7 @@ export * from "./timesheet";
 export * from "./time-classification";
 export * from "./timesheet-anomaly";
 export * from "./utilization-snapshot";
+export * from "./revenue-gap-alert";
 
 export {
   NODE_REGISTRY,
