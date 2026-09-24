@@ -10,7 +10,11 @@ import { audienceMaterializer } from "../audience/materializer.js";
 import { db } from "../db.js";
 import { graphMutations } from "../graph/schema.js";
 import type { GraphTx } from "../graph/tx.js";
-import { authorizeWrite, type InterceptorContext } from "../permission/interceptor.js";
+import {
+  authorizeWrite,
+  resolveStoredSubjectEmployeeId,
+  type InterceptorContext,
+} from "../permission/interceptor.js";
 import type { MemberPrincipal } from "../permission/principal.js";
 import {
   closeEdgeMutation,
@@ -60,6 +64,12 @@ import {
 } from "./ghost-resource.js";
 import { conflictResolutionOverrideAndProceed } from "./conflict-resolution.js";
 import { pitchCreate, pitchStaffEmployee, pitchUnstaffEmployee } from "./pitch.js";
+import {
+  timesheetSaveCell,
+  timesheetSubmitWeek,
+  timesheetUnlockWeek,
+} from "./timesheet.js";
+import { timesheetAnomalyClear } from "./timesheet-anomaly.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -121,6 +131,10 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "pitch.create": pitchCreate as ServerMutation<never>,
   "pitch.staffEmployee": pitchStaffEmployee as ServerMutation<never>,
   "pitch.unstaffEmployee": pitchUnstaffEmployee as ServerMutation<never>,
+  "timesheet.saveCell": timesheetSaveCell as ServerMutation<never>,
+  "timesheet.submitWeek": timesheetSubmitWeek as ServerMutation<never>,
+  "timesheet.unlockWeek": timesheetUnlockWeek as ServerMutation<never>,
+  "timesheetAnomaly.clear": timesheetAnomalyClear as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {
@@ -142,6 +156,10 @@ export interface PipelineDependencies {
   readonly audience?: AudienceMaterializer;
   readonly now?: () => string;
   readonly interceptor?: InterceptorContext;
+  /** Internal integration-test seam for proving the independent F274 post-write check. */
+  readonly implementationOverride?: ServerMutation<never>;
+  /** Internal integration-test seam for proving G10's non-gating post-commit step. */
+  readonly afterCommitOverride?: () => Promise<void>;
 }
 
 function canonicalJson(value: unknown): string {
@@ -208,6 +226,7 @@ export async function applyMutation(
   const digest = argsDigest(envelope.args);
   const definition = getMutationDefinition(envelope.name);
   const mutationId = envelope.mutation_id;
+  let afterCommit: (() => Promise<void>) | undefined;
 
   const transaction = async (tx: GraphTx): Promise<MutationResult> => {
     // 1. Idempotency.
@@ -232,12 +251,16 @@ export async function applyMutation(
     const parsed = definition.input.safeParse(envelope.args);
     if (!parsed.success) throw new MutationRejection("invalid-args");
 
-    const plan = await IMPLEMENTATIONS[definition.name as MutationName]({
+    const now = clock();
+    const plan = await (
+      dependencies.implementationOverride ??
+      IMPLEMENTATIONS[definition.name as MutationName]
+    )({
       tx,
       principal,
       args: parsed.data as never,
       mutationId,
-      now: clock(),
+      now,
     });
 
     // 2. Authorize, before anything is written.
@@ -262,6 +285,25 @@ export async function applyMutation(
     await plan.validate();
     const applied = await plan.apply();
 
+    // F274: compare every declared create subject with the row actually written.
+    // A mismatch rejects inside this transaction, rolling back all graph writes.
+    for (const check of plan.checks) {
+      const declared = check.change.declaredSubjectEmployeeId;
+      if (check.change.operation !== "create" || declared == null) continue;
+      const target = check.target;
+      const nodeType = target.kind === "node" ? target.nodeType : target.fromNodeType;
+      const nodeId = target.kind === "node" ? target.nodeId : target.fromNodeId;
+      if (nodeId == null) throw new MutationRejection("subject-mismatch");
+      const stored = await resolveStoredSubjectEmployeeId(
+        tx,
+        principal.workspaceId,
+        nodeType,
+        nodeId,
+        now,
+      );
+      if (stored !== declared) throw new MutationRejection("subject-mismatch");
+    }
+
     // 6-7. The audience seam and the mutation log.
     await audience.onRowsChanged(tx, applied.changedRowIds);
     const inserted = await tx
@@ -278,12 +320,13 @@ export async function applyMutation(
       .returning({ id: graphMutations.mutationId });
     // A concurrent attempt with the same id won: start over and replay it.
     if (inserted.length === 0) throw new RetryRequested();
+    afterCommit = dependencies.afterCommitOverride ?? plan.afterCommit;
     return { mutation_id: mutationId, status: "applied", result: applied.result };
   };
 
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
-      return await db.transaction(
+      const result = await db.transaction(
         transaction,
         definition?.name === "org.moveEmployee" ||
           definition?.name === "entity.deactivate" ||
@@ -295,10 +338,21 @@ export async function applyMutation(
           definition?.name === "assignment.cancel" ||
           definition?.name === "assignment.setRateCard" ||
           definition?.name === "rateCard.update" ||
-          definition?.name === "ghostResource.promote"
+          definition?.name === "ghostResource.promote" ||
+          definition?.name === "timesheet.saveCell" ||
+          definition?.name === "timesheet.submitWeek" ||
+          definition?.name === "timesheet.unlockWeek"
           ? { isolationLevel: "serializable" }
           : undefined,
       );
+      if (result.status === "applied" && afterCommit) {
+        try {
+          await afterCommit();
+        } catch {
+          // G10: review signals never turn a committed submission into a failure.
+        }
+      }
+      return result;
     } catch (error) {
       // A serialization failure or a lost race is retried against fresh state.
       if (

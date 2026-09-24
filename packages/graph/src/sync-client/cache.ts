@@ -83,6 +83,14 @@ export class SqliteCache implements OptimisticCache {
     return row ? rowToNode(row) : undefined;
   }
 
+  async nodesByType(nodeType: string) {
+    const rows = await this.database.all(
+      "SELECT * FROM cache_nodes WHERE node_type = ?",
+      [nodeType],
+    );
+    return rows.map(rowToNode);
+  }
+
   async putNode(node: CachedNode) {
     await this.database.run(
       `INSERT INTO cache_nodes (node_id, node_type, lifecycle_status, is_soft_deleted, version, record_json)

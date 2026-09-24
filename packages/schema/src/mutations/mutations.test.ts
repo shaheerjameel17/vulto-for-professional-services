@@ -78,14 +78,20 @@ describe("the foundation mutation set", () => {
       "pitch.unstaffEmployee",
       "rateCard.create",
       "rateCard.update",
+      "timesheet.saveCell",
+      "timesheet.submitWeek",
+      "timesheet.unlockWeek",
+      "timesheetAnomaly.clear",
     ]);
     for (const definition of Object.values(MUTATIONS)) {
       expect(definition.tier).toBe(
-        definition.name === "employee.setCompensation" ||
-          definition.name === "rateCard.create" ||
-          definition.name === "rateCard.update"
-          ? 1
-          : 0,
+        definition.name === "timesheetAnomaly.clear"
+          ? 2
+          : definition.name === "employee.setCompensation" ||
+              definition.name === "rateCard.create" ||
+              definition.name === "rateCard.update"
+            ? 1
+            : 0,
       );
       // A protected write can never be queued offline.
       expect(definition.onlineOnly).toBe(
@@ -109,6 +115,9 @@ describe("the foundation mutation set", () => {
         "rateCard.update",
         "ghostResource.cancel",
         "ghostResource.promote",
+        "timesheet.submitWeek",
+        "timesheet.unlockWeek",
+        "timesheetAnomaly.clear",
       ].sort(),
     );
   });
@@ -208,6 +217,7 @@ describe("working calendar contracts", () => {
   it("requires exactly one row for every ISO weekday", () => {
     const base = {
       calendar_id: id,
+      week_start_day: 1,
       daily_hours: 8,
       expected_version: 1,
     };
@@ -229,6 +239,26 @@ describe("working calendar contracts", () => {
         working_week: [...workingWeek.slice(0, 6), workingWeek[0]],
       }).success,
     ).toBe(false);
+  });
+
+  it("requires an explicit ISO week start day on calendar updates", () => {
+    const base = {
+      calendar_id: id,
+      working_week: workingWeek,
+      daily_hours: 8,
+      expected_version: 1,
+    };
+    expect(MUTATIONS["calendar.update"].input.safeParse(base).success).toBe(false);
+    for (const week_start_day of [0, 8, 1.5]) {
+      expect(
+        MUTATIONS["calendar.update"].input.safeParse({ ...base, week_start_day })
+          .success,
+      ).toBe(false);
+    }
+    expect(
+      MUTATIONS["calendar.update"].input.safeParse({ ...base, week_start_day: 7 })
+        .success,
+    ).toBe(true);
   });
 
   it("keeps holiday add and confirm free of a base-version argument", () => {

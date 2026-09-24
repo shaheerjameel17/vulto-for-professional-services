@@ -3,6 +3,8 @@ import {
   assertRegisteredRelationship,
   getProtectionPartitions,
   getSubjectExclusion,
+  isSystemOperationPermitted,
+  PARTICIPANT_GRANTS,
   POLICY_ROLES,
   resolvePolicyCell,
   type AuditEntry,
@@ -64,6 +66,30 @@ interface RowScopeContext {
   readonly nodeType: NodeType;
   readonly nodeId: string | null;
   readonly context: InterceptorContext;
+  /** Only a pre-write create may use the mutation's declared subject. */
+  readonly creating?: boolean;
+  readonly declaredSubjectEmployeeId?: string | null;
+}
+
+/** The stored-row subject path shared by reads, updates, and post-create verification. */
+export async function resolveStoredSubjectEmployeeId(
+  tx: GraphTx,
+  workspaceId: string,
+  nodeType: NodeType,
+  nodeId: string,
+  asOf: string,
+): Promise<string | null> {
+  if (nodeType === "Employee") return nodeId;
+  if (nodeType === "BurnoutAlert" || nodeType === "TimesheetAnomalyFlag") {
+    const [subject] = await outgoing(tx, workspaceId, nodeId, "triggered_by", asOf);
+    return subject?.toNodeId ?? null;
+  }
+  if (nodeType === "TimesheetEntry" || nodeType === "TimesheetWeekSubmission") {
+    const node = await getNode(tx, workspaceId, nodeId);
+    const employeeId = node?.record["employee_id"];
+    return typeof employeeId === "string" ? employeeId : null;
+  }
+  return null;
 }
 
 /**
@@ -76,11 +102,10 @@ interface RowScopeContext {
  *  - `direct-reports`: the caller is the row's active manager.
  *  - `own-plus-team`: `own`, or the row shares the caller's active manager.
  *
- * BurnoutAlert's registered `triggered_by` path is also resolved here because
- * VRS-F005's protected Contextual Intelligence call is the first real caller
- * that must decide its Manager-restricted direct-report scope. Other node
- * types still resolve conservatively until their owning feature supplies a
- * registered subject path.
+ * BurnoutAlert and TimesheetAnomalyFlag resolve through their registered
+ * `triggered_by` paths. Tier 0 TimesheetEntry resolves through its own stored
+ * employee_id. Other node types still resolve conservatively until their
+ * owning feature supplies a registered subject path.
  */
 async function rowScopeSatisfied(
   scope: PolicyScope,
@@ -96,22 +121,18 @@ async function rowScopeSatisfied(
   const me = await resolve(tx, principal.workspaceId, principal.userId);
   if (me === null) return false;
   const asOf = (context.now ?? nowIso)();
-  let subjectEmployeeId: string;
-  if (row.nodeType === "Employee") {
-    subjectEmployeeId = nodeId;
-  } else if (row.nodeType === "BurnoutAlert") {
-    const [subject] = await outgoing(
-      tx,
-      principal.workspaceId,
-      nodeId,
-      "triggered_by",
-      asOf,
-    );
-    if (!subject) return false;
-    subjectEmployeeId = subject.toNodeId;
-  } else {
-    return false;
-  }
+  const subjectEmployeeId =
+    row.creating === true &&
+    (row.nodeType === "TimesheetEntry" || row.nodeType === "TimesheetWeekSubmission")
+      ? (row.declaredSubjectEmployeeId ?? null)
+      : await resolveStoredSubjectEmployeeId(
+          tx,
+          principal.workspaceId,
+          row.nodeType,
+          nodeId,
+          asOf,
+        );
+  if (subjectEmployeeId === null) return false;
   if (scope === "own") return me === subjectEmployeeId;
   const managerOf = async (employeeId: string) =>
     (await outgoing(tx, principal.workspaceId, employeeId, "managed_by", asOf))[0]
@@ -138,7 +159,7 @@ export interface NodeReadTarget {
 export type ReadDecision =
   | {
       readonly access: "full" | "read";
-      readonly role: PolicyRole;
+      readonly role: PolicyRole | null;
       readonly tier: DataTier;
       readonly partitionKey: string;
     }
@@ -255,6 +276,13 @@ export async function decideRead(
   if (principal.workspaceId !== target.workspaceId) {
     return { access: "none", tier, partitionKey };
   }
+  if (principal.kind === "system") {
+    return target.nodeType === "TimesheetAnomalyFlag" &&
+      partitionKey === "record" &&
+      isSystemOperationPermitted(principal.name, "timesheet-anomaly.read-flags")
+      ? { access: "read", role: null, tier, partitionKey }
+      : { access: "none", tier, partitionKey };
+  }
   const { roles, readOnly } = await decisionRoles(
     tx,
     principal,
@@ -301,7 +329,7 @@ export async function decideRead(
     }
   }
   if (best.outcome === "full" || best.outcome === "read") {
-    return { access: best.outcome, role: best.role!, tier, partitionKey };
+    return { access: best.outcome, role: best.role, tier, partitionKey };
   }
   if (best.outcome === "restricted") {
     return {
@@ -661,6 +689,8 @@ export interface WriteChange {
   readonly application?: string;
   /** The Employee a subject-excluding record concerns, when the caller knows it. */
   readonly subjectEmployeeId?: string | null;
+  /** F274: validated plan-builder subject for a new self-service row (Gate 1). */
+  readonly declaredSubjectEmployeeId?: string | null;
 }
 
 export type WriteRefusalReason =
@@ -700,12 +730,39 @@ const RESERVED_PROJECTION_EDGE_TYPES: ReadonlySet<string> = new Set([
   "membership_in",
 ]);
 
-/** Gate 1 for an edge: Full on both endpoint node types, through each governing partition. */
+/** Resolve a declared participant grant through the caller's own active edge. */
+async function participantGrantSatisfied(
+  tx: GraphTx,
+  principal: Principal,
+  nodeType: NodeType,
+  nodeId: string,
+  asOf: string,
+  context: InterceptorContext,
+): Promise<boolean> {
+  if (principal.kind !== "member") return false;
+  const grant = PARTICIPANT_GRANTS[nodeType];
+  if (grant === undefined || grant.fromNodeType !== "Employee") return false;
+  const resolve =
+    context.roleDependencies?.resolveEmployeeForUser ?? resolveEmployeeForUser;
+  const employeeId = await resolve(tx, principal.workspaceId, principal.userId);
+  if (employeeId === null) return false;
+  const active = await outgoing(
+    tx,
+    principal.workspaceId,
+    employeeId,
+    grant.viaEdgeType,
+    asOf,
+  );
+  return active.some((edge) => edge.toNodeId === nodeId);
+}
+
+/** Gate 1 for an edge: role-based or declared participant endpoint authority. */
 async function edgeRoleDecision(
   tx: GraphTx,
   principal: Principal,
   roles: readonly PolicyRole[],
   target: Extract<WriteTarget, { kind: "edge" }>,
+  change: WriteChange,
   context: InterceptorContext,
 ): Promise<"role" | "unregistered-relationship" | null> {
   let registration;
@@ -738,11 +795,30 @@ async function edgeRoleDecision(
     const row: RowScopeContext | undefined =
       nodeId === undefined || nodeId === null
         ? undefined
-        : { tx, principal, nodeType, nodeId, context };
+        : {
+            tx,
+            principal,
+            nodeType,
+            nodeId,
+            context,
+            creating: change.operation === "create",
+            declaredSubjectEmployeeId: change.declaredSubjectEmployeeId,
+          };
     const outcome = (await bestCell(roles, nodeType, partitionKey, row)).outcome;
-    const sufficient =
+    const roleSufficient =
       outcome === "full" ||
       (outcome === "read" && registration.readSufficientEndpoints[nodeType] === true);
+    const sufficient =
+      roleSufficient ||
+      (nodeId != null &&
+        (await participantGrantSatisfied(
+          tx,
+          principal,
+          nodeType,
+          nodeId,
+          (context.now ?? nowIso)(),
+          context,
+        )));
     if (!sufficient) return "role";
   }
   return null;
@@ -847,28 +923,46 @@ export async function authorizeWrite(
     }
   }
 
-  // Gate 1 — role. A support principal is held to Owner, no higher.
-  const gateRoles: readonly PolicyRole[] =
-    principal.kind === "member"
-      ? await effectiveRoles(tx, principal, context.roleDependencies)
-      : principal.kind === "support"
-        ? ["owner"]
-        : [];
+  // Gate 1 — system principals have only named operations, never roles.
   let role: PolicyRole | null = null;
-  if (target.kind === "node") {
-    const best = await bestCell(gateRoles, target.nodeType, partitionKey, {
-      tx,
-      principal,
-      nodeType: target.nodeType,
-      nodeId: target.nodeId,
-      context,
-    });
-    if (best.outcome !== "full") return refuse("role");
-    role = best.role;
+  if (principal.kind === "system") {
+    const permitted =
+      isSystemOperationPermitted(principal.name, "timesheet-anomaly.create-flag") &&
+      (target.kind === "node"
+        ? target.nodeType === "TimesheetAnomalyFlag" && partitionKey === "record"
+        : target.edgeType === "triggered_by" &&
+          target.fromNodeType === "TimesheetAnomalyFlag" &&
+          target.toNodeType === "Employee");
+    if (!permitted) return refuse("role");
   } else {
-    const failure = await edgeRoleDecision(tx, principal, gateRoles, target, context);
-    if (failure === "unregistered-relationship") return refuse(failure);
-    if (failure !== null) return refuse("role");
+    const gateRoles: readonly PolicyRole[] =
+      principal.kind === "member"
+        ? await effectiveRoles(tx, principal, context.roleDependencies)
+        : ["owner"];
+    if (target.kind === "node") {
+      const best = await bestCell(gateRoles, target.nodeType, partitionKey, {
+        tx,
+        principal,
+        nodeType: target.nodeType,
+        nodeId: target.nodeId,
+        context,
+        creating: change.operation === "create",
+        declaredSubjectEmployeeId: change.declaredSubjectEmployeeId,
+      });
+      if (best.outcome !== "full") return refuse("role");
+      role = best.role;
+    } else {
+      const failure = await edgeRoleDecision(
+        tx,
+        principal,
+        gateRoles,
+        target,
+        change,
+        context,
+      );
+      if (failure === "unregistered-relationship") return refuse(failure);
+      if (failure !== null) return refuse("role");
+    }
   }
 
   // Gate 2 — write authority, only ever narrowing.

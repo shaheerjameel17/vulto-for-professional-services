@@ -211,8 +211,8 @@ const assertUniversalFieldPolicies = (): void => {
 export const assertCanonicalRegistry = (): void => {
   validateRegistryDefinition({ nodes: NODE_REGISTRY, edges: EDGE_REGISTRY });
 
-  if (NODE_REGISTRY.length !== 109) {
-    throw new Error(`Expected 109 node registrations, got ${NODE_REGISTRY.length}`);
+  if (NODE_REGISTRY.length !== 110) {
+    throw new Error(`Expected 110 node registrations, got ${NODE_REGISTRY.length}`);
   }
 
   const fixedLifecycleCount = NODE_REGISTRY.filter(

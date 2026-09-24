@@ -55,6 +55,8 @@ export interface Plan {
   readonly checks: readonly WriteCheck[];
   validate(): Promise<void>;
   apply(): Promise<Applied>;
+  /** Non-gating reactive work, run only after the mutation transaction commits. */
+  readonly afterCommit?: () => Promise<void>;
 }
 
 export type ServerMutation<Args> = (ctx: MutationContext<Args>) => Promise<Plan>;

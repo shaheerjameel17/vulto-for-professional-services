@@ -53,13 +53,13 @@ const standardEmployee = {
 
 describe("canonical registry", () => {
   it("has the specification's exact cardinalities", () => {
-    expect(NODE_REGISTRY).toHaveLength(109);
+    expect(NODE_REGISTRY).toHaveLength(110);
     expect(
       NODE_REGISTRY.filter(({ lifecycle }) => lifecycle.kind === "fixed"),
     ).toHaveLength(28);
     expect(
       NODE_REGISTRY.filter(({ lifecycle }) => lifecycle.kind === "feature-owned"),
-    ).toHaveLength(81);
+    ).toHaveLength(82);
     expect(EDGE_SOURCE_ROW_COUNT).toBe(84);
     expect(EDGE_TYPES).toHaveLength(80);
     expect(EDGE_REGISTRY).toHaveLength(111);
@@ -120,6 +120,14 @@ describe("canonical registry", () => {
       {
         edgeType: "assigned_to",
         readSufficientEndpoints: { Project: true },
+      },
+      {
+        edgeType: "logged_against",
+        readSufficientEndpoints: { Assignment: true },
+      },
+      {
+        edgeType: "logged_against",
+        readSufficientEndpoints: { Assignment: true },
       },
     ]);
     expect(

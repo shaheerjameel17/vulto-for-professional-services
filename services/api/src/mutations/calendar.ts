@@ -287,6 +287,7 @@ export const calendarUpdate: ServerMutation<MutationArgs<"calendar.update">> = a
               node_id: nextId,
               lifecycle_status: "Active",
               working_week: ctx.args.working_week,
+              week_start_day: ctx.args.week_start_day,
               standard_daily_hours: ctx.args.daily_hours,
               reduced_hours_periods: nextPeriods,
             },

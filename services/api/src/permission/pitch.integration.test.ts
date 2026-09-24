@@ -3,7 +3,7 @@ import { afterAll, describe, expect, it } from "vitest";
 import { closeDatabase, db } from "../db.js";
 import { getNode, insertEdge, insertNode, outgoing } from "../graph/store.js";
 import { applyMutation } from "../mutations/pipeline.js";
-import { authorizeRead } from "./interceptor.js";
+import { authorizeRead, authorizeWrite } from "./interceptor.js";
 import { resolveMemberPrincipal } from "./member-principal.js";
 import { listStaffedFor } from "./pitch-queries.js";
 import { edgeRecord, makeWorkspace, nodeRecord } from "./test-support.js";
@@ -75,6 +75,82 @@ const pitchId = (result: { result?: unknown }) =>
   (result.result as { pitchId: string }).pitchId;
 
 describe("VRS-F009 Pitch creation, staffing and selector", () => {
+  it("authorizes logged_against only for a currently staffed Team Member, with Assignment read sufficient", async () => {
+    const w = await world();
+    const assignmentId = randomUUID();
+    await db.transaction((tx) =>
+      insertNode(tx, {
+        ...nodeRecord("Assignment", w.workspaceId, assignmentId),
+        employee_id: w.employeeIds.member,
+      }),
+    );
+    const created = await w.apply("manager", "pitch.create", { name: "Staffing" });
+    const id = pitchId(created);
+    const canLog = (toNodeType: "Assignment" | "Pitch", toNodeId: string) =>
+      db.transaction((tx) =>
+        authorizeWrite(
+          tx,
+          w.principals.member!,
+          {
+            kind: "edge",
+            workspaceId: w.workspaceId,
+            edgeType: "logged_against",
+            edgeId: randomUUID(),
+            fromNodeType: "TimesheetEntry",
+            fromNodeId: randomUUID(),
+            toNodeType,
+            toNodeId,
+          },
+          {
+            operation: "create",
+            declaredSubjectEmployeeId: w.employeeIds.member,
+          },
+          { now: () => new Date(Date.parse(NOW) + 10_000).toISOString() },
+        ),
+      );
+    expect((await canLog("Assignment", assignmentId)).allowed).toBe(true);
+    expect(await canLog("Pitch", id)).toMatchObject({ allowed: false, reason: "role" });
+    expect(
+      (
+        await w.apply("manager", "pitch.staffEmployee", {
+          pitch_id: id,
+          employee_id: w.employeeIds.member,
+        })
+      ).status,
+    ).toBe("applied");
+    expect((await canLog("Pitch", id)).allowed).toBe(true);
+    expect(
+      (
+        await db.transaction((tx) =>
+          authorizeRead(tx, w.principals.member!, {
+            workspaceId: w.workspaceId,
+            nodeType: "Pitch",
+            nodeId: id,
+            partitionKey: "identifying",
+          }),
+        )
+      ).access,
+    ).toBe("none");
+    expect(
+      (
+        await w.apply("manager", "pitch.unstaffEmployee", {
+          pitch_id: id,
+          employee_id: w.employeeIds.member,
+        })
+      ).status,
+    ).toBe("applied");
+    expect(await canLog("Pitch", id)).toMatchObject({ allowed: false, reason: "role" });
+    expect(
+      (
+        await w.apply("manager", "pitch.staffEmployee", {
+          pitch_id: id,
+          employee_id: w.employeeIds.member,
+        })
+      ).status,
+    ).toBe("applied");
+    expect((await canLog("Pitch", id)).allowed).toBe(true);
+  });
+
   it("lets a Manager create and immediately staff a direct report, but refuses an unrelated employee", async () => {
     const w = await world();
     const created = await w.apply("manager", "pitch.create", { name: "New proposal" });

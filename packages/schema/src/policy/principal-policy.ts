@@ -13,14 +13,28 @@ export const SYSTEM_PRINCIPAL_NAMES = [
   "retention-sweep",
   "erasure",
   "key-rotation",
+  "timesheet-anomaly-evaluate",
 ] as const;
 
 export type SystemPrincipalName = (typeof SYSTEM_PRINCIPAL_NAMES)[number];
+
+/** Human-readable labels for system-authored graph provenance (F272). */
+export const SYSTEM_PRINCIPAL_DISPLAY_NAMES: Readonly<
+  Record<SystemPrincipalName, string>
+> = {
+  "audience-recompute": "Audience Recompute",
+  "retention-sweep": "Retention Sweep",
+  erasure: "Data Erasure",
+  "key-rotation": "Key Rotation",
+  "timesheet-anomaly-evaluate": "Automatic Review",
+};
 
 export const SYSTEM_OPERATIONS = [
   "audit.pseudonymize-actor",
   "protected.destroy-key",
   "audience.recompute",
+  "timesheet-anomaly.create-flag",
+  "timesheet-anomaly.read-flags",
 ] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
@@ -39,6 +53,10 @@ export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
   // (A003-T62). Key rotation has no operation yet: its job is not built.
   erasure: ["audit.pseudonymize-actor", "protected.destroy-key"],
   "key-rotation": [],
+  "timesheet-anomaly-evaluate": [
+    "timesheet-anomaly.create-flag",
+    "timesheet-anomaly.read-flags",
+  ],
 };
 
 export function isSystemOperationPermitted(

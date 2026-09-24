@@ -6,7 +6,11 @@ import {
 } from "@vulto/schema";
 import { describe, expect, it } from "vitest";
 import { applyUndo, type MutatorContext } from "./index";
-import { applyOptimistic, OptimisticRejection } from "./foundation";
+import {
+  applyOptimistic,
+  GraphValidationError,
+  OptimisticRejection,
+} from "./foundation";
 import { MemoryCache } from "./memory-cache";
 
 const WORKSPACE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -73,6 +77,8 @@ const seedCalendar = async (cache: MemoryCache, id = uuid()) => {
         hours: day <= 5 ? 8 : 0,
       })),
       standard_daily_hours: 8,
+      week_start_day: 1,
+      created_at: NOW,
       reduced_hours_periods: [],
     },
   });
@@ -84,6 +90,64 @@ const rejects = async (work: Promise<unknown>, reason: string) => {
 };
 
 describe("the optimistic foundation mutators", () => {
+  it("rejects a 25-hour timesheet day before queueing it", async () => {
+    const cache = new MemoryCache();
+    const employeeId = await seedEmployee(cache);
+    const entityId = await seedEntity(cache);
+    const calendarId = await seedCalendar(cache);
+    const assignmentId = uuid();
+    await cache.putNode({
+      nodeId: assignmentId,
+      nodeType: "Assignment",
+      lifecycleStatus: "Active",
+      isSoftDeleted: false,
+      version: 1,
+      record: {
+        node_id: assignmentId,
+        node_type: "Assignment",
+        employee_id: employeeId,
+      },
+    });
+    for (const [type, from, to] of [
+      ["scoped_to_entity", employeeId, entityId],
+      ["governed_by_calendar", entityId, calendarId],
+    ]) {
+      const edgeId = uuid();
+      await cache.putEdge({
+        edgeId,
+        edgeType: type!,
+        fromNodeId: from!,
+        toNodeId: to!,
+        effectiveFrom: NOW,
+        effectiveTo: null,
+        isSoftDeleted: false,
+        version: 1,
+        record: {},
+      });
+    }
+    await applyOptimistic(context(cache), "timesheet.saveCell", {
+      employee_id: employeeId,
+      date: "2026-09-24",
+      row_context: { kind: "assignment", assignment_id: assignmentId },
+      hours: 20,
+    });
+    await expect(
+      applyOptimistic(context(cache), "timesheet.saveCell", {
+        employee_id: employeeId,
+        date: "2026-09-24",
+        row_context: { kind: "non-billable" },
+        internal_category: "Admin",
+        hours: 5,
+      }),
+    ).rejects.toMatchObject({
+      name: "GraphValidationError",
+      reason: "invalid-args:date=2026-09-24:total=25",
+    });
+    expect(new GraphValidationError("invalid-args")).toBeInstanceOf(
+      OptimisticRejection,
+    );
+    expect(await cache.nodesByType("TimesheetEntry")).toHaveLength(1);
+  });
   it("queues Pitch creation and staffing with reversible Tier 0 cache effects", async () => {
     const cache = new MemoryCache();
     const employeeId = await seedEmployee(cache);
@@ -357,6 +421,7 @@ describe("the optimistic foundation mutators", () => {
       record: {
         entity_id: entityId,
         standard_daily_hours: 8,
+        week_start_day: 1,
       },
     });
     expect(cache.edges.get(initialCalendarEdgeId(mutationId))).toMatchObject({
@@ -400,6 +465,7 @@ describe("the optimistic foundation mutators", () => {
           hours: day <= 5 ? 8 : 0,
         })),
         standard_daily_hours: 8,
+        week_start_day: 1,
         reduced_hours_periods: [
           {
             name: "Ramadan",
@@ -440,6 +506,7 @@ describe("the optimistic foundation mutators", () => {
     const undo = await applyOptimistic(context(cache, mutationId), "calendar.update", {
       calendar_id: calendarId,
       working_week: week,
+      week_start_day: 7,
       daily_hours: 8,
       expected_version: 1,
     });
@@ -450,6 +517,7 @@ describe("the optimistic foundation mutators", () => {
     expect(cache.nodes.get(mutationId)?.record["reduced_hours_periods"]).toEqual(
       cache.nodes.get(calendarId)?.record["reduced_hours_periods"],
     );
+    expect(cache.nodes.get(mutationId)?.record["week_start_day"]).toBe(7);
     await applyUndo(cache, undo);
     expect(cache.nodes.get(calendarId)).toMatchObject({
       lifecycleStatus: "Active",
@@ -464,6 +532,7 @@ describe("the optimistic foundation mutators", () => {
       {
         calendar_id: calendarId,
         working_week: week,
+        week_start_day: 1,
         daily_hours: 8,
         expected_version: 1,
         reduced_hours_periods: [],

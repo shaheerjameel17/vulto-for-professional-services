@@ -7,6 +7,9 @@ export class MemoryCache implements OptimisticCache {
   async getNode(id: string) {
     return this.nodes.get(id);
   }
+  async nodesByType(nodeType: string) {
+    return [...this.nodes.values()].filter((node) => node.nodeType === nodeType);
+  }
   async putNode(node: CachedNode) {
     this.nodes.set(node.nodeId, node);
   }

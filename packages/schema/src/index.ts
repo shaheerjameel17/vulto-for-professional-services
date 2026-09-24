@@ -3,6 +3,9 @@ import "./registry/validate";
 
 export * from "./ghost-resource";
 export * from "./pitch";
+export * from "./timesheet";
+export * from "./time-classification";
+export * from "./timesheet-anomaly";
 
 export {
   NODE_REGISTRY,
@@ -30,6 +33,10 @@ export {
   type EndpointSet,
   type RegistryEndpoint,
 } from "./registry/edges";
+export {
+  PARTICIPANT_GRANTS,
+  type ParticipantGrant,
+} from "./registry/participant-grants";
 
 export {
   ANONYMITY_REGISTRY,

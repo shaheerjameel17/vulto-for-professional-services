@@ -55,6 +55,14 @@ export const reducedHoursPeriodSchema = z
 export type WorkingWeek = z.infer<typeof workingWeekSchema>;
 export type ReducedHoursPeriod = z.infer<typeof reducedHoursPeriodSchema>;
 
+export const workingCalendarFieldsSchema = z
+  .object({
+    working_week: workingWeekSchema,
+    standard_daily_hours: z.number().nonnegative(),
+    week_start_day: z.int().min(1).max(7),
+  })
+  .strict();
+
 const week = (
   workingDays: readonly number[],
   hoursByDay: Partial<Record<number, number>> = {},
@@ -69,15 +77,25 @@ const week = (
 export function initialWorkingWeekFor(jurisdiction: string): {
   readonly working_week: WorkingWeek;
   readonly standard_daily_hours: number;
+  readonly week_start_day: number;
 } {
   if (jurisdiction === "PK")
     return {
       working_week: week([1, 2, 3, 4, 5, 6], { 6: 4 }),
       standard_daily_hours: 8,
+      week_start_day: 1,
     };
   if (jurisdiction === "AE" || jurisdiction === "SA")
-    return { working_week: week([7, 1, 2, 3, 4]), standard_daily_hours: 8 };
-  return { working_week: week([1, 2, 3, 4, 5]), standard_daily_hours: 8 };
+    return {
+      working_week: week([7, 1, 2, 3, 4]),
+      standard_daily_hours: 8,
+      week_start_day: 7,
+    };
+  return {
+    working_week: week([1, 2, 3, 4, 5]),
+    standard_daily_hours: 8,
+    week_start_day: 1,
+  };
 }
 
 export const calendarUpdate = defineMutation({
@@ -86,6 +104,7 @@ export const calendarUpdate = defineMutation({
     .object({
       calendar_id: uuidV4Schema,
       working_week: workingWeekSchema,
+      week_start_day: z.int().min(1).max(7),
       daily_hours: z.number().nonnegative(),
       expected_version: z.int().positive(),
       reduced_hours_periods: z.array(reducedHoursPeriodSchema).optional(),
