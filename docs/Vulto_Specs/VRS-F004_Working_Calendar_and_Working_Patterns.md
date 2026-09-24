@@ -49,7 +49,7 @@ This feature treats a provisional date as a first-class state rather than a data
 
 ### Setting up a calendar
 
-Each Entity has one active WorkingCalendar. During [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s setup, a template is applied from the Entity's jurisdiction — Monday to Friday for UK and US, Sunday to Thursday for AE (F232) and SA, Monday to Saturday with a half-day Saturday for PK, and Monday to Friday at `standard_daily_hours: 8` for `Global`, `IN` and `SG` (F227) — and the founder confirms or adjusts it. Both an Entity's founding-bootstrap creation and any later `entity.create` write this initial calendar atomically with the Entity itself, never as a follow-up step (F227) — including offline, where `entity.create`'s optimistic handler derives and writes the identical calendar and ownership edge from the same shared template logic (F233). The template is a starting point, never an assumption: a Karachi studio working Monday to Friday changes two toggles and moves on.
+Each Entity has one active WorkingCalendar. During [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]'s setup, a template is applied from the Entity's jurisdiction — Monday to Friday for UK and US, Sunday to Thursday for AE (F232) and SA, Monday to Saturday with a half-day Saturday for PK, and Monday to Friday at `standard_daily_hours: 8` for `Global`, `IN` and `SG` (F227) — and the founder confirms or adjusts it; `week_start_day` is set from the same table — Monday for UK/US/Global/IN/SG and PK, Sunday for AE/SA — matching the weekday each of those templates already begins on (F276). Both an Entity's founding-bootstrap creation and any later `entity.create` write this initial calendar atomically with the Entity itself, never as a follow-up step (F227) — including offline, where `entity.create`'s optimistic handler derives and writes the identical calendar and ownership edge from the same shared template logic (F233). The template is a starting point, never an assumption: a Karachi studio working Monday to Friday changes two toggles and moves on.
 
 ### Adjusting the working week
 
@@ -139,6 +139,11 @@ working_week:       JSON — seven entries, keyed by ISO weekday 1–7:
                       { day: 1..7, is_working: boolean, hours: decimal }
 standard_daily_hours: decimal, required, default 8 — the denominator for
                       proration where a specific day's hours are not relevant
+week_start_day:     integer, ISO weekday 1–7, required — the day a week
+                      begins for this Entity, independent of which days are
+                      is_working; consumed only by [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s
+                      week_start_date key, never by this feature's own
+                      resolution order (F276)
 lifecycle_status:   enum: Active, Superseded
 
 — Universal Node Conventions per VPS-A002 —
@@ -387,6 +392,8 @@ The last five are the entire public surface of this feature. `workingDays.addWor
 ---
 
 ## Decisions Recorded
+
+**`week_start_day` was added to close a gap only [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] exposed — F276, 24 September 2026.** This feature's original design let `working_week` encode any arrangement of seven booleans — a genuine seven-day working week, or a split pattern with no single “first working day” to anchor on — without ever defining which day begins a week, because nothing in this feature's own build needed a week boundary. `VRS-F010` did, for `week_start_date`, and found the gap. Resolved with a new required field on `WorkingCalendar`, versioned identically to `working_week` itself (`calendar.update` supersedes it the same way, and `services/api/src/graph/calendar-resolution.ts`'s existing `resolveCalendarForEntity(tx, workspaceId, entityId, asOf)` already resolves the calendar version in force as of any date — no new resolution mechanism was needed). `week_start_day` is deliberately independent of `is_working`, holidays and `WorkingPattern`: the week boundary is a fixed calendar-level fact, not a computed one, so it can never be destabilized by a holiday landing on the wrong day or an employee's personal pattern being non-contiguous. One boundary case is named rather than silently accepted: a calendar edit or an entity re-scoping that lands mid-week can legitimately split one real week's entries across two `week_start_date` values, since `resolveCalendarForEntity`/`resolveForEmployee` each resolve per entry as of that entry's own date. This is inherent to any anchor-based design — not specific to this fix — and is deliberately not guarded in code: doing so would require this feature's own mutations to read `VRS-F010`'s `TimesheetEntry` table, the identical cross-feature coupling G08 above already forbids in the other direction. See [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s own F276 decision entry for the full ruling.
 
 **This feature is new and closes a defect rather than adding a capability.** Four documents independently hardcoded Saturday and Sunday as the weekend. [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] Standing Rule 9 and G08 here make the assumption unwritable going forward.
 
