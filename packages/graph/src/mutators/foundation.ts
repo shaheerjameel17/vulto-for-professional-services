@@ -3,6 +3,7 @@ import {
   employeeOperationalRecord,
   ghostEmployeeOperationalRecord,
   employeeTransitionOutcome,
+  deriveEffectiveRoles,
   FEATURE_LIFECYCLE_NODE_TYPES,
   getMutationDefinition,
   isNodeType,
@@ -12,12 +13,14 @@ import {
   initialWorkingWeekFor,
   moveEmployeeEdgeId,
   mutationDerivedId,
+  parseWorkspaceRoles,
   stampNewEdge,
   stampNewNode,
   updateStamp,
   wouldCreateCycle,
   type MutationName,
   type NodeType,
+  type WorkspaceRole,
 } from "@vulto/schema";
 import type { CachedEdge, CachedNode, OptimisticCache, UndoEntry } from "./cache";
 
@@ -52,6 +55,31 @@ export type OptimisticMutator = (
   context: MutatorContext,
   args: unknown,
 ) => Promise<UndoEntry[]>;
+
+/** F261: resolves the caller's already-replicated WorkspaceMembership roles. */
+export async function resolveCallerRoles(
+  cache: OptimisticCache,
+  callerUserId: string,
+): Promise<WorkspaceRole[]> {
+  const edge = (await cache.edgesTo(callerUserId, "membership_of")).find(
+    (candidate) => !candidate.isSoftDeleted && candidate.effectiveTo === null,
+  );
+  if (!edge) return [];
+  const membership = await cache.getNode(edge.fromNodeId);
+  if (
+    !membership ||
+    membership.isSoftDeleted ||
+    membership.nodeType !== "WorkspaceMembership" ||
+    typeof membership.record["role"] !== "string"
+  ) {
+    return [];
+  }
+  try {
+    return parseWorkspaceRoles(membership.record["role"]);
+  } catch {
+    return [];
+  }
+}
 
 const provenance = (c: MutatorContext) => ({
   workspaceId: c.workspaceId,
@@ -867,8 +895,20 @@ const patternClear: OptimisticMutator = async (c, raw) => {
 
 // ── Assignments (VRS-F005) ────────────────────────────────────────────────
 
-const assignmentCreate: OptimisticMutator = async (c, raw) => {
-  const args = parse("assignment.create", raw);
+interface OptimisticAssignmentInput {
+  readonly employee_id: string;
+  readonly project_id: string;
+  readonly start_date: string;
+  readonly end_date: string;
+  readonly billable_percentage: number;
+  readonly rate_card_id?: string | null;
+}
+
+const createAssignmentOptimistically = async (
+  c: MutatorContext,
+  args: OptimisticAssignmentInput,
+  override?: { readonly reason: string; readonly by: string; readonly at: string },
+) => {
   const employee = await liveTypedNode(c.cache, args.employee_id, "Employee");
   const project = await liveTypedNode(c.cache, args.project_id, "Project");
   // Capacity is deliberately server-only: one device may not have another
@@ -886,9 +926,9 @@ const assignmentCreate: OptimisticMutator = async (c, raw) => {
       rate_override_reason: null,
       effective_billing_rate:
         (employee.record["billing_rate_default"] as number | null | undefined) ?? null,
-      capacity_override_reason: null,
-      capacity_override_by: null,
-      capacity_override_at: null,
+      capacity_override_reason: override?.reason ?? null,
+      capacity_override_by: override?.by ?? null,
+      capacity_override_at: override?.at ?? null,
     }),
     await putNewEdge(c, mutationDerivedId(c.mutationId, 1), {
       edge_type: "assignment_of",
@@ -905,6 +945,34 @@ const assignmentCreate: OptimisticMutator = async (c, raw) => {
       effective_to: null,
     }),
   ];
+};
+
+const assignmentCreate: OptimisticMutator = async (c, raw) =>
+  createAssignmentOptimistically(c, parse("assignment.create", raw));
+
+const conflictResolutionOverrideAndProceed: OptimisticMutator = async (c, raw) => {
+  const args = parse("conflictResolution.overrideAndProceed", raw);
+  const roles = deriveEffectiveRoles(await resolveCallerRoles(c.cache, c.userId));
+  let authorized = roles.includes("owner");
+  if (!authorized) {
+    const managerEdge = (
+      await c.cache.edgesFrom(args.proposed.employee_id, "managed_by")
+    ).find((edge) => !edge.isSoftDeleted && edge.effectiveTo === null);
+    const manager = managerEdge
+      ? await c.cache.getNode(managerEdge.toNodeId)
+      : undefined;
+    authorized =
+      Boolean(manager) &&
+      !manager!.isSoftDeleted &&
+      manager!.nodeType === "Employee" &&
+      manager!.record["user_id"] === c.userId;
+  }
+  if (!authorized) throw new OptimisticRejection("not-authorized");
+  return createAssignmentOptimistically(c, args.proposed, {
+    reason: args.reason,
+    by: c.userId,
+    at: c.now,
+  });
 };
 
 const assignmentUpdate: OptimisticMutator = async (c, raw) => {
@@ -1010,6 +1078,7 @@ export const OPTIMISTIC_MUTATORS: Readonly<
   "assignment.setRateCard": assignmentSetRateCard,
   "assignment.setRateOverride": assignmentSetRateOverride,
   "assignment.clearRateOverride": assignmentClearRateOverride,
+  "conflictResolution.overrideAndProceed": conflictResolutionOverrideAndProceed,
   "ghostResource.create": ghostResourceCreate,
   "ghostResource.cancel": ghostResourceCancel,
   "ghostResource.linkOpenRole": ghostResourceLinkOpenRole,

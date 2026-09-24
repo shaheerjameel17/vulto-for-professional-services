@@ -187,8 +187,8 @@ describe("VRS-F006 — Rate Card Engine", () => {
     const created = await w.apply("owner", "assignment.create", {
       employee_id: employeeId,
       project_id: projectId,
-      start_date: "2026-01-01",
-      end_date: "2026-01-31",
+      start_date: "2027-01-01",
+      end_date: "2027-01-31",
       billable_percentage: 50,
       rate_card_id: firstCard,
     });
@@ -289,8 +289,8 @@ describe("VRS-F006 — Rate Card Engine", () => {
     const created = await w.apply("owner", "assignment.create", {
       employee_id: employeeId,
       project_id: projectId,
-      start_date: "2026-02-01",
-      end_date: "2026-02-28",
+      start_date: "2027-02-01",
+      end_date: "2027-02-28",
       billable_percentage: 50,
       rate_card_id: cardId,
     });

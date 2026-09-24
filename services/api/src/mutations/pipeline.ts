@@ -58,6 +58,7 @@ import {
   ghostResourceLinkOpenRole,
   ghostResourcePromote,
 } from "./ghost-resource.js";
+import { conflictResolutionOverrideAndProceed } from "./conflict-resolution.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -114,6 +115,8 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "ghostResource.cancel": ghostResourceCancel as ServerMutation<never>,
   "ghostResource.linkOpenRole": ghostResourceLinkOpenRole as ServerMutation<never>,
   "ghostResource.promote": ghostResourcePromote as ServerMutation<never>,
+  "conflictResolution.overrideAndProceed":
+    conflictResolutionOverrideAndProceed as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {

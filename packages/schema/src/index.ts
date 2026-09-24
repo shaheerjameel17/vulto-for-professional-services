@@ -157,3 +157,4 @@ export * from "./employee";
 export * from "./rate-card";
 export * from "./working-day";
 export * from "./bench-forecast";
+export * from "./capacity-conflict";

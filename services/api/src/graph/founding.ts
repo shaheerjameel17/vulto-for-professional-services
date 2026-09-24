@@ -56,6 +56,7 @@ export async function writeFoundingRecords(
       name: input.workspaceName,
       k_anonymity_minimum: 5,
       k_anonymity_minimum_sensitive: 8,
+      near_capacity_warning_threshold: 90,
     }),
   );
   const entityId = randomUUID();

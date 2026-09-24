@@ -132,7 +132,7 @@ The result compares against 100 for a hard conflict and against `near_capacity_w
 ```
 conflictCheck.evaluate(employeeId, proposed: {
   startDate, endDate, billablePercentage, excludeAssignmentId?
-}) -> {
+}, callerUserId) -> {
   currentTotal, combinedTotal,
   wouldConflict,          // combinedTotal > 100
   wouldWarn,              // above threshold, at or below 100
@@ -141,7 +141,13 @@ conflictCheck.evaluate(employeeId, proposed: {
   overlappingAssignments: [{ assignmentId, projectName, billablePercentage,
                              startDate, endDate, callerCanEdit }]
 }
-  // Called before every Assignment create or edit. Read-only, no side effect
+  // Called before every Assignment create or edit. Read-only, no side effect.
+  // callerUserId (F260/F261) is the only caller-identity input needed — the
+  // caller's own role is read from its already-replicated WorkspaceMembership
+  // node (via its membership_of edge), the same local-cache lookup
+  // overrideAndProceed's optimistic handler uses below. callerCanEdit =
+  // caller is an Owner, or is the employee's manager per managed_by — the
+  // identical two facts the override gate checks
 
 conflictResolution.adjustNew(proposed, newPercentage)          -> { assignmentId }
 conflictResolution.adjustExisting(assignmentId, newPercentage) -> { success }
@@ -149,7 +155,11 @@ conflictResolution.endExisting(assignmentId, newEndDate)       -> { success }
   // Requires the new end date to actually remove the overlap
 
 conflictResolution.overrideAndProceed(proposed, reason)        -> { assignmentId }
-  // Caller must be the employee's manager per managed_by, or an Owner.
+  // Caller must be the employee's manager per managed_by, or an Owner —
+  // resolved server-side from the request principal, and locally (F260/F261)
+  // from the caller's own WorkspaceMembership.role (via its membership_of
+  // edge) plus the target employee's managed_by edge, both already-cached,
+  // already-replicated facts — no new client-side plumbing of any kind.
   // Writes capacity_override_reason, _by and _at alongside the Assignment
 
 conflictResolution.sweepOvercommitted(workspaceId)
@@ -240,13 +250,15 @@ conflictResolution.sweepOvercommitted(workspaceId)
 - `conflictCheck.evaluate` returns within 100ms from the local graph, before any save is attempted
 - The suggested fit is recomputed against current data at the moment the panel opens, never a stale figure from an earlier check
 - The sweep covers all active employees within 2 minutes for workspaces up to 150 people, the same budget [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] holds
-- Computation, panel and override all function fully offline. The sweep is best-effort and runs on next connectivity
+- Computation, panel and override all function fully offline. The sweep is best-effort and runs on next connectivity. **(F259)** `conflictCheck.evaluate` runs as a portable local query against the device's own replicated cache, the same pattern [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s local row query already uses — best-effort and advisory, since capacity is deliberately server-only (one device may not have another device's newest Assignment yet, the same reason `assignment.create`'s own optimistic write never checks capacity locally either). `overrideAndProceed` writes optimistically like `assignment.create` does, using a local `managed_by` check to decide whether to attempt the write; the server re-verifies that gate and the capacity figure authoritatively and can reject via the ordinary undo path.
 
 ---
 
 ## Security Considerations
 
-- **The override gate is an application-layer check, not a new permission row.** Assignment's tier and write permissions are unchanged. This feature restricts which already-authorized users may invoke one additional action — the same pattern [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] uses for its three-Owner cap.
+- **The override gate is an application-layer check, not a new permission row.** Assignment's tier and write permissions are unchanged. This feature restricts which already-authorized users may invoke one additional action — the same pattern [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] uses for its three-Owner cap. **The local half of that gate is resolved entirely from already-replicated facts (F260/F261):** `WorkspaceMembership` (the caller's own stored role, reached via its `membership_of` edge) is Tier 0 and already syncs to every device, and the target employee's `managed_by` edge is too — no new data crosses into the device cache, no new field on any client-side context object, and no file under `apps/` changes to make this check possible.
+- **A Manager's override write also authorizes its two structural edges, not just the Assignment node (F262).** `assignment_of`'s Employee endpoint is authorized with real row context — the same `managed_by`-derived manager check the interceptor already makes for reads, now made for this write too — so Manager's already-documented `Full (direct reports)` grant applies correctly rather than defaulting to refused for lack of row context. `assigned_to`'s Project endpoint requires only Read, not Full — a new, explicitly declared exception for this one edge type (`readSufficientEndpoints` in the edge registry), mirroring `VPS-A004`'s own Graph traversal rule that a read only ever needs Read on both endpoints. Manager's general Project access stays Read-only everywhere else, unchanged.
+- **The safety-net sweep only reports employees the caller may already read (F263).** `conflictResolution.sweepOvercommitted` filters its Employee list through the same row-scoped read check every other workspace-wide listing already applies (`filterReadable`, the mechanism `listEmployees` and `listGhostResources` already use) before computing overcommitment — unscoped for Owner, HR Admin and Finance Admin, direct-reports-scoped for Manager, own-plus-team for Team Member, per `Employee:operational`'s own policy-table cells. A caller with no read access to a given employee's operational data never learns whether they are overcommitted.
 - **The override reason is mandatory and not private.** It is visible to anyone who could already see the Assignment. The point is accountability for a deliberate decision, not a hidden justification.
 - **The override is recorded on the Assignment itself, not separately audited (F257).** `capacity_override_reason`, `capacity_override_by` and `capacity_override_at` are written alongside the Assignment; no [[VPS-F004_Silent_Audit_Log|VPS-F004]] event exists for an ordinary successful Tier 0 write, the same reasoning already applied to Ghost promotion. An employee working above full capacity for a sustained period is a fact that surfaces later in [[VRS-F052_Workload_Strain_Signal|VRS-F052]], and the record of who authorized it matters — it is just kept on the record, not in the audit log.
 

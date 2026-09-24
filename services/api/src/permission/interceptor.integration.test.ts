@@ -57,6 +57,65 @@ async function auditRows(workspaceId: string) {
   return (await listAuditEntries(db, workspaceId)).map((entry) => ({ entry }));
 }
 
+async function managerEdgeWorld() {
+  const fixture = await makeWorkspace({
+    manager: ["team-member"],
+    unrelated: ["team-member"],
+  });
+  const managerId = randomUUID();
+  const unrelatedId = randomUUID();
+  const targetId = randomUUID();
+  const otherReportId = randomUUID();
+  const projectId = randomUUID();
+  await db.transaction(async (tx) => {
+    for (const [nodeId, userId] of [
+      [managerId, fixture.people.manager!.userId],
+      [unrelatedId, fixture.people.unrelated!.userId],
+      [targetId, null],
+      [otherReportId, null],
+    ] as const) {
+      await insertNode(tx, {
+        ...nodeRecord("Employee", fixture.workspaceId, nodeId),
+        lifecycle_status: "Active",
+        user_id: userId,
+      });
+    }
+    await insertNode(tx, {
+      ...nodeRecord("Project", fixture.workspaceId, projectId),
+      lifecycle_status: "Active",
+    });
+    await insertEdge(
+      tx,
+      fixture.workspaceId,
+      edgeRecord("managed_by", targetId, managerId),
+    );
+    await insertEdge(
+      tx,
+      fixture.workspaceId,
+      edgeRecord("managed_by", otherReportId, unrelatedId),
+    );
+  });
+  const manager = await db.transaction((tx) =>
+    resolveMemberPrincipal(tx, {
+      workspaceId: fixture.workspaceId,
+      userId: fixture.people.manager!.userId,
+    }),
+  );
+  const unrelated = await db.transaction((tx) =>
+    resolveMemberPrincipal(tx, {
+      workspaceId: fixture.workspaceId,
+      userId: fixture.people.unrelated!.userId,
+    }),
+  );
+  return {
+    workspaceId: fixture.workspaceId,
+    manager: manager!,
+    unrelated: unrelated!,
+    targetId,
+    projectId,
+  };
+}
+
 describe("A004-T07 — the permission matrix, against the server interceptor", () => {
   it("every role x node type x partition cell decides exactly as the policy table resolves it", async () => {
     const workspaceId = randomUUID();
@@ -417,6 +476,66 @@ describe("the three write gates, in order", () => {
           { operation: "create" },
         ),
       ).toEqual({ allowed: false, reason: "unregistered-relationship" });
+    });
+  });
+
+  it("F262: authorizes both Assignment edges for the target employee's real manager", async () => {
+    const w = await managerEdgeWorld();
+    await db.transaction(async (tx) => {
+      expect(
+        await authorizeWrite(
+          tx,
+          w.manager,
+          {
+            kind: "edge",
+            workspaceId: w.workspaceId,
+            edgeType: "assignment_of",
+            fromNodeType: "Assignment",
+            toNodeType: "Employee",
+            edgeId: randomUUID(),
+            toNodeId: w.targetId,
+          },
+          { operation: "create" },
+        ),
+      ).toMatchObject({ allowed: true });
+      expect(
+        await authorizeWrite(
+          tx,
+          w.manager,
+          {
+            kind: "edge",
+            workspaceId: w.workspaceId,
+            edgeType: "assigned_to",
+            fromNodeType: "Assignment",
+            toNodeType: "Project",
+            edgeId: randomUUID(),
+            toNodeId: w.projectId,
+          },
+          { operation: "create" },
+        ),
+      ).toMatchObject({ allowed: true });
+    });
+  });
+
+  it("F262: still refuses assignment_of for a manager unrelated to the target", async () => {
+    const w = await managerEdgeWorld();
+    await db.transaction(async (tx) => {
+      expect(
+        await authorizeWrite(
+          tx,
+          w.unrelated,
+          {
+            kind: "edge",
+            workspaceId: w.workspaceId,
+            edgeType: "assignment_of",
+            fromNodeType: "Assignment",
+            toNodeType: "Employee",
+            edgeId: randomUUID(),
+            toNodeId: w.targetId,
+          },
+          { operation: "create" },
+        ),
+      ).toEqual({ allowed: false, reason: "role" });
     });
   });
 
