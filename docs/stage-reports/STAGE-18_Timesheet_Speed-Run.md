@@ -1,18 +1,18 @@
 # Stage 18 — Timesheet Speed-Run
 
 **Status:** BLOCKED
-**Branch:** `codex/stage-18-timesheet-speed-run` @ `5eafcc9` (F271 ruling merged; report amendment follows)
+**Branch:** `codex/stage-18-timesheet-speed-run` @ `6d2059f` (F272 ruling merged; report amendment follows)
 **Linear issues:** RST-46
 **Date:** 2026-09-24
 
 ## 1. Summary
 
-The F267 Pitch edge declaration and F268/F269 subject-resolution correction are committed. F270 and F271 are ruled and merged from `main` at `6f4b80a` and `50dca6a`. Tracing the now-authorized system write into the graph's universal record schema exposed F272: a system principal has no User UUID to place in the mandatory `created_by`/`updated_by` fields on TimesheetAnomalyFlag and `created_by` on its `triggered_by` edge. Implementation stopped for a reviewer ruling; no app code or protected documentation was directly edited.
+The F267 Pitch edge declaration and F268/F269 subject-resolution correction are committed. F270–F272 are ruled and merged from `main`. Tracing the submission and week-query contracts exposed F273: a zero-entry week may be submitted, but the only specified persisted status is on TimesheetEntry rows, so `getWeek` and HR compliance cannot later distinguish that submission from Not-Started. Implementation stopped for a reviewer ruling; no app code or protected documentation was directly edited.
 
 ## 2. Done-criteria checklist
 
 - [ ] `logged_against` declares `Pitch: "identifying"` — the declaration is committed in `packages/schema/src/registry/edges.ts`; the required real-interceptor Pitch save test awaits the blocked mutation path.
-- [ ] The F268/F269 row-scope branches are proven against the real interceptor — code committed in `2cd5b03`, but the required anomaly creation and direct-report test await F272.
+- [ ] The F268/F269 row-scope branches are proven against the real interceptor — code committed in `2cd5b03`, but the required anomaly creation and direct-report test await the blocked feature path.
 - [ ] `saveCell` rejects a 25-hour date total before storage and the optimistic mutator surfaces `GraphValidationError` — not started.
 - [ ] `submitWeek` transitions all Draft entries atomically with an injected-failure rollback proof — not started.
 - [ ] `getWeek` and shortcuts use `resolveWorkingDay` across six-day, four-day and half-day cases — not started.
@@ -33,11 +33,11 @@ The F267 Pitch edge declaration and F268/F269 subject-resolution correction are 
 | Spec ID | Where implemented | Test proving it |
 |---|---|---|
 | VRS-F010 Edges / F267 | `packages/schema/src/registry/edges.ts` | Not yet: real-interceptor Pitch save test depends on the unbuilt mutation |
-| F268/F269 row-scope resolution | `services/api/src/permission/interceptor.ts` | Not yet: real flag-creation test depends on F272 |
+| F268/F269 row-scope resolution | `services/api/src/permission/interceptor.ts` | Not yet: real flag-creation test depends on the unbuilt mutation |
 
 ## 4. Files changed
 
-Relative to current `main`: `packages/schema/src/registry/edges.ts` (F267), `services/api/src/permission/interceptor.ts` (F268/F269), and this report. The F270/F271 ruling documents were merged from `main`, not edited here.
+Relative to current `main`: `packages/schema/src/registry/edges.ts` (F267), `services/api/src/permission/interceptor.ts` (F268/F269), and this report. The F270–F272 ruling documents were merged from `main`, not edited here.
 
 ## 5. Database changes
 
@@ -45,7 +45,7 @@ None.
 
 ## 6. Tests and gates
 
-The four required gates were not run: `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, and `pnpm verify:full`. Stage 18 cannot be COMPLETE until F272 is ruled and implementation resumes. Narrow checks on the committed F267/F268/F269 changes passed in the previous stop: `git diff --check` exited 0, and `pnpm exec prettier --check` on the two code files exited 0.
+The four required gates were not run: `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, and `pnpm verify:full`. Stage 18 cannot be COMPLETE until F273 is ruled and implementation resumes. Narrow checks on the committed F267/F268/F269 changes passed in a previous stop: `git diff --check` exited 0, and `pnpm exec prettier --check` on the two code files exited 0. During this resume, a draft of F270–F272's independent authority/provenance mechanism passed schema and API typechecks; it was removed when F273 surfaced rather than left as untested, unused code.
 
 ## 7. Micro-decisions
 
@@ -63,23 +63,29 @@ None.
 
 At the time F270 was raised, the existing system-principal path did not supply the missing authority either: `services/api/src/permission/interceptor.ts` gave system principals no node grant, and `packages/schema/src/policy/principal-policy.ts` listed only audit pseudonymization, key destruction and audience recompute as system operations. There was no anomaly-evaluation operation or named principal, and the pipeline could not accept one as written. The brief specified neither a permitted system write nor a delegation mechanism. The builder did not invent or impersonate an HR Admin principal, add an unreviewed system grant, or silently write the flag outside the named-mutation path.
 
-The founder ruled a distinct `authorizeWrite` Gate 1 path for a new `timesheet-anomaly-evaluate` system principal, limited to `timesheet-anomaly.create-flag`. This ruling is authoritative in `docs/Foundations_Findings.md` and the revised Stage 18 brief, both merged from `main`; it has not yet been implemented because F271 surfaced while tracing the dependent evaluator. The F268/F269 interceptor change is independent and preserved; the untested Timesheet schema draft was removed before the prior stop.
+The founder ruled a distinct `authorizeWrite` Gate 1 path for a new `timesheet-anomaly-evaluate` system principal, limited to `timesheet-anomaly.create-flag`. This ruling is authoritative in `docs/Foundations_Findings.md` and the revised Stage 18 brief, both merged from `main`; it has not yet been implemented because later findings surfaced while tracing the dependent evaluator. The F268/F269 interceptor change is independent and preserved; the untested Timesheet schema draft was removed before an earlier stop.
 
 ### F271 — anomaly evaluation has no authorized read of prior Tier 2 flags
 
 **Status: closed on `main` at `50dca6a`.** `VRS-F010` G09 requires at most one Active uncleared flag per employee, week and reason, with a repeat trigger updating `detail`. G09b and the Stage 18 done criteria require an `ApprovedOvertime`-cleared HoursExceedExpected flag never to reappear on later evaluation. Both behaviors require inspecting prior flags' `employee_id`, `week_start_date`, `flag_reason`, `cleared_at`, and `clearance_outcome` before a create/update decision. `TimesheetAnomalyFlag` is Tier 2 (`packages/schema/src/registry/nodes.ts`); `services/api/src/graph/store.ts` stores its feature fields in encrypted `graph_protected_fragments`, not the plain `graph_nodes.record`. Its `triggered_by` edge identifies the Employee but reveals none of the week, reason, or clearance data.
 
-The only established decrypt path is `services/api/src/protected/read.ts`'s audited `readProtected`: it calls `authorizeRead` before decrypting. At the time F271 was raised, `services/api/src/permission/interceptor.ts` gave system principals no policy roles for reads, so `readProtected` released no flag content to F270's new `timesheet-anomaly-evaluate` principal. The submitting Team Member has `NONE` on TimesheetAnomalyFlag in `packages/schema/src/policy/policy-table.ts`; using that member to read prior flags fails too. The reviewer ruled a second closed-table operation, `timesheet-anomaly.read-flags`, and the read-side counterpart in `decideRead`. The evaluator must use `readProtected` under that same system principal. The authoritative ruling and revised brief were merged, not edited on this branch; implementation awaits F272.
+The only established decrypt path is `services/api/src/protected/read.ts`'s audited `readProtected`: it calls `authorizeRead` before decrypting. At the time F271 was raised, `services/api/src/permission/interceptor.ts` gave system principals no policy roles for reads, so `readProtected` released no flag content to F270's new `timesheet-anomaly-evaluate` principal. The submitting Team Member has `NONE` on TimesheetAnomalyFlag in `packages/schema/src/policy/policy-table.ts`; using that member to read prior flags fails too. The reviewer ruled a second closed-table operation, `timesheet-anomaly.read-flags`, and the read-side counterpart in `decideRead`. The evaluator must use `readProtected` under that same system principal. The authoritative ruling and revised brief were merged, not edited on this branch; implementation remains pending F273.
 
 ### F272 — system-authored graph records require a User UUID for provenance
 
-**Status: open; reviewer ruling required.** F270 requires `timesheetAnomaly.evaluate` to create or update a Tier 2 TimesheetAnomalyFlag and its `triggered_by` edge under `{ kind: "system", name: "timesheet-anomaly-evaluate", workspaceId }`, not the submitting Team Member's principal. Yet `VPS-A002`'s universal node and edge conventions make `created_by` and `updated_by` (node), and `created_by` (edge), required `user_id UUID` fields, with exceptions explicitly closed to only AuditEntry and the two anonymous contribution types. `packages/schema/src/records.ts` enforces UUID v4 in the standard shapes; `stampNewNode`/`stampNewEdge` take a `Provenance.userId`; `services/api/src/permission/principal.ts`'s `SystemPrincipal` has only `name` and `workspaceId`, no User UUID. `graph_mutations.actor_user_id` and `writeProtected`'s actor parameter can be null, so neither resolves the universal graph-record requirement.
+**Status: closed on `main` at `e4c796a`.** F270 requires `timesheetAnomaly.evaluate` to create or update a Tier 2 TimesheetAnomalyFlag and its `triggered_by` edge under `{ kind: "system", name: "timesheet-anomaly-evaluate", workspaceId }`, not the submitting Team Member's principal. Yet `VPS-A002`'s universal node and edge conventions make `created_by` and `updated_by` (node), and `created_by` (edge), required `user_id UUID` fields, with exceptions explicitly closed to only AuditEntry and the two anonymous contribution types. `packages/schema/src/records.ts` enforces UUID v4 in the standard shapes; `stampNewNode`/`stampNewEdge` take a `Provenance.userId`; `services/api/src/permission/principal.ts`'s `SystemPrincipal` has only `name` and `workspaceId`, no User UUID. `graph_mutations.actor_user_id` and `writeProtected`'s actor parameter can be null, so neither resolves the universal graph-record requirement.
 
-The obvious values imply different, unruled meanings: attributing `created_by`/`updated_by` to the submitter would say that person wrote a flag they are deliberately unauthorized even to read; inventing a system UUID without a User row would violate the `user_id` semantics; creating a service User or changing the universal record convention would expand the schema and trust model. The existing system jobs only write infrastructure tables and have no graph-node precedent. Please rule how a system-principal graph write records universal provenance before this first system-authored node/edge is built. The narrow F270/F271 authority edits attempted during this resume were removed once this blocker surfaced; the branch retains only the already committed F267/F268/F269 code and merged ruling documents.
+The founder ruled one lazily provisioned, deterministic, reserved `User` identity per system principal and workspace, with no membership or Employee link, plus a closed human display-name table. Its UUID self-attributes its own universal fields and supplies the flag/edge provenance; the label for this principal is “Automatic Review.” This was merged from `main`, not edited on this branch. An untested draft of the mechanism was removed after F273 surfaced; the branch retains only committed F267/F268/F269 code and merged rulings.
+
+### F273 — empty-week submission has no persisted state for later reads
+
+**Status: open; reviewer ruling required.** The Stage 18 brief's Do item 5 explicitly says `timesheet.submitWeek` must not error on zero Draft entries because an empty week can still be submitted. Its own API contract requires `timesheet.getWeek` to return `weekStatus: Draft | Submitted`; `hrCompliance.listSubmissionStatus` must distinguish Draft, Submitted, and Not-Started for each employee/week. The only specified persisted submission fields are `TimesheetEntry.lifecycle_status` and `submitted_at`, both per-entry. On a zero-entry week, the single-transaction transition changes no rows, so a subsequent query sees exactly the same graph state as before submission. The only other persisted write is `graph_mutations`, whose `args_sha256` is a hash, not queryable employee/week fields; a client-supplied `mutation_id` is not a deterministic week key. No TimesheetWeek/Submission node, edge, or other status table is registered or specified.
+
+Returning Submitted for all empty weeks would falsely mark every Not-Started employee as submitted. Creating a synthetic zero-hour TimesheetEntry or a new week-status table would choose new data semantics outside the brief, and registering another node would change `VPS-A002`. Please rule where an empty submission's status is stored and how it is queried, while preserving the existing zero-entry success, `getWeek`, and HR compliance contracts. No marker or storage workaround was built.
 
 ## 9. Deviations from this brief
 
-None implemented. The incomplete stage is blocked by F272 rather than worked around.
+None implemented. The incomplete stage is blocked by F273 rather than worked around.
 
 ## 10. Known limitations and risks
 
@@ -87,4 +93,4 @@ The F267 registry declaration and F268/F269 interceptor change are committed but
 
 ## 11. Readiness for the next stage
 
-No. Stage 18 must resume after the reviewer rules F272; Stage 19 is not started.
+No. Stage 18 must resume after the reviewer rules F273; Stage 19 is not started.
