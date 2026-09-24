@@ -150,7 +150,8 @@ time_category:     enum per VRS-F009
 internal_category: enum per VRS-F009, required when NonBillable
 date:              date
 hours:             decimal, min 0, max 24
-week_start_date:   date — the first working day of the week per VRS-F004
+week_start_date:   date — per VRS-F004's WorkingCalendar.week_start_day (F276),
+                   not a hardcoded Monday
 notes:             text, nullable
 lifecycle_status:  enum: Draft, Submitted
 submitted_at:      timestamp, nullable
@@ -158,7 +159,7 @@ submitted_at:      timestamp, nullable
 — Universal Node Conventions per VPS-A002 —
 ```
 
-`week_start_date` is the first working day of the employee's week rather than a hardcoded Monday. In a Sunday-to-Thursday workspace the week starts on Sunday, and a Monday-anchored key would split every week across two records.
+`week_start_date` is computed from the employee's Entity's `WorkingCalendar.week_start_day` (F276), never from which days are `is_working`: resolve the Entity via `resolveForEmployee(tx, workspaceId, employeeId, asOf: date)` ([[VRS-F003_Multi-Entity_and_Jurisdiction_Foundation|VRS-F003]]'s own F229/G06 precedent), the calendar version in force as of that same date via `resolveCalendarForEntity`, then walk back from `date` to the most recent date whose ISO weekday equals `week_start_day`. In a Sunday-to-Thursday workspace `week_start_day` is 7, so the week starts on Sunday; a Monday-anchored key would have split every week across two records. Computed once at `saveCell`/`submitWeek` time and stored on the row — never recomputed on a later read, the same stability [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s F230 already established for a historical working week.
 
 ### Validation
 
@@ -395,6 +396,8 @@ timesheetAnomaly.clear(flagId, outcome, note?)      -> { toilDaysAccrued? }
 **Grid columns and shortcuts resolve through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]].** Previously `fd` computed `contracted_hours / 5` and the grid rendered seven columns. Both are wrong for a six-day week, a compressed schedule, a part-time pattern, a public holiday and a reduced-hours period — which between them cover a substantial share of this product's target market. `HoursExceedExpected` is renamed from `HoursExceedContracted` for the same reason.
 
 **`week_start_date` is the first working day, not Monday.** In a Sunday-to-Thursday workspace a Monday-anchored key splits every week across two records, which would have surfaced as inexplicably halved utilization figures.
+
+**`week_start_date` could not always be derived from “first working day” alone — F276, 24 September 2026.** [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s `working_week` schema permits any arrangement of seven booleans, including a genuine seven-day working week (no rest gap to anchor on) or a split pattern such as Sunday/Tuesday/Thursday/Friday (multiple “first working day after a rest day” candidates). `resolveWorkingDay` also folds holidays into `is_working`, so even an ordinary contiguous week's key could have silently shifted depending on where a holiday fell. A deterministic rest-gap heuristic with a tie-break, a configured week anchor, or an invariant restricting which schedules are permitted are three materially different choices with no existing precedent picking one; the builder correctly stopped rather than invent a hidden default. The rest-gap heuristic was rejected: it stays sensitive to ordinary `pattern.set` edits and to holiday placement, reintroducing the exact instability `week_start_date` exists to prevent. Restricting permitted schedules was rejected outright: it would break the three-day-a-week / split-pattern employee `VRS-F004` already explicitly supports as a real, intended case, not an edge case to design away. Ruled: a new required `week_start_day` field on `WorkingCalendar` ([[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]'s own F276 decision entry has the full field-level mechanism) decouples the week boundary from `is_working`, holidays and `WorkingPattern` entirely — it is a fixed calendar-level fact, computed by pure date arithmetic, immune to both failure modes by construction rather than by heuristic. One boundary case is named rather than silently accepted: a calendar edit or an entity re-scoping landing mid-week can legitimately split one real week's entries across two `week_start_date` values — inherent to any anchor-based design, and deliberately not guarded in code, since guarding it would mean this feature's own mutations reading `VRS-F004`'s `WorkingCalendar` write history to refuse an unrelated feature's edit, a coupling [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] Standing Rule 9 and `VRS-F004`'s own G08 already forbid in the other direction.
 
 **The approval-workflow question stays resolved as exception-based flagging.** A full manager gate on every week is more accurate on paper and directly contradicts commitments already made: [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]]'s pulse updates within two seconds of a write, and a gate holding data until a manager reviews it — plausibly days, for a manager with fifteen reports — breaks that outright. It also works against the fifteen-second ethos, with the friction landing on the manager, weekly, times headcount, indefinitely. Exception-based flagging spends review effort only where the graph already contains a reason for suspicion, which is the same shape as three signals this architecture already trusts.
 
