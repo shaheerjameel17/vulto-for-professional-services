@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-09-20]]"
+Date: "[[2026-09-24]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -148,6 +148,7 @@ Current `governingPartitions` entries:
 | Edge type | Split endpoint | Governing partition | Rationale |
 |---|---|---|---|
 | `has_skill` | Employee (from) | `operational` | A skill holding is operational HR data; requiring compensation-level (finance) permission to record one is wrong for the product |
+| `staffed_on` | Employee (from), Pitch (to) | `operational`, `identifying` | Staffing connects two split nodes; both governing partitions must be declared (F265) |
 | `holds_certification` | Employee (from) | `operational` | Certifications are operational, not compensation |
 | `assignment_of` | Employee (to) | `operational` | Which person an assignment is for is staffing/operational data |
 | `managed_by` | Employee (from and to) | `operational` | A reporting line is an operational HR fact, not compensation, so whoever may write an Employee's operational half may move them (F208) |
@@ -460,6 +461,7 @@ Where an edge connects several node type pairs, each pair is listed explicitly. 
 |---|---|---|---|
 | `assignment_of` | Assignment → Employee | [[VRS-F005_The_Bench_Forecast|VRS-F005]] | |
 | `assigned_to` | Assignment → Project | [[VRS-F005_The_Bench_Forecast|VRS-F005]] | Who is on what is the two-hop traversal through Assignment, not an edge |
+| `staffed_on` | Employee → Pitch | [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] | Operational staffing; no intermediate node or payload |
 | `belongs_to` | Project → Client | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | |
 | `originated_from` | Project → Pitch | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Preserved on conversion |
 | `placeholder_for` | GhostResource → OpenRole | [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] | Links capacity planning to recruitment |
@@ -574,7 +576,7 @@ The endpoint-set names below are executable registry concepts rather than aliase
 
 ### Vulto Projects — [[VPJ-001_Feature_Register|VPJ-001]]
 
-Registered ahead of implementation so that [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s Project stub and [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]]'s Pitch conversion have a defined destination. Full field-level schemas live in each owning feature document.
+Registered ahead of implementation so that [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s Project stub and the registered, deferred Pitch conversion have a defined destination. Full field-level schemas live in each owning feature document.
 
 | Node Type | Lifecycle Statuses | Owner | Privacy Class | Tier |
 |---|---|---|---|---|
@@ -773,7 +775,7 @@ Node and edge properties are stored as `jsonb`, which is schema-flexible at the 
 
 **Three configuration keys were added in the final consistency pass**, each introduced by a feature written after this registry: `tier1_retention_window_months` from [[VPS-A003_Unified_Sync_Architecture|VPS-A003]], `payroll_variance_flag_threshold` from [[VRS-F065_Payroll_Approval_Workflow|VRS-F065]], and `vocabulary_profile` from [[VPS-F006_Workspace_Setup_and_Data_Import|VPS-F006]]. Each was described in prose by its own document and never registered here, which under Standing Rule 6 would have left three keys with no schema entry and, per [[VPS-F005_Workspace_Configuration_Console|VPS-F005]]'s own G02, no surface on which to edit them.
 
-**Vulto Projects' node types are registered ahead of implementation.** [[VRS-F005_The_Bench_Forecast|VRS-F005]] creates Project stubs and [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] converts a Pitch into one, both of which need a defined destination. Registering early also means Deliverable's fixed status enum is unregistrable as a per-workspace custom set rather than merely discouraged.
+**Vulto Projects' node types are registered ahead of implementation.** [[VRS-F005_The_Bench_Forecast|VRS-F005]] creates Project stubs; Pitch-to-Project conversion is registered but deferred beyond [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] (F264). Registering early also means Deliverable's fixed status enum is unregistrable as a per-workspace custom set rather than merely discouraged.
 
 **This document is suite-level and always was.** Its title, scoping principle and blocking statement now say so rather than describing Roster's data specifically.
 

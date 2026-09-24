@@ -73,6 +73,9 @@ describe("the foundation mutation set", () => {
       "org.moveEmployee",
       "pattern.clear",
       "pattern.set",
+      "pitch.create",
+      "pitch.staffEmployee",
+      "pitch.unstaffEmployee",
       "rateCard.create",
       "rateCard.update",
     ]);

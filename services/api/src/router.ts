@@ -18,6 +18,7 @@ import {
   rateCardUsageInputSchema,
   ghostResourceListInputSchema,
   conflictResolutionSweepInputSchema,
+  pitchListStaffedForInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -45,6 +46,7 @@ import {
 } from "./permission/rate-card-queries.js";
 import { listGhostResources } from "./permission/ghost-resource-queries.js";
 import { sweepOvercommitted } from "./permission/conflict-resolution-queries.js";
+import { listStaffedFor } from "./permission/pitch-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -237,6 +239,13 @@ export const appRouter = t.router({
           }),
         );
       }),
+  }),
+  pitch: t.router({
+    listStaffedFor: protectedProcedure
+      .input(pitchListStaffedForInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) => listStaffedFor(tx, ctx.principal, input.employee_id)),
+      ),
   }),
   conflictResolution: t.router({
     sweepOvercommitted: protectedProcedure

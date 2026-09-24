@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto Roster Specs
-Date: "[[2026-07-31]]"
+Date: "[[2026-09-24]]"
 Product Phase:
   - MVP
 Feature Type:
@@ -160,7 +160,7 @@ The Tier 1 half — deal value, win probability, margin terms — is owned by [[
 
 ### Pitch creation and staffing
 
-Nothing else in the codebase creates a Pitch or records who is staffed on one; this feature is the first to touch the node it registers, so it owns both (F264). A new `staffed_on` edge (Employee → Pitch) records the staffing relationship, modeled directly on `has_skill` — an operational relationship, governed through `Employee:operational`, the same partition Manager's direct-report grant already covers. A Manager staffing their own direct report resolves correctly through the interceptor's existing row-context mechanism (F262); staffing anyone outside that relationship is refused the same way any other row-scoped write is refused.
+Nothing else in the codebase creates a Pitch or records who is staffed on one; this feature is the first to touch the node it registers, so it owns both (F264). A new `staffed_on` edge (Employee → Pitch) records the staffing relationship, modeled on `has_skill` — an operational relationship governed through `Employee:operational` and `Pitch:identifying`. Both endpoints are split nodes and both require a declared governing partition; omitting Pitch's declaration makes every staffing write fail through the interceptor (F265). A Manager staffing their own direct report resolves correctly through the interceptor's existing row-context mechanism (F262); staffing anyone outside that relationship is refused the same way any other row-scoped write is refused.
 
 A new `Pitch:identifying` policy-table row (F264, styled on Ghost Resources' own row, F251) governs this: Owner, HR Admin and Manager get unscoped Full on `Pitch:identifying`. Manager is deliberately unscoped rather than row-scoped — a staffing-based row scope would be circular for the very first employee staffed on a new pitch, since no staffing edge yet exists to satisfy the check. Team Member gets no generic read on Pitch at all; `pitch.listStaffedFor`, below, is their only sanctioned path, and it is gated by their own already-working `Employee:operational` row-scope on the `employeeId` argument, not by a Pitch-level grant.
 
@@ -183,6 +183,8 @@ pitch.listStaffedFor(employeeId) -> { pitchId, name, clientName }[]
 ```
 
 **`timeEntry.classifyBillable`, `classifyNonBillable` and `classifyPitch` are contract, not code this feature ships.** They describe the write-time rules a `TimesheetEntry` mutation must satisfy once [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] builds real creation for that node — no `entryId` can exist before then (F264). This feature specifies the classification fields and their write-time dependencies, above; `VRS-F010` incorporates them into its own live mutations.
+
+The three `pitch.*` writes above are named mutations transported through `graph.applyMutations`; `pitch.listStaffedFor` is a read procedure. No second direct-write route is introduced (F266).
 
 ```
 timeEntry.classifyBillable(entryId, assignmentId)         -> { success }   // contract for VRS-F010

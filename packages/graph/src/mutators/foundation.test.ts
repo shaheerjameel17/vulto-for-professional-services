@@ -84,6 +84,46 @@ const rejects = async (work: Promise<unknown>, reason: string) => {
 };
 
 describe("the optimistic foundation mutators", () => {
+  it("queues Pitch creation and staffing with reversible Tier 0 cache effects", async () => {
+    const cache = new MemoryCache();
+    const employeeId = await seedEmployee(cache);
+    const createdId = uuid();
+    const createdUndo = await applyOptimistic(
+      context(cache, createdId),
+      "pitch.create",
+      { name: "Proposal" },
+    );
+    expect(cache.nodes.get(createdId)?.record).toMatchObject({
+      node_type: "Pitch",
+      lifecycle_status: "Active",
+      name: "Proposal",
+      client_id: null,
+      projected_start_date: null,
+    });
+    const staffingId = uuid();
+    const staffedUndo = await applyOptimistic(
+      context(cache, staffingId),
+      "pitch.staffEmployee",
+      { pitch_id: createdId, employee_id: employeeId },
+    );
+    expect(cache.edges.get(staffingId)).toMatchObject({
+      edgeType: "staffed_on",
+      fromNodeId: employeeId,
+      toNodeId: createdId,
+    });
+    const unstaffedUndo = await applyOptimistic(
+      { ...context(cache), now: "2026-09-21T09:00:01.000Z" },
+      "pitch.unstaffEmployee",
+      { pitch_id: createdId, employee_id: employeeId },
+    );
+    expect(cache.edges.get(staffingId)?.effectiveTo).toBe("2026-09-21T09:00:01.000Z");
+    await applyUndo(cache, unstaffedUndo);
+    await applyUndo(cache, staffedUndo);
+    await applyUndo(cache, createdUndo);
+    expect(cache.edges.has(staffingId)).toBe(false);
+    expect(cache.nodes.has(createdId)).toBe(false);
+  });
+
   it("createNode stamps provenance like the server and is undone by its before-image", async () => {
     const cache = new MemoryCache();
     const node = genericNode();

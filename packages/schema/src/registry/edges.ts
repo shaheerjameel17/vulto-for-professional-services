@@ -132,6 +132,12 @@ export const EDGE_GROUPS = [
     readSufficientEndpoints: { Project: true },
   }),
   edgeGroup({
+    edgeType: "staffed_on",
+    owner: "VRS-F009",
+    pairs: [["Employee", "Pitch"]],
+    governingPartitions: { Employee: "operational", Pitch: "identifying" },
+  }),
+  edgeGroup({
     edgeType: "belongs_to",
     owner: "VPS-A002",
     pairs: [["Project", "Client"]],
