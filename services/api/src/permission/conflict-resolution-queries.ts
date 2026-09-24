@@ -1,5 +1,6 @@
 import { capacityTotalsFor } from "../mutations/assignment.js";
 import { getNodes, type GraphTx } from "../graph/store.js";
+import { filterReadable, type InterceptorContext } from "./interceptor.js";
 import type { MemberPrincipal } from "./principal.js";
 
 export interface OvercommittedEmployee {
@@ -16,11 +17,17 @@ export interface OvercommittedEmployee {
 export async function sweepOvercommitted(
   tx: GraphTx,
   principal: MemberPrincipal,
+  context: InterceptorContext = {},
 ): Promise<OvercommittedEmployee[]> {
-  const employees = await getNodes(tx, principal.workspaceId, {
-    nodeType: "Employee",
-    lifecycleStatus: "Active",
-  });
+  const employees = await filterReadable(
+    tx,
+    principal,
+    await getNodes(tx, principal.workspaceId, {
+      nodeType: "Employee",
+      lifecycleStatus: "Active",
+    }),
+    context,
+  );
   const assignments = await getNodes(tx, principal.workspaceId, {
     nodeType: "Assignment",
     lifecycleStatus: "Active",

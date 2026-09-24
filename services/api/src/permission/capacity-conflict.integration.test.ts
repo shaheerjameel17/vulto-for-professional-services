@@ -107,6 +107,28 @@ const proposed = (employeeId: string, projectId: string, percentage: number) => 
   billable_percentage: percentage,
 });
 
+async function insertOvercommit(
+  w: Awaited<ReturnType<typeof world>>,
+  employeeId: string,
+) {
+  await db.transaction(async (tx) => {
+    for (const percentage of [60, 60]) {
+      await insertNode(tx, {
+        ...nodeRecord("Assignment", w.workspaceId),
+        lifecycle_status: "Active",
+        employee_id: employeeId,
+        project_id: w.projectId,
+        start_date: "2026-03-03",
+        end_date: "2026-03-03",
+        billable_percentage: percentage,
+        capacity_override_reason: null,
+        capacity_override_by: null,
+        capacity_override_at: null,
+      });
+    }
+  });
+}
+
 describe("VRS-F008 — Capacity Conflict Resolution", () => {
   it("filters weekends and holidays out of authoritative capacity validation", async () => {
     const w = await world();
@@ -272,6 +294,51 @@ describe("VRS-F008 — Capacity Conflict Resolution", () => {
     expect(
       await db.transaction((tx) => getNode(tx, w.workspaceId, refusedEdgeId)),
     ).toBeNull();
+  });
+
+  it("returns no overcommitted employees to an unrelated team member", async () => {
+    const w = await world();
+    const overcommittedId = await employee(w);
+    await insertOvercommit(w, overcommittedId);
+
+    await expect(
+      db.transaction((tx) => sweepOvercommitted(tx, w.principals.outsider!)),
+    ).resolves.toEqual([]);
+  });
+
+  it("returns only a manager's direct reports from the overcommitted set", async () => {
+    const w = await world();
+    const managerId = await employee(w, "manager");
+    const directReportId = await employee(w);
+    const otherManagerId = await employee(w, "outsider");
+    const outsideReportId = await employee(w);
+    for (const [employeeId, newManagerId] of [
+      [directReportId, managerId],
+      [outsideReportId, otherManagerId],
+    ] as const) {
+      expect(
+        (
+          await w.apply("owner", "org.moveEmployee", {
+            employee_id: employeeId,
+            new_manager_id: newManagerId,
+            effective_from: NOW,
+          })
+        ).status,
+      ).toBe("applied");
+      await insertOvercommit(w, employeeId);
+    }
+
+    const result = await db.transaction((tx) =>
+      sweepOvercommitted(tx, w.principals.manager!),
+    );
+    expect(result.map(({ employeeId }) => employeeId)).toEqual([directReportId]);
+    expect(result).toEqual([
+      expect.objectContaining({
+        employeeId: directReportId,
+        combinedTotal: 120,
+        hasRecordedOverride: false,
+      }),
+    ]);
   });
 
   it("treats Ghosts identically and reports both recorded and unrecorded overcommitment without writes", async () => {
