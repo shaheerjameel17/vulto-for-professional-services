@@ -53,6 +53,10 @@ An employee logs hours against an active Assignment. The category is Billable by
 
 An employee logs against a fixed set of internal categories. No Assignment, no Pitch, no client-facing record required.
 
+### Staffing an employee on a pitch
+
+A Manager, Owner or HR Admin creates a Pitch (name, and optionally a client) and stages employees onto it before any of them can log time against it. Staffing is a Full-access action on both the Pitch and the Employee endpoint; a Manager may staff or unstaff only their own direct reports (F264), the same constraint that already governs who they may assign to a Project.
+
 ### Logging pitch time
 
 An employee logs against a specific Pitch, selected from those they are staffed on. This is the flow that determines Pitch's tier split, below.
@@ -154,20 +158,38 @@ The Tier 1 half — deal value, win probability, margin terms — is owned by [[
 
 `requires_skill` edges from Pitch, also added by [[VRS-F051_Team_Capacity_Planner|VRS-F051]], describe what staffing a pitch would need if won. They are Tier 0 for the same reason the start date is: a skill requirement is an operational fact.
 
+### Pitch creation and staffing
+
+Nothing else in the codebase creates a Pitch or records who is staffed on one; this feature is the first to touch the node it registers, so it owns both (F264). A new `staffed_on` edge (Employee → Pitch) records the staffing relationship, modeled directly on `has_skill` — an operational relationship, governed through `Employee:operational`, the same partition Manager's direct-report grant already covers. A Manager staffing their own direct report resolves correctly through the interceptor's existing row-context mechanism (F262); staffing anyone outside that relationship is refused the same way any other row-scoped write is refused.
+
+A new `Pitch:identifying` policy-table row (F264, styled on Ghost Resources' own row, F251) governs this: Owner, HR Admin and Manager get unscoped Full on `Pitch:identifying`. Manager is deliberately unscoped rather than row-scoped — a staffing-based row scope would be circular for the very first employee staffed on a new pitch, since no staffing edge yet exists to satisfy the check. Team Member gets no generic read on Pitch at all; `pitch.listStaffedFor`, below, is their only sanctioned path, and it is gated by their own already-working `Employee:operational` row-scope on the `employeeId` argument, not by a Pitch-level grant.
+
 ### API contracts
 
 ```
-timeEntry.classifyBillable(entryId, assignmentId)         -> { success }
-timeEntry.classifyNonBillable(entryId, internalCategory)  -> { success }
-timeEntry.classifyPitch(entryId, pitchId)                 -> { success }
-  // Requires the caller be staffed on the pitch. Reads Tier 0 fields only;
-  // no code path in this feature reads Tier 1 commercial detail
+pitch.create(name, clientId?, projectedStartDate?) -> { pitchId }
+  // Identifying (Tier 0) fields only. Owner, HR Admin or Manager
+
+pitch.staffEmployee(pitchId, employeeId)   -> { success }
+pitch.unstaffEmployee(pitchId, employeeId) -> { success }
+  // Creates/removes the staffed_on edge. Owner, HR Admin or Manager;
+  // a Manager may only staff or unstaff their own direct reports
 
 pitch.listStaffedFor(employeeId) -> { pitchId, name, clientName }[]
   // Tier 0 fields only. projected_start_date is deliberately absent: the
   // selector does not need it, and a narrower contract is the control
   // The selector's only data source. Returns Tier 0 fields exclusively —
   // the contract itself makes over-fetching impossible rather than discouraged
+```
+
+**`timeEntry.classifyBillable`, `classifyNonBillable` and `classifyPitch` are contract, not code this feature ships.** They describe the write-time rules a `TimesheetEntry` mutation must satisfy once [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] builds real creation for that node — no `entryId` can exist before then (F264). This feature specifies the classification fields and their write-time dependencies, above; `VRS-F010` incorporates them into its own live mutations.
+
+```
+timeEntry.classifyBillable(entryId, assignmentId)         -> { success }   // contract for VRS-F010
+timeEntry.classifyNonBillable(entryId, internalCategory)  -> { success }   // contract for VRS-F010
+timeEntry.classifyPitch(entryId, pitchId)                 -> { success }   // contract for VRS-F010
+  // Requires the caller be staffed on the pitch. Reads Tier 0 fields only;
+  // no code path in this feature reads Tier 1 commercial detail
 ```
 
 ---
@@ -237,6 +259,7 @@ pitch.listStaffedFor(employeeId) -> { pitchId, name, clientName }[]
 
 ## Security Considerations
 
+- **A new `Pitch:identifying` policy-table row governs staffing and the selector, additive on a previously-inert node type (F264, on F251's own precedent).** Owner, HR Admin and Manager get unscoped Full — Manager deliberately unscoped rather than row-scoped, since a staffing-based scope would be circular for the very first employee staffed on a new pitch. Team Member gets no generic read on Pitch; `pitch.listStaffedFor` is their only sanctioned path, gated by their own row-scoped read on the `employeeId` argument rather than by a Pitch-level grant.
 - **The Pitch tier split is the substantive security decision here.** A blanket restriction would have hidden the pitch entirely; a blanket relaxation would have exposed deal value to anyone logging time. The field-level split satisfies both.
 - **`pitch.listStaffedFor` is the only path this feature uses to reach a Pitch**, and it returns Tier 0 fields exclusively. Enforcement is in the contract rather than in a caller's discipline, so an autocomplete cannot leak commercial fields even transiently.
 - **Classification is not a privacy boundary.** Which category an hour falls into is Tier 0 and visible per TimesheetEntry's normal permissions. Nothing here is sensitive; the sensitivity is entirely in what a Pitch is worth.
@@ -250,6 +273,7 @@ pitch.listStaffedFor(employeeId) -> { pitchId, name, clientName }[]
 - Retainer overage tracking against a contracted allocation — [[Vulto Accounts]]' territory
 - Bulk historical reclassification at scale. Correcting an individual entry is supported; bulk tooling is not built
 - Pitch win-rate or cost-per-won-pitch analytics — [[Vulto Sales]]
+- Converting a Won pitch into a Project. The conversion is already registered in the schema (`originated_from`, `packages/schema/src/registry/conversions.ts`), but is deliberately left unimplemented here, deferred to whichever future feature first needs it — the same treatment already given the registered `Candidate→Employee` conversion (F264)
 
 ---
 
@@ -266,6 +290,8 @@ pitch.listStaffedFor(employeeId) -> { pitchId, name, clientName }[]
 **Pitch's Tier 0 schema is stated in full here**, including `projected_start_date` and the `requires_skill` edges [[VRS-F051_Team_Capacity_Planner|VRS-F051]] introduced. That feature described both in prose and neither had a schema entry, which would have left an implementer building a capacity forecast against fields nothing defined.
 
 **`pitch.listStaffedFor` is introduced** as the selector's only data source, returning Tier 0 fields exclusively. The previous specification relied on the caller not requesting commercial fields, which is a convention rather than a control.
+
+**Pitch creation and staffing are this feature's own mutations, not assumed infrastructure.** The original specification described selecting and logging against a staffed Pitch without ever specifying how a Pitch comes to exist or how an employee becomes staffed on one. `pitch.create`, the new `staffed_on` edge and its `pitch.staffEmployee`/`unstaffEmployee` mutations, and a new `Pitch:identifying` policy-table row close that gap, checked directly against the code before the build brief was written and closed on established precedent with no founder consultation needed (F264). The Pitch→Project conversion already registered in the schema is explicitly left out of this feature's scope, mirroring the identical treatment already given `Candidate→Employee` (F264).
 
 ---
 
