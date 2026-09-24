@@ -574,6 +574,50 @@ const putNewEdge = async (
 
 // ── Ghost Resources (VRS-F007) ─────────────────────────────────────────────
 
+// ── Pitch staffing (VRS-F009) ──────────────────────────────────────────────
+
+const pitchCreate: OptimisticMutator = async (c, raw) => {
+  const args = parse("pitch.create", raw);
+  if (args.client_id) await liveTypedNode(c.cache, args.client_id, "Client");
+  return [
+    await putNewNode(c, c.mutationId, "Pitch", {
+      lifecycle_status: "Active",
+      name: args.name,
+      client_id: args.client_id ?? null,
+      projected_start_date: args.projected_start_date ?? null,
+    }),
+  ];
+};
+
+const pitchStaffEmployee: OptimisticMutator = async (c, raw) => {
+  const args = parse("pitch.staffEmployee", raw);
+  await liveTypedNode(c.cache, args.employee_id, "Employee");
+  await liveTypedNode(c.cache, args.pitch_id, "Pitch");
+  const active = (await c.cache.edgesFrom(args.employee_id, "staffed_on")).find(
+    (edge) => edge.toNodeId === args.pitch_id && edge.effectiveTo === null,
+  );
+  if (active) return [];
+  return [
+    await putNewEdge(c, c.mutationId, {
+      edge_type: "staffed_on",
+      from_node_id: args.employee_id,
+      to_node_id: args.pitch_id,
+      effective_from: c.now,
+      effective_to: null,
+    }),
+  ];
+};
+
+const pitchUnstaffEmployee: OptimisticMutator = async (c, raw) => {
+  const args = parse("pitch.unstaffEmployee", raw);
+  await liveTypedNode(c.cache, args.employee_id, "Employee");
+  await liveTypedNode(c.cache, args.pitch_id, "Pitch");
+  const active = (await c.cache.edgesFrom(args.employee_id, "staffed_on")).find(
+    (edge) => edge.toNodeId === args.pitch_id && edge.effectiveTo === null,
+  );
+  return active ? [await closeAt(c.cache, active, c.now)] : [];
+};
+
 const ghostResourceCreate: OptimisticMutator = async (c, raw) => {
   const args = parse("ghostResource.create", raw);
   const ghostId = c.mutationId;
@@ -1082,6 +1126,9 @@ export const OPTIMISTIC_MUTATORS: Readonly<
   "ghostResource.create": ghostResourceCreate,
   "ghostResource.cancel": ghostResourceCancel,
   "ghostResource.linkOpenRole": ghostResourceLinkOpenRole,
+  "pitch.create": pitchCreate,
+  "pitch.staffEmployee": pitchStaffEmployee,
+  "pitch.unstaffEmployee": pitchUnstaffEmployee,
   "graph.createNode": createNode,
   "graph.updateNodeFields": updateNodeFields,
   "graph.softDeleteNode": softDeleteNode,

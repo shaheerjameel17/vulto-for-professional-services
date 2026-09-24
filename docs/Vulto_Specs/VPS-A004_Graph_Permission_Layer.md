@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-09-20]]"
+Date: "[[2026-09-24]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -160,6 +160,7 @@ Only node types whose behavior differs from their Privacy Class default, or whos
 | Workspace (billing) | Full | **Restricted** — "Visible to Owner" | **Restricted** — "Visible to Owner" | **Restricted** — "Visible to Owner" | **Restricted** — "Visible to Owner" |
 | Employee (operational) | Full | Full | Read | Full (direct reports) | Read (own + team) |
 | Employee (compensation) | Full | Full | Full | **Restricted** — "Visible to Finance Admin" | Read (own only) |
+| Pitch (identifying) | Full | Full | Read | Full | None |
 | WellnessTriggerEvent | None | None | None | None | Full (own only) |
 | PulseEntry, CoffeePulseEntry | Aggregate only | Aggregate only | None | None | Full (own only) |
 | BurnoutAlert | Full | Full | None | Full (direct reports) | None |

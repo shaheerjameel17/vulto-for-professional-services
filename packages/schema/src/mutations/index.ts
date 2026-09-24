@@ -61,6 +61,7 @@ export {
 } from "./calendar";
 export { ASSIGNMENT_MUTATIONS } from "./assignment";
 export { GHOST_RESOURCE_MUTATIONS } from "./ghostResource";
+export { PITCH_MUTATIONS } from "./pitch";
 export { CONFLICT_RESOLUTION_MUTATIONS } from "./conflict-resolution";
 export {
   RATE_CARD_MUTATIONS,

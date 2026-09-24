@@ -139,6 +139,21 @@ describe("resolvePermission — matrix overrides", () => {
     );
   });
 
+  it("gives Pitch identifying an unscoped Manager grant and no Team Member grant", () => {
+    for (const role of ["owner", "hr-admin", "manager"] as const) {
+      expect(resolvePermission(role, "Pitch", "identifying")).toEqual({
+        outcome: "full",
+      });
+    }
+    expect(resolvePermission("finance-admin", "Pitch", "identifying")).toEqual({
+      outcome: "read",
+    });
+    expect(resolvePermission("team-member", "Pitch", "identifying")).toEqual({
+      outcome: "none",
+    });
+    expect(resolvePermission("manager", "Pitch", "commercial").outcome).toBe("none");
+  });
+
   it("Entity is workspace configuration readable by every role, writable by Owner and HR Admin", () => {
     for (const role of ["owner", "hr-admin"] as const) {
       expect(resolvePermission(role, "Entity", "record").outcome).toBe("full");

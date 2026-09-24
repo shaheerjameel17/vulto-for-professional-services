@@ -222,17 +222,17 @@ export const assertCanonicalRegistry = (): void => {
     throw new Error(`Expected 28 fixed lifecycle policies, got ${fixedLifecycleCount}`);
   }
 
-  if (EDGE_SOURCE_ROW_COUNT !== 83) {
-    throw new Error(`Expected 83 source edge rows, got ${EDGE_SOURCE_ROW_COUNT}`);
+  if (EDGE_SOURCE_ROW_COUNT !== 84) {
+    throw new Error(`Expected 84 source edge rows, got ${EDGE_SOURCE_ROW_COUNT}`);
   }
 
-  if (EDGE_GROUPS.length !== 79) {
-    throw new Error(`Expected 79 edge labels, got ${EDGE_GROUPS.length}`);
+  if (EDGE_GROUPS.length !== 80) {
+    throw new Error(`Expected 80 edge labels, got ${EDGE_GROUPS.length}`);
   }
 
-  if (EDGE_REGISTRY.length !== 110) {
+  if (EDGE_REGISTRY.length !== 111) {
     throw new Error(
-      `Expected 110 normalized edge triples, got ${EDGE_REGISTRY.length}`,
+      `Expected 111 normalized edge triples, got ${EDGE_REGISTRY.length}`,
     );
   }
 

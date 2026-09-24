@@ -60,9 +60,9 @@ describe("canonical registry", () => {
     expect(
       NODE_REGISTRY.filter(({ lifecycle }) => lifecycle.kind === "feature-owned"),
     ).toHaveLength(81);
-    expect(EDGE_SOURCE_ROW_COUNT).toBe(83);
-    expect(EDGE_TYPES).toHaveLength(79);
-    expect(EDGE_REGISTRY).toHaveLength(110);
+    expect(EDGE_SOURCE_ROW_COUNT).toBe(84);
+    expect(EDGE_TYPES).toHaveLength(80);
+    expect(EDGE_REGISTRY).toHaveLength(111);
     expect(PRIVACY_CLASSES).toHaveLength(13);
     expect(OWNERSHIP_REGISTRY).toHaveLength(10);
   });
@@ -430,7 +430,7 @@ describe("malformed registry fixtures", () => {
 });
 
 describe("assertGoverningPartitions (F136 / FDN-92)", () => {
-  it("accepts the real registry — the four declared governing partitions are valid", () => {
+  it("accepts the real registry — all declared governing partitions are valid", () => {
     expect(() => assertGoverningPartitions()).not.toThrow();
   });
 

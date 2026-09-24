@@ -3478,3 +3478,19 @@ Raised 24 September 2026, checking `VRS-F009` (Time Classification Taxonomy) dir
 **Also corrects the API Contracts section as briefed.** `VRS-F009`'s spec describes `timeEntry.classifyBillable`/`classifyNonBillable`/`classifyPitch` as live mutations against a `TimesheetEntry` node — but `TimesheetEntry` (owner `VRS-F010`) has no creation mutation either; no `entryId` can exist until `VRS-F010` builds it. Read together with the spec's own words — "specified here and incorporated into `TimesheetEntry`'s schema by `VRS-F010`" — F009 is correctly scoped as delivering a reusable `time_category`/`internal_category` field-and-validation schema fragment for `VRS-F010` to incorporate into its own real mutations, not as shipping standalone `timeEntry.classify*` mutations itself. This is a spec-clarity correction, not a security gap, and needs no numbered ruling of its own; it is folded into F264's resolution since it governs the same API Contracts section.
 
 **Status: closed.** The Stage 17 brief for `VRS-F009` proceeds on this corrected design: `pitch.create`, `staffed_on`/`staffEmployee`/`unstaffEmployee`, the new `Pitch:identifying` policy row, the classification schema fragment (not standalone mutations), and the conversion left out of scope.
+
+### F265 — The `staffed_on` edge needs a governing partition for Pitch as well as Employee
+
+Raised 24 September 2026 during the real PostgreSQL permission-interceptor test of Stage 17. F264's new `staffed_on` registration was modeled on `has_skill` with `governingPartitions: { Employee: "operational" }`. That analogy missed a structural difference: `Skill` has one partition, while `Pitch` is split into `identifying` and `commercial`. `edgeRoleDecision` applies the F136 conservative default to every split endpoint without a declared governing partition. The first implementation using F264's exact declaration refused staffing with `reason: "role"` for Owner, HR Admin, and Manager, even though each had Full on `Pitch:identifying`. The failure occurred before an edge was written.
+
+**Closed on build evidence.** `staffed_on` declares both `Employee:operational` and `Pitch:identifying` as its governing partitions. It still carries no payload and never writes the commercial partition. The existing F262 row context continues to restrict Manager on the Employee endpoint to direct reports; Manager's Pitch grant remains unscoped Full, preserving F264's first-staffing ruling. The new integration suite proves Manager can create and immediately staff a direct report, cannot staff someone else, and Owner/HR Admin can staff. `VRS-F009`, `VPS-A002`, and the Stage 17 brief were corrected to match. No new permission mechanism was introduced.
+
+**Status: closed.**
+
+### F266 — Stage 17's router instruction described a write pattern the API does not use
+
+Raised 24 September 2026 while wiring Stage 17. The brief instructed adding `pitch.create`, `pitch.staffEmployee`, and `pitch.unstaffEmployee` directly to `services/api/src/router.ts`, citing `ghostResource.*` and `conflictResolution.*` as its precedent. Inspection showed their writes are named definitions in `packages/schema`, server handlers in the mutation pipeline, and one shared `graph.applyMutations` router procedure. Only their read queries have dedicated router entries. A second Pitch write transport would depart from that established path and duplicate API surface without serving the device outbox.
+
+**Closed on the existing implementation pattern.** Pitch's three writes use the shared named-mutation registry, optimistic cache handlers, and authoritative server pipeline behind `graph.applyMutations`. `pitch.listStaffedFor` is the dedicated router read. The Stage 17 brief and `VRS-F009` API-contract explanation now state this explicitly. No new mechanism or product choice was needed.
+
+**Status: closed.**

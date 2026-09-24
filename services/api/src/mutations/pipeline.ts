@@ -59,6 +59,7 @@ import {
   ghostResourcePromote,
 } from "./ghost-resource.js";
 import { conflictResolutionOverrideAndProceed } from "./conflict-resolution.js";
+import { pitchCreate, pitchStaffEmployee, pitchUnstaffEmployee } from "./pitch.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -117,6 +118,9 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "ghostResource.promote": ghostResourcePromote as ServerMutation<never>,
   "conflictResolution.overrideAndProceed":
     conflictResolutionOverrideAndProceed as ServerMutation<never>,
+  "pitch.create": pitchCreate as ServerMutation<never>,
+  "pitch.staffEmployee": pitchStaffEmployee as ServerMutation<never>,
+  "pitch.unstaffEmployee": pitchUnstaffEmployee as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {
