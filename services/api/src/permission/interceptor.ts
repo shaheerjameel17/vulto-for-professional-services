@@ -4,6 +4,7 @@ import {
   getProtectionPartitions,
   getSubjectExclusion,
   isSystemOperationPermitted,
+  SYSTEM_OPERATION_TARGETS,
   PARTICIPANT_GRANTS,
   POLICY_ROLES,
   resolvePolicyCell,
@@ -15,6 +16,7 @@ import {
   type PermissionOutcome,
   type PolicyRole,
   type PolicyScope,
+  type SystemOperation,
 } from "@vulto/schema";
 import { appendAudit } from "../audit/journal.js";
 import {
@@ -48,6 +50,8 @@ export interface InterceptorContext {
   readonly now?: () => string;
   readonly newId?: () => string;
   readonly roleDependencies?: RoleDependencies;
+  /** The named system operation requested by a server-owned caller. */
+  readonly systemOperation?: SystemOperation;
 }
 
 const RANK: Readonly<Record<PermissionOutcome, number>> = {
@@ -84,7 +88,11 @@ export async function resolveStoredSubjectEmployeeId(
     const [subject] = await outgoing(tx, workspaceId, nodeId, "triggered_by", asOf);
     return subject?.toNodeId ?? null;
   }
-  if (nodeType === "TimesheetEntry" || nodeType === "TimesheetWeekSubmission") {
+  if (
+    nodeType === "TimesheetEntry" ||
+    nodeType === "TimesheetWeekSubmission" ||
+    nodeType === "UtilizationSnapshot"
+  ) {
     const node = await getNode(tx, workspaceId, nodeId);
     const employeeId = node?.record["employee_id"];
     return typeof employeeId === "string" ? employeeId : null;
@@ -208,6 +216,23 @@ function supportExpired(
 
 const nowIso = () => new Date().toISOString();
 
+/** A004-T25: node grants are exclusively the operation's closed target list. */
+function systemNodeTargetPermitted(
+  principal: Extract<Principal, { kind: "system" }>,
+  operation: SystemOperation | undefined,
+  nodeType: NodeType,
+  partitionKey: string,
+): boolean {
+  return (
+    operation !== undefined &&
+    isSystemOperationPermitted(principal.name, operation) &&
+    (SYSTEM_OPERATION_TARGETS[operation]?.some(
+      (target) => target.nodeType === nodeType && target.partitionKey === partitionKey,
+    ) ??
+      false)
+  );
+}
+
 /** The roles a decision is made under, and whether the principal is capped at read. */
 async function decisionRoles(
   tx: GraphTx,
@@ -277,9 +302,12 @@ export async function decideRead(
     return { access: "none", tier, partitionKey };
   }
   if (principal.kind === "system") {
-    return target.nodeType === "TimesheetAnomalyFlag" &&
-      partitionKey === "record" &&
-      isSystemOperationPermitted(principal.name, "timesheet-anomaly.read-flags")
+    return systemNodeTargetPermitted(
+      principal,
+      context.systemOperation,
+      target.nodeType,
+      partitionKey,
+    )
       ? { access: "read", role: null, tier, partitionKey }
       : { access: "none", tier, partitionKey };
   }
@@ -927,12 +955,17 @@ export async function authorizeWrite(
   let role: PolicyRole | null = null;
   if (principal.kind === "system") {
     const permitted =
-      isSystemOperationPermitted(principal.name, "timesheet-anomaly.create-flag") &&
-      (target.kind === "node"
-        ? target.nodeType === "TimesheetAnomalyFlag" && partitionKey === "record"
-        : target.edgeType === "triggered_by" &&
+      target.kind === "node"
+        ? systemNodeTargetPermitted(
+            principal,
+            context.systemOperation,
+            target.nodeType,
+            partitionKey,
+          )
+        : isSystemOperationPermitted(principal.name, "timesheet-anomaly.create-flag") &&
+          target.edgeType === "triggered_by" &&
           target.fromNodeType === "TimesheetAnomalyFlag" &&
-          target.toNodeType === "Employee");
+          target.toNodeType === "Employee";
     if (!permitted) return refuse("role");
   } else {
     const gateRoles: readonly PolicyRole[] =

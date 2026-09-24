@@ -6,6 +6,7 @@ export * from "./pitch";
 export * from "./timesheet";
 export * from "./time-classification";
 export * from "./timesheet-anomaly";
+export * from "./utilization-snapshot";
 
 export {
   NODE_REGISTRY,

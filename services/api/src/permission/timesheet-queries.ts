@@ -1,4 +1,5 @@
-import { addIsoDays, isoDatesInclusive } from "@vulto/schema";
+import { addIsoDays } from "@vulto/schema";
+import { expectedWeek } from "../graph/expected-week.js";
 import { weekStartForEmployee } from "../graph/timesheet-week.js";
 import {
   getNode,
@@ -102,11 +103,21 @@ export async function getWeek(
     date,
   );
   if (weekStart === null) return null;
-  const columns: { date: string; expectedHours: number }[] = [];
-  for (const day of isoDatesInclusive(weekStart, addIsoDays(weekStart, 6))) {
-    const expectedHours = await hoursOn(tx, principal, employeeId, day);
-    if (expectedHours > 0) columns.push({ date: day, expectedHours });
-  }
+  const { columns, expectedWeeklyHours } = await expectedWeek(
+    tx,
+    principal.workspaceId,
+    employeeId,
+    weekStart,
+    async (node) => {
+      const decision = await authorizeRead(tx, principal, {
+        workspaceId: principal.workspaceId,
+        nodeType: node.nodeType as
+          "Employee" | "Entity" | "WorkingCalendar" | "Holiday" | "WorkingPattern",
+        nodeId: node.nodeId,
+      });
+      return decision.access === "read" || decision.access === "full";
+    },
+  );
   const assignments = await incoming(
     tx,
     principal.workspaceId,
@@ -165,7 +176,7 @@ export async function getWeek(
     columns,
     rows,
     weekStatus: status === "Not-Started" ? "Draft" : status,
-    expectedWeeklyHours: columns.reduce((sum, column) => sum + column.expectedHours, 0),
+    expectedWeeklyHours,
   };
 }
 

@@ -9,6 +9,7 @@ import {
 } from "@vulto/schema";
 import { weekStartForEmployee } from "../graph/timesheet-week.js";
 import { timesheetAnomalyEvaluate } from "./timesheet-anomaly.js";
+import { utilizationSnapshotCompute } from "./utilization-snapshot.js";
 import {
   getNode,
   getNodes,
@@ -128,6 +129,14 @@ export const timesheetSaveCell: ServerMutation<
   }
   return {
     checks,
+    afterCommit: async () => {
+      await utilizationSnapshotCompute(
+        ctx.principal.workspaceId,
+        args.employee_id,
+        weekStart,
+        ctx.now,
+      );
+    },
     async validate() {
       try {
         validateTimeClassification({
@@ -278,18 +287,26 @@ const weekPlan = async (
   return {
     checks,
     async validate() {},
-    ...(action === "submit"
-      ? {
-          afterCommit: async () => {
-            await timesheetAnomalyEvaluate(
-              ctx.principal.workspaceId,
-              ctx.args.employee_id,
-              weekStart,
-              ctx.now,
-            );
-          },
+    afterCommit: async () => {
+      if (action === "submit") {
+        try {
+          await timesheetAnomalyEvaluate(
+            ctx.principal.workspaceId,
+            ctx.args.employee_id,
+            weekStart,
+            ctx.now,
+          );
+        } catch {
+          // Both reactive jobs are independent and non-gating after the commit.
         }
-      : {}),
+      }
+      await utilizationSnapshotCompute(
+        ctx.principal.workspaceId,
+        ctx.args.employee_id,
+        weekStart,
+        ctx.now,
+      );
+    },
     async apply() {
       const changedRowIds: string[] = [];
       for (const entry of changing) {

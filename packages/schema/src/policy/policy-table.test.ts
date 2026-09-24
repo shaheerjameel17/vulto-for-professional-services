@@ -1,7 +1,12 @@
 import { NODE_TYPES } from "../registry/nodes";
 import { getProtectionPartitions } from "../registry/protection";
 import { describe, expect, it } from "vitest";
-import { POLICY_ROLES, resolvePermission, type PolicyRole } from "./policy-table";
+import {
+  POLICY_ROLES,
+  resolvePermission,
+  resolvePolicyCell,
+  type PolicyRole,
+} from "./policy-table";
 
 const ALL_ROLES: readonly PolicyRole[] = POLICY_ROLES;
 
@@ -107,6 +112,24 @@ describe("resolvePermission — default class mapping, transcribed from VPS-A004
 });
 
 describe("resolvePermission — matrix overrides", () => {
+  it("composes UtilizationSnapshot's own-only Team Member row", () => {
+    expect(resolvePolicyCell("owner", "UtilizationSnapshot", "record")).toMatchObject({
+      outcome: "full",
+      scope: "any",
+    });
+    expect(
+      resolvePolicyCell("hr-admin", "UtilizationSnapshot", "record"),
+    ).toMatchObject({ outcome: "full", scope: "any" });
+    expect(
+      resolvePolicyCell("finance-admin", "UtilizationSnapshot", "record"),
+    ).toMatchObject({ outcome: "read", scope: "any" });
+    expect(resolvePolicyCell("manager", "UtilizationSnapshot", "record")).toMatchObject(
+      { outcome: "full", scope: "direct-reports" },
+    );
+    expect(
+      resolvePolicyCell("team-member", "UtilizationSnapshot", "record"),
+    ).toMatchObject({ outcome: "read", scope: "own" });
+  });
   it.each(["Project", "Client", "OpenRole"] as const)(
     "%s is workspace staffing data readable by Manager and Team Member",
     (nodeType) => {

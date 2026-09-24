@@ -428,6 +428,13 @@ const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
     manager: cell("read", "direct-reports", "Read (direct reports)"),
     "team-member": cell("full", "own", "Full (own only)"),
   },
+  UtilizationSnapshot: {
+    owner: FULL_ANY(),
+    "hr-admin": FULL_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: cell("full", "direct-reports", "Full (direct reports)"),
+    "team-member": cell("read", "own", "Read (own only)"),
+  },
   LeaveRequest: {
     owner: FULL_ANY(),
     "hr-admin": FULL_ANY(),
