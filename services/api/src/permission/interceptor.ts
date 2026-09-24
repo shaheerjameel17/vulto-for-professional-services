@@ -76,11 +76,10 @@ interface RowScopeContext {
  *  - `direct-reports`: the caller is the row's active manager.
  *  - `own-plus-team`: `own`, or the row shares the caller's active manager.
  *
- * BurnoutAlert's registered `triggered_by` path is also resolved here because
- * VRS-F005's protected Contextual Intelligence call is the first real caller
- * that must decide its Manager-restricted direct-report scope. Other node
- * types still resolve conservatively until their owning feature supplies a
- * registered subject path.
+ * BurnoutAlert and TimesheetAnomalyFlag resolve through their registered
+ * `triggered_by` paths. Tier 0 TimesheetEntry resolves through its own stored
+ * employee_id. Other node types still resolve conservatively until their
+ * owning feature supplies a registered subject path.
  */
 async function rowScopeSatisfied(
   scope: PolicyScope,
@@ -99,7 +98,10 @@ async function rowScopeSatisfied(
   let subjectEmployeeId: string;
   if (row.nodeType === "Employee") {
     subjectEmployeeId = nodeId;
-  } else if (row.nodeType === "BurnoutAlert") {
+  } else if (
+    row.nodeType === "BurnoutAlert" ||
+    row.nodeType === "TimesheetAnomalyFlag"
+  ) {
     const [subject] = await outgoing(
       tx,
       principal.workspaceId,
@@ -109,6 +111,11 @@ async function rowScopeSatisfied(
     );
     if (!subject) return false;
     subjectEmployeeId = subject.toNodeId;
+  } else if (row.nodeType === "TimesheetEntry") {
+    const node = await getNode(tx, principal.workspaceId, nodeId);
+    const employeeId = node?.record["employee_id"];
+    if (typeof employeeId !== "string") return false;
+    subjectEmployeeId = employeeId;
   } else {
     return false;
   }
