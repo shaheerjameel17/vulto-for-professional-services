@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VRS-F005_The_Bench_Forecast|VRS-F005]] (**the bench computation this feature consumes** — it does not implement its own), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (working days), [[VRS-F006_Rate_Card_Engine|VRS-F006]] (`effective_billing_rate`, the preferred cost source), [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] (the Pitch classification the bench computation already applies), [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (the Web Worker the engine runs inside), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (RevenueGapAlert and the `triggered_by` edge), [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] (the job scheduler running the sweep)
+**Depends On:** [[VRS-F005_The_Bench_Forecast|VRS-F005]] (**the bench computation this feature consumes** — it does not implement its own), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (working days), [[VRS-F006_Rate_Card_Engine|VRS-F006]] (`effective_billing_rate`, the preferred cost source), [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] (the Pitch classification the bench computation already applies), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (RevenueGapAlert and the `triggered_by` edge), [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] (the job scheduler running the sweep)
 **Blocks:** Nothing structurally.
 
 This document is the single source of truth for this feature.
@@ -91,8 +91,8 @@ Standard Inbox bindings from [[VPS-D004_Application_Shell_Navigation_and_System_
 
 | State | Treatment |
 |---|---|
-| Syncing | Cards render from local state; alerts are computed locally and do not wait on sync |
-| Restricted | Cost figures follow [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s rule — a viewer without compensation access sees days on bench without the currency figure |
+| Syncing | Not applicable — alerts are computed server-side and reach the client via the same shape sync every other node type uses |
+| Restricted | Not applicable — `RevenueGapAlert` is flat Tier 0 with no partition split; anyone who can read the alert sees every field on it, cost figures included (F284) |
 | Empty | *Nobody is on the bench beyond five days.* Stated plainly as the good news it is |
 | Error | Not applicable — an unresolvable cost source yields zero and surfaces normally |
 
@@ -133,9 +133,9 @@ resolved_by_assignment_id: UUID, nullable
 
 Two triggers. **Reactively**, any Assignment change for an employee causes immediate re-evaluation. **Periodically**, a four-hourly sweep across active employees catches cases where calendar time has passed with no event to react to, scheduled per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] and idempotent per that document's requirement — a repeated sweep must not produce a second alert.
 
-Both run inside the Web Worker boundary [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] establishes. This engine is a consumer of the materialized index, not a second thread with its own connection.
+Both run server-side, like every reactive engine this project has built since `VRS-F010`'s `timesheetAnomaly.evaluate` (Stage 18): the reactive trigger runs inside the mutation's own `afterCommit` hook, and the sweep is a manually-callable server procedure (`conflictResolution.sweepOvercommitted`'s own precedent, Stage 16) pending [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s job scheduler, which does not exist yet.
 
-**The engine does not determine bench status itself.** It calls [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s bench computation, which already accounts for Assignment coverage, working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], and the Pitch exclusion per [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]]. The engine's own logic is exactly three questions: how many bench working days has this computation returned, does that exceed a threshold, and has severity changed since the last evaluation.
+**The engine does not determine bench status itself.** It calls [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s own `computeBenchStatus` export, which accounts for Assignment coverage, working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]], and the Pitch exclusion per [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] — the same exclusion logic the cohort-wide Bench Forecast view itself uses, extended at Stage 20 to cover the Pitch case Stage 13 deferred (F283). The engine's own logic is exactly three questions: how many bench working days has this computation returned, does that exceed a threshold, and has severity changed since the last evaluation.
 
 That inversion is the substantive change from the previous specification, in which this feature implemented its own bench query and the Bench Forecast deferred its visual state to the resulting alert. Two features each held half of one computation, and the half that determined what a user *saw* lived in the feature that determined what a user was *told*.
 
@@ -163,11 +163,11 @@ Per [[VRS-F007_Ghost_Resources|VRS-F007]], a Ghost represents planned capacity, 
 revenueGapAlert.evaluate(employeeId) -> { alertId? }
   // Internal. Reactive on Assignment change and by the four-hourly sweep.
   // Exposed as a callable procedure for testability
-  // Calls benchForecast.computeBench(employeeId) — never its own bench query
+  // Calls computeBenchStatus(employeeId) from VRS-F005's own module — never its own bench query
 
 revenueGapAlert.dismiss(alertId)        -> { success }
 revenueGapAlert.listActive(workspaceId) -> RevenueGapAlert[]
-  // Sorted by accumulated_cost descending. Resolves entirely from the local graph
+  // Sorted by accumulated_cost descending. An ordinary server-side authorized query
 ```
 
 ---
@@ -256,8 +256,7 @@ revenueGapAlert.listActive(workspaceId) -> RevenueGapAlert[]
 ## Non-Functional Requirements
 
 - Evaluation fires within 30 seconds of any Assignment change for the affected employee
-- The sweep covers all active employees within 2 minutes for workspaces up to 150 people, entirely from the local graph
-- Alerts written offline sync within 1 second of reconnection
+- The sweep covers all active employees within 2 minutes for workspaces up to 150 people
 - The badge renders or clears within 1 second of the alert being written or resolved
 - Inbox cards appear within 1 second
 
@@ -267,7 +266,6 @@ revenueGapAlert.listActive(workspaceId) -> RevenueGapAlert[]
 
 - **No elevated privacy concern.** RevenueGapAlert is Tier 0, the same visibility as the Bench Forecast it appears on.
 - **Cost figures derive from billing rates, not compensation.** `effective_billing_rate` and `billing_rate_default` are both Tier 0. This feature never reads a salary.
-- **Cost visibility follows [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s rule.** A viewer without compensation access sees days on bench and not the currency figure, so the two surfaces cannot disagree about what a person may see.
 - **An alert is about a person and is visible workspace-wide.** That is a deliberate consequence of Tier 0, and it is correct — bench time is an operational fact, not a private one — but it means the copy must stay neutral. The card names a cost and a person; it never characterizes the person.
 
 ---
@@ -294,6 +292,12 @@ revenueGapAlert.listActive(workspaceId) -> RevenueGapAlert[]
 **Severity uses weight rather than a third color.** Escalating to `danger` would break [[VPS-D001_Design_Foundations|VPS-D001]]'s reservation of red for failure. A long bench is expensive, not broken.
 
 **Sweep idempotency is stated explicitly**, per [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]. A scheduled evaluation that double-alerts on a repeated run is the most common failure mode of this pattern, and the previous specification did not require otherwise.
+
+**This document's local-first language is corrected (F282).** The Web Worker boundary, "resolves entirely from the local graph," and the offline-sync NFR all predate the project-wide pivot to a server-authoritative architecture (settled before Stage 7) and were never revisited for this spec until Stage 20's own briefing. The engine is an ordinary server-side reactive mutation plus a manually-callable sweep, exactly like every other reactive engine this project has built since Stage 18.
+
+**[[VRS-F005_The_Bench_Forecast|VRS-F005]]'s own bench computation gains the Pitch exclusion this document already assumed it had (F283).** Built at Stage 13, before Pitch time tracking existed, `VRS-F005`'s per-employee bench-day computation never actually excluded logged Pitch time — a deferral Stage 13's own briefing had already flagged (F239) and no later stage had closed. Stage 20 closes it directly in `VRS-F005`'s own module, and exports the single-employee `computeBenchStatus` this feature calls, replacing the non-existent `benchForecast.computeBench` the API contract previously named.
+
+**Cost-visibility "follows `VRS-F005`'s rule" is removed (F284).** It contradicted this same document's own decision, above, to derive cost from billing rate rather than compensation. `RevenueGapAlert` is flat Tier 0 with no partition split; its cost fields are visible to anyone who can read the alert at all, exactly as its own node registration already states.
 
 ---
 
