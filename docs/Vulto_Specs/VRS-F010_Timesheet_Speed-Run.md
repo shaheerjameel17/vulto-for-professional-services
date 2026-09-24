@@ -162,7 +162,7 @@ submitted_at:      timestamp, nullable
 
 ### Validation
 
-The sum of `hours` for one employee on one date must not exceed 24, enforced before the write reaches the local store with a `TimesheetValidationError`.
+The sum of `hours` for one employee on one date must not exceed 24, enforced before the write reaches the local store — server-side as `MutationRejection("invalid-args")`, surfaced to the optimistic mutator as `GraphValidationError`, the same convention `assignment.ts`, `calendar.ts` and `employee.ts` already use. `TimesheetValidationError` is descriptive prose here, not a class this feature invents.
 
 ### Submission
 
@@ -172,7 +172,7 @@ Once Submitted, an entry is read-only in the interface behind an explicit unlock
 
 ### Edges
 
-`logged_against` targets Assignment for Billable entries and Pitch for Pitch entries. A NonBillable entry carries no such edge; its category is sufficient context.
+`logged_against` targets Assignment for Billable entries and Pitch for Pitch entries. A NonBillable entry carries no such edge; its category is sufficient context. Pitch is a split node, so the Pitch pair declares `Pitch:identifying` as a governing partition in the edge registry — the identical requirement `staffed_on` needed before F265, checked directly against the code and closed before this feature's own code was written (F267).
 
 ### TimesheetAnomalyFlag
 
@@ -199,7 +199,7 @@ At most one Active uncleared flag per employee, week and reason. A repeat trigge
 
 ### Detection rules
 
-Evaluated once, reactively, immediately after a successful submission, against that week only, never against Draft entries, and never blocking the submission.
+Evaluated once, reactively, immediately after a successful submission, against that week only, never against Draft entries, and never blocking the submission. This runs as a separate step immediately after `submitWeek`'s transaction commits, not inside that transaction — G10's own "never a gate" language rules out coupling flag evaluation to the write it must never delay.
 
 **PostEndDateAssignment** — any Billable entry dated after its Assignment's `end_date`.
 
@@ -210,6 +210,8 @@ Evaluated once, reactively, immediately after a successful submission, against t
 The third rule previously multiplied `contracted_hours` by the threshold, which is wrong for anyone on a working pattern, wrong in a week containing a public holiday, and wrong during a reduced-hours period. A person working their normal four-day pattern would have been flagged for overtime they did not work.
 
 **Approved overtime is exempt from this rule**, per [[VRS-F018_Leave_Policy_Engine|VRS-F018]]. A week whose flag was cleared with an outcome of ApprovedOvertime is never re-flagged, because the hours were reviewed and authorized by the same manager this rule would notify again.
+
+`overtime_flag_threshold` is a hardcoded constant for this stage — no per-workspace configuration mechanism exists in the codebase yet. [[VPS-F005_Workspace_Configuration_Console|VPS-F005]], unbuilt and positioned later in MVP order, will own making it configurable; until then every workspace uses the same 1.3 default.
 
 ### API contracts
 
@@ -225,7 +227,8 @@ timesheet.submitWeek(employeeId, weekStartDate)  -> { success, entriesLocked }
 timesheet.unlockWeek(employeeId, weekStartDate)  -> { success }
 
 hrCompliance.listSubmissionStatus(workspaceId, weekStartDate) -> { employeeId, weekStatus }[]
-hrCompliance.sendReminder(employeeIds)           -> { success }
+// hrCompliance.sendReminder is out of scope for this stage — see Out of
+// Scope below. The compliance view lists submission status only.
 
 timesheetAnomaly.evaluate(employeeId, weekStartDate) -> { flagIds }
 timesheetAnomaly.listActive(workspaceId)            -> TimesheetAnomalyFlag[]
@@ -289,7 +292,7 @@ timesheetAnomaly.clear(flagId, outcome, note?)      -> { toilDaysAccrued? }
 
 **GIVEN** an employee attempts 25 hours across entries for one date
 **WHEN** the save is attempted
-**THEN** a `TimesheetValidationError` is returned, nothing is saved, and the message names the day and the total
+**THEN** a `GraphValidationError` is returned (server-side `MutationRejection("invalid-args")`), nothing is saved, and the message names the day and the total
 
 ---
 
@@ -338,6 +341,7 @@ timesheetAnomaly.clear(flagId, outcome, note?)      -> { toilDaysAccrued? }
 ## Security Considerations
 
 - **TimesheetEntry's permissions are fully specified in [[VPS-A004_Graph_Permission_Layer|VPS-A004]]** and are not restated or re-decided here.
+- **Both TimesheetEntry's and TimesheetAnomalyFlag's row-scoped grants required a new resolution branch, not a new grant.** The permission interceptor's row-scope check only resolved a row's subject Employee for the Employee and BurnoutAlert node types; every other type, these two included, fell to its conservative default and refused the grant outright. `employee_id`'s own direct-field placement on both schemas (G04) is exactly what makes the fix a third resolution branch reading that stored field, rather than a new mechanism — checked directly against the code and closed before this feature's own code was written (F268).
 - **Pitch selection exposes Tier 0 fields only**, through [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]]'s `pitch.listStaffedFor`. Commercial fields are unreachable through this path, not merely omitted from it.
 - **A submitted entry is not immutable at the permission layer** — an employee retains access to their own entries — but the interface gates re-editing behind an explicit unlock, so the lock remains meaningful to HR and payroll.
 - **TimesheetAnomalyFlag is Manager-restricted, Tier 2.** The flagged employee does not see their own flags, matching BurnoutAlert's precedent: the subject of a system-generated signal is not automatically its audience, and visibility would let someone learn the detection thresholds by observation.
@@ -353,6 +357,7 @@ timesheetAnomaly.clear(flagId, outcome, note?)      -> { toilDaysAccrued? }
 - Fraud investigation or disciplinary workflow downstream of a flag — [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] where a firm needs it
 - Formal overtime approval and TOIL accrual — [[VRS-F018_Leave_Policy_Engine|VRS-F018]]. This feature owns the flag and its clearance outcome; that feature owns what an ApprovedOvertime outcome means
 - Payroll consumption of this data — [[VRS-F062_Payroll_Engine_Core|VRS-F062]]
+- Reminder delivery — `hrCompliance.sendReminder` requires [[VPS-F003_Notification_and_Alert_Center|VPS-F003]], unbuilt and positioned later in MVP order. This feature's compliance view surfaces submission status only; the reminder action in the interface spec is deferred until that delivery mechanism exists
 
 ---
 
