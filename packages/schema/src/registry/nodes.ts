@@ -363,6 +363,12 @@ export const NODE_REGISTRY = [
     protection: fixedProtection("Standard", 0),
   }),
   registerNode({
+    nodeType: "TimesheetWeekSubmission",
+    owner: "VRS-F010",
+    lifecycle: featureOwnedLifecycle,
+    protection: fixedProtection("Standard", 0),
+  }),
+  registerNode({
     nodeType: "TimesheetAnomalyFlag",
     owner: "VRS-F010",
     lifecycle: featureOwnedLifecycle,

@@ -3,6 +3,7 @@ import "./registry/validate";
 
 export * from "./ghost-resource";
 export * from "./pitch";
+export * from "./timesheet";
 
 export {
   NODE_REGISTRY,

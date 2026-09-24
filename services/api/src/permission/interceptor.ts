@@ -3,6 +3,7 @@ import {
   assertRegisteredRelationship,
   getProtectionPartitions,
   getSubjectExclusion,
+  isSystemOperationPermitted,
   POLICY_ROLES,
   resolvePolicyCell,
   type AuditEntry,
@@ -111,7 +112,10 @@ async function rowScopeSatisfied(
     );
     if (!subject) return false;
     subjectEmployeeId = subject.toNodeId;
-  } else if (row.nodeType === "TimesheetEntry") {
+  } else if (
+    row.nodeType === "TimesheetEntry" ||
+    row.nodeType === "TimesheetWeekSubmission"
+  ) {
     const node = await getNode(tx, principal.workspaceId, nodeId);
     const employeeId = node?.record["employee_id"];
     if (typeof employeeId !== "string") return false;
@@ -145,7 +149,7 @@ export interface NodeReadTarget {
 export type ReadDecision =
   | {
       readonly access: "full" | "read";
-      readonly role: PolicyRole;
+      readonly role: PolicyRole | null;
       readonly tier: DataTier;
       readonly partitionKey: string;
     }
@@ -262,6 +266,13 @@ export async function decideRead(
   if (principal.workspaceId !== target.workspaceId) {
     return { access: "none", tier, partitionKey };
   }
+  if (principal.kind === "system") {
+    return target.nodeType === "TimesheetAnomalyFlag" &&
+      partitionKey === "record" &&
+      isSystemOperationPermitted(principal.name, "timesheet-anomaly.read-flags")
+      ? { access: "read", role: null, tier, partitionKey }
+      : { access: "none", tier, partitionKey };
+  }
   const { roles, readOnly } = await decisionRoles(
     tx,
     principal,
@@ -308,7 +319,7 @@ export async function decideRead(
     }
   }
   if (best.outcome === "full" || best.outcome === "read") {
-    return { access: best.outcome, role: best.role!, tier, partitionKey };
+    return { access: best.outcome, role: best.role, tier, partitionKey };
   }
   if (best.outcome === "restricted") {
     return {
@@ -854,28 +865,37 @@ export async function authorizeWrite(
     }
   }
 
-  // Gate 1 — role. A support principal is held to Owner, no higher.
-  const gateRoles: readonly PolicyRole[] =
-    principal.kind === "member"
-      ? await effectiveRoles(tx, principal, context.roleDependencies)
-      : principal.kind === "support"
-        ? ["owner"]
-        : [];
+  // Gate 1 — system principals have only named operations, never roles.
   let role: PolicyRole | null = null;
-  if (target.kind === "node") {
-    const best = await bestCell(gateRoles, target.nodeType, partitionKey, {
-      tx,
-      principal,
-      nodeType: target.nodeType,
-      nodeId: target.nodeId,
-      context,
-    });
-    if (best.outcome !== "full") return refuse("role");
-    role = best.role;
+  if (principal.kind === "system") {
+    const permitted =
+      isSystemOperationPermitted(principal.name, "timesheet-anomaly.create-flag") &&
+      (target.kind === "node"
+        ? target.nodeType === "TimesheetAnomalyFlag" && partitionKey === "record"
+        : target.edgeType === "triggered_by" &&
+          target.fromNodeType === "TimesheetAnomalyFlag" &&
+          target.toNodeType === "Employee");
+    if (!permitted) return refuse("role");
   } else {
-    const failure = await edgeRoleDecision(tx, principal, gateRoles, target, context);
-    if (failure === "unregistered-relationship") return refuse(failure);
-    if (failure !== null) return refuse("role");
+    const gateRoles: readonly PolicyRole[] =
+      principal.kind === "member"
+        ? await effectiveRoles(tx, principal, context.roleDependencies)
+        : ["owner"];
+    if (target.kind === "node") {
+      const best = await bestCell(gateRoles, target.nodeType, partitionKey, {
+        tx,
+        principal,
+        nodeType: target.nodeType,
+        nodeId: target.nodeId,
+        context,
+      });
+      if (best.outcome !== "full") return refuse("role");
+      role = best.role;
+    } else {
+      const failure = await edgeRoleDecision(tx, principal, gateRoles, target, context);
+      if (failure === "unregistered-relationship") return refuse(failure);
+      if (failure !== null) return refuse("role");
+    }
   }
 
   // Gate 2 — write authority, only ever narrowing.

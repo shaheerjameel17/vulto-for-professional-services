@@ -421,6 +421,13 @@ const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
     manager: cell("read", "direct-reports", "Read (direct reports)"),
     "team-member": cell("full", "own", "Full (own only)"),
   },
+  TimesheetWeekSubmission: {
+    owner: FULL_ANY(),
+    "hr-admin": FULL_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: cell("read", "direct-reports", "Read (direct reports)"),
+    "team-member": cell("full", "own", "Full (own only)"),
+  },
   LeaveRequest: {
     owner: FULL_ANY(),
     "hr-admin": FULL_ANY(),

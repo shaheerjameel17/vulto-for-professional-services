@@ -19,6 +19,7 @@ export {
 export {
   SYSTEM_OPERATIONS,
   SYSTEM_PRINCIPAL_NAMES,
+  SYSTEM_PRINCIPAL_DISPLAY_NAMES,
   SYSTEM_PRINCIPAL_OPERATIONS,
   isSystemOperationPermitted,
   type SystemOperation,
