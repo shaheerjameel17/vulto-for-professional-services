@@ -2,7 +2,7 @@
 
 **Status:** COMPLETE, awaiting review.  
 **Branch:** `codex/stage-11-multi-entity-jurisdiction` (local; not pushed).  
-**Linear:** FDN-118  
+**Linear:** RST-39  
 **Date:** 22 September 2026
 
 ## 1. Summary
@@ -77,4 +77,4 @@ None from the corrected Stage 11 brief. The original server-only wording was ame
 
 ## 11. Readiness for the next stage
 
-Stage 11 is ready for direct code review. FDN-118 should move to Done only after approval and merge. The local Stage 11 branch is intentionally unpushed and unmerged; Stage 12 has not started.
+Stage 11 is ready for direct code review. RST-39 should move to Done only after approval and merge. The local Stage 11 branch is intentionally unpushed and unmerged; Stage 12 has not started.

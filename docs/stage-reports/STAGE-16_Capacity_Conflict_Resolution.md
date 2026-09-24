@@ -2,7 +2,7 @@
 
 - **Status:** COMPLETE, awaiting review.
 - **Branch:** `codex/stage-16-capacity-conflict-resolution`
-- **Linear:** FDN-123
+- **Linear:** RST-44
 - **Date:** 24 September 2026
 
 ## 1. Summary
@@ -103,4 +103,4 @@ None from the final corrected Stage 16 brief. The implementation does not add `c
 
 ## 11. Readiness for the next stage
 
-Stage 16 is ready for direct code review on `codex/stage-16-capacity-conflict-resolution`. FDN-123 should move to Done only after approval and merge. The branch is intentionally unmerged, and no subsequent stage has started.
+Stage 16 is ready for direct code review on `codex/stage-16-capacity-conflict-resolution`. RST-44 should move to Done only after approval and merge. The branch is intentionally unmerged, and no subsequent stage has started.
