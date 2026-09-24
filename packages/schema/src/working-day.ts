@@ -78,6 +78,13 @@ export function addIsoDays(date: string, amount: number): string {
   return value.toISOString().slice(0, 10);
 }
 
+/** F276: a calendar's explicit week boundary, independent of worked days. */
+export function resolveWeekStartDate(date: string, weekStartDay: number): string {
+  if (!Number.isInteger(weekStartDay) || weekStartDay < 1 || weekStartDay > 7)
+    throw new Error("invalid-week-start-day");
+  return addIsoDays(date, -((isoWeekday(date) - weekStartDay + 7) % 7));
+}
+
 export function isoDatesInclusive(fromDate: string, toDate: string): string[] {
   if (fromDate > toDate) throw new Error("invalid-args");
   const dates: string[] = [];

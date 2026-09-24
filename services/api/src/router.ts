@@ -19,6 +19,10 @@ import {
   ghostResourceListInputSchema,
   conflictResolutionSweepInputSchema,
   pitchListStaffedForInputSchema,
+  timesheetGetWeekInputSchema,
+  timesheetShortcutInputSchema,
+  hrSubmissionStatusInputSchema,
+  timesheetAnomalyListInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -47,6 +51,12 @@ import {
 import { listGhostResources } from "./permission/ghost-resource-queries.js";
 import { sweepOvercommitted } from "./permission/conflict-resolution-queries.js";
 import { listStaffedFor } from "./permission/pitch-queries.js";
+import {
+  getWeek,
+  listSubmissionStatus,
+  resolveTimesheetShortcut,
+} from "./permission/timesheet-queries.js";
+import { listActiveAnomalies } from "./permission/timesheet-anomaly-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -245,6 +255,51 @@ export const appRouter = t.router({
       .input(pitchListStaffedForInputSchema)
       .query(({ ctx, input }) =>
         db.transaction((tx) => listStaffedFor(tx, ctx.principal, input.employee_id)),
+      ),
+  }),
+  timesheet: t.router({
+    getWeek: protectedProcedure
+      .input(timesheetGetWeekInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          getWeek(tx, ctx.principal, input.employee_id, input.week_start_date),
+        ),
+      ),
+    resolveShortcut: protectedProcedure
+      .input(timesheetShortcutInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          resolveTimesheetShortcut(
+            tx,
+            ctx.principal,
+            input.employee_id,
+            input.date,
+            input.shortcut,
+          ),
+        ),
+      ),
+  }),
+  hrCompliance: t.router({
+    listSubmissionStatus: protectedProcedure
+      .input(hrSubmissionStatusInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          listSubmissionStatus(
+            tx,
+            ctx.principal,
+            input.workspace_id,
+            input.week_start_date,
+          ),
+        ),
+      ),
+  }),
+  timesheetAnomaly: t.router({
+    listActive: protectedProcedure
+      .input(timesheetAnomalyListInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          listActiveAnomalies(tx, ctx.principal, input.workspace_id),
+        ),
       ),
   }),
   conflictResolution: t.router({

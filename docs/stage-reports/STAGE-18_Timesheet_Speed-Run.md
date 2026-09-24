@@ -1,13 +1,15 @@
 # Stage 18 — Timesheet Speed-Run
 
-**Status:** BLOCKED
-**Branch:** `codex/stage-18-timesheet-speed-run` (merged current `main` through F275 at `93c8cf1`; F275 mechanism implemented)
+**Status:** COMPLETE — awaiting founder review
+**Branch:** `codex/stage-18-timesheet-speed-run` (merged `main` through F276 at `36f3b80`)
 **Linear issues:** RST-46
 **Date:** 2026-09-24
 
 ## 1. Summary
 
-F267–F274 infrastructure remains committed. F275 was ruled on `main` at `93c8cf1` and merged here. The `logged_against` Assignment read-sufficient declaration and the reusable, active-edge-backed Pitch participant grant are implemented and proven against the real interceptor and PostgreSQL. While beginning `saveCell`, F276 surfaced: the required `week_start_date` cannot be uniquely derived for every working-week shape the existing schema permits. No feature mutation code was retained pending a reviewer ruling; no app code or protected documentation was directly edited.
+The F276 ruling is merged and Stage 18's server-side feature is implemented. `WorkingCalendar.week_start_day` fixes the week boundary independently of worked-day, pattern and holiday state. Cells, empty and nonempty submissions, unlocks, weekly and compliance reads, day shortcuts, and the protected anomaly-review flow now run through named server paths. The prior pauses, F267–F276, were all ruled before this completion; this resume raised no new finding. No file under `apps/` or protected specification/brief/finding documentation was edited on this branch.
+
+Sections 2–11 below preserve the report as it stood at the F276 pause, including its then-open finding and unchecked criteria. The completion addendum at the end is the authoritative final status.
 
 ## 2. Done-criteria checklist
 
@@ -117,3 +119,44 @@ The F267 registry declaration, F268/F269 interceptor change, F270–F273 infrast
 ## 11. Readiness for the next stage
 
 No. Stage 18 must resume after the reviewer rules F276; Stage 19 is not started.
+
+## Completion addendum — 24 September 2026 (supersedes sections 2–11 above)
+
+**Finding status.** F276 was ruled and merged from `main` at `36f3b80`, then implemented. F267–F276 are all closed; no new build-time finding was raised on this resume. The earlier F276 text is retained as the historical evidence of the pause, not an open request.
+
+### Final done-criteria checklist
+
+- [x] `logged_against` has F267's `Pitch: "identifying"` and F275's `readSufficientEndpoints: { Assignment: true }`. An ordinary Team Member's Billable save works; Pitch saves follow live staffing, unstaffing and restaffing.
+- [x] F268/F269/F274 row scope: own TimesheetEntry read/write succeeds; an unrelated Team Member cannot read it; create checks declare the parsed `employee_id`; a deliberately mismatched stored subject rejects `subject-mismatch` and rolls back.
+- [x] A 25-hour date is rejected before storage, naming the date and total. The optimistic mutator raises `GraphValidationError`.
+- [x] `submitWeek` moves all Draft rows in one transaction. A PostgreSQL constraint injected on the second row leaves both Draft, proving rollback.
+- [x] `getWeek` and `fd`/`hd` use F004's `resolveWorkingDay` path. Six-day PK Saturday, compressed four-day pattern and workspace half-day are tested; no `contracted_hours / weekday-count` arithmetic is used.
+- [x] F276's week anchor is carried by `initialWorkingWeekFor`, `calendarUpdate.apply()` and optimistic `entity.create`. Seven-day work, a split `WorkingPattern`, a holiday on the anchor, and Sunday- and Monday-start entities in one workspace are tested against PostgreSQL. The pure `resolveWeekStartDate` reads only date and `weekStartDay`; saved entry keys are not recomputed on later reads or edits.
+- [x] The three anomaly detectors are pure and tested independently. `HoursExceedExpected` takes F004-derived expected weekly hours as a parameter (default threshold 1.3); 34 logged against 32 expected is not flagged, and any Pitch entry excludes the week.
+- [x] `timesheetAnomaly.evaluate` runs after the submission transaction commits, under the closed system read/write grants. Prior Tier 2 flags are read through audited `readProtected`; new flags and `triggered_by` edges are written in one transaction with the reserved, reusable “Automatic Review” User UUID as provenance. That User has no `membership_of` edge and is not the submitter.
+- [x] A cleared `ApprovedOvertime` flag is not re-raised on a real second evaluation. `timesheetAnomaly.clear` does not call F018 or compute TOIL. An injected post-commit evaluation failure does not fail or roll back the submission.
+- [x] `timesheetAnomaly.listActive` uses `filterReadable`: a Manager sees/clears direct-report flags, cannot see/clear a non-report's flag, and the flagged Team Member gets neither list nor protected content.
+- [x] A zero-entry week creates exactly one `TimesheetWeekSubmission` marker, reads Submitted, and returns to Not-Started after unlock soft-deletes it. A nonempty week creates no marker.
+- [x] `hrCompliance.sendReminder`, `overtime.approve` and files under `apps/` are absent from this branch's code diff.
+- [x] Real handlers and router entries exist for the new mutations and queries; none is a stub or no-op. Four gates passed.
+
+### Final implementation and tests
+
+The F276 calendar shape and pure week resolver live in `packages/schema`; the server resolves the employee's Entity and calendar version at the entry's own date in `services/api/src/graph/timesheet-week.ts`. The feature mutations and protected anomaly evaluation live in `services/api/src/mutations`; weekly, compliance, shortcut and scoped anomaly reads live in `services/api/src/permission`. The optimistic `saveCell`/`submitWeek`/`unlockWeek` paths are in `packages/graph`. The existing F267–F275 registry, policy, interceptor, pipeline and system-actor changes remain intact from prior commits.
+
+`timesheet.integration.test.ts` has 11 real-PostgreSQL tests spanning F274/F275/F276, atomicity, zero-entry markers, protected visibility, provenance and G09b suppression. Schema has 101 passing tests (2 pre-existing todo), graph 82 passing tests, and the full API suite has 296 passing tests (2 skipped). The registry conformance gate remains green.
+
+| Required gate | Final result |
+|---|---|
+| `CI=true pnpm install --frozen-lockfile` | Passed; current lockfile, dependencies up to date |
+| `pnpm stack:up` | Passed; PostgreSQL, Redis and Electric healthy |
+| `pnpm verify` | Passed, including lint, conformance, architecture, typecheck and fast tests |
+| `pnpm verify:full` | Passed on the final tree, including database preflight and 296 API integration tests |
+
+The first sandboxed install could not resolve npm and the first sandboxed stack call could not reach Docker; the same gates passed with the required access. `git diff --check` passed. No database migration was required: F273's marker and the new calendar field are graph record/schema changes under existing storage. One accepted F276 limitation remains: a mid-week calendar-anchor edit or Entity re-scope can split entries across two stored week keys; no cross-feature guard was added to F004.
+
+### Final micro-decisions and readiness
+
+`timesheet.resolveShortcut` is a thin server read over F004's existing `hoursOn`, so `fd`/`hd` cannot fork day arithmetic. Timesheet writes and week transitions use serializable transactions to protect one-cell and one-empty-marker behavior under races. Internal pipeline test seams prove the independent F274 post-write recheck and G10 post-commit failure behavior; normal routes never supply them. These are implementation choices within the corrected brief, not new policy rulings.
+
+Stage 18 is ready for founder review. RST-46 moves to **In Review**; no Stage 19 work starts here.

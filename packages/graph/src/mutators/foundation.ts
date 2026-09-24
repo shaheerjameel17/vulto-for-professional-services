@@ -13,6 +13,8 @@ import {
   initialWorkingWeekFor,
   moveEmployeeEdgeId,
   mutationDerivedId,
+  resolveWeekStartDate,
+  validateTimeClassification,
   parseWorkspaceRoles,
   stampNewEdge,
   stampNewNode,
@@ -39,6 +41,14 @@ export class OptimisticRejection extends Error {
   constructor(readonly reason: string) {
     super(reason);
     this.name = "OptimisticRejection";
+  }
+}
+
+/** The locally-detected graph validation refusal used for timesheet caps. */
+export class GraphValidationError extends OptimisticRejection {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "GraphValidationError";
   }
 }
 
@@ -754,6 +764,7 @@ const calendarUpdate: OptimisticMutator = async (c, raw) => {
       ...prior.record,
       lifecycle_status: "Active",
       working_week: args.working_week,
+      week_start_day: args.week_start_day,
       standard_daily_hours: args.daily_hours,
       reduced_hours_periods:
         args.reduced_hours_periods ?? prior.record["reduced_hours_periods"] ?? [],
@@ -1098,6 +1109,201 @@ const assignmentClearRateOverride: OptimisticMutator = async (c, raw) => {
   ];
 };
 
+// ── Timesheet cells and week transitions (VRS-F010) ───────────────────────
+
+async function optimisticWeekStart(
+  c: MutatorContext,
+  employeeId: string,
+  date: string,
+) {
+  await liveTypedNode(c.cache, employeeId, "Employee");
+  const at = Date.parse(`${date}T12:00:00.000Z`);
+  const entityEdge = (await c.cache.edgesFrom(employeeId, "scoped_to_entity")).find(
+    (edge) =>
+      !edge.isSoftDeleted &&
+      (edge.effectiveFrom === null || Date.parse(edge.effectiveFrom) <= at) &&
+      (edge.effectiveTo === null || at < Date.parse(edge.effectiveTo)),
+  );
+  if (!entityEdge) throw new OptimisticRejection("not-found");
+  const calendars = await Promise.all(
+    (await c.cache.edgesFrom(entityEdge.toNodeId, "governed_by_calendar")).map((edge) =>
+      c.cache.getNode(edge.toNodeId),
+    ),
+  );
+  let calendar = calendars.find(
+    (node) => node?.nodeType === "WorkingCalendar" && node.lifecycleStatus === "Active",
+  );
+  const dateEnd = Date.parse(`${date}T23:59:59.999Z`);
+  const seen = new Set<string>();
+  while (
+    calendar &&
+    !seen.has(calendar.nodeId) &&
+    Date.parse(String(calendar.record["created_at"])) > dateEnd
+  ) {
+    seen.add(calendar.nodeId);
+    const prior = (await c.cache.edgesFrom(calendar.nodeId, "supersedes"))[0];
+    calendar = prior ? await c.cache.getNode(prior.toNodeId) : undefined;
+  }
+  const anchor = calendar?.record["week_start_day"];
+  if (typeof anchor !== "number") throw new OptimisticRejection("not-found");
+  return resolveWeekStartDate(date, anchor);
+}
+
+const timesheetSaveCell: OptimisticMutator = async (c, raw) => {
+  const args = parse("timesheet.saveCell", raw);
+  const weekStart = await optimisticWeekStart(c, args.employee_id, args.date);
+  const entries = (await c.cache.nodesByType("TimesheetEntry")).filter(
+    (node) => !node.isSoftDeleted && node.record["employee_id"] === args.employee_id,
+  );
+  const category =
+    args.row_context.kind === "assignment"
+      ? "Billable"
+      : args.row_context.kind === "pitch"
+        ? "Pitch"
+        : "NonBillable";
+  const assignmentId =
+    args.row_context.kind === "assignment" ? args.row_context.assignment_id : null;
+  const pitchId = args.row_context.kind === "pitch" ? args.row_context.pitch_id : null;
+  try {
+    validateTimeClassification({
+      time_category: category,
+      internal_category: args.internal_category ?? null,
+      assignment_id: assignmentId,
+      pitch_id: pitchId,
+    });
+  } catch {
+    throw new OptimisticRejection("invalid-args");
+  }
+  const existing = entries.find(
+    (entry) =>
+      entry.record["date"] === args.date &&
+      (assignmentId !== null
+        ? entry.record["assignment_id"] === assignmentId
+        : pitchId !== null
+          ? entry.record["pitch_id"] === pitchId
+          : entry.record["time_category"] === "NonBillable"),
+  );
+  const total = entries
+    .filter(
+      (entry) =>
+        entry.record["date"] === args.date && entry.nodeId !== existing?.nodeId,
+    )
+    .reduce((sum, entry) => sum + Number(entry.record["hours"] ?? 0), args.hours);
+  if (total > 24)
+    throw new GraphValidationError(`invalid-args:date=${args.date}:total=${total}`);
+  if (assignmentId !== null) {
+    const assignment = await liveTypedNode(c.cache, assignmentId, "Assignment");
+    if (assignment.record["employee_id"] !== args.employee_id)
+      throw new OptimisticRejection("invalid-args");
+  }
+  if (pitchId !== null) {
+    await liveTypedNode(c.cache, pitchId, "Pitch");
+    const staffed = (await c.cache.edgesFrom(args.employee_id, "staffed_on")).some(
+      (edge) =>
+        !edge.isSoftDeleted && edge.toNodeId === pitchId && edge.effectiveTo === null,
+    );
+    if (!staffed) throw new OptimisticRejection("invalid-args");
+  }
+  const fields = {
+    employee_id: args.employee_id,
+    assignment_id: assignmentId,
+    pitch_id: pitchId,
+    time_category: category,
+    internal_category: args.internal_category ?? null,
+    date: args.date,
+    hours: args.hours,
+    week_start_date: weekStart,
+    notes: args.notes ?? null,
+  };
+  if (existing)
+    return [
+      await writeNode(c.cache, existing, {
+        ...existing.record,
+        ...fields,
+        week_start_date: existing.record["week_start_date"],
+        ...updateStamp("TimesheetEntry", provenance(c)),
+      }),
+    ];
+  const undo: UndoEntry[] = [
+    await putNewNode(c, c.mutationId, "TimesheetEntry", {
+      lifecycle_status: "Draft",
+      submitted_at: null,
+      ...fields,
+    }),
+  ];
+  if (assignmentId !== null || pitchId !== null)
+    undo.push(
+      await putNewEdge(c, mutationDerivedId(c.mutationId, 1), {
+        edge_type: "logged_against",
+        from_node_id: c.mutationId,
+        to_node_id: assignmentId ?? pitchId,
+        effective_from: c.now,
+        effective_to: null,
+      }),
+    );
+  return undo;
+};
+
+const timesheetWeek =
+  (action: "submit" | "unlock"): OptimisticMutator =>
+  async (c, raw) => {
+    const args = parse(
+      action === "submit" ? "timesheet.submitWeek" : "timesheet.unlockWeek",
+      raw,
+    );
+    const weekStart = await optimisticWeekStart(
+      c,
+      args.employee_id,
+      args.week_start_date,
+    );
+    const entries = (await c.cache.nodesByType("TimesheetEntry")).filter(
+      (node) =>
+        !node.isSoftDeleted &&
+        node.record["employee_id"] === args.employee_id &&
+        node.record["week_start_date"] === weekStart,
+    );
+    const markers = (await c.cache.nodesByType("TimesheetWeekSubmission")).filter(
+      (node) =>
+        !node.isSoftDeleted &&
+        node.record["employee_id"] === args.employee_id &&
+        node.record["week_start_date"] === weekStart,
+    );
+    const undo: UndoEntry[] = [];
+    for (const entry of entries) {
+      if (entry.lifecycleStatus !== (action === "submit" ? "Draft" : "Submitted"))
+        continue;
+      undo.push(
+        await writeNode(c.cache, entry, {
+          ...entry.record,
+          lifecycle_status: action === "submit" ? "Submitted" : "Draft",
+          submitted_at: action === "submit" ? c.now : null,
+          ...updateStamp("TimesheetEntry", provenance(c)),
+        }),
+      );
+    }
+    if (action === "submit" && entries.length === 0 && markers.length === 0)
+      undo.push(
+        await putNewNode(c, c.mutationId, "TimesheetWeekSubmission", {
+          lifecycle_status: "Submitted",
+          employee_id: args.employee_id,
+          week_start_date: weekStart,
+          submitted_at: c.now,
+        }),
+      );
+    if (action === "unlock")
+      for (const marker of markers)
+        undo.push(
+          await writeNode(c.cache, marker, {
+            ...marker.record,
+            is_soft_deleted: true,
+            soft_deleted_at: c.now,
+            soft_deleted_by: c.userId,
+            ...updateStamp("TimesheetWeekSubmission", provenance(c)),
+          }),
+        );
+    return undo;
+  };
+
 export const OPTIMISTIC_MUTATORS: Readonly<
   Partial<Record<MutationName, OptimisticMutator>>
 > = {
@@ -1129,6 +1335,9 @@ export const OPTIMISTIC_MUTATORS: Readonly<
   "pitch.create": pitchCreate,
   "pitch.staffEmployee": pitchStaffEmployee,
   "pitch.unstaffEmployee": pitchUnstaffEmployee,
+  "timesheet.saveCell": timesheetSaveCell,
+  "timesheet.submitWeek": timesheetWeek("submit"),
+  "timesheet.unlockWeek": timesheetWeek("unlock"),
   "graph.createNode": createNode,
   "graph.updateNodeFields": updateNodeFields,
   "graph.softDeleteNode": softDeleteNode,

@@ -73,3 +73,29 @@ export const timesheetAnomalyFlagFieldsSchema = z
     clearance_note: nullableText,
   })
   .strict();
+
+export const timesheetGetWeekInputSchema = z
+  .object({
+    employee_id: uuidV4Schema,
+    week_start_date: isoDate.optional(),
+  })
+  .strict();
+
+export const timesheetShortcutInputSchema = z
+  .object({
+    employee_id: uuidV4Schema,
+    date: isoDate,
+    shortcut: z.enum(["fd", "hd"]),
+  })
+  .strict();
+
+export const hrSubmissionStatusInputSchema = z
+  .object({
+    workspace_id: uuidV4Schema,
+    week_start_date: isoDate,
+  })
+  .strict();
+
+export const timesheetAnomalyListInputSchema = z
+  .object({ workspace_id: uuidV4Schema })
+  .strict();

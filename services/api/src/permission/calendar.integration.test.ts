@@ -99,13 +99,17 @@ describe("VRS-F004 — Working Calendar and Working Patterns", () => {
     const foundingCalendar = await db.transaction((tx) =>
       resolveCalendarForEntity(tx, w.workspaceId, w.founding.nodeId),
     );
-    expect(foundingCalendar?.record).toMatchObject({ standard_daily_hours: 8 });
+    expect(foundingCalendar?.record).toMatchObject({
+      standard_daily_hours: 8,
+      week_start_day: 1,
+    });
     for (const jurisdiction of ["Global", "IN", "SG", "AE"] as const) {
       const { entityId, calendarId } = await createEntity(w, jurisdiction);
       const calendar = await db.transaction((tx) =>
         resolveCalendarForEntity(tx, w.workspaceId, entityId),
       );
       expect(calendar?.nodeId).toBe(calendarId);
+      expect(calendar?.record["week_start_day"]).toBe(jurisdiction === "AE" ? 7 : 1);
       const worked = (calendar!.record["working_week"] as typeof WEEK)
         .filter((day) => day.is_working)
         .map((day) => day.day);
@@ -144,6 +148,7 @@ describe("VRS-F004 — Working Calendar and Working Patterns", () => {
       {
         calendar_id: calendarId,
         working_week: WEEK,
+        week_start_day: 7,
         daily_hours: 8,
         expected_version: 1,
         reduced_hours_periods: periods,
@@ -152,6 +157,11 @@ describe("VRS-F004 — Working Calendar and Working Patterns", () => {
     );
     expect(first.status, JSON.stringify(first)).toBe("applied");
     const firstId = (first.result as { calendar_id: string }).calendar_id;
+    expect(
+      (await db.transaction((tx) => getNode(tx, w.workspaceId, firstId)))?.record[
+        "week_start_day"
+      ],
+    ).toBe(7);
     const prior = await db.transaction((tx) => getNode(tx, w.workspaceId, calendarId));
     expect(prior).toMatchObject({ lifecycleStatus: "Superseded", version: 2 });
     const copied = (
@@ -168,6 +178,7 @@ describe("VRS-F004 — Working Calendar and Working Patterns", () => {
         await w.apply("hr", "calendar.update", {
           calendar_id: calendarId,
           working_week: WEEK,
+          week_start_day: 1,
           daily_hours: 8,
           expected_version: 999,
         })
@@ -200,7 +211,13 @@ describe("VRS-F004 — Working Calendar and Working Patterns", () => {
     const second = await w.apply(
       "hr",
       "calendar.update",
-      { calendar_id: firstId, working_week: WEEK, daily_hours: 8, expected_version: 1 },
+      {
+        calendar_id: firstId,
+        working_week: WEEK,
+        week_start_day: 1,
+        daily_hours: 8,
+        expected_version: 1,
+      },
       "2026-01-20T00:00:00.000Z",
     );
     const secondId = (second.result as { calendar_id: string }).calendar_id;
@@ -406,6 +423,7 @@ describe("VRS-F004 — Working Calendar and Working Patterns", () => {
         working_week: (await db.transaction((tx) =>
           getNode(tx, w.workspaceId, ae.calendarId),
         ))!.record["working_week"],
+        week_start_day: 7,
         daily_hours: 8,
         expected_version: 1,
         reduced_hours_periods: reduced,
@@ -429,6 +447,7 @@ describe("VRS-F004 — Working Calendar and Working Patterns", () => {
         await w.apply("hr", "calendar.update", {
           calendar_id: calendarId,
           working_week: WEEK,
+          week_start_day: 1,
           daily_hours: 8,
           expected_version: 999,
         })

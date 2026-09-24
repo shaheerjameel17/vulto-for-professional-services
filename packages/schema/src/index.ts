@@ -4,6 +4,8 @@ import "./registry/validate";
 export * from "./ghost-resource";
 export * from "./pitch";
 export * from "./timesheet";
+export * from "./time-classification";
+export * from "./timesheet-anomaly";
 
 export {
   NODE_REGISTRY,

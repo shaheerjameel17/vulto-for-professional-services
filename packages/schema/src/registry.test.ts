@@ -121,6 +121,14 @@ describe("canonical registry", () => {
         edgeType: "assigned_to",
         readSufficientEndpoints: { Project: true },
       },
+      {
+        edgeType: "logged_against",
+        readSufficientEndpoints: { Assignment: true },
+      },
+      {
+        edgeType: "logged_against",
+        readSufficientEndpoints: { Assignment: true },
+      },
     ]);
     expect(
       assertRegisteredRelationship("affects", "Insight", "Employee"),

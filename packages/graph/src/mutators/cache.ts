@@ -26,6 +26,7 @@ export interface CachedEdge {
 
 export interface OptimisticCache {
   getNode(nodeId: string): Promise<CachedNode | undefined>;
+  nodesByType(nodeType: string): Promise<readonly CachedNode[]>;
   putNode(node: CachedNode): Promise<void>;
   deleteNode(nodeId: string): Promise<void>;
   getEdge(edgeId: string): Promise<CachedEdge | undefined>;

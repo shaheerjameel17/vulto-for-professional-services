@@ -8,6 +8,7 @@ export {
 export {
   OPTIMISTIC_MUTATORS,
   OptimisticRejection,
+  GraphValidationError,
   applyOptimistic,
   type MutatorContext,
   type OptimisticMutator,
