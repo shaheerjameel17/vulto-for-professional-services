@@ -165,10 +165,17 @@ Employees with `contracted_hours` of zero — non-billable directors and advisor
 
 ```
 utilizationSnapshot.compute(employeeId, weekStartDate) -> { snapshotId }
-  // Reactive on any entry write for that employee and week.
+  // Reactive on any entry write for that employee and week, called from
+  // saveCell/submitWeek/unlockWeek's afterCommit hooks. Runs under the
+  // system principal utilization-snapshot-compute (F280), never the
+  // triggering caller's own principal — Team Member's own policy row
+  // (F278) is Read only, so the caller who triggered the write cannot
+  // itself write the resulting snapshot.
   // Updates the existing snapshot for the pair rather than duplicating
 
 utilizationSnapshot.getIndividual(employeeId, weekStartDate?) -> UtilizationSnapshot
+  // Ordinary caller-scoped read, row-authorized via UtilizationSnapshot's
+  // own policy row (F278) and resolveStoredSubjectEmployeeId (F279)
 
 utilizationDashboard.getAgencyAggregate(workspaceId, weekStartDate?, filters?) -> {
   aggregateUtilization: number | Suppressed,
@@ -177,8 +184,19 @@ utilizationDashboard.getAgencyAggregate(workspaceId, weekStartDate?, filters?) -
   cohortSize: number,
   perEmployee: { employeeId, utilizationRate }[]
 }
-  // Resolves entirely from the local graph. Passes through VPS-A004's
-  // disclosure control before returning an aggregate
+  // Two separately-authorized reads, not one (F281). aggregateUtilization,
+  // aggregateLoggingCompleteness, weekOverWeekDelta and cohortSize are
+  // built by the system principal utilization-snapshot-compute's second
+  // operation, utilization-snapshot.read-cohort — reading Employee:operational
+  // for cohort membership and UtilizationSnapshot:record to sum each
+  // member's already-computed figure — run identically for every caller
+  // regardless of role, since this document's own spec requires the same
+  // single agency-wide figure for every role that can see it. perEmployee
+  // is a fully separate read under the caller's own ordinary principal
+  // (listEmployees plus row-scoped UtilizationSnapshot reads), gated by the
+  // caller's own role: absent for Team Member, scoped to direct reports for
+  // Manager. Both halves pass through VPS-A004's disclosure control
+  // (including differencing protection) before returning
 ```
 
 ---
@@ -271,7 +289,9 @@ utilizationDashboard.getAgencyAggregate(workspaceId, weekStartDate?, filters?) -
 
 ## Security Considerations
 
-- **UtilizationSnapshot's policy row is Tier 0, composed from the matching cell of each of Employee's two existing Tier 0 rows, not a literal copy of either (F278):** Owner and HR Admin full (both rows agree); Manager `Full (direct reports)`, `Employee:operational`'s own cell; Team Member `Read (own only)`, `Employee:compensation`'s own cell — the closer analog for an individually-sensitive per-person figure than general profile data; Finance Admin `Read (any)`, `Employee:operational`'s own Tier 0 default for a role this feature does not otherwise restrict. Neither existing row alone matches the shape stated below and in the System States table above — `Employee:operational`'s Team Member cell is own-plus-team, and `Employee:compensation`'s Manager cell is restricted to Finance Admin.
+- **UtilizationSnapshot's policy row is Tier 0, composed from the matching cell of each of Employee's two existing Tier 0 rows, not a literal copy of either (F278):** Owner and HR Admin full (both rows agree); Manager `Full (direct reports)`, `Employee:operational`'s own cell; Team Member `Read (own only)`, `Employee:compensation`'s own cell — the closer analog for an individually-sensitive per-person figure than general profile data; Finance Admin `Read (any)`, `Employee:operational`'s own Tier 0 default for a role this feature does not otherwise restrict. Neither existing row alone matches the shape stated below and in the System States table above — `Employee:operational`'s Team Member cell is own-plus-team, and `Employee:compensation`'s Manager cell is restricted to Finance Admin. `resolveStoredSubjectEmployeeId` resolves `UtilizationSnapshot`'s own subject from its stored `employee_id` field (F279), the same mechanism already built for TimesheetEntry and TimesheetWeekSubmission.
+- **`utilizationSnapshot.compute`'s reactive write runs under a dedicated system principal, `utilization-snapshot-compute`, never the triggering caller's own (F280).** Team Member's `Read (own only)` row is deliberate: a Team Member must never be able to write their own utilization figure directly, only have it derived from their actual logged hours. Reusing [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s own `timesheetAnomaly.evaluate` precedent (F270–F272) rather than widening any caller's own grant.
+- **The agency aggregate is two separately-authorized reads, not one (F281).** The aggregate figure itself — `aggregateUtilization`, `aggregateLoggingCompleteness`, `weekOverWeekDelta`, `cohortSize` — must be the identical number for every role, so it is built by `utilization-snapshot-compute`'s second operation, `utilization-snapshot.read-cohort`, run uniformly for every caller regardless of role rather than through any caller's own role-scoped grant. `perEmployee` is the opposite: a fully separate, ordinarily-scoped read under the caller's own principal, restricted to Owner, HR Admin and Manager-for-their-reports exactly as stated below — a Team Member's response carries no `perEmployee` field at all.
 - **Every aggregate passes [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s disclosure control**, including differencing protection. A dashboard filtered to a team of eleven and one filtered to twelve must not allow the twelfth person's figure to be recovered by subtraction.
 - **The per-employee comparison is a ranked list of colleagues**, which carries real social weight. It is restricted to Owner, HR Admin and Manager-for-their-reports. A Team Member sees their own bar and the agency aggregate, never the ranking.
 
@@ -294,6 +314,12 @@ utilizationDashboard.getAgencyAggregate(workspaceId, weekStartDate?, filters?) -
 **`week_start_date` and `expected_hours` corrected to name the real, already-built mechanisms — F277, 25 September 2026.** This document was written before [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s Stage 18 build existed, and still described the week key as "the first working day of the week" and `expected_hours` as coming from a `workingDays.count` function that was never built under that name or that day-count semantics. Corrected to name `weekStartForEmployee` (F276) and `hoursOn`/`isoDatesInclusive` (the same functions `getWeek` already calls) directly, and to require `utilizationSnapshot.compute` to reuse `getWeek`'s own `expectedWeeklyHours` computation rather than reimplement it.
 
 **UtilizationSnapshot's policy row composed from each existing Employee row's matching cell, not a literal reuse of either — F278, 25 September 2026.** "A deliberate reuse of an existing rule" was ambiguous about which rule: neither `Employee:operational` nor `Employee:compensation` alone produces the access shape this document itself describes. See the corrected Security Considerations section above for the composed row.
+
+**`resolveStoredSubjectEmployeeId` extended to `UtilizationSnapshot` — F279, 25 September 2026.** F278's own Team Member "own only" grant had no subject to resolve against, since the interceptor's row-subject resolver had never been told `UtilizationSnapshot` stores its subject the same way TimesheetEntry and TimesheetWeekSubmission do. Extended on identical precedent (F268); no change to this document's own contract.
+
+**`utilizationSnapshot.compute` runs under a new system principal, `utilization-snapshot-compute` — F280, 25 September 2026.** The triggering caller's own principal cannot write `UtilizationSnapshot` under F278's Team Member row (Read only, deliberately), so the reactive write needed an authorized writer distinct from the edit that triggers it — [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s own `timesheetAnomaly.evaluate` system-principal precedent (F270–F272), applied a second time rather than reasoned from scratch.
+
+**The agency aggregate is built by the same system principal's second operation, `utilization-snapshot.read-cohort`, run uniformly for every caller — F281, 25 September 2026.** Escalated as a genuine architectural fork: no existing read-scoping mechanism in this codebase can return an identical result regardless of the caller's role, and this document's own spec requires exactly that for the aggregate figure (while `perEmployee` stays role-scoped). The system principal reads `Employee:operational` for cohort membership and `UtilizationSnapshot:record` to sum each member's already-computed figure, the same way for every caller; `perEmployee` remains a fully separate, ordinarily-scoped read. See F281's own detail section in `Foundations_Findings.md` for the corrected reasoning behind this design, including the Bench Forecast analogy the first-pass recommendation got wrong.
 
 **`billability_target`'s workspace-level default stays a hardcoded constant (0.75) for now, pending [[VPS-F005_Workspace_Configuration_Console|VPS-F005]]**, on the identical precedent [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s own `overtime_flag_threshold` already established (settled before that stage's brief was written): a registered [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] configuration key with no console yet built to edit it gains nothing from being written into `Workspace`'s own record ahead of that console's existence, and the two thresholds should stay consistent with each other in how they're carried until then.
 
