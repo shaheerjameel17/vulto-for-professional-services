@@ -55,10 +55,16 @@ export async function readFlagRecords(
   principal: SystemPrincipal,
   nodeIds: readonly string[],
 ): Promise<ReadonlyMap<string, AnomalyFlagRecord>> {
-  const items = await readProtected(tx, getKeyServices(), principal, {
-    nodeIds,
-    partitions: ["record"],
-  });
+  const items = await readProtected(
+    tx,
+    getKeyServices(),
+    principal,
+    {
+      nodeIds,
+      partitions: ["record"],
+    },
+    { systemOperation: "timesheet-anomaly.read-flags" },
+  );
   return new Map(
     items.flatMap((item) =>
       item.state === "available"
@@ -156,9 +162,13 @@ async function evaluateInTransaction(
         nodeId: active.flag.nodeId,
         partitionKey: "record",
       };
-      const decision = await authorizeWrite(tx, principal, target, {
-        operation: "update",
-      });
+      const decision = await authorizeWrite(
+        tx,
+        principal,
+        target,
+        { operation: "update" },
+        { systemOperation: "timesheet-anomaly.create-flag" },
+      );
       if (!decision.allowed) throw new Error(`anomaly-write-denied:${decision.reason}`);
       await updateNodeFields(
         tx,
@@ -191,6 +201,7 @@ async function evaluateInTransaction(
         partitionKey: "record",
       },
       { operation: "create" },
+      { systemOperation: "timesheet-anomaly.create-flag" },
     );
     const edgeDecision = await authorizeWrite(
       tx,

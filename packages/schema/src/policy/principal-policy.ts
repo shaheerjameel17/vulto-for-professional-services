@@ -1,3 +1,5 @@
+import type { NodeType } from "../registry/nodes";
+
 /**
  * VPS-A004 "Principals that are not members" — the policy rows for system
  * principals (A004-T22).
@@ -14,6 +16,7 @@ export const SYSTEM_PRINCIPAL_NAMES = [
   "erasure",
   "key-rotation",
   "timesheet-anomaly-evaluate",
+  "utilization-snapshot-compute",
 ] as const;
 
 export type SystemPrincipalName = (typeof SYSTEM_PRINCIPAL_NAMES)[number];
@@ -27,6 +30,7 @@ export const SYSTEM_PRINCIPAL_DISPLAY_NAMES: Readonly<
   erasure: "Data Erasure",
   "key-rotation": "Key Rotation",
   "timesheet-anomaly-evaluate": "Automatic Review",
+  "utilization-snapshot-compute": "Utilization Snapshot",
 };
 
 export const SYSTEM_OPERATIONS = [
@@ -35,6 +39,8 @@ export const SYSTEM_OPERATIONS = [
   "audience.recompute",
   "timesheet-anomaly.create-flag",
   "timesheet-anomaly.read-flags",
+  "utilization-snapshot.compute",
+  "utilization-snapshot.read-cohort",
 ] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
@@ -56,6 +62,34 @@ export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
   "timesheet-anomaly-evaluate": [
     "timesheet-anomaly.create-flag",
     "timesheet-anomaly.read-flags",
+  ],
+  "utilization-snapshot-compute": [
+    "utilization-snapshot.compute",
+    "utilization-snapshot.read-cohort",
+  ],
+};
+
+export interface SystemOperationTarget {
+  readonly nodeType: NodeType;
+  readonly partitionKey: string;
+}
+
+/** A004-T25: the closed node targets for each system operation. */
+export const SYSTEM_OPERATION_TARGETS: Readonly<
+  Partial<Record<SystemOperation, readonly SystemOperationTarget[]>>
+> = {
+  "timesheet-anomaly.create-flag": [
+    { nodeType: "TimesheetAnomalyFlag", partitionKey: "record" },
+  ],
+  "timesheet-anomaly.read-flags": [
+    { nodeType: "TimesheetAnomalyFlag", partitionKey: "record" },
+  ],
+  "utilization-snapshot.compute": [
+    { nodeType: "UtilizationSnapshot", partitionKey: "record" },
+  ],
+  "utilization-snapshot.read-cohort": [
+    { nodeType: "Employee", partitionKey: "operational" },
+    { nodeType: "UtilizationSnapshot", partitionKey: "record" },
   ],
 };
 

@@ -1306,6 +1306,70 @@ describe("support principals (F206) — capped at scope, never above Owner", () 
 });
 
 describe("system principals (F206)", () => {
+  it("grants utilization compute and cohort reads only for their closed targets", async () => {
+    const fixture = await makeWorkspace();
+    const system = {
+      kind: "system",
+      name: "utilization-snapshot-compute",
+      workspaceId: fixture.workspaceId,
+    } as const;
+    await db.transaction(async (tx) => {
+      const read = (
+        nodeType: "Employee" | "UtilizationSnapshot" | "TimesheetEntry",
+        operation: "utilization-snapshot.read-cohort" | "utilization-snapshot.compute",
+      ) =>
+        decideRead(
+          tx,
+          system,
+          {
+            workspaceId: fixture.workspaceId,
+            nodeType,
+            nodeId: randomUUID(),
+          },
+          { systemOperation: operation },
+        );
+      expect((await read("Employee", "utilization-snapshot.read-cohort")).access).toBe(
+        "read",
+      );
+      expect(
+        (await read("UtilizationSnapshot", "utilization-snapshot.read-cohort")).access,
+      ).toBe("read");
+      expect(
+        (await read("TimesheetEntry", "utilization-snapshot.read-cohort")).access,
+      ).toBe("none");
+      expect((await read("Employee", "utilization-snapshot.compute")).access).toBe(
+        "none",
+      );
+      expect(
+        await authorizeWrite(
+          tx,
+          system,
+          {
+            kind: "node",
+            workspaceId: fixture.workspaceId,
+            nodeType: "UtilizationSnapshot",
+            nodeId: randomUUID(),
+          },
+          { operation: "create" },
+          { systemOperation: "utilization-snapshot.compute" },
+        ),
+      ).toMatchObject({ allowed: true, role: null });
+      expect(
+        await authorizeWrite(
+          tx,
+          system,
+          {
+            kind: "node",
+            workspaceId: fixture.workspaceId,
+            nodeType: "Employee",
+            nodeId: randomUUID(),
+          },
+          { operation: "create" },
+          { systemOperation: "utilization-snapshot.compute" },
+        ),
+      ).toMatchObject({ allowed: false, reason: "role" });
+    });
+  });
   it("hold no node grant, are evaluated on every read and write, and are audited by name", async () => {
     const fixture = await makeWorkspace();
     const system = {

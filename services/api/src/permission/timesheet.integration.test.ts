@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { initialWorkingWeekFor, stampNewNode } from "@vulto/schema";
+import {
+  calculateUtilization,
+  initialWorkingWeekFor,
+  stampNewNode,
+} from "@vulto/schema";
 import { afterAll, describe, expect, it } from "vitest";
 import { closeDatabase, db, sql } from "../db.js";
 import {
@@ -9,6 +13,7 @@ import {
   insertEdge,
   insertNode,
   outgoing,
+  updateNodeFields,
 } from "../graph/store.js";
 import { applyMutation } from "../mutations/pipeline.js";
 import { resolveMemberPrincipal } from "./member-principal.js";
@@ -18,6 +23,8 @@ import {
   resolveTimesheetShortcut,
 } from "./timesheet-queries.js";
 import { timesheetAnomalyEvaluate } from "../mutations/timesheet-anomaly.js";
+import { utilizationSnapshotCompute } from "../mutations/utilization-snapshot.js";
+import { getAgencyAggregate, getIndividual } from "./utilization-queries.js";
 import { resolveCalendarForEntity } from "../graph/calendar-resolution.js";
 import { listActiveAnomalies } from "./timesheet-anomaly-queries.js";
 import { authorizeRead } from "./interceptor.js";
@@ -780,5 +787,235 @@ describe("VRS-F010 own TimesheetEntry and F275 endpoint writes", () => {
       outcome: "AcceptedAsNormal",
     });
     expect(refusedNonReport).toMatchObject({ status: "rejected", reason: "role" });
+  });
+});
+
+describe("VRS-F011 reactive utilization snapshot", () => {
+  it("recomputes one pair, shares getWeek's denominator, and permits an own-only read", async () => {
+    const w = await world();
+    const saved = await w.apply("member", "timesheet.saveCell", {
+      employee_id: w.memberId,
+      date: "2026-09-30",
+      row_context: { kind: "assignment", assignment_id: w.assignmentId },
+      hours: 4,
+    });
+    expect(saved.status, JSON.stringify(saved)).toBe("applied");
+    const first = (
+      await db.transaction((tx) =>
+        getNodes(tx, w.workspaceId, {
+          nodeType: "UtilizationSnapshot",
+        }),
+      )
+    ).filter((node) => node.record["employee_id"] === w.memberId);
+    expect(first).toHaveLength(1);
+    const week = await db.transaction((tx) =>
+      getWeek(tx, w.principal, w.memberId, "2026-09-30"),
+    );
+    expect(first[0]?.record["expected_hours"]).toBe(week?.expectedWeeklyHours);
+    const own = await db.transaction((tx) =>
+      getIndividual(tx, w.principal, w.memberId, "2026-09-30"),
+    );
+    const unrelated = await db.transaction((tx) =>
+      getIndividual(tx, w.outsider, w.memberId, "2026-09-30"),
+    );
+    expect(own?.["billable_hours"]).toBe(4);
+    expect(unrelated).toBeNull();
+    await utilizationSnapshotCompute(w.workspaceId, w.memberId, "2026-09-28");
+    const second = (
+      await db.transaction((tx) =>
+        getNodes(tx, w.workspaceId, {
+          nodeType: "UtilizationSnapshot",
+        }),
+      )
+    ).filter((node) => node.record["employee_id"] === w.memberId);
+    expect(second).toHaveLength(1);
+    expect(second[0]?.nodeId).toBe(first[0]?.nodeId);
+  });
+
+  it("routes Pitch hours outside logged utilization in a real reactive recompute", async () => {
+    const w = await world();
+    expect(
+      (
+        await w.apply("member", "timesheet.saveCell", {
+          employee_id: w.memberId,
+          date: "2026-09-30",
+          row_context: { kind: "assignment", assignment_id: w.assignmentId },
+          hours: 20,
+        })
+      ).status,
+    ).toBe("applied");
+    const created = await w.apply("owner", "pitch.create", { name: "Pulse pitch" });
+    const pitchId = (created.result as { pitchId: string }).pitchId;
+    expect(
+      (
+        await w.apply("owner", "pitch.staffEmployee", {
+          pitch_id: pitchId,
+          employee_id: w.memberId,
+        })
+      ).status,
+    ).toBe("applied");
+    expect(
+      (
+        await w.apply("member", "timesheet.saveCell", {
+          employee_id: w.memberId,
+          date: "2026-10-01",
+          row_context: { kind: "pitch", pitch_id: pitchId },
+          hours: 15,
+        })
+      ).status,
+    ).toBe("applied");
+    const snapshot = await db.transaction((tx) =>
+      getIndividual(tx, w.principal, w.memberId, "2026-09-30"),
+    );
+    expect(snapshot).toMatchObject({
+      billable_hours: 20,
+      pitch_hours: 15,
+      logged_hours: 20,
+    });
+    const expected = Number(snapshot?.["expected_hours"]);
+    expect(snapshot?.["utilization_rate"]).toBe(
+      Math.round((20 / expected) * 1000) / 10,
+    );
+  });
+
+  it("keeps a saved cell committed if the reactive compute throws after commit", async () => {
+    const w = await world();
+    const result = await applyMutation(
+      w.principal,
+      {
+        mutation_id: randomUUID(),
+        name: "timesheet.saveCell",
+        args: {
+          employee_id: w.memberId,
+          date: "2026-09-30",
+          row_context: { kind: "assignment", assignment_id: w.assignmentId },
+          hours: 4,
+        },
+      },
+      {
+        now: () => "2026-09-30T12:30:00.000Z",
+        interceptor: { now: () => "2026-09-30T12:30:00.000Z" },
+        afterCommitOverride: async () => {
+          await utilizationSnapshotCompute(w.workspaceId, randomUUID(), "2026-09-28");
+        },
+      },
+    );
+    expect(result.status).toBe("applied");
+    const entries = (
+      await db.transaction((tx) =>
+        getNodes(tx, w.workspaceId, {
+          nodeType: "TimesheetEntry",
+        }),
+      )
+    ).filter((row) => row.record["employee_id"] === w.memberId);
+    expect(entries).toHaveLength(1);
+  });
+
+  it("uses one role-independent cohort while keeping comparisons role-scoped", async () => {
+    const w = await world();
+    const extraOne = randomUUID();
+    const extraTwo = randomUUID();
+    const ghost = randomUUID();
+    const zeroHours = randomUUID();
+    const members = [w.memberId, w.outsiderId, w.managerId, extraOne, extraTwo];
+    await db.transaction(async (tx) => {
+      for (const [index, employeeId] of members.entries()) {
+        if (index < 3) {
+          await updateNodeFields(tx, w.workspaceId, employeeId, null, {
+            employee_type: "Employee",
+            contracted_hours: 40,
+            department: index === 0 ? "Delivery" : "Other",
+          });
+        } else {
+          await insertNode(tx, {
+            ...nodeRecord("Employee", w.workspaceId, employeeId),
+            employee_type: "Employee",
+            contracted_hours: 40,
+            department: "Other",
+          });
+          await insertEdge(
+            tx,
+            w.workspaceId,
+            edgeRecord("scoped_to_entity", employeeId, w.entityId),
+          );
+        }
+        const billableHours = 4 * (index + 1);
+        await insertNode(tx, {
+          ...nodeRecord("UtilizationSnapshot", w.workspaceId),
+          snapshot_id: randomUUID(),
+          employee_id: employeeId,
+          week_start_date: "2026-09-28",
+          ...calculateUtilization({
+            expectedHours: 40,
+            billableHours,
+            nonBillableHours: 0,
+            pitchHours: 0,
+          }),
+          non_billable_breakdown: {},
+          target_utilization: 0.75,
+          computed_at: "2026-09-30T12:00:00.000Z",
+        });
+      }
+      for (const [employeeId, employeeType, contractedHours] of [
+        [ghost, "Ghost", 40],
+        [zeroHours, "Employee", 0],
+      ] as const) {
+        await insertNode(tx, {
+          ...nodeRecord("Employee", w.workspaceId, employeeId),
+          employee_type: employeeType,
+          contracted_hours: contractedHours,
+          department: "Other",
+        });
+        await insertEdge(
+          tx,
+          w.workspaceId,
+          edgeRecord("scoped_to_entity", employeeId, w.entityId),
+        );
+        await insertNode(tx, {
+          ...nodeRecord("UtilizationSnapshot", w.workspaceId),
+          snapshot_id: randomUUID(),
+          employee_id: employeeId,
+          week_start_date: "2026-09-28",
+          ...calculateUtilization({
+            expectedHours: 40,
+            billableHours: 40,
+            nonBillableHours: 0,
+            pitchHours: 0,
+          }),
+          non_billable_breakdown: {},
+          target_utilization: 0.75,
+          computed_at: "2026-09-30T12:00:00.000Z",
+        });
+      }
+    });
+    const read = (principal: typeof w.owner, filters?: { departments: string[] }) =>
+      db.transaction((tx) =>
+        getAgencyAggregate(tx, principal, w.workspaceId, "2026-09-30", filters),
+      );
+    const owner = await read(w.owner);
+    const manager = await read(w.manager);
+    const member = await read(w.principal);
+    const agencyFields = (result: typeof owner) => ({
+      aggregateUtilization: result.aggregateUtilization,
+      aggregateLoggingCompleteness: result.aggregateLoggingCompleteness,
+      weekOverWeekDelta: result.weekOverWeekDelta,
+      cohortSize: result.cohortSize,
+    });
+    expect(agencyFields(owner)).toEqual(agencyFields(manager));
+    expect(agencyFields(owner)).toEqual(agencyFields(member));
+    expect(owner).toMatchObject({
+      aggregateUtilization: 30,
+      aggregateLoggingCompleteness: 30,
+      cohortSize: 5,
+    });
+    expect(owner.perEmployee).toHaveLength(5);
+    expect(manager.perEmployee).toEqual([
+      { employeeId: w.memberId, utilizationRate: 10 },
+    ]);
+    expect(member).not.toHaveProperty("perEmployee");
+    expect(member.own).toMatchObject({ employee_id: w.memberId, utilization_rate: 10 });
+    const suppressed = await read(w.owner, { departments: ["Delivery"] });
+    expect(suppressed.aggregateUtilization).toEqual({ state: "suppressed" });
+    expect(suppressed.cohortSize).toBe(1);
   });
 });

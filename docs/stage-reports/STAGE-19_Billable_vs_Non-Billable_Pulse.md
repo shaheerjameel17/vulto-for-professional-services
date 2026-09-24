@@ -1,31 +1,44 @@
 # Stage 19 — Billable vs Non-Billable Pulse
 
-**Status:** BLOCKED — awaiting reviewer rulings before implementation
-**Branch:** `codex/stage-19-billable-non-billable-pulse` at `22699d5`
+**Status:** In Review — implementation complete, awaiting founder review
+**Branch:** `codex/stage-19-billable-non-billable-pulse`
 **Linear issue:** RST-47
 **Date:** 2026-09-25
 
 ## Summary
 
-I read the Stage 19 brief and corrected VRS-F011 specification and traced their proposed paths through the existing interceptor, mutation pipeline, and employee queries. No implementation was written and none of the four gates was run: the three findings below make the required access and computation paths impossible as currently briefed. This report is the only document changed on the branch. The unrelated untracked `Claude outputs/` directory was left untouched.
+Stage 19's server-side utilization snapshot and two read endpoints are implemented. F279–F281 were ruled and merged into the branch before implementation. This report retains the original finding record below, followed by the completion evidence. No file under `apps/` changed. The unrelated untracked `Claude outputs/` directory was left untouched.
 
 ## Findings raised
 
 ### F279 — UtilizationSnapshot's row-scoped grants cannot resolve their subject
 
-**Open; reviewer ruling requested.** The F278 policy row deliberately gives a Team Member `Read (own only)` and a Manager `Full (direct reports)`. Both cells require the interceptor's `rowScopeSatisfied` to identify the snapshot's Employee. `services/api/src/permission/interceptor.ts`'s `resolveStoredSubjectEmployeeId` currently recognizes Employee, BurnoutAlert/TimesheetAnomalyFlag, and TimesheetEntry/TimesheetWeekSubmission only; every other node type, including UtilizationSnapshot, returns `null`. Thus the required `getIndividual` read for a Team Member and the Manager's direct-report comparison are denied regardless of the new policy-table row. The Stage 19 brief calls this “the same subject-resolution shape” as TimesheetEntry but does not instruct that UtilizationSnapshot be added to the resolver. Proposed correction: extend that existing stored direct-`employee_id` branch to UtilizationSnapshot, with real interceptor tests for own, direct-report, and unrelated rows. This is a direct F268/F273 precedent, not a request for a new permission mechanism.
+**Ruled and implemented.** The F278 policy row gives a Team Member `Read (own only)` and a Manager `Full (direct reports)`. `resolveStoredSubjectEmployeeId` now reads `UtilizationSnapshot.employee_id` through the existing stored-field branch, identical to TimesheetEntry and TimesheetWeekSubmission. The real interceptor integration test proves the Team Member reads their own snapshot and an unrelated Team Member receives `null`.
 
 ### F280 — Reactive snapshot computation has no authorized writer
 
-**Open; reviewer/founder ruling requested.** The brief requires `utilizationSnapshot.compute` to run after `timesheet.saveCell` by an ordinary Team Member and create or update a UtilizationSnapshot. F278 intentionally grants that Team Member `Read (own only)`, not Full, so a compute transaction under the submitting `MemberPrincipal` fails `authorizeWrite` Gate 1. `services/api/src/mutations/pipeline.ts` accepts only `MemberPrincipal`, while the existing separate reactive evaluator (`timesheetAnomalyEvaluate`) uses a dedicated system principal, explicit closed-table operation, `authorizeWrite`, and a reserved provenance identity. No `utilization-snapshot` system principal or operation exists in `packages/schema/src/policy/principal-policy.ts`; `authorizeWrite`'s system branch currently permits only `TimesheetAnomalyFlag`/`triggered_by` for `timesheet-anomaly.create-flag`. Running under Owner/HR Admin by impersonation, bypassing Gate 1, or writing outside a named mutation would contradict VPS-A003/A004. The brief specifies neither a system write grant nor a different authorized delegation. Proposed direction for review: follow F270/F272's narrowly scoped system-principal pattern for this derived write, including a real reserved User provenance identity; explicitly settle how the named `utilizationSnapshot.compute` definition reaches that internal transaction without exposing a client route.
+**Ruled and implemented.** The internal named `utilizationSnapshot.compute` mutation runs in its own transaction as `utilization-snapshot-compute`, calls `authorizeWrite` with `utilization-snapshot.compute`, and uses the reserved system User identity for provenance. It has no client router entry. A Team Member's saved cell produces the snapshot despite their read-only snapshot policy grant.
 
 ### F281 — Permission-filtered employee listing cannot yield a Team Member's agency-wide aggregate
 
-**Open; reviewer ruling requested.** Stage 19 item 5 requires the cohort to come from `listEmployees(tx, principal, ...)`; item 6 and VRS-F011 require a Team Member to receive an **agency** aggregate but no colleague-by-colleague ranking. `listEmployees` in `services/api/src/permission/employee-queries.ts` calls `filterReadable` under the caller's principal. `Employee:operational` grants a Team Member only `Read (own + team)`, so this list omits employees on other teams. Aggregating its snapshots would produce a team-only percentage labeled as agency-wide, and could suppress it below `k_anonymity_minimum` even when the agency cohort is large. Reading every row directly as the Team Member would bypass the interceptor; a role check controlling only the `perEmployee` response field does not resolve the aggregate's data source. The brief also names an `employeeType` filter argument that `listEmployees` does not currently accept (bench-forecast-queries.ts instead filters `employee_type` after calling it), but that mechanical mismatch is secondary. Proposed correction: specify an interceptor-governed aggregate-read context or other reviewed server-side path that can use the whole agency cohort while releasing only `applyDisclosureControl`'s result to a Team Member; preserve caller-scoped row reads for the individual bar and Manager's direct-report ranking.
+**Ruled and implemented.** `getAgencyAggregate` reads Employee and UtilizationSnapshot under the same `utilization-snapshot-compute` system principal's `utilization-snapshot.read-cohort` operation for every caller. It excludes Ghost Resources and zero-contracted-hours employees before computing figures, then passes filtered and unfiltered results through `applyDisclosureControl`. Its `perEmployee` ranking is a separate ordinary-principal path with an independent role gate. The real interceptor test proves Owner, Manager, and Team Member receive byte-identical aggregate fields while Manager sees only a direct report and Team Member gets no `perEmployee` field.
 
-## Implementation and gates
+## Completion checks
 
-- No source code or specification/brief/findings-ledger files changed.
-- No gate was run; all four (`pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, `pnpm verify:full`) remain pending the rulings and implementation.
-- No file under `apps/` changed.
-- Stage 19 has not reached its Done criteria. RST-47 should remain blocked pending the reviewer's corrections; no Stage 20 work begins.
+- `calculateUtilization` divides billable hours by **expected hours**, never logged hours; it separately calculates logging completeness. `logged_hours` includes only Billable and NonBillable. Pitch is accumulated into `pitch_hours` and never enters either side of the utilization ratio. Unit proofs cover 4/40 = 10.0, 20 billable + 15 pitch / 40 = 50.0, and all zero-denominator guards. A reactive end-to-end test also saves Billable and Pitch cells and checks the resulting stored snapshot.
+- `expectedWeek` is the shared `hoursOn`/`isoDatesInclusive` loop used by both `getWeek` and snapshot computation. The integration test compares the stored `expected_hours` directly to `getWeek.expectedWeeklyHours` for the same employee and week.
+- The `UtilizationSnapshot` policy row exactly composes F278's cells: Owner/HR Admin Full Any, Finance Admin Read Any, Manager Full direct reports, Team Member Read own only. The latter is deliberately not Employee:operational's own-plus-team scope. `resolveStoredSubjectEmployeeId` uses the same stored `employee_id` branch as TimesheetEntry/TimesheetWeekSubmission.
+- `SYSTEM_OPERATION_TARGETS` is the sole node-target table for system-principal `decideRead` and `authorizeWrite`; its existing anomaly edge check remains separate. The compute transaction constructs `utilization-snapshot-compute` explicitly and uses its reserved actor for provenance. A real interceptor test covers allowed and denied node targets.
+- Snapshot computation reads TimesheetEntry directly by employee/week, updates an existing pair in place, and otherwise uses a deterministic ID plus serializable retry for concurrent first writes. The integration test recomputes a pair and finds exactly one unchanged node ID. Weeks with no entries produce no snapshot.
+- The agency aggregate and `perEmployee` are distinct functions under distinct principals. The cohort excludes Ghost Resources and zero-contracted-hours employees before the optional department selector and before any figure is computed; `applyDisclosureControl` handles suppression/differencing. Comparison rows are individually authorized and ranked only for Owner/HR Admin or Manager direct reports. Team Member receives an agency aggregate and own snapshot but no `perEmployee` key.
+- `saveCell`, `submitWeek`, and `unlockWeek` recompute after commit. The injected-failure test calls a throwing compute from `saveCell`'s after-commit seam and proves the entry remains committed. `utilizationSnapshot.compute` has no router procedure; only the two read procedures were added.
+- `billability_target_override` is used when present, otherwise compute uses `0.75` directly. `services/api/src/graph/founding.ts` is untouched and no Workspace `billability_target` key was added. No specification, build-prompt, or findings-ledger file was edited by this stage.
+
+## Gates
+
+- `CI=true pnpm install --frozen-lockfile` — passed; lockfile up to date.
+- `pnpm stack:up` — passed; Postgres, Redis, and Electric healthy.
+- `pnpm verify` — passed: format, lint, conformance, architecture, typecheck, and fast tests.
+- `pnpm verify:full` — passed: preflight and API integration suite, **23 files passed, 301 tests passed, 2 skipped**.
+
+The unrelated untracked `Claude outputs/` directory contains a pre-existing unformatted Markdown file. It was temporarily moved outside the repository during the two formatting gates and restored immediately afterward, unchanged; the first unsheltered `pnpm verify` attempt failed solely on that unrelated file before any later checks ran. The successful gates above were run on the complete tracked repository plus the Stage 19 changes. No file under `apps/` appears in the branch diff. RST-47 is ready for In Review; stop at this stage boundary.

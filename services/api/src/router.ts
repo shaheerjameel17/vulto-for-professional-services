@@ -23,6 +23,8 @@ import {
   timesheetShortcutInputSchema,
   hrSubmissionStatusInputSchema,
   timesheetAnomalyListInputSchema,
+  utilizationGetIndividualInputSchema,
+  utilizationGetAgencyInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -57,6 +59,7 @@ import {
   resolveTimesheetShortcut,
 } from "./permission/timesheet-queries.js";
 import { listActiveAnomalies } from "./permission/timesheet-anomaly-queries.js";
+import { getIndividual, getAgencyAggregate } from "./permission/utilization-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -301,6 +304,33 @@ export const appRouter = t.router({
           listActiveAnomalies(tx, ctx.principal, input.workspace_id),
         ),
       ),
+  }),
+  utilizationSnapshot: t.router({
+    getIndividual: protectedProcedure
+      .input(utilizationGetIndividualInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          getIndividual(tx, ctx.principal, input.employee_id, input.week_start_date),
+        ),
+      ),
+  }),
+  utilizationDashboard: t.router({
+    getAgencyAggregate: protectedProcedure
+      .input(utilizationGetAgencyInputSchema)
+      .query(({ ctx, input }) => {
+        if (input.workspace_id !== ctx.principal.workspaceId) {
+          throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
+        }
+        return db.transaction((tx) =>
+          getAgencyAggregate(
+            tx,
+            ctx.principal,
+            input.workspace_id,
+            input.week_start_date,
+            input.filters,
+          ),
+        );
+      }),
   }),
   conflictResolution: t.router({
     sweepOvercommitted: protectedProcedure
