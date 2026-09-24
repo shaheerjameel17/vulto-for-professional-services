@@ -319,6 +319,7 @@ Referral carries no bonus amount. The amount is a compensation adjustment record
 |---|---|---|---|
 | TimesheetEntry | [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] | Standard | 0 |
 | TimesheetAnomalyFlag | [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] | Manager-restricted | 2 |
+| TimesheetWeekSubmission | [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] | Standard | 0 |
 | UtilizationSnapshot | [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]] | Standard | 0 |
 | RevenueGapAlert | [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] | Standard | 0 |
 | SkillGap | [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]] | Standard | 0 |

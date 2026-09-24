@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee — `contracted_hours`, `billability_target_override`), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (working days and daily hours — the grid's columns and every shortcut resolve here), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (Assignment edges populating the grid's rows), [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] (the classification fields incorporated into this schema), [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (the Web Worker boundary), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (TimesheetEntry and TimesheetAnomalyFlag registry entries), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permissions)
+**Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee — `contracted_hours`, `billability_target_override`), [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (working days and daily hours — the grid's columns and every shortcut resolve here), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (Assignment edges populating the grid's rows), [[VRS-F009_Time_Classification_Taxonomy|VRS-F009]] (the classification fields incorporated into this schema), [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]] (the Web Worker boundary), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (TimesheetEntry, TimesheetAnomalyFlag and TimesheetWeekSubmission registry entries), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permissions)
 **Blocks:** [[VRS-F011_Billable_vs_Non-Billable_Pulse|VRS-F011]] (cannot compute a snapshot without entries), [[VRS-F012_Revenue_Gap_Alert|VRS-F012]] (reads Pitch-categorized entries), [[VRS-F062_Payroll_Engine_Core|VRS-F062]] (payroll reads variable hours)
 
 This document is the single source of truth for this feature and owns TimesheetEntry's complete schema.
@@ -170,6 +170,23 @@ The sum of `hours` for one employee on one date must not exceed 24, enforced bef
 
 Once Submitted, an entry is read-only in the interface behind an explicit unlock. It is not immutable at the permission layer — an employee retains write access to their own entries — but the interface gates re-editing so the lock remains a meaningful signal to HR and to payroll.
 
+### TimesheetWeekSubmission
+
+A zero-entry week can genuinely be submitted — an employee between assignments confirming they have nothing to log — but `submitWeek`'s own transaction changes no TimesheetEntry rows in that case, leaving nothing for a later read to find. `TimesheetWeekSubmission` is the marker that closes this gap (F273):
+
+```
+submission_id:     UUID v4
+workspace_id:      UUID
+employee_id:       UUID, FK to Employee — a DIRECT field, the same reasoning
+                   as TimesheetEntry's own employee_id (G04)
+week_start_date:   date
+submitted_at:      timestamp
+
+— Universal Node Conventions per VPS-A002 —
+```
+
+`submitWeek.apply()` creates exactly one such row, in the same transaction as the (empty) entry transition, only when that employee/week's Draft-entry read comes back with zero rows. The ordinary non-empty case creates no such row at all — `TimesheetEntry.lifecycle_status` already carries status correctly whenever entries exist, and this node exists solely to cover the case where none do. `unlockWeek.apply()` soft-deletes the marker for a zero-entry week, mirroring the reverse transition already specified for entries. `getWeek` and `hrCompliance.listSubmissionStatus` both resolve status by checking TimesheetEntry rows first and falling back to a live TimesheetWeekSubmission marker only when none exist — see API contracts below.
+
 ### Edges
 
 `logged_against` targets Assignment for Billable entries and Pitch for Pitch entries. A NonBillable entry carries no such edge; its category is sufficient context. Pitch is a split node, so the Pitch pair declares `Pitch:identifying` as a governing partition in the edge registry — the identical requirement `staffed_on` needed before F265, checked directly against the code and closed before this feature's own code was written (F267).
@@ -219,16 +236,24 @@ The third rule previously multiplied `contracted_hours` by the threshold, which 
 timesheet.getWeek(employeeId, weekStartDate?) -> {
   columns: { date, expectedHours }[],   // working days only, per VRS-F004
   rows: { assignmentId | 'non-billable' | 'pitch', label, entries }[],
-  weekStatus: 'Draft' | 'Submitted',
+  weekStatus: 'Draft' | 'Submitted',    // resolved from TimesheetEntry rows when any
+                                         // exist; a live TimesheetWeekSubmission marker
+                                         // with none resolves to 'Submitted' too — an
+                                         // untouched week looks the same as Draft either
+                                         // way from a single employee's own view (F273)
   expectedWeeklyHours: number
 }
 timesheet.saveCell(employeeId, date, rowContext, hours, category?) -> { entryId }
 timesheet.submitWeek(employeeId, weekStartDate)  -> { success, entriesLocked }
 timesheet.unlockWeek(employeeId, weekStartDate)  -> { success }
 
-hrCompliance.listSubmissionStatus(workspaceId, weekStartDate) -> { employeeId, weekStatus }[]
-// hrCompliance.sendReminder is out of scope for this stage — see Out of
-// Scope below. The compliance view lists submission status only.
+hrCompliance.listSubmissionStatus(workspaceId, weekStartDate)
+  -> { employeeId, weekStatus: 'Draft' | 'Submitted' | 'Not-Started' }[]
+// Resolved per employee: TimesheetEntry rows first (Draft or Submitted per the
+// existing per-entry fields); with none, a live TimesheetWeekSubmission marker
+// means Submitted, its absence means Not-Started (F273) — the distinction this
+// view exists to make. hrCompliance.sendReminder is out of scope for this stage
+// — see Out of Scope below. The compliance view lists submission status only.
 
 timesheetAnomaly.evaluate(employeeId, weekStartDate) -> { flagIds }
 timesheetAnomaly.listActive(workspaceId)            -> TimesheetAnomalyFlag[]
@@ -346,6 +371,7 @@ timesheetAnomaly.clear(flagId, outcome, note?)      -> { toilDaysAccrued? }
 - **A submitted entry is not immutable at the permission layer** — an employee retains access to their own entries — but the interface gates re-editing behind an explicit unlock, so the lock remains meaningful to HR and payroll.
 - **TimesheetAnomalyFlag is Manager-restricted, Tier 2.** The flagged employee does not see their own flags, matching BurnoutAlert's precedent: the subject of a system-generated signal is not automatically its audience, and visibility would let someone learn the detection thresholds by observation.
 - **The system-triggered write that creates a flag, and the read that decides whether to, both run under a dedicated `timesheet-anomaly-evaluate` system principal — never the submitting Team Member's own.** The Team Member has `NONE` on TimesheetAnomalyFlag (deliberately, per the rule above), so `timesheetAnomaly.evaluate` cannot construct the flag, or read a prior one to enforce G09/G09b, under its caller's own authority. This principal is granted exactly two closed-table operations — `timesheet-anomaly.create-flag` and `timesheet-anomaly.read-flags` — never a `PolicyRole`, so it is authorized narrowly by name rather than by the role matrix every member and support principal uses. The read is scoped by `timesheetAnomaly.evaluate`'s own query, not by the grant itself, to the one employee/week/reason triple being evaluated. Checked directly against the code and closed before this feature's own code was written (F270 for the write, F271 for the read). The flag and its `triggered_by` edge record `created_by`/`updated_by` as this system principal's own reserved identity — a real, minimal `User` node held in reserve for it, never a real member's UUID and never a fabricated one with nothing behind it. This is a platform-wide convention, not specific to this feature; see [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Universal node/edge conventions and its F272 decision entry for the full mechanism (F272).
+- **TimesheetWeekSubmission carries the identical `MATRIX_OVERRIDES` row TimesheetEntry already has** — owner/HR Admin Full, Finance-admin Read, Manager Read (direct reports), Team Member Full (own only). Knowing a week was formally submitted is no more sensitive than seeing the entries themselves, so no new audience decision was needed. Its row-scoped grant required no new resolution mechanism: the interceptor's existing TimesheetEntry branch (F268/F269) was extended to also match this node type, reading `employee_id` off the row the identical way. Traced directly to `PolicyAcknowledgment`'s own registered precedent — a node type whose entire purpose is recording that an Employee took a confirming action with nothing richer to say about it — and closed before this feature's own code was written (F273).
 - **These three rules are heuristics, not evidence.** They catch honest mistakes and unusual patterns worth a second look. The review surface shows only the underlying data and never a label like *suspicious*. `ZeroVarianceWeek` will produce false positives for people with genuinely consistent schedules across concurrent projects, and this is stated rather than oversold.
 
 ---
