@@ -2,6 +2,7 @@
 import "./registry/validate";
 
 export * from "./ghost-resource";
+export * from "./search";
 export * from "./pitch";
 export * from "./timesheet";
 export * from "./time-classification";

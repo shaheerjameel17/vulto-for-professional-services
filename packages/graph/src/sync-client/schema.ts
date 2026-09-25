@@ -1,3 +1,5 @@
+import { SEARCHABLE_NODE_TYPES } from "@vulto/schema";
+
 /**
  * The device cache schema (VPS-A003 "Reads", VPS-A001 "Local graph query
  * layer"). Tier 0 only: the two replicated shapes carry nothing else, and a
@@ -9,8 +11,48 @@
  * a pre-versioning one) has only its replicated tables dropped and refilled by
  * resync: they are disposable, replicated from the server. The outbox is not
  * touched (see `OUTBOX_SCHEMA_VERSION`). 2: `cache_tags` added (F211).
+ * 3: trigger-maintained `cache_search` added (VPS-F002).
  */
-export const CACHE_SCHEMA_VERSION = 2;
+export const CACHE_SCHEMA_VERSION = 3;
+
+const textValue = (field: string): string => {
+  const path = `$.${field}`;
+  return `CASE WHEN json_type(NEW.record_json, '${path}') = 'text'
+    AND json_extract(NEW.record_json, '${path}') <> ''
+    THEN json_extract(NEW.record_json, '${path}') END`;
+};
+
+const triggerInsertions = SEARCHABLE_NODE_TYPES.map((registration) => {
+  const label =
+    registration.labelFields.length === 1
+      ? textValue(registration.labelFields[0]!)
+      : `coalesce(${registration.labelFields.map(textValue).join(", ")})`;
+  let joined = "''";
+  for (const field of registration.indexedFields) {
+    const value = textValue(field);
+    joined = `(${joined} || CASE WHEN ${value} IS NULL THEN ''
+      ELSE CASE WHEN ${joined} = '' THEN '' ELSE ' ' END || ${value} END)`;
+  }
+  return `INSERT INTO cache_search (node_id, node_type, label, lifecycle_status, search_text)
+    SELECT NEW.node_id, NEW.node_type, ${label}, NEW.lifecycle_status, lower(${joined})
+    WHERE NEW.node_type = '${registration.nodeType}' AND NEW.is_soft_deleted = 0
+      AND ${label} IS NOT NULL;`;
+}).join("\n");
+
+/** Generated only from the validated, Tier 0 registry; no runtime values enter SQL. */
+const SEARCH_TRIGGERS = `
+  CREATE TRIGGER IF NOT EXISTS cache_search_after_insert AFTER INSERT ON cache_nodes BEGIN
+    DELETE FROM cache_search WHERE node_id = NEW.node_id;
+    ${triggerInsertions}
+  END;
+  CREATE TRIGGER IF NOT EXISTS cache_search_after_update AFTER UPDATE ON cache_nodes BEGIN
+    DELETE FROM cache_search WHERE node_id = NEW.node_id;
+    ${triggerInsertions}
+  END;
+  CREATE TRIGGER IF NOT EXISTS cache_search_after_delete AFTER DELETE ON cache_nodes BEGIN
+    DELETE FROM cache_search WHERE node_id = OLD.node_id;
+  END;
+`;
 
 /**
  * The outbox is the person's own queued work, not a copy of anything on the
@@ -37,6 +79,16 @@ export const CREATE_REPLICATED_SCHEMA = `
   );
   CREATE INDEX IF NOT EXISTS cache_nodes_by_type
     ON cache_nodes (node_type, lifecycle_status, is_soft_deleted, node_id);
+
+  CREATE TABLE IF NOT EXISTS cache_search (
+    node_id TEXT PRIMARY KEY,
+    node_type TEXT NOT NULL,
+    label TEXT NOT NULL,
+    lifecycle_status TEXT NOT NULL,
+    search_text TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS cache_search_by_type ON cache_search (node_type);
+  ${SEARCH_TRIGGERS}
 
   CREATE TABLE IF NOT EXISTS cache_edges (
     edge_id TEXT PRIMARY KEY,
@@ -101,6 +153,7 @@ export const CREATE_CACHE_SCHEMA = CREATE_REPLICATED_SCHEMA + CREATE_LOCAL_SCHEM
 
 export const REPLICATED_TABLES = [
   "cache_nodes",
+  "cache_search",
   "cache_edges",
   "cache_tags",
   "sync_cursor",

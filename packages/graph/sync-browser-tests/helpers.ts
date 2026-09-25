@@ -24,6 +24,7 @@ export const apiDirect = "https://localhost:3131";
 /** What the browser talks to: a proxy the tests can cut. */
 export const apiOrigin = "https://localhost:3132";
 export const PASSWORD = "Correct horse battery staple sync 60!";
+export const SEARCH_FIXTURE_EMPLOYEE_NAME = "Search Fixture Employee";
 
 export { db, sql, eq };
 
@@ -317,7 +318,11 @@ export async function seedProtected(
 ): Promise<string> {
   const services = getKeyServices();
   return db.transaction(async (tx) => {
-    const employeeId = await addNode(tx, workspaceId, "Employee");
+    const employeeId = await addNode(tx, workspaceId, "Employee", {
+      employee_type: "Employee",
+      full_name: SEARCH_FIXTURE_EMPLOYEE_NAME,
+      job_title: "Search Fixture Engineer",
+    });
     await writeProtected(
       tx,
       services,
