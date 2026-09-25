@@ -50,7 +50,7 @@ export const CONTRACT_RENEWAL_STATUSES = [
 export const COMPENSATION_FREQUENCIES = ["Annual", "Monthly", "Hourly"] as const;
 
 /** The operational half, every field optional; create and update narrow it. */
-const operationalShape = {
+export const operationalShape = {
   employee_type: z.enum(["Employee", "Ghost"]),
   full_name: z.string().min(1).max(200),
   preferred_name: nullableText,

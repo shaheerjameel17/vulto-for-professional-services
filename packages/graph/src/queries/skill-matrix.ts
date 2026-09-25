@@ -43,6 +43,45 @@ const holdingCell = (edge: LocalEdge): SkillMatrixCell | null => {
 const employeeName = (employee: LocalNode): string =>
   String(employee.record["full_name"] ?? employee.record["job_title"] ?? "");
 
+export interface EmployeeAvailability {
+  readonly availabilityStatus: "Assigned" | "Available";
+  readonly nextRolloffDate: string | null;
+}
+
+/** The one Assignment-coverage traversal shared by Skill Matrix and search. */
+export function employeeAvailabilityById(
+  assignments: readonly LocalNode[],
+  date: string,
+): ReadonlyMap<string, EmployeeAvailability> {
+  const availability = new Map<string, EmployeeAvailability>();
+  for (const assignment of assignments) {
+    if (
+      assignment.nodeType !== "Assignment" ||
+      assignment.lifecycleStatus !== "Active"
+    ) {
+      continue;
+    }
+    const employeeId = assignment.record["employee_id"];
+    const endDate = assignment.record["end_date"];
+    if (typeof employeeId !== "string" || typeof endDate !== "string") continue;
+    const prior = availability.get(employeeId);
+    const covered = assignmentCoversDate(assignment, date);
+    const nextRolloffDate =
+      endDate >= date &&
+      (prior?.nextRolloffDate === null ||
+        prior?.nextRolloffDate === undefined ||
+        endDate < prior.nextRolloffDate)
+        ? endDate
+        : (prior?.nextRolloffDate ?? null);
+    availability.set(employeeId, {
+      availabilityStatus:
+        covered || prior?.availabilityStatus === "Assigned" ? "Assigned" : "Available",
+      nextRolloffDate,
+    });
+  }
+  return availability;
+}
+
 /**
  * Category totals are a client-side reduction of the returned skills' coverage
  * and depth. A later UI must not create a separate server aggregation for them.
@@ -152,11 +191,7 @@ export async function getSkillHolders(
       .map((node) => node.nodeId),
   );
   const date = now.slice(0, 10);
-  const coveredIds = new Set(
-    nodes
-      .filter((node) => assignmentCoversDate(node, date))
-      .map((node) => String(node.record["employee_id"])),
-  );
+  const availability = employeeAvailabilityById(nodes, date);
   const holders = edges
     .filter(
       (edge) =>
@@ -171,9 +206,8 @@ export async function getSkillHolders(
       proficiencyLevel: cell.proficiencyLevel,
       verified: cell.verified,
       certified: cell.certified,
-      availabilityStatus: coveredIds.has(cell.employeeId)
-        ? ("Assigned" as const)
-        : ("Available" as const),
+      availabilityStatus:
+        availability.get(cell.employeeId)?.availabilityStatus ?? ("Available" as const),
     }))
     .sort(
       (a, b) =>

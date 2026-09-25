@@ -8,6 +8,8 @@ import {
 } from "./database";
 import { OUTBOX_MIGRATIONS, OUTBOX_SCHEMA_VERSION } from "./schema";
 import { CACHE_SCHEMA_VERSION, CACHE_TABLES } from "./schema";
+import { REPLICATED_TABLES } from "./schema";
+import { SEARCHABLE_NODE_TYPES_FINGERPRINT } from "@vulto/schema";
 
 describe("the cache database over wa-sqlite", () => {
   it("creates exactly the cache tables and holds nothing of Tier 1 or Tier 2", async () => {
@@ -59,6 +61,55 @@ describe("the cache database over wa-sqlite", () => {
 });
 
 describe("the cache schema version", () => {
+  it("pins the searchable registry to cache schema version 3", () => {
+    expect(CACHE_SCHEMA_VERSION).toBe(3);
+    expect(REPLICATED_TABLES).toContain("cache_search");
+    // A registry change changes generated triggers: bump CACHE_SCHEMA_VERSION with it.
+    expect(SEARCHABLE_NODE_TYPES_FINGERPRINT).toBe(
+      '[{"nodeType":"Employee","labelFields":["full_name","job_title"],"indexedFields":["full_name","preferred_name","job_title"],"secondaryField":"job_title"},{"nodeType":"Skill","labelFields":["name"],"indexedFields":["name","category"],"secondaryField":"category"},{"nodeType":"Project","labelFields":["name"],"indexedFields":["name"]},{"nodeType":"Client","labelFields":["name"],"indexedFields":["name"]}]',
+    );
+  });
+
+  it("rebuilds a version-2 cache including the search table and triggers", async () => {
+    const db = await openTestDatabase();
+    const cache = new SqliteCache(db);
+    await cache.putNode({
+      nodeId: "before",
+      nodeType: "Employee",
+      lifecycleStatus: "Active",
+      isSoftDeleted: false,
+      version: 1,
+      record: { full_name: "Before" },
+    });
+    expect(await db.all("SELECT node_id FROM cache_search")).toEqual([
+      { node_id: "before" },
+    ]);
+    await db.run("PRAGMA user_version = 2");
+    expect(await prepareCacheSchema(db)).toBe(true);
+    expect(await db.all("SELECT node_id FROM cache_nodes")).toEqual([]);
+    expect(await db.all("SELECT node_id FROM cache_search")).toEqual([]);
+    const triggers = await db.all(
+      "SELECT name FROM sqlite_master WHERE type = 'trigger' ORDER BY name",
+    );
+    expect(triggers.map((row) => row["name"])).toEqual([
+      "cache_search_after_delete",
+      "cache_search_after_insert",
+      "cache_search_after_update",
+    ]);
+    await cache.putNode({
+      nodeId: "after",
+      nodeType: "Employee",
+      lifecycleStatus: "Active",
+      isSoftDeleted: false,
+      version: 1,
+      record: { full_name: "After" },
+    });
+    expect(await db.all("SELECT node_id FROM cache_search")).toEqual([
+      { node_id: "after" },
+    ]);
+    await db.close();
+  });
+
   it("stamps a fresh database and keeps a current one untouched", async () => {
     const db = await openTestDatabase();
     expect((await db.all("PRAGMA user_version"))[0]?.["user_version"]).toBe(

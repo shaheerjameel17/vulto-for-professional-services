@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
+import { SEARCHABLE_NODE_TYPES } from "@vulto/schema";
 import {
   applyMutation,
   device,
@@ -21,6 +22,7 @@ import {
   newEntity,
   openHarness,
   scanBrowserStorage,
+  SEARCH_FIXTURE_EMPLOYEE_NAME,
   seedEntities,
   seedProtected,
   signInNewUser,
@@ -32,6 +34,40 @@ const network = new NetworkSwitch();
 test.beforeAll(() => network.start());
 test.afterAll(() => network.stop());
 test.beforeEach(() => network.restore());
+
+async function searchCacheSnapshot(page: import("@playwright/test").Page) {
+  return page.evaluate(async (registry) => {
+    const w = window as unknown as {
+      __vultoSync: {
+        client: { dump(): Promise<Record<string, Record<string, unknown>[]>> };
+      };
+    };
+    const dump = await w.__vultoSync.client.dump();
+    const expected = (dump["cache_nodes"] ?? [])
+      .filter((node) => {
+        if (node["is_soft_deleted"] !== 0) return false;
+        const registration = registry.find(
+          (entry) => entry.nodeType === node["node_type"],
+        );
+        if (!registration) return false;
+        const record = JSON.parse(String(node["record_json"])) as Record<
+          string,
+          unknown
+        >;
+        return registration.labelFields.some(
+          (field) => typeof record[field] === "string" && record[field] !== "",
+        );
+      })
+      .map((node) => String(node["node_id"]))
+      .sort();
+    const searchRows = dump["cache_search"] ?? [];
+    return {
+      expected,
+      actual: searchRows.map((row) => String(row["node_id"])).sort(),
+      searchRows,
+    };
+  }, SEARCHABLE_NODE_TYPES);
+}
 
 test("first sign-in replicates the member's rows and the query returns them", async ({
   page,
@@ -178,6 +214,20 @@ test("removing the member's role removes the rows they may no longer read from t
   await seedProtected(workspaceId, "irrelevant", "irrelevant");
   await openHarness(page, workspaceId, userId);
   await expect(statusOf(page)).toHaveText("Synced");
+  await expect
+    .poll(async () => {
+      const snapshot = await searchCacheSnapshot(page);
+      return JSON.stringify(snapshot.actual) === JSON.stringify(snapshot.expected);
+    })
+    .toBe(true);
+  await expect
+    .poll(async () => {
+      const snapshot = await searchCacheSnapshot(page);
+      return snapshot.searchRows.some((row) =>
+        String(row["search_text"]).includes(SEARCH_FIXTURE_EMPLOYEE_NAME.toLowerCase()),
+      );
+    })
+    .toBe(true);
   const hrOnly = await page.evaluate(async () => {
     const w = window as unknown as {
       __vultoSync: {
@@ -203,6 +253,12 @@ test("removing the member's role removes the rows they may no longer read from t
       }),
     )
     .toBeLessThan(hrOnly);
+  await expect
+    .poll(async () => {
+      const snapshot = await searchCacheSnapshot(page);
+      return JSON.stringify(snapshot.actual) === JSON.stringify(snapshot.expected);
+    })
+    .toBe(true);
 });
 
 test("revoking the person's access erases that workspace's local database", async ({

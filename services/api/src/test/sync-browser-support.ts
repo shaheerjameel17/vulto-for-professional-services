@@ -18,5 +18,7 @@ export { graphMutations } from "../graph/schema.js";
 export { applyMutation } from "../mutations/pipeline.js";
 export { resolveMemberPrincipal } from "../permission/member-principal.js";
 export { addNode, makeWorkspace } from "../permission/test-support.js";
+export { nodeRecord } from "../permission/test-support.js";
+export { insertNode } from "../graph/store.js";
 export { getKeyServices } from "../crypto/keys.js";
 export { writeProtected } from "../protected/write.js";
