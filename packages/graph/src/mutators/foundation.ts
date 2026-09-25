@@ -1,11 +1,13 @@
 import {
   MUTATIONS,
+  assertRegisteredRelationship,
   employeeOperationalRecord,
   ghostEmployeeOperationalRecord,
   employeeTransitionOutcome,
   deriveEffectiveRoles,
   FEATURE_LIFECYCLE_NODE_TYPES,
   getMutationDefinition,
+  getProtectionPartitions,
   isNodeType,
   isTier0Only,
   initialCalendarEdgeId,
@@ -14,6 +16,7 @@ import {
   moveEmployeeEdgeId,
   mutationDerivedId,
   resolveWeekStartDate,
+  resolveRegisteredProtectionTier,
   validateTimeClassification,
   parseWorkspaceRoles,
   stampNewEdge,
@@ -21,6 +24,7 @@ import {
   updateStamp,
   wouldCreateCycle,
   type MutationName,
+  type EdgeType,
   type NodeType,
   type WorkspaceRole,
 } from "@vulto/schema";
@@ -131,6 +135,39 @@ async function liveNode(cache: OptimisticCache, nodeId: string): Promise<CachedN
   return node;
 }
 
+/** Mirror the store's F289 fail-closed classification before an optimistic cache write. */
+function tier0EdgeMetadata(
+  edgeType: string,
+  fromType: string,
+  toType: string,
+  metadata: unknown,
+): unknown {
+  if (!isNodeType(fromType) || !isNodeType(toType))
+    throw new OptimisticRejection("invalid-args");
+  let registration;
+  try {
+    registration = assertRegisteredRelationship(edgeType as EdgeType, fromType, toType);
+  } catch {
+    throw new OptimisticRejection("invalid-args");
+  }
+  for (const nodeType of [fromType, toType]) {
+    const partitions = getProtectionPartitions(nodeType);
+    if (partitions.length === 0) return {};
+    const key =
+      partitions.length === 1
+        ? partitions[0]!.key
+        : registration.governingPartitions[nodeType];
+    if (!key || !partitions.some((partition) => partition.key === key)) return {};
+    try {
+      if (resolveRegisteredProtectionTier({ nodeType, schemaPartition: key }) !== 0)
+        return {};
+    } catch {
+      return {};
+    }
+  }
+  return metadata;
+}
+
 function parse<Name extends MutationName>(name: Name, args: unknown) {
   const parsed = MUTATIONS[name].input.safeParse(args);
   if (!parsed.success) throw new OptimisticRejection("invalid-args");
@@ -212,9 +249,25 @@ const createEdge: OptimisticMutator = async (c, raw) => {
   if (typeof edgeId !== "string" || (await c.cache.getEdge(edgeId))) {
     throw new OptimisticRejection("invalid-args");
   }
-  await liveNode(c.cache, String(edge["from_node_id"]));
-  await liveNode(c.cache, String(edge["to_node_id"]));
-  await c.cache.putEdge(toCachedEdge(stampNewEdge(edge, provenance(c)), 1));
+  const from = await liveNode(c.cache, String(edge["from_node_id"]));
+  const to = await liveNode(c.cache, String(edge["to_node_id"]));
+  await c.cache.putEdge(
+    toCachedEdge(
+      stampNewEdge(
+        {
+          ...edge,
+          metadata: tier0EdgeMetadata(
+            String(edge["edge_type"]),
+            from.nodeType,
+            to.nodeType,
+            edge["metadata"] ?? {},
+          ),
+        },
+        provenance(c),
+      ),
+      1,
+    ),
+  );
   return [{ kind: "edge", id: edgeId, before: null }];
 };
 
@@ -241,6 +294,30 @@ const closeEdge: OptimisticMutator = async (c, raw) => {
   const edge = await c.cache.getEdge(args.edge_id);
   if (!edge) throw new OptimisticRejection("not-found");
   return [await closeAt(c.cache, edge, args.effective_to)];
+};
+
+const updateEdgeMetadata: OptimisticMutator = async (c, raw) => {
+  const args = parse("graph.updateEdgeMetadata", raw);
+  const edge = await c.cache.getEdge(args.edge_id);
+  if (!edge) throw new OptimisticRejection("not-found");
+  if (edge.isSoftDeleted) throw new OptimisticRejection("target-deleted");
+  const from = await liveNode(c.cache, edge.fromNodeId);
+  const to = await liveNode(c.cache, edge.toNodeId);
+  await c.cache.putEdge(
+    toCachedEdge(
+      {
+        ...edge.record,
+        metadata: tier0EdgeMetadata(
+          edge.edgeType,
+          from.nodeType,
+          to.nodeType,
+          args.metadata,
+        ),
+      },
+      edge.version + 1,
+    ),
+  );
+  return [{ kind: "edge", id: edge.edgeId, before: edge }];
 };
 
 const transitionLifecycle: OptimisticMutator = async (c, raw) => {
@@ -1359,6 +1436,7 @@ export const OPTIMISTIC_MUTATORS: Readonly<
   "graph.softDeleteNode": softDeleteNode,
   "graph.createEdge": createEdge,
   "graph.closeEdge": closeEdge,
+  "graph.updateEdgeMetadata": updateEdgeMetadata,
   "graph.transitionLifecycle": transitionLifecycle,
   "org.moveEmployee": moveEmployee,
 };

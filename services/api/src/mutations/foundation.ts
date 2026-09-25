@@ -24,6 +24,7 @@ import {
   StaleVersionError,
   closeEdge,
   updateNodeFields,
+  updateEdgeMetadata,
   type StoredNode,
 } from "../graph/store.js";
 import {
@@ -262,6 +263,40 @@ export const closeEdgeMutation: ServerMutation<Args<"graph.closeEdge">> = async 
       return {
         result: { edge_id: closed.edgeId, version: closed.version },
         changedRowIds: [closed.edgeId],
+      };
+    },
+  };
+};
+
+export const updateEdgeMetadataMutation: ServerMutation<
+  Args<"graph.updateEdgeMetadata">
+> = async (ctx) => {
+  const edge = await getEdge(ctx.tx, ctx.principal.workspaceId, ctx.args.edge_id);
+  if (!edge) throw new MutationRejection("not-found");
+  if (edge.isSoftDeleted) throw new MutationRejection("target-deleted");
+  const target = await edgeTarget(
+    ctx,
+    edge.edgeType,
+    edge.fromNodeId,
+    edge.toNodeId,
+    edge.edgeId,
+  );
+  return {
+    checks: [{ target, change: { operation: "update" } }],
+    validate: nothing,
+    async apply() {
+      const updated = await translate(() =>
+        updateEdgeMetadata(
+          ctx.tx,
+          ctx.principal.workspaceId,
+          edge.edgeId,
+          ctx.args.metadata,
+          { userId: ctx.principal.userId, at: ctx.now },
+        ),
+      );
+      return {
+        result: { edge_id: updated.edgeId, version: updated.version },
+        changedRowIds: [updated.edgeId],
       };
     },
   };

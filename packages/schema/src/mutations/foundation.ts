@@ -68,6 +68,15 @@ export const graphCloseEdge = defineMutation({
   stateTransition: false,
 });
 
+/** Replaces the metadata of one Tier 0-governed edge without changing its identity. */
+export const graphUpdateEdgeMetadata = defineMutation({
+  name: "graph.updateEdgeMetadata",
+  input: z.object({ edge_id: uuidV4Schema, metadata: jsonObject }).strict(),
+  tier: 0,
+  onlineOnly: false,
+  stateTransition: false,
+});
+
 export const graphTransitionLifecycle = defineMutation({
   name: "graph.transitionLifecycle",
   input: z
@@ -104,6 +113,7 @@ export const MUTATIONS = {
   "graph.softDeleteNode": graphSoftDeleteNode,
   "graph.createEdge": graphCreateEdge,
   "graph.closeEdge": graphCloseEdge,
+  "graph.updateEdgeMetadata": graphUpdateEdgeMetadata,
   "graph.transitionLifecycle": graphTransitionLifecycle,
   "org.moveEmployee": orgMoveEmployee,
   ...EMPLOYEE_MUTATIONS,

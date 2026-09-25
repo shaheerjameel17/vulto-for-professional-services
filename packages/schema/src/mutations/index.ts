@@ -14,6 +14,7 @@ export {
   getMutationDefinition,
   graphCloseEdge,
   graphCreateEdge,
+  graphUpdateEdgeMetadata,
   graphCreateNode,
   graphSoftDeleteNode,
   graphTransitionLifecycle,
@@ -38,6 +39,7 @@ export {
   EMPLOYEE_MUTATIONS,
   FEATURE_LIFECYCLE_NODE_TYPES,
   employeeCreate,
+  employeeAttachSkill,
   employeeLinkUser,
   employeeSetCompensation,
   employeeTransitionStatus,
@@ -66,6 +68,7 @@ export { PITCH_MUTATIONS } from "./pitch";
 export { TIMESHEET_MUTATIONS, timesheetRowContextSchema } from "./timesheet";
 export { utilizationSnapshotComputeDefinition } from "./utilization-snapshot";
 export { revenueGapAlertEvaluateDefinition } from "./revenue-gap-alert";
+export { SKILL_MATCHER_MUTATIONS, skillGapEvaluateDefinition } from "./skill-matcher";
 export { CONFLICT_RESOLUTION_MUTATIONS } from "./conflict-resolution";
 export {
   RATE_CARD_MUTATIONS,

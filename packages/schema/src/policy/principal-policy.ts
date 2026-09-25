@@ -18,6 +18,7 @@ export const SYSTEM_PRINCIPAL_NAMES = [
   "timesheet-anomaly-evaluate",
   "utilization-snapshot-compute",
   "revenue-gap-alert-evaluate",
+  "skill-gap-evaluate",
 ] as const;
 
 export type SystemPrincipalName = (typeof SYSTEM_PRINCIPAL_NAMES)[number];
@@ -33,6 +34,7 @@ export const SYSTEM_PRINCIPAL_DISPLAY_NAMES: Readonly<
   "timesheet-anomaly-evaluate": "Automatic Review",
   "utilization-snapshot-compute": "Utilization Snapshot",
   "revenue-gap-alert-evaluate": "Revenue Gap Alert",
+  "skill-gap-evaluate": "Skill Gap Evaluation",
 };
 
 export const SYSTEM_OPERATIONS = [
@@ -44,6 +46,7 @@ export const SYSTEM_OPERATIONS = [
   "utilization-snapshot.compute",
   "utilization-snapshot.read-cohort",
   "revenue-gap-alert.write",
+  "skill-gap.write",
 ] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
@@ -71,6 +74,7 @@ export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
     "utilization-snapshot.read-cohort",
   ],
   "revenue-gap-alert-evaluate": ["revenue-gap-alert.write"],
+  "skill-gap-evaluate": ["skill-gap.write"],
 };
 
 export interface SystemOperationTarget {
@@ -96,6 +100,7 @@ export const SYSTEM_OPERATION_TARGETS: Readonly<
     { nodeType: "UtilizationSnapshot", partitionKey: "record" },
   ],
   "revenue-gap-alert.write": [{ nodeType: "RevenueGapAlert", partitionKey: "record" }],
+  "skill-gap.write": [{ nodeType: "SkillGap", partitionKey: "record" }],
 };
 
 export function isSystemOperationPermitted(

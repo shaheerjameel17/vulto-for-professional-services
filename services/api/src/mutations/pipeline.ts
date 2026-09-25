@@ -19,6 +19,7 @@ import type { MemberPrincipal } from "../permission/principal.js";
 import {
   closeEdgeMutation,
   createEdgeMutation,
+  updateEdgeMetadataMutation,
   createNode,
   moveEmployee,
   softDeleteNodeMutation,
@@ -98,6 +99,7 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "graph.softDeleteNode": softDeleteNodeMutation as ServerMutation<never>,
   "graph.createEdge": createEdgeMutation as ServerMutation<never>,
   "graph.closeEdge": closeEdgeMutation as ServerMutation<never>,
+  "graph.updateEdgeMetadata": updateEdgeMetadataMutation as ServerMutation<never>,
   "graph.transitionLifecycle": transitionLifecycle as ServerMutation<never>,
   "org.moveEmployee": moveEmployee as ServerMutation<never>,
   "employee.create": employeeCreate as ServerMutation<never>,
