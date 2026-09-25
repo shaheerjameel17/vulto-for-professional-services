@@ -453,8 +453,10 @@ describe("RST-33 — compensation is Tier 1: encrypted on the server, never on t
     // A Manager's compensation cell is restricted, never the value.
     const asBoss = await view(w.boss, id);
     expect(JSON.stringify(asBoss)).not.toContain(String(SENTINEL));
-    // An unrelated person sees no profile at all.
-    expect(await view(w.outsider, id)).toBeNull();
+    // An unrelated member sees the operational profile, never its compensation.
+    const outsider = await view(w.outsider, id);
+    expect(outsider).not.toBeNull();
+    expect(JSON.stringify(outsider)).not.toContain(String(SENTINEL));
   });
 });
 
@@ -566,7 +568,7 @@ describe("F130 — subject exclusion fires once the login link is real", () => {
   });
 });
 
-describe("Manager scope — widens to direct reports and nowhere else, from the real edges", () => {
+describe("Manager write scope and workspace-wide operational reads (F292)", () => {
   it("derives Manager from managed_by edges, and only for the person they point at", async () => {
     const w = await world();
     const rolesOf = (p: Person) => db.transaction((tx) => effectiveRoles(tx, p));
@@ -579,18 +581,18 @@ describe("Manager scope — widens to direct reports and nowhere else, from the 
     expect(await db.transaction((tx) => isManager(tx, w.outsider))).toBe(false);
   });
 
-  it("lets a Manager read and write their reports' operational half, and no one else's", async () => {
+  it("lets a Manager write direct reports but read other employees operationally", async () => {
     const w = await world();
     for (const r of ["report1", "report2"]) {
       expect((await move(w.hr, w, w.employee[r]!, w.employee.boss!)).status).toBe(
         "applied",
       );
     }
-    // Reads: direct reports yes; an unrelated person no.
+    // Direct reports retain Full; an unrelated person is Read, never Full.
     for (const r of ["report1", "report2"]) {
       expect((await read(w.boss, w, w.employee[r]!)).access).toBe("full");
     }
-    expect((await read(w.boss, w, w.employee.outsider!)).access).toBe("none");
+    expect((await read(w.boss, w, w.employee.outsider!)).access).toBe("read");
     // Writes: a report's record, yes; an outsider's, no.
     const v = await versionOf(w.workspaceId, w.employee.report1!);
     expect(
@@ -619,17 +621,17 @@ describe("Manager scope — widens to direct reports and nowhere else, from the 
     expect((await move(w.boss, w, w.employee.report2!, null)).status).toBe("rejected");
   });
 
-  it("gives team members their own record and their team, and no one else's", async () => {
+  it("gives team members workspace-wide operational reads, not compensation", async () => {
     const w = await world();
     for (const r of ["report1", "report2"]) {
       await move(w.hr, w, w.employee[r]!, w.employee.boss!);
     }
     expect((await read(w.report1, w, w.employee.report1!)).access).toBe("read");
     expect((await read(w.report1, w, w.employee.report2!)).access).toBe("read");
-    expect((await read(w.report1, w, w.employee.boss!)).access).toBe("none");
-    expect((await read(w.report1, w, w.employee.outsider!)).access).toBe("none");
+    expect((await read(w.report1, w, w.employee.boss!)).access).toBe("read");
+    expect((await read(w.report1, w, w.employee.outsider!)).access).toBe("read");
     expect((await read(w.outsider, w, w.employee.outsider!)).access).toBe("read");
-    expect((await read(w.outsider, w, w.employee.report1!)).access).toBe("none");
+    expect((await read(w.outsider, w, w.employee.report1!)).access).toBe("read");
     // Compensation: only the person's own.
     expect((await read(w.report1, w, w.employee.report1!, "compensation")).access).toBe(
       "read",
@@ -652,7 +654,7 @@ describe("Manager scope — widens to direct reports and nowhere else, from the 
     expect(await audienceOf(w.boss)).toEqual(
       expect.arrayContaining([w.employee.report1!, w.employee.report2!]),
     );
-    expect(await audienceOf(w.boss)).not.toContain(w.employee.outsider!);
+    expect(await audienceOf(w.boss)).toContain(w.employee.outsider!);
 
     const unmoved = await move(
       w.hr,
@@ -662,8 +664,8 @@ describe("Manager scope — widens to direct reports and nowhere else, from the 
       "2026-09-21T12:00:00.000Z",
     );
     expect(unmoved.status, JSON.stringify(unmoved)).toBe("applied");
-    expect((await read(w.boss, w, w.employee.report2!)).access).toBe("none");
-    expect(await audienceOf(w.boss)).not.toContain(w.employee.report2!);
+    expect((await read(w.boss, w, w.employee.report2!)).access).toBe("read");
+    expect(await audienceOf(w.boss)).toContain(w.employee.report2!);
     expect(await audienceOf(w.boss)).toContain(w.employee.report1!);
   });
 
@@ -682,7 +684,7 @@ describe("Manager scope — widens to direct reports and nowhere else, from the 
 });
 
 describe("The directory and the profile", () => {
-  it("lists what each reader may see and nothing else, and reports a hidden profile as absent", async () => {
+  it("lists workspace operational profiles but keeps protected fields scoped", async () => {
     const w = await world();
     for (const r of ["report1", "report2"]) {
       await move(w.hr, w, w.employee[r]!, w.employee.boss!);
@@ -692,18 +694,14 @@ describe("The directory and the profile", () => {
     const all = Object.values(w.employee);
     expect((await idsFor(w.owner)).sort()).toEqual([...all].sort());
     expect((await idsFor(w.hr)).sort()).toEqual([...all].sort());
-    expect((await idsFor(w.boss)).sort()).toEqual(
-      [w.employee.boss!, w.employee.report1!, w.employee.report2!].sort(),
-    );
-    expect((await idsFor(w.report1)).sort()).toEqual(
-      [w.employee.report1!, w.employee.report2!].sort(),
-    );
-    expect(await idsFor(w.outsider)).toEqual([w.employee.outsider!]);
-    const hidden = await db.transaction((tx) =>
+    expect((await idsFor(w.boss)).sort()).toEqual([...all].sort());
+    expect((await idsFor(w.report1)).sort()).toEqual([...all].sort());
+    expect((await idsFor(w.outsider)).sort()).toEqual([...all].sort());
+    const visible = await db.transaction((tx) =>
       getEmployee(tx, services, w.outsider, w.employee.report1!),
     );
-    expect(hidden).toBeNull();
-    // A profile that does not exist answers identically.
+    expect(visible).not.toBeNull();
+    // A profile that does not exist remains absent.
     expect(
       await db.transaction((tx) => getEmployee(tx, services, w.outsider, randomUUID())),
     ).toBeNull();

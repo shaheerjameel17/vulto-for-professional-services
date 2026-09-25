@@ -6,6 +6,7 @@ import {
   employeeUpdatePatchSchema,
 } from "../employee";
 import { utcTimestampSchema, uuidV4Schema } from "../records";
+import { proficiencyLevelSchema } from "../skill-matcher";
 import { defineMutation } from "./define";
 
 /**
@@ -97,12 +98,27 @@ export const employeeSetCompensation = defineMutation({
   stateTransition: false,
 });
 
+export const employeeAttachSkill = defineMutation({
+  name: "employee.attachSkill",
+  input: z
+    .object({
+      employee_id: uuidV4Schema,
+      skill_id: uuidV4Schema,
+      proficiency_level: proficiencyLevelSchema,
+    })
+    .strict(),
+  tier: 0,
+  onlineOnly: false,
+  stateTransition: false,
+});
+
 export const EMPLOYEE_MUTATIONS = {
   "employee.create": employeeCreate,
   "employee.update": employeeUpdate,
   "employee.transitionStatus": employeeTransitionStatus,
   "employee.linkUser": employeeLinkUser,
   "employee.setCompensation": employeeSetCompensation,
+  "employee.attachSkill": employeeAttachSkill,
 } as const;
 
 /**
@@ -113,4 +129,11 @@ export const FEATURE_LIFECYCLE_NODE_TYPES: ReadonlySet<string> = new Set([
   "Employee",
   "Entity",
   "RevenueGapAlert",
+  "SkillGap",
+]);
+
+/** Edges whose invariants belong to named feature mutations (F291). */
+export const FEATURE_OWNED_EDGE_TYPES: ReadonlySet<string> = new Set([
+  "has_skill",
+  "requires_skill",
 ]);

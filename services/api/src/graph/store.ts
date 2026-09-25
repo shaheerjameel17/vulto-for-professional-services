@@ -2,8 +2,11 @@ import {
   assertRegisteredRelationship,
   edgeRecordSchema,
   getNodeRegistration,
+  getProtectionPartitions,
   nodeRecordSchema,
+  resolveRegisteredProtectionTier,
   type EdgeRecord,
+  type EdgeRegistration,
   type EdgeType,
   type NodeRecord,
   type NodeType,
@@ -164,8 +167,31 @@ function keepsContent(nodeType: NodeType): boolean {
   return partitionTiers(nodeType).some((tier) => tier === 0);
 }
 
-function hasProtectedPartition(nodeType: NodeType): boolean {
-  return partitionTiers(nodeType).some((tier) => tier !== 0);
+/** F289: edge content follows the registered governing endpoint partition. */
+function protectsEdgeMetadata(
+  registration: EdgeRegistration,
+  endpointTypes: readonly NodeType[],
+): boolean {
+  return endpointTypes.some((nodeType) => {
+    const partitions = getProtectionPartitions(nodeType);
+    if (partitions.length === 0) return true; // Inherited protection fails closed.
+    const partitionKey =
+      partitions.length === 1
+        ? partitions[0]!.key
+        : registration.governingPartitions[nodeType];
+    if (!partitionKey || !partitions.some(({ key }) => key === partitionKey))
+      return true;
+    try {
+      return (
+        resolveRegisteredProtectionTier({
+          nodeType,
+          schemaPartition: partitionKey,
+        }) !== 0
+      );
+    } catch {
+      return true;
+    }
+  });
 }
 
 function pickUniversal(record: Record<string, unknown>): Record<string, unknown> {
@@ -490,8 +516,8 @@ export async function findNodeByRecordField(
 /**
  * Inserts an edge after checking that both endpoints exist in this workspace
  * and that the (edge type, from type, to type) triple is registered. Metadata
- * is not written for an edge with an endpoint that has a protected partition:
- * protected edge content arrives with Stage 5.
+ * is written only when each endpoint's registered governing partition is Tier 0;
+ * a missing declaration or protected partition strips it (F289).
  */
 export async function insertEdge(
   tx: GraphTx,
@@ -515,8 +541,9 @@ export async function insertEdge(
       "Both endpoints of an edge must exist in the edge's workspace",
     );
   }
+  let registration: EdgeRegistration;
   try {
-    assertRegisteredRelationship(
+    registration = assertRegisteredRelationship(
       parsed.edge_type as EdgeType,
       from.nodeType as NodeType,
       to.nodeType as NodeType,
@@ -526,9 +553,10 @@ export async function insertEdge(
       error instanceof Error ? error.message : "Unregistered relationship",
     );
   }
-  const protectedEndpoint =
-    hasProtectedPartition(from.nodeType as NodeType) ||
-    hasProtectedPartition(to.nodeType as NodeType);
+  const protectedEndpoint = protectsEdgeMetadata(registration, [
+    from.nodeType as NodeType,
+    to.nodeType as NodeType,
+  ]);
   const stored = {
     ...(parsed as Record<string, unknown>),
     ...(protectedEndpoint ? { metadata: {} } : {}),
@@ -565,6 +593,59 @@ export async function getEdge(
     .from(graphEdges)
     .where(and(eq(graphEdges.workspaceId, workspaceId), eq(graphEdges.edgeId, edgeId)));
   return row ? toStoredEdge(row) : null;
+}
+
+/** Replaces Tier 0 edge metadata in place; protected or undeclared content stays absent. */
+export async function updateEdgeMetadata(
+  tx: GraphTx,
+  workspaceId: string,
+  edgeId: string,
+  metadata: unknown,
+  actor: Actor,
+): Promise<StoredEdge> {
+  const [row] = await tx
+    .select()
+    .from(graphEdges)
+    .where(and(eq(graphEdges.workspaceId, workspaceId), eq(graphEdges.edgeId, edgeId)))
+    .for("update");
+  if (!row) throw new GraphNotFoundError(`Edge ${edgeId}`);
+  if (row.isSoftDeleted) throw new GraphValidationError("The edge is deleted");
+  const endpoints = await tx
+    .select({ nodeId: graphNodes.nodeId, nodeType: graphNodes.nodeType })
+    .from(graphNodes)
+    .where(
+      and(
+        eq(graphNodes.workspaceId, workspaceId),
+        inArray(graphNodes.nodeId, [row.fromNodeId, row.toNodeId]),
+      ),
+    );
+  const from = endpoints.find(({ nodeId }) => nodeId === row.fromNodeId);
+  const to = endpoints.find(({ nodeId }) => nodeId === row.toNodeId);
+  if (!from || !to) throw new GraphValidationError("Missing edge endpoint");
+  const registration = assertRegisteredRelationship(
+    row.edgeType as EdgeType,
+    from.nodeType as NodeType,
+    to.nodeType as NodeType,
+  );
+  const protectedEndpoint = protectsEdgeMetadata(registration, [
+    from.nodeType as NodeType,
+    to.nodeType as NodeType,
+  ]);
+  const parsed = parseEdge({
+    ...(row.record as Record<string, unknown>),
+    metadata: protectedEndpoint ? {} : metadata,
+  });
+  const [updated] = await tx
+    .update(graphEdges)
+    .set({
+      record: parsed as Record<string, unknown>,
+      version: sql`${graphEdges.version} + 1`,
+      updatedAt: new Date(actor.at),
+      updatedBy: actor.userId,
+    })
+    .where(and(eq(graphEdges.workspaceId, workspaceId), eq(graphEdges.edgeId, edgeId)))
+    .returning();
+  return toStoredEdge(updated!);
 }
 
 /** Sets `effective_to` on an open edge. History is closed, never rewritten. */

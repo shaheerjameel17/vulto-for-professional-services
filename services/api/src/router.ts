@@ -29,6 +29,11 @@ import {
   revenueGapAlertListInputSchema,
   revenueGapAlertSweepInputSchema,
   revenueGapAlertDismissInputSchema,
+  employeeAttachSkill,
+  projectAttachSkillRequirement,
+  projectMatchResultsInputSchema,
+  skillMatcherAdHocInputSchema,
+  skillGapListInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -68,6 +73,11 @@ import {
   listActiveRevenueGapAlerts,
   sweepRevenueGapAlerts,
 } from "./permission/revenue-gap-alert-queries.js";
+import {
+  adHocSearch,
+  getMatchResults,
+  listActiveSkillGaps,
+} from "./permission/skill-matcher-queries.js";
 import {
   currentClientProcedure,
   protectedProcedure,
@@ -227,6 +237,15 @@ export const appRouter = t.router({
       }),
   }),
   employee: t.router({
+    attachSkill: protectedProcedure
+      .input(employeeAttachSkill.input)
+      .mutation(({ ctx, input }) =>
+        applyMutation(ctx.principal, {
+          mutation_id: randomUUID(),
+          name: "employee.attachSkill",
+          args: input,
+        }),
+      ),
     /** The People directory: every Employee the caller may see (Tier 0 half). */
     list: protectedProcedure.input(employeeListInputSchema).query(({ ctx, input }) =>
       db.transaction((tx) =>
@@ -266,6 +285,47 @@ export const appRouter = t.router({
       .input(pitchListStaffedForInputSchema)
       .query(({ ctx, input }) =>
         db.transaction((tx) => listStaffedFor(tx, ctx.principal, input.employee_id)),
+      ),
+  }),
+  project: t.router({
+    attachSkillRequirement: protectedProcedure
+      .input(projectAttachSkillRequirement.input)
+      .mutation(({ ctx, input }) =>
+        applyMutation(ctx.principal, {
+          mutation_id: randomUUID(),
+          name: "project.attachSkillRequirement",
+          args: input,
+        }),
+      ),
+    getMatchResults: protectedProcedure
+      .input(projectMatchResultsInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          getMatchResults(
+            tx,
+            ctx.principal,
+            input.project_id,
+            input.availability_window_days,
+          ),
+        ),
+      ),
+  }),
+  skillMatcher: t.router({
+    adHocSearch: protectedProcedure
+      .input(skillMatcherAdHocInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          adHocSearch(tx, ctx.principal, input.query, input.availability_window_days),
+        ),
+      ),
+  }),
+  skillGap: t.router({
+    listActive: protectedProcedure
+      .input(skillGapListInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) =>
+          listActiveSkillGaps(tx, ctx.principal, input.workspace_id),
+        ),
       ),
   }),
   timesheet: t.router({

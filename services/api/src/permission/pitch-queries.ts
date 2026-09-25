@@ -1,6 +1,6 @@
 import { getNode, outgoing, type GraphTx } from "../graph/store.js";
-import { authorizeRead, type InterceptorContext } from "./interceptor.js";
-import type { Principal } from "./principal.js";
+import { withinRoleScopedReach, type InterceptorContext } from "./interceptor.js";
+import type { MemberPrincipal } from "./principal.js";
 
 export interface StaffedPitchSummary {
   readonly pitchId: string;
@@ -8,28 +8,27 @@ export interface StaffedPitchSummary {
   readonly clientName: string | null;
 }
 
-/** The selector's sole path to Pitch. The Employee read is its access gate. */
+/** The selector's sole path to Pitch. Employee's original row scope is its gate. */
 export async function listStaffedFor(
   tx: GraphTx,
-  principal: Principal,
+  principal: MemberPrincipal,
   employeeId: string,
   context: InterceptorContext = {},
 ): Promise<StaffedPitchSummary[]> {
   const employee = await getNode(tx, principal.workspaceId, employeeId);
   if (!employee || employee.isSoftDeleted || employee.nodeType !== "Employee")
     return [];
-  const decision = await authorizeRead(
-    tx,
-    principal,
-    {
-      workspaceId: principal.workspaceId,
-      nodeType: "Employee",
-      nodeId: employeeId,
-      partitionKey: "operational",
-    },
-    context,
-  );
-  if (decision.access !== "read" && decision.access !== "full") return [];
+  if (
+    !(await withinRoleScopedReach(
+      tx,
+      principal,
+      employeeId,
+      "Employee",
+      "operational",
+      context,
+    ))
+  )
+    return [];
 
   const edges = await outgoing(tx, principal.workspaceId, employeeId, "staffed_on");
   const result: StaffedPitchSummary[] = [];

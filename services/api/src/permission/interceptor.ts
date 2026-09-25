@@ -5,6 +5,7 @@ import {
   getSubjectExclusion,
   isSystemOperationPermitted,
   SYSTEM_OPERATION_TARGETS,
+  SYSTEM_EDGE_OPERATION_TARGETS,
   PARTICIPANT_GRANTS,
   POLICY_ROLES,
   resolvePolicyCell,
@@ -29,7 +30,7 @@ import {
 import { resolveEmployeeForUser } from "./employee-link.js";
 import type { RoleDependencies } from "./roles.js";
 import { effectiveRoles } from "./roles.js";
-import type { Principal, SupportPrincipal } from "./principal.js";
+import type { MemberPrincipal, Principal, SupportPrincipal } from "./principal.js";
 import { resolveReaderSet, resolveSubjectEmployee } from "./reader-set.js";
 import { checkWriteAuthority } from "./write-authority.js";
 
@@ -73,6 +74,8 @@ interface RowScopeContext {
   /** Only a pre-write create may use the mutation's declared subject. */
   readonly creating?: boolean;
   readonly declaredSubjectEmployeeId?: string | null;
+  /** Trusted derived-query subject when its governed row has not been written. */
+  readonly subjectEmployeeIdOverride?: string;
 }
 
 /** The stored-row subject path shared by reads, updates, and post-create verification. */
@@ -129,17 +132,23 @@ async function rowScopeSatisfied(
   const me = await resolve(tx, principal.workspaceId, principal.userId);
   if (me === null) return false;
   const asOf = (context.now ?? nowIso)();
-  const subjectEmployeeId =
+  let subjectEmployeeId: string | null;
+  if (row.subjectEmployeeIdOverride !== undefined) {
+    subjectEmployeeId = row.subjectEmployeeIdOverride;
+  } else if (
     row.creating === true &&
     (row.nodeType === "TimesheetEntry" || row.nodeType === "TimesheetWeekSubmission")
-      ? (row.declaredSubjectEmployeeId ?? null)
-      : await resolveStoredSubjectEmployeeId(
-          tx,
-          principal.workspaceId,
-          row.nodeType,
-          nodeId,
-          asOf,
-        );
+  ) {
+    subjectEmployeeId = row.declaredSubjectEmployeeId ?? null;
+  } else {
+    subjectEmployeeId = await resolveStoredSubjectEmployeeId(
+      tx,
+      principal.workspaceId,
+      row.nodeType,
+      nodeId,
+      asOf,
+    );
+  }
   if (subjectEmployeeId === null) return false;
   if (scope === "own") return me === subjectEmployeeId;
   const managerOf = async (employeeId: string) =>
@@ -270,6 +279,7 @@ async function bestCell(
   nodeType: NodeType,
   partitionKey: string,
   row?: RowScopeContext,
+  operation: "read" | "write" = "write",
 ): Promise<{ outcome: PermissionOutcome; role: PolicyRole | null; label?: string }> {
   let best: { outcome: PermissionOutcome; role: PolicyRole | null; label?: string } = {
     outcome: "none",
@@ -277,7 +287,15 @@ async function bestCell(
   };
   for (const role of roles) {
     const cell = resolvePolicyCell(role, nodeType, partitionKey);
-    const outcome = (await rowScopeSatisfied(cell.scope, row)) ? cell.outcome : "none";
+    const withinScope = await rowScopeSatisfied(cell.scope, row);
+    const outcome = withinScope
+      ? cell.outcome
+      : operation === "read" &&
+          (cell.outcome === "full" || cell.outcome === "read") &&
+          cell.readScope !== undefined &&
+          (await rowScopeSatisfied(cell.readScope, row))
+        ? "read"
+        : "none";
     if (RANK[outcome] > RANK[best.outcome]) {
       best = {
         outcome,
@@ -287,6 +305,39 @@ async function bestCell(
     }
   }
   return best;
+}
+
+/**
+ * Admission for a derived disclosure governed by a named policy cell's original
+ * row scope, independent of any wider readScope on its underlying Employee.
+ */
+export async function withinRoleScopedReach(
+  tx: GraphTx,
+  principal: MemberPrincipal,
+  subjectEmployeeId: string,
+  nodeType: NodeType,
+  partitionKey: string,
+  context: InterceptorContext = {},
+): Promise<boolean> {
+  const subject = await getNode(tx, principal.workspaceId, subjectEmployeeId);
+  if (!subject || subject.isSoftDeleted || subject.nodeType !== "Employee")
+    return false;
+  const { roles } = await decisionRoles(tx, principal, nodeType, "read", context);
+  const best = await bestCell(
+    roles,
+    nodeType,
+    partitionKey,
+    {
+      tx,
+      principal,
+      nodeType,
+      nodeId: subjectEmployeeId,
+      subjectEmployeeIdOverride: subjectEmployeeId,
+      context,
+    },
+    "write",
+  );
+  return best.outcome === "read" || best.outcome === "full";
 }
 
 /** A read decision with no side effects. */
@@ -318,13 +369,19 @@ export async function decideRead(
     "read",
     context,
   );
-  const best = await bestCell(roles, target.nodeType, partitionKey, {
-    tx,
-    principal,
-    nodeType: target.nodeType,
-    nodeId: target.nodeId,
-    context,
-  });
+  const best = await bestCell(
+    roles,
+    target.nodeType,
+    partitionKey,
+    {
+      tx,
+      principal,
+      nodeType: target.nodeType,
+      nodeId: target.nodeId,
+      context,
+    },
+    "read",
+  );
   if (readOnly && best.outcome === "full") best.outcome = "read";
   // Subject exclusion (A004-T16): the person a record concerns is removed from
   // its readers, whatever role would otherwise grant it. The same decision feeds
@@ -962,15 +1019,20 @@ export async function authorizeWrite(
             target.nodeType,
             partitionKey,
           )
-        : target.edgeType === "triggered_by" &&
-          target.toNodeType === "Employee" &&
-          ((isSystemOperationPermitted(
-            principal.name,
-            "timesheet-anomaly.create-flag",
-          ) &&
-            target.fromNodeType === "TimesheetAnomalyFlag") ||
-            (isSystemOperationPermitted(principal.name, "revenue-gap-alert.write") &&
-              target.fromNodeType === "RevenueGapAlert"));
+        : Object.entries(SYSTEM_EDGE_OPERATION_TARGETS).some(
+            ([operation, shapes]) =>
+              isSystemOperationPermitted(
+                principal.name,
+                operation as SystemOperation,
+              ) &&
+              (!context.systemOperation || context.systemOperation === operation) &&
+              shapes?.some(
+                (shape) =>
+                  shape.edgeType === target.edgeType &&
+                  shape.fromNodeType === target.fromNodeType &&
+                  shape.toNodeType === target.toNodeType,
+              ),
+          );
     if (!permitted) return refuse("role");
   } else {
     const gateRoles: readonly PolicyRole[] =

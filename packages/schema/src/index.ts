@@ -8,6 +8,20 @@ export * from "./time-classification";
 export * from "./timesheet-anomaly";
 export * from "./utilization-snapshot";
 export * from "./revenue-gap-alert";
+export {
+  PROFICIENCY_LEVELS,
+  proficiencyLevelSchema,
+  proficiencyMeets,
+  skillFieldsSchema,
+  projectStartDateSchema,
+  skillGapFieldsSchema,
+  severityFor as skillGapSeverityFor,
+  projectMatchResultsInputSchema,
+  skillMatcherAdHocInputSchema,
+  skillGapListInputSchema,
+  type ProficiencyLevel,
+  type SkillGapSeverity,
+} from "./skill-matcher";
 
 export {
   NODE_REGISTRY,

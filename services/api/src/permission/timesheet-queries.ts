@@ -10,7 +10,7 @@ import {
   type StoredNode,
 } from "../graph/store.js";
 import { hoursOn } from "./working-days-queries.js";
-import { authorizeRead, filterReadable } from "./interceptor.js";
+import { authorizeRead, filterReadable, withinRoleScopedReach } from "./interceptor.js";
 import { listStaffedFor } from "./pitch-queries.js";
 import type { MemberPrincipal } from "./principal.js";
 
@@ -201,6 +201,16 @@ export async function listSubmissionStatus(
     weekStatus: "Draft" | "Submitted" | "Not-Started";
   }[] = [];
   for (const employee of employees) {
+    if (
+      !(await withinRoleScopedReach(
+        tx,
+        principal,
+        employee.nodeId,
+        "TimesheetEntry",
+        "record",
+      ))
+    )
+      continue;
     const weekStart = await weekStartForEmployee(
       tx,
       workspaceId,

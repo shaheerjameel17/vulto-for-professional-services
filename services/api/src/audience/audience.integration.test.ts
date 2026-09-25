@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import {
   NODE_REGISTRY,
   getProtectionPartitions,
+  resolvePolicyCell,
   resolvePermission,
   type NodeType,
   type PolicyRole,
@@ -126,7 +127,10 @@ async function assertAudienceConforms(
     if (oracleRole !== null) {
       // An independent oracle: the policy table itself, not the interceptor.
       const table = resolvePermission(oracleRole, nodeType, partitionKey).outcome;
-      const expected = READABLE.has(table) && isNodeTypeReplicable(nodeType);
+      const cell = resolvePolicyCell(oracleRole, nodeType, partitionKey);
+      const wideRead = cell.readScope === "any" && READABLE.has(cell.outcome);
+      const expected =
+        (READABLE.has(table) || wideRead) && isNodeTypeReplicable(nodeType);
       if (inAudience !== expected) {
         throw new Error(
           `policy table disagrees for ${nodeType}: expected ${expected}, audience ${inAudience}`,
@@ -291,7 +295,8 @@ describe("A003-T57 — the sync audience equals what the interceptor permits", (
     for (const edge of managedBy) {
       expect((await edgeAudience("owner")).has(edge.edgeId)).toBe(true);
       expect((await edgeAudience("finance")).has(edge.edgeId)).toBe(true);
-      expect((await edgeAudience("plain")).has(edge.edgeId)).toBe(false);
+      // F292's workspace-wide operational read replicates both Employee endpoints.
+      expect((await edgeAudience("plain")).has(edge.edgeId)).toBe(true);
     }
     // Every edge held is between nodes the same person holds.
     for (const name of ["owner", "finance", "plain"]) {

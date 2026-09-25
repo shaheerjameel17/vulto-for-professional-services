@@ -1,7 +1,10 @@
 import {
   FEATURE_LIFECYCLE_NODE_TYPES,
+  FEATURE_OWNED_EDGE_TYPES,
   isNodeType,
   isTier0Only,
+  skillFieldsSchema,
+  projectStartDateSchema,
   stampNewEdge,
   stampNewNode,
   updateStamp,
@@ -24,6 +27,7 @@ import {
   StaleVersionError,
   closeEdge,
   updateNodeFields,
+  updateEdgeMetadata,
   type StoredNode,
 } from "../graph/store.js";
 import {
@@ -121,6 +125,13 @@ export const createNode: ServerMutation<Args<"graph.createNode">> = async (ctx) 
       if (claimed !== undefined && claimed !== ctx.principal.workspaceId) {
         throw new MutationRejection("invalid-args");
       }
+      if (nodeType === "Skill") {
+        const parsed = skillFieldsSchema.safeParse(
+          stampNewNode(node, nodeType, provenance(ctx)),
+        );
+        if (!parsed.success || parsed.data.skill_id !== nodeId)
+          throw new MutationRejection("invalid-args");
+      }
     },
     async apply() {
       const stored = await translate(() =>
@@ -151,6 +162,17 @@ export const updateNodeFieldsMutation: ServerMutation<
         throw new MutationRejection("requires-feature-mutation");
       if (!isTier0Only(nodeType))
         throw new MutationRejection("requires-feature-mutation");
+      if (
+        nodeType === "Project" &&
+        "start_date" in ctx.args.patch &&
+        !projectStartDateSchema.safeParse(ctx.args.patch["start_date"]).success
+      )
+        throw new MutationRejection("invalid-args");
+      if (
+        nodeType === "Skill" &&
+        !skillFieldsSchema.safeParse({ ...node.record, ...ctx.args.patch }).success
+      )
+        throw new MutationRejection("invalid-args");
     },
     async apply() {
       const updated = await translate(() =>
@@ -216,7 +238,10 @@ export const createEdgeMutation: ServerMutation<Args<"graph.createEdge">> = asyn
   );
   return {
     checks: [{ target, change: { operation: "create" } }],
-    validate: nothing,
+    async validate() {
+      if (FEATURE_OWNED_EDGE_TYPES.has(target.edgeType))
+        throw new MutationRejection("requires-feature-mutation");
+    },
     async apply() {
       const stored = await translate(() =>
         insertEdge(
@@ -245,7 +270,10 @@ export const closeEdgeMutation: ServerMutation<Args<"graph.closeEdge">> = async 
   );
   return {
     checks: [{ target, change: { operation: "update" } }],
-    validate: nothing,
+    async validate() {
+      if (FEATURE_OWNED_EDGE_TYPES.has(edge.edgeType))
+        throw new MutationRejection("requires-feature-mutation");
+    },
     async apply() {
       const closed = await translate(() =>
         closeEdge(
@@ -262,6 +290,43 @@ export const closeEdgeMutation: ServerMutation<Args<"graph.closeEdge">> = async 
       return {
         result: { edge_id: closed.edgeId, version: closed.version },
         changedRowIds: [closed.edgeId],
+      };
+    },
+  };
+};
+
+export const updateEdgeMetadataMutation: ServerMutation<
+  Args<"graph.updateEdgeMetadata">
+> = async (ctx) => {
+  const edge = await getEdge(ctx.tx, ctx.principal.workspaceId, ctx.args.edge_id);
+  if (!edge) throw new MutationRejection("not-found");
+  if (edge.isSoftDeleted) throw new MutationRejection("target-deleted");
+  const target = await edgeTarget(
+    ctx,
+    edge.edgeType,
+    edge.fromNodeId,
+    edge.toNodeId,
+    edge.edgeId,
+  );
+  return {
+    checks: [{ target, change: { operation: "update" } }],
+    async validate() {
+      if (FEATURE_OWNED_EDGE_TYPES.has(edge.edgeType))
+        throw new MutationRejection("requires-feature-mutation");
+    },
+    async apply() {
+      const updated = await translate(() =>
+        updateEdgeMetadata(
+          ctx.tx,
+          ctx.principal.workspaceId,
+          edge.edgeId,
+          ctx.args.metadata,
+          { userId: ctx.principal.userId, at: ctx.now },
+        ),
+      );
+      return {
+        result: { edge_id: updated.edgeId, version: updated.version },
+        changedRowIds: [updated.edgeId],
       };
     },
   };

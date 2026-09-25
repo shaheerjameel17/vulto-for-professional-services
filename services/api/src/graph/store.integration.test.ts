@@ -22,6 +22,7 @@ import {
   StaleVersionError,
   traverse,
   updateNodeFields,
+  updateEdgeMetadata,
   type GraphTx,
 } from "./store.js";
 
@@ -200,7 +201,7 @@ describe("Stage 2 — the canonical graph store", () => {
     });
   });
 
-  it("stores no edge metadata when an endpoint has a protected partition", async () => {
+  it("preserves edge metadata governed by a Tier 0 partition (F289)", async () => {
     await db.transaction(async (tx) => {
       const workspaceId = await newWorkspace(tx);
       const a = await employee(tx, workspaceId);
@@ -209,7 +210,40 @@ describe("Stage 2 — the canonical graph store", () => {
         ...edgeRecord("managed_by", a, b),
         metadata: { note: "SENTINEL" },
       });
+      expect(edge.record["metadata"]).toEqual({ note: "SENTINEL" });
+      const changed = await updateEdgeMetadata(
+        tx,
+        workspaceId,
+        edge.edgeId,
+        { note: "UPDATED" },
+        { userId: ACTOR, at: NOW },
+      );
+      expect(changed.edgeId).toBe(edge.edgeId);
+      expect(changed.version).toBe(2);
+      expect(changed.record["metadata"]).toEqual({ note: "UPDATED" });
+    });
+  });
+
+  it("strips metadata when a split endpoint has no governing partition (F289)", async () => {
+    await db.transaction(async (tx) => {
+      const workspaceId = await newWorkspace(tx);
+      const project = nodeRecord("Project", workspaceId);
+      const pitch = nodeRecord("Pitch", workspaceId);
+      await insertNode(tx, project);
+      await insertNode(tx, pitch);
+      const edge = await insertEdge(tx, workspaceId, {
+        ...edgeRecord("originated_from", project.node_id, pitch.node_id),
+        metadata: { note: "SENTINEL" },
+      });
       expect(edge.record["metadata"]).toEqual({});
+      const changed = await updateEdgeMetadata(
+        tx,
+        workspaceId,
+        edge.edgeId,
+        { note: "UPDATED" },
+        { userId: ACTOR, at: NOW },
+      );
+      expect(changed.record["metadata"]).toEqual({});
     });
   });
 

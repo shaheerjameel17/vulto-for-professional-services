@@ -277,6 +277,36 @@ describe("VRS-F010 own TimesheetEntry and F275 endpoint writes", () => {
     });
   });
 
+  it("limits submission status to a Team Member's own row even when a teammate is readable", async () => {
+    const w = await world();
+    await db.transaction((tx) =>
+      insertEdge(
+        tx,
+        w.workspaceId,
+        edgeRecord("managed_by", w.outsiderId, w.managerId, "2026-09-24T00:00:00.000Z"),
+      ),
+    );
+    const teammateRead = await db.transaction((tx) =>
+      authorizeRead(tx, w.principal, {
+        workspaceId: w.workspaceId,
+        nodeType: "Employee",
+        nodeId: w.outsiderId,
+        partitionKey: "operational",
+      }),
+    );
+    expect(["read", "full"]).toContain(teammateRead.access);
+    const memberStatuses = await db.transaction((tx) =>
+      listSubmissionStatus(tx, w.principal, w.workspaceId, "2026-09-30"),
+    );
+    expect(memberStatuses).toEqual([
+      { employeeId: w.memberId, weekStatus: "Not-Started" },
+    ]);
+    const ownerStatuses = await db.transaction((tx) =>
+      listSubmissionStatus(tx, w.owner, w.workspaceId, "2026-09-30"),
+    );
+    expect(ownerStatuses.map((row) => row.employeeId)).toContain(w.outsiderId);
+  });
+
   it("does not fail or roll back a committed submission when its reactive evaluation fails", async () => {
     const w = await world();
     const now = "2026-09-30T12:30:00.000Z";

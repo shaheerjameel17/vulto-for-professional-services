@@ -2,6 +2,7 @@ import type { GraphTx } from "./tx.js";
 import {
   getNode,
   getNodes,
+  incoming,
   outgoing,
   type StoredEdge,
   type StoredNode,
@@ -68,4 +69,52 @@ export async function countActiveEmployeesForEntity(
     if (entity?.nodeId === entityId) count += 1;
   }
   return count;
+}
+
+/** F290: deterministic Project calendar source until VRS-F064 owns multi-entity. */
+export async function resolveProjectCalendarEntity(
+  tx: GraphTx,
+  workspaceId: string,
+  projectId: string,
+  asOf: string,
+): Promise<StoredNode | null> {
+  const project = await getNode(tx, workspaceId, projectId);
+  if (!project || project.isSoftDeleted || project.nodeType !== "Project") return null;
+  const staffed = (await incoming(tx, workspaceId, projectId, "assigned_to"))
+    .filter((edge) => !edge.isSoftDeleted)
+    .sort(
+      (a, b) =>
+        String(a.record["created_at"]).localeCompare(String(b.record["created_at"])) ||
+        a.edgeId.localeCompare(b.edgeId),
+    );
+  const edge = staffed[0];
+  if (edge) {
+    const assignment = await getNode(tx, workspaceId, edge.fromNodeId);
+    if (
+      assignment &&
+      !assignment.isSoftDeleted &&
+      assignment.nodeType === "Assignment"
+    ) {
+      const [subject] = await outgoing(
+        tx,
+        workspaceId,
+        assignment.nodeId,
+        "assignment_of",
+      );
+      if (subject) {
+        const resolved = await resolveEntityAssignment(
+          tx,
+          workspaceId,
+          subject.toNodeId,
+          asOf,
+        );
+        if (resolved && !resolved.entity.isSoftDeleted) return resolved.entity;
+      }
+    }
+  }
+  const entities = await getNodes(tx, workspaceId, {
+    nodeType: "Entity",
+    lifecycleStatus: "Active",
+  });
+  return entities.length === 1 ? entities[0]! : null;
 }

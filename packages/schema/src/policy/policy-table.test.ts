@@ -182,6 +182,29 @@ describe("resolvePermission — matrix overrides", () => {
     );
   });
 
+  it("gives Skill and SkillGap explicit workspace-wide rows (VRS-F013)", () => {
+    for (const nodeType of ["Skill", "SkillGap"] as const) {
+      expect(resolvePermission("owner", nodeType, "record").outcome).toBe("full");
+      expect(resolvePermission("hr-admin", nodeType, "record").outcome).toBe("full");
+      expect(resolvePermission("finance-admin", nodeType, "record").outcome).toBe(
+        "read",
+      );
+      expect(resolvePermission("team-member", nodeType, "record").outcome).toBe("read");
+    }
+    expect(resolvePermission("manager", "Skill", "record").outcome).toBe("full");
+    expect(resolvePermission("manager", "SkillGap", "record").outcome).toBe("read");
+    expect(resolvePolicyCell("manager", "Employee", "operational")).toMatchObject({
+      outcome: "full",
+      scope: "direct-reports",
+      readScope: "any",
+    });
+    expect(resolvePolicyCell("team-member", "Employee", "operational")).toMatchObject({
+      outcome: "read",
+      scope: "own-plus-team",
+      readScope: "any",
+    });
+  });
+
   it("gives Pitch identifying an unscoped Manager grant and no Team Member grant", () => {
     for (const role of ["owner", "hr-admin", "manager"] as const) {
       expect(resolvePermission(role, "Pitch", "identifying")).toEqual({

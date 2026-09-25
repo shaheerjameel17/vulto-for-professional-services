@@ -336,15 +336,26 @@ describe("the optimistic foundation mutators", () => {
       to_node_id: b,
       effective_from: "2026-01-01T00:00:00.000Z",
       effective_to: null,
+      metadata: { proficiency_level: "Beginner" },
     };
     const created = await applyOptimistic(context(cache), "graph.createEdge", { edge });
     expect(cache.edges.get(edgeId)).toMatchObject({ version: 1, effectiveTo: null });
+    expect(cache.edges.get(edgeId)?.record["metadata"]).toEqual({
+      proficiency_level: "Beginner",
+    });
+    const changed = await applyOptimistic(context(cache), "graph.updateEdgeMetadata", {
+      edge_id: edgeId,
+      metadata: { proficiency_level: "Senior" },
+    });
+    expect(cache.edges.get(edgeId)?.record["metadata"]).toEqual({
+      proficiency_level: "Senior",
+    });
     const closed = await applyOptimistic(context(cache), "graph.closeEdge", {
       edge_id: edgeId,
       effective_to: "2026-02-01T00:00:00.000Z",
     });
     expect(cache.edges.get(edgeId)).toMatchObject({
-      version: 2,
+      version: 3,
       effectiveTo: "2026-02-01T00:00:00.000Z",
     });
     await rejects(
@@ -354,7 +365,7 @@ describe("the optimistic foundation mutators", () => {
       }),
       "invalid-args",
     );
-    await applyUndo(cache, [...created, ...closed]);
+    await applyUndo(cache, [...created, ...changed, ...closed]);
     expect(cache.edges.size).toBe(0);
   });
 
