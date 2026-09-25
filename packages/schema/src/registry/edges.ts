@@ -209,6 +209,12 @@ export const EDGE_GROUPS = [
     // staffed_on's and logged_against's own Pitch:identifying precedent.
     // F285, founder-delegated.
     governingPartitions: { Pitch: "identifying", Requisition: "identifying" },
+    // A Manager can read a Project (READ_ANY) but does not hold Full on it,
+    // and must not gain general Project write authority just to attach a
+    // skill requirement. assigned_to's own readSufficientEndpoints: { Project:
+    // true } is the exact precedent (F262) for this shape. F288, closed by
+    // direct precedent.
+    readSufficientEndpoints: { Project: true },
   }),
   edgeGroup({
     edgeType: "holds_certification",
