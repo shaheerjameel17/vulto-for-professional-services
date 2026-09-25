@@ -661,6 +661,71 @@ const putNewEdge = async (
 
 // ── Ghost Resources (VRS-F007) ─────────────────────────────────────────────
 
+const employeeAttachSkill: OptimisticMutator = async (c, raw) => {
+  const args = parse("employee.attachSkill", raw);
+  await liveTypedNode(c.cache, args.employee_id, "Employee");
+  await liveTypedNode(c.cache, args.skill_id, "Skill");
+  const existing = (await c.cache.edgesFrom(args.employee_id, "has_skill")).find(
+    (edge) => edge.toNodeId === args.skill_id && edge.effectiveTo === null,
+  );
+  const mine = (await c.cache.nodesByType("Employee")).find(
+    (row) => row.record["user_id"] === c.userId,
+  )?.nodeId;
+  const self = mine === args.employee_id;
+  const metadata = {
+    ...(existing?.record["metadata"] as Record<string, unknown> | undefined),
+    proficiency_level: args.proficiency_level,
+    verified: !self,
+    verified_by: self ? null : c.userId,
+    verified_at: self ? null : c.now,
+  };
+  if (existing) {
+    await c.cache.putEdge(
+      toCachedEdge({ ...existing.record, metadata }, existing.version + 1),
+    );
+    return [{ kind: "edge", id: existing.edgeId, before: existing }];
+  }
+  return [
+    await putNewEdge(c, c.mutationId, {
+      edge_type: "has_skill",
+      from_node_id: args.employee_id,
+      to_node_id: args.skill_id,
+      effective_from: c.now,
+      effective_to: null,
+      metadata,
+    }),
+  ];
+};
+
+const projectAttachSkillRequirement: OptimisticMutator = async (c, raw) => {
+  const args = parse("project.attachSkillRequirement", raw);
+  await liveTypedNode(c.cache, args.project_id, "Project");
+  await liveTypedNode(c.cache, args.skill_id, "Skill");
+  const existing = (await c.cache.edgesFrom(args.project_id, "requires_skill")).find(
+    (edge) => edge.toNodeId === args.skill_id && edge.effectiveTo === null,
+  );
+  const metadata = {
+    ...(existing?.record["metadata"] as Record<string, unknown> | undefined),
+    proficiency_level_required: args.proficiency_level_required,
+  };
+  if (existing) {
+    await c.cache.putEdge(
+      toCachedEdge({ ...existing.record, metadata }, existing.version + 1),
+    );
+    return [{ kind: "edge", id: existing.edgeId, before: existing }];
+  }
+  return [
+    await putNewEdge(c, c.mutationId, {
+      edge_type: "requires_skill",
+      from_node_id: args.project_id,
+      to_node_id: args.skill_id,
+      effective_from: c.now,
+      effective_to: null,
+      metadata,
+    }),
+  ];
+};
+
 // ── Pitch staffing (VRS-F009) ──────────────────────────────────────────────
 
 const pitchCreate: OptimisticMutator = async (c, raw) => {
@@ -1404,6 +1469,8 @@ export const OPTIMISTIC_MUTATORS: Readonly<
   "employee.transitionStatus": employeeTransitionStatus,
   "employee.linkUser": employeeLinkUser,
   "employee.setCompensation": employeeSetCompensation,
+  "employee.attachSkill": employeeAttachSkill,
+  "project.attachSkillRequirement": projectAttachSkillRequirement,
   "employee.setEntity": employeeSetEntity,
   "entity.create": entityCreate,
   "entity.update": entityUpdate,

@@ -3,6 +3,8 @@ import {
   FEATURE_OWNED_EDGE_TYPES,
   isNodeType,
   isTier0Only,
+  skillFieldsSchema,
+  projectStartDateSchema,
   stampNewEdge,
   stampNewNode,
   updateStamp,
@@ -123,6 +125,13 @@ export const createNode: ServerMutation<Args<"graph.createNode">> = async (ctx) 
       if (claimed !== undefined && claimed !== ctx.principal.workspaceId) {
         throw new MutationRejection("invalid-args");
       }
+      if (nodeType === "Skill") {
+        const parsed = skillFieldsSchema.safeParse(
+          stampNewNode(node, nodeType, provenance(ctx)),
+        );
+        if (!parsed.success || parsed.data.skill_id !== nodeId)
+          throw new MutationRejection("invalid-args");
+      }
     },
     async apply() {
       const stored = await translate(() =>
@@ -153,6 +162,17 @@ export const updateNodeFieldsMutation: ServerMutation<
         throw new MutationRejection("requires-feature-mutation");
       if (!isTier0Only(nodeType))
         throw new MutationRejection("requires-feature-mutation");
+      if (
+        nodeType === "Project" &&
+        "start_date" in ctx.args.patch &&
+        !projectStartDateSchema.safeParse(ctx.args.patch["start_date"]).success
+      )
+        throw new MutationRejection("invalid-args");
+      if (
+        nodeType === "Skill" &&
+        !skillFieldsSchema.safeParse({ ...node.record, ...ctx.args.patch }).success
+      )
+        throw new MutationRejection("invalid-args");
     },
     async apply() {
       const updated = await translate(() =>

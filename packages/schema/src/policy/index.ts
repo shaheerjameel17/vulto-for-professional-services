@@ -22,6 +22,7 @@ export {
   SYSTEM_PRINCIPAL_DISPLAY_NAMES,
   SYSTEM_PRINCIPAL_OPERATIONS,
   SYSTEM_OPERATION_TARGETS,
+  SYSTEM_EDGE_OPERATION_TARGETS,
   isSystemOperationPermitted,
   type SystemOperation,
   type SystemOperationTarget,

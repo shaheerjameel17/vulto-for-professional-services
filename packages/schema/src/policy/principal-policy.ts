@@ -1,4 +1,5 @@
 import type { NodeType } from "../registry/nodes";
+import type { EdgeType } from "../registry/edges";
 
 /**
  * VPS-A004 "Principals that are not members" — the policy rows for system
@@ -47,6 +48,7 @@ export const SYSTEM_OPERATIONS = [
   "utilization-snapshot.read-cohort",
   "revenue-gap-alert.write",
   "skill-gap.write",
+  "skill-gap.read-cohort",
 ] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
@@ -74,7 +76,7 @@ export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
     "utilization-snapshot.read-cohort",
   ],
   "revenue-gap-alert-evaluate": ["revenue-gap-alert.write"],
-  "skill-gap-evaluate": ["skill-gap.write"],
+  "skill-gap-evaluate": ["skill-gap.write", "skill-gap.read-cohort"],
 };
 
 export interface SystemOperationTarget {
@@ -101,6 +103,7 @@ export const SYSTEM_OPERATION_TARGETS: Readonly<
   ],
   "revenue-gap-alert.write": [{ nodeType: "RevenueGapAlert", partitionKey: "record" }],
   "skill-gap.write": [{ nodeType: "SkillGap", partitionKey: "record" }],
+  "skill-gap.read-cohort": [{ nodeType: "Employee", partitionKey: "operational" }],
 };
 
 export function isSystemOperationPermitted(
@@ -109,3 +112,35 @@ export function isSystemOperationPermitted(
 ): boolean {
   return SYSTEM_PRINCIPAL_OPERATIONS[name].includes(operation);
 }
+
+/** Closed structural edge grants; never a PolicyRole grant. */
+export const SYSTEM_EDGE_OPERATION_TARGETS: Readonly<
+  Partial<
+    Record<
+      SystemOperation,
+      readonly {
+        edgeType: EdgeType;
+        fromNodeType: NodeType;
+        toNodeType: NodeType;
+      }[]
+    >
+  >
+> = {
+  "timesheet-anomaly.create-flag": [
+    {
+      edgeType: "triggered_by",
+      fromNodeType: "TimesheetAnomalyFlag",
+      toNodeType: "Employee",
+    },
+  ],
+  "revenue-gap-alert.write": [
+    {
+      edgeType: "triggered_by",
+      fromNodeType: "RevenueGapAlert",
+      toNodeType: "Employee",
+    },
+  ],
+  "skill-gap.write": [
+    { edgeType: "gap_for", fromNodeType: "SkillGap", toNodeType: "Skill" },
+  ],
+};

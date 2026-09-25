@@ -42,6 +42,8 @@ export const skillFieldsSchema = z
   })
   .strict();
 
+export const projectStartDateSchema = z.iso.date().nullable();
+
 export const skillGapFieldsSchema = z
   .object({
     ...universalFields,

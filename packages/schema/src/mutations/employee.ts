@@ -118,6 +118,7 @@ export const EMPLOYEE_MUTATIONS = {
   "employee.transitionStatus": employeeTransitionStatus,
   "employee.linkUser": employeeLinkUser,
   "employee.setCompensation": employeeSetCompensation,
+  "employee.attachSkill": employeeAttachSkill,
 } as const;
 
 /**

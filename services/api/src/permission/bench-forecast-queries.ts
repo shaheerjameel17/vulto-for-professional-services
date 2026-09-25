@@ -66,12 +66,12 @@ const readGuard =
     return decision.access === "read" || decision.access === "full";
   };
 
-const assignmentCovers = (assignment: StoredNode, date: string) =>
+export const assignmentCovers = (assignment: StoredNode, date: string) =>
   assignment.lifecycleStatus === "Active" &&
   String(assignment.record["start_date"]) <= date &&
   date <= String(assignment.record["end_date"]);
 
-async function assignmentsFor(
+export async function assignmentsFor(
   tx: GraphTx,
   workspaceId: string,
   employeeId: string,

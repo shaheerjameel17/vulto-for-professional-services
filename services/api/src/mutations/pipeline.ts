@@ -28,6 +28,7 @@ import {
 } from "./foundation.js";
 import {
   employeeCreate,
+  employeeAttachSkill,
   employeeLinkUser,
   employeeSetCompensation,
   employeeTransitionStatus,
@@ -72,6 +73,7 @@ import {
 } from "./timesheet.js";
 import { timesheetAnomalyClear } from "./timesheet-anomaly.js";
 import { revenueGapAlertDismiss } from "./revenue-gap-alert.js";
+import { projectAttachSkillRequirement } from "./skill-matcher.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -103,6 +105,7 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "graph.transitionLifecycle": transitionLifecycle as ServerMutation<never>,
   "org.moveEmployee": moveEmployee as ServerMutation<never>,
   "employee.create": employeeCreate as ServerMutation<never>,
+  "employee.attachSkill": employeeAttachSkill as ServerMutation<never>,
   "employee.update": employeeUpdate as ServerMutation<never>,
   "employee.transitionStatus": employeeTransitionStatus as ServerMutation<never>,
   "employee.linkUser": employeeLinkUser as ServerMutation<never>,
@@ -139,6 +142,8 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "timesheet.unlockWeek": timesheetUnlockWeek as ServerMutation<never>,
   "timesheetAnomaly.clear": timesheetAnomalyClear as ServerMutation<never>,
   "revenueGapAlert.dismiss": revenueGapAlertDismiss as ServerMutation<never>,
+  "project.attachSkillRequirement":
+    projectAttachSkillRequirement as ServerMutation<never>,
 };
 
 export interface MutationEnvelope {

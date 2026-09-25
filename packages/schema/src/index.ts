@@ -13,6 +13,7 @@ export {
   proficiencyLevelSchema,
   proficiencyMeets,
   skillFieldsSchema,
+  projectStartDateSchema,
   skillGapFieldsSchema,
   severityFor as skillGapSeverityFor,
   projectMatchResultsInputSchema,

@@ -5,6 +5,7 @@ import {
   getSubjectExclusion,
   isSystemOperationPermitted,
   SYSTEM_OPERATION_TARGETS,
+  SYSTEM_EDGE_OPERATION_TARGETS,
   PARTICIPANT_GRANTS,
   POLICY_ROLES,
   resolvePolicyCell,
@@ -270,6 +271,7 @@ async function bestCell(
   nodeType: NodeType,
   partitionKey: string,
   row?: RowScopeContext,
+  operation: "read" | "write" = "write",
 ): Promise<{ outcome: PermissionOutcome; role: PolicyRole | null; label?: string }> {
   let best: { outcome: PermissionOutcome; role: PolicyRole | null; label?: string } = {
     outcome: "none",
@@ -277,7 +279,15 @@ async function bestCell(
   };
   for (const role of roles) {
     const cell = resolvePolicyCell(role, nodeType, partitionKey);
-    const outcome = (await rowScopeSatisfied(cell.scope, row)) ? cell.outcome : "none";
+    const withinScope = await rowScopeSatisfied(cell.scope, row);
+    const outcome = withinScope
+      ? cell.outcome
+      : operation === "read" &&
+          (cell.outcome === "full" || cell.outcome === "read") &&
+          cell.readScope !== undefined &&
+          (await rowScopeSatisfied(cell.readScope, row))
+        ? "read"
+        : "none";
     if (RANK[outcome] > RANK[best.outcome]) {
       best = {
         outcome,
@@ -318,13 +328,19 @@ export async function decideRead(
     "read",
     context,
   );
-  const best = await bestCell(roles, target.nodeType, partitionKey, {
-    tx,
-    principal,
-    nodeType: target.nodeType,
-    nodeId: target.nodeId,
-    context,
-  });
+  const best = await bestCell(
+    roles,
+    target.nodeType,
+    partitionKey,
+    {
+      tx,
+      principal,
+      nodeType: target.nodeType,
+      nodeId: target.nodeId,
+      context,
+    },
+    "read",
+  );
   if (readOnly && best.outcome === "full") best.outcome = "read";
   // Subject exclusion (A004-T16): the person a record concerns is removed from
   // its readers, whatever role would otherwise grant it. The same decision feeds
@@ -962,15 +978,20 @@ export async function authorizeWrite(
             target.nodeType,
             partitionKey,
           )
-        : target.edgeType === "triggered_by" &&
-          target.toNodeType === "Employee" &&
-          ((isSystemOperationPermitted(
-            principal.name,
-            "timesheet-anomaly.create-flag",
-          ) &&
-            target.fromNodeType === "TimesheetAnomalyFlag") ||
-            (isSystemOperationPermitted(principal.name, "revenue-gap-alert.write") &&
-              target.fromNodeType === "RevenueGapAlert"));
+        : Object.entries(SYSTEM_EDGE_OPERATION_TARGETS).some(
+            ([operation, shapes]) =>
+              isSystemOperationPermitted(
+                principal.name,
+                operation as SystemOperation,
+              ) &&
+              (!context.systemOperation || context.systemOperation === operation) &&
+              shapes?.some(
+                (shape) =>
+                  shape.edgeType === target.edgeType &&
+                  shape.fromNodeType === target.fromNodeType &&
+                  shape.toNodeType === target.toNodeType,
+              ),
+          );
     if (!permitted) return refuse("role");
   } else {
     const gateRoles: readonly PolicyRole[] =

@@ -107,6 +107,8 @@ export type PolicyScope =
 
 interface PolicyCell extends PolicyResolution {
   readonly scope: PolicyScope;
+  /** A wider read-only scope; never alters the write ceiling (F292). */
+  readonly readScope?: PolicyScope;
   /** The literal matrix or default-table cell text, for fidelity tests. */
   readonly sourceText: string;
 }
@@ -364,8 +366,14 @@ const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
     owner: FULL_ANY(),
     "hr-admin": FULL_ANY(),
     "finance-admin": READ_ANY(),
-    manager: cell("full", "direct-reports", "Full (direct reports)"),
-    "team-member": cell("read", "own-plus-team", "Read (own + team)"),
+    manager: {
+      ...cell("full", "direct-reports", "Full (direct reports)"),
+      readScope: "any",
+    },
+    "team-member": {
+      ...cell("read", "own-plus-team", "Read (own + team)"),
+      readScope: "any",
+    },
   },
   "Employee:compensation": {
     owner: FULL_ANY(),
@@ -862,6 +870,7 @@ export function resolvePermission(
  */
 export interface PolicyCellResolution extends PolicyResolution {
   readonly scope: PolicyScope;
+  readonly readScope?: PolicyScope;
 }
 
 export function resolvePolicyCell(
@@ -874,10 +883,19 @@ export function resolvePolicyCell(
   }
   const literal = (cellValue: PolicyCell): PolicyCellResolution =>
     cellValue.restrictedLabel === undefined
-      ? { outcome: cellValue.outcome, scope: cellValue.scope }
+      ? {
+          outcome: cellValue.outcome,
+          scope: cellValue.scope,
+          ...(cellValue.readScope === undefined
+            ? {}
+            : { readScope: cellValue.readScope }),
+        }
       : {
           outcome: cellValue.outcome,
           scope: cellValue.scope,
+          ...(cellValue.readScope === undefined
+            ? {}
+            : { readScope: cellValue.readScope }),
           restrictedLabel: cellValue.restrictedLabel,
         };
 

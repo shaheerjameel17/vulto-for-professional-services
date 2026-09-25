@@ -7,6 +7,8 @@ import {
   stampNewEdge,
   stampNewNode,
   updateStamp,
+  proficiencyMeets,
+  type ProficiencyLevel,
   type JsonValue,
   type MutationArgs,
 } from "@vulto/schema";
@@ -18,11 +20,17 @@ import {
   GraphValidationError,
   insertEdge,
   insertNode,
+  outgoing,
+  updateEdgeMetadata,
   StaleVersionError,
   updateNodeFields,
   type StoredNode,
 } from "../graph/store.js";
 import { writeProtected } from "../protected/write.js";
+import { resolveEmployeeForUser } from "../permission/employee-link.js";
+import { db } from "../db.js";
+import { getNodes } from "../graph/store.js";
+import { skillGapEvaluate } from "./skill-matcher.js";
 import {
   MutationRejection,
   type MutationContext,
@@ -350,6 +358,105 @@ export const employeeSetCompensation: ServerMutation<
         result: { fragment_id: written.fragmentId, version: written.version },
         changedRowIds: [],
       };
+    },
+  };
+};
+
+export const employeeAttachSkill: ServerMutation<
+  MutationArgs<"employee.attachSkill">
+> = async (ctx) => {
+  const {
+    employee_id: employeeId,
+    skill_id: skillId,
+    proficiency_level: level,
+  } = ctx.args;
+  const workspaceId = ctx.principal.workspaceId;
+  await requireEmployee(ctx, employeeId);
+  const skill = await getNode(ctx.tx, workspaceId, skillId);
+  if (
+    !skill ||
+    skill.isSoftDeleted ||
+    skill.nodeType !== "Skill" ||
+    skill.lifecycleStatus !== "Active"
+  )
+    throw new MutationRejection("invalid-args");
+  const existing = (
+    await outgoing(ctx.tx, workspaceId, employeeId, "has_skill", ctx.now)
+  ).find((edge) => edge.toNodeId === skillId && edge.effectiveTo === null);
+  const edgeId = existing?.edgeId ?? ctx.mutationId;
+  const ownEmployeeId = await resolveEmployeeForUser(
+    ctx.tx,
+    workspaceId,
+    ctx.principal.userId,
+  );
+  const self = ownEmployeeId === employeeId;
+  const metadata = {
+    ...(existing?.record["metadata"] as Record<string, unknown> | undefined),
+    proficiency_level: level,
+    verified: !self,
+    verified_by: self ? null : ctx.principal.userId,
+    verified_at: self ? null : ctx.now,
+  };
+  return {
+    checks: [
+      {
+        target: {
+          kind: "edge",
+          workspaceId,
+          edgeType: "has_skill",
+          edgeId,
+          fromNodeType: "Employee",
+          fromNodeId: employeeId,
+          toNodeType: "Skill",
+          toNodeId: skillId,
+        },
+        change: { operation: existing ? "update" : "create" },
+      },
+    ],
+    async validate() {},
+    async apply() {
+      const edge = existing
+        ? await updateEdgeMetadata(ctx.tx, workspaceId, edgeId, metadata, {
+            userId: ctx.principal.userId,
+            at: ctx.now,
+          })
+        : await insertEdge(
+            ctx.tx,
+            workspaceId,
+            stampNewEdge(
+              {
+                edge_id: edgeId,
+                edge_type: "has_skill",
+                from_node_id: employeeId,
+                to_node_id: skillId,
+                effective_from: ctx.now,
+                effective_to: null,
+                metadata,
+              },
+              provenance(ctx),
+            ),
+          );
+      return { result: { edge_id: edge.edgeId }, changedRowIds: [edge.edgeId] };
+    },
+    async afterCommit() {
+      const gaps = await db.transaction((tx) =>
+        getNodes(tx, workspaceId, {
+          nodeType: "SkillGap",
+          lifecycleStatus: "Active",
+        }),
+      );
+      for (const gap of gaps) {
+        if (gap.record["skill_id"] !== skillId) continue;
+        const required = gap.record["proficiency_level_required"];
+        if (typeof required !== "string") continue;
+        if (!proficiencyMeets(level, required as ProficiencyLevel)) continue;
+        await skillGapEvaluate(
+          workspaceId,
+          String(gap.record["project_id"]),
+          skillId,
+          ctx.now,
+        );
+      }
     },
   };
 };

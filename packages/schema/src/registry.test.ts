@@ -129,6 +129,10 @@ describe("canonical registry", () => {
         edgeType: "logged_against",
         readSufficientEndpoints: { Assignment: true },
       },
+      ...Array.from({ length: 5 }, () => ({
+        edgeType: "requires_skill",
+        readSufficientEndpoints: { Project: true },
+      })),
     ]);
     expect(
       assertRegisteredRelationship("affects", "Insight", "Employee"),
