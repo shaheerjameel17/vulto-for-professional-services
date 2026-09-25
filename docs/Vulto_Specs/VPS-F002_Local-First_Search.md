@@ -81,7 +81,7 @@ Each row shows the entity name at `body-medium`, its type as a `subtle` Badge, a
 
 Skill-match rows show name, matched skill with proficiency, and availability, visually distinguished from a direct name match by their group header alone. Ghost results carry the dashed treatment from [[VPS-D001_Design_Foundations|VPS-D001]].
 
-There is no result count, no *searching* state, and no shimmer on the local results. At a 30ms budget they are simply present. Server-backed results (below) are a separate group that arrives when the server answers, and never delay or reorder what is already on screen.
+There is no result count, no *searching* state, and no shimmer on the local results. At a 30ms budget they are simply present. Server-backed results (below) — the skill-match group and any protected-name group — are separate groups that arrive when the server answers, and never delay or reorder what is already on screen.
 
 ### Keyboard
 
@@ -115,7 +115,7 @@ Below 768px the palette is full-screen with the input pinned to the top, and res
 
 ### The index
 
-SQLite FTS5 virtual tables, one per searchable node type, indexing **identifying fields only**.
+A derived table, `cache_search`, one row per searchable node, holding **identifying fields only** as normalized lowercase text (`search_text`) together with the node's label and lifecycle status. SQLite FTS5 is not used: the pinned `wa-sqlite` build ships no FTS module of any kind (F297). Matching is prefix and substring, which is the full extent of what this feature promises (see Out of Scope).
 
 **The table below is a registry, not a fixed list.** Each application registers its own searchable node types here, per [[VPS-000_Documentation_Standard|VPS-000]]'s Standing Rule 7. Roster's registration is the initial one; [[Vulto Projects]] adds Project, Deliverable and Client when it ships.
 
@@ -129,7 +129,9 @@ SQLite FTS5 virtual tables, one per searchable node type, indexing **identifying
 | Project | `name` | [[Vulto Projects]] |
 | Deliverable | `title` | [[Vulto Projects]] |
 
-These tables are maintained by triggers on the same content tables [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s materialization already populates — part of that existing pipeline, not a separate reindex job on its own schedule.
+This index is maintained by SQL triggers on the same content tables [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s materialization already populates — part of that existing pipeline, not a separate reindex job on its own schedule.
+
+**Registered now (F299): Employee, Skill, Project and Client.** These are the four registered Tier 0 node types that have real rows, real writers and a known name field today. Document (its protection is inherited from its parent, so `file_name` is not uniformly Tier 0), Policy and Deliverable (no field schema yet defines their `title`) are added by the stage that gives each a field schema, as one registry entry plus a cache-version bump. Registration refuses any node type or field that cannot be shown to be Tier 0, and refuses `AuditEntry` by name.
 
 **As new Tier 0 node types are registered in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]], they become indexable by adding a row above.** The set is open by design, and an application extends it here rather than building a second index.
 
@@ -137,7 +139,7 @@ These tables are maintained by triggers on the same content tables [[VPS-A001_Te
 
 ### What is never indexed
 
-Tier 1 and Tier 3 fields are **never written to an FTS table at all** — not filtered at query time, never present.
+Tier 1 and Tier 3 fields are **never written to the search index at all** — not filtered at query time, never present.
 
 Two reasons stack. Tier 1, Tier 2 and Tier 3 data is never on a device at all ([[VPS-A003_Unified_Sync_Architecture|VPS-A003]]): the device cache holds only the Tier 0 rows the person's sync audience names, so there is nothing to index regardless of the person's role. And even on the server, indexing document or contract body content is a materially harder problem than this feature takes on. Name and title search is what is built.
 
@@ -145,9 +147,9 @@ This is a stronger guarantee than permission filtering: there is no code path in
 
 ### Permission filtering
 
-The local index covers Tier 0 identifying fields only, which is all a device holds. They reach the device already filtered by the person's sync audience and are filtered again by role at query time.
+The local index covers Tier 0 identifying fields only, which is all a device holds. They reach the device already filtered by the person's sync audience, which is derived from the same read decision the interceptor makes; the local query reimplements no second check (F300).
 
-Results pass through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor — the same discipline [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s intelligence panel states for itself. **This feature constructs no permission logic of its own.** An engineer adding a searchable node type registers it here and relies on the interceptor, rather than writing a bespoke visibility check for search.
+Local results are exactly the rows the device's audience-filtered cache holds; server-backed results pass through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor — the same discipline [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s intelligence panel states for itself. **This feature constructs no permission logic of its own.** An engineer adding a searchable node type registers it here and relies on the interceptor, rather than writing a bespoke visibility check for search.
 
 ### Search beyond Tier 0
 
@@ -159,19 +161,24 @@ A query that could match an entity whose identifying fields are Tier 1, Tier 2 o
 - **The empty-state rule still holds.** A restricted match is indistinguishable from no match, whether the answer came from the device or the server.
 - **`AuditEntry` is still never searched, by either path** (VPS-F004 G07).
 
+**`search.queryProtected` is not built until a node type exists to search (F299).** No built node type has a Tier 1, 2 or 3 name a person may search by (`Contract`, `Departure` and `Document` are unbuilt). Whichever of `VRS-F020`, `VRS-F022` or `VRS-F023` first builds one adds the server-backed registry variant and this endpoint, interceptor-governed and audited as described above.
+
 ### Skill delegation
 
-A query is checked against the Skill table in parallel with the entity tables. A match calls `skillMatcher.adHocSearch` per [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]], unmodified. Proficiency ordering, availability filtering and Ghost inclusion are that feature's logic and are not duplicated.
+A query is checked against the indexed Skill rows in parallel with the other entity rows. A local match on a Skill's name sets `skillMatched` on `search.query`'s result, and the palette then calls the server-side `skillMatcher.adHocSearch` per [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]], unmodified. Proficiency ordering, availability filtering and Ghost inclusion are that feature's logic and are not duplicated. That call is an ordinary server read (F286), so the skill-match group is server-backed: it arrives after the local results, needs a connection, and shows the `requires-connection` state with **Retry** when offline, without affecting anything local (F298).
 
 ### API contracts
 
 ```
 search.query(text, limit?) -> {
   commandMatches: [{ commandId, label, shortcut? }],
-  entityMatches:  [{ nodeType, nodeId, label, secondaryLabel, isGhost? }],
-  skillMatches?:  [{ employeeId, isGhost, availabilityStatus, matchedSkills }]
-    // Present only when text matches a Skill name. Exactly
-    // skillMatcher.adHocSearch's return shape, passed through unmodified
+  entityMatches:  [{ nodeType, nodeId, label, secondaryLabel, lifecycleStatus,
+                     isGhost?, availabilityStatus?, nextRolloffDate? }],
+    // availabilityStatus and nextRolloffDate: Employee rows only, from the
+    // same local assignment-coverage rule the skill holders view uses
+  skillMatched:   boolean
+    // True when at least one indexed Skill row matches the text. The palette
+    // then calls skillMatcher.adHocSearch (a server read, unmodified) itself
 }
   // Entirely from the local index. No network request.
   // Tier 0 entities only: what the device cache holds.
@@ -189,11 +196,11 @@ search.queryProtected(text, limit?) -> {
 
 | ID | Specification |
 |---|---|
-| G01 | FTS5 tables are maintained by triggers on the content tables [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s materialization populates. Index staleness beyond normal materialization lag is never expected |
-| G02 | Only identifying fields are indexed. No Tier 1 or Tier 3 field is ever written to an FTS table, regardless of the querying device's own access |
-| G03 | Results are filtered through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor, identical to every other read. No separate permission mechanism exists |
+| G01 | The `cache_search` index table is maintained by SQL triggers on the content tables [[VPS-A001_Technology_Stack_and_Engineering_Foundations|VPS-A001]]'s materialization populates. Index staleness beyond normal materialization lag is never expected |
+| G02 | Only identifying fields are indexed. No Tier 1 or Tier 3 field is ever written to the search index, regardless of the querying device's own access |
+| G03 | Local results are exactly the rows the device's audience-filtered cache holds, with no second check reimplemented client-side; server-backed results are filtered through [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor, identical to every other read. No separate permission mechanism exists |
 | G04 | A skill-shaped query delegates to [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]] unmodified. Ghost inclusion and availability ranking are not duplicated here |
-| G05 | A newly registered Tier 0 node type becomes searchable by adding an FTS table. The indexed list is open, not closed |
+| G05 | A newly registered Tier 0 node type becomes searchable by adding one registry entry and bumping the cache version. The indexed list is open, not closed |
 | G06 | A person's context line shows availability and next rolloff, resolved from [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s computation |
 | G07 | The local index holds Tier 0 identifying fields only. A match on an entity whose identifying fields are Tier 1, 2 or 3 is a server-backed call, online only, run through the interceptor and audited under VPS-F004 where the matched type is Tier 1 or Tier 3 |
 | G08 | `AuditEntry` is excluded from both the local index and the server-backed search |
@@ -204,7 +211,7 @@ search.queryProtected(text, limit?) -> {
 
 | ID | Name | Type |
 |---|---|---|
-| VPS-F002-S01 | FTS5 index schema and trigger maintenance | Data |
+| VPS-F002-S01 | Search index schema and trigger maintenance | Data |
 | VPS-F002-S02 | Command palette behavior and keyboard trigger | UI |
 | VPS-F002-S03 | Permission-filtered entity search | Logic |
 | VPS-F002-S04 | Skill query delegation | Logic |
@@ -252,7 +259,7 @@ search.queryProtected(text, limit?) -> {
 
 **GIVEN** the device is offline
 **WHEN** the palette is used
-**THEN** Tier 0 entity search, skill delegation and commands all resolve from the local index with no degradation and no network attempt, and any server-backed group shows the `requires-connection` state with **Retry**
+**THEN** Tier 0 entity search and commands resolve from the local index with no degradation and no network attempt, and every server-backed group — the skill-match group, and any protected-name group once one exists — shows the `requires-connection` state with **Retry**
 
 ---
 
@@ -272,8 +279,8 @@ search.queryProtected(text, limit?) -> {
 
 - Results return within 30ms of the third character typed, per [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]
 - The palette opens, focuses and is ready within 50ms
-- Full functionality offline for Tier 0 entity search, skill delegation and commands; server-backed results require a connection and degrade to `requires-connection`
-- No perceptible lag between a node's creation or rename and its appearance in results, since FTS maintenance rides the same materialization pipeline as every other read
+- Full functionality offline for Tier 0 entity search and commands; server-backed results (the skill-match group and any protected-name group) require a connection and degrade to `requires-connection`
+- No perceptible lag between a node's creation or rename and its appearance in results, since index maintenance rides the same materialization pipeline as every other read
 
 ---
 
@@ -301,7 +308,7 @@ search.queryProtected(text, limit?) -> {
 
 **The palette-ownership collision is settled and the archeology retired.** Two features previously claimed `Cmd+K`. This one owns the keystroke and the surface; [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]] owns the matching logic behind one kind of result. Both documents now state it as behavior rather than as a resolved conflict.
 
-**The latency budget tightens from 10ms to 30ms**, matching [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]. The previous 10ms figure was inherited from [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]]'s ad-hoc match, which is a single-table query. A palette running FTS across seven tables plus command matching plus a delegated skill query is a different operation, and specifying an unachievable budget invites an implementer to either miss it or cut the scope that makes the feature useful.
+**The latency budget tightens from 10ms to 30ms**, matching [[VPS-D003_Interaction_Motion_and_Keyboard_Model|VPS-D003]]. The previous 10ms figure was inherited from [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]]'s ad-hoc match, which is a single-table query. A palette searching every indexed node type plus command matching plus a delegated skill query is a different operation, and specifying an unachievable budget invites an implementer to either miss it or cut the scope that makes the feature useful.
 
 **Commands are added as a result group.** [[VPS-D002_Component_Library|VPS-D002]] already describes the palette as one surface with several capabilities. The previous specification covered only entity search, which would have produced a second palette for actions within a year.
 
@@ -310,6 +317,15 @@ search.queryProtected(text, limit?) -> {
 **Policy is added to the indexed set**, following the open-list rule now stated in G05, so that a future Tier 0 node type does not require amending this document to become findable.
 
 **Search is local for Tier 0 and server-backed beyond it (F199, 22 September 2026).** The body previously claimed every nameable entity was searched entirely from a local index with no network round-trip, and framed the whole feature as indistinguishable offline and online. Under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s server-authoritative revision a device holds Tier 0 rows only, so that guarantee is true of Tier 0 and not of anything else. It is scoped accordingly wherever it appears (the opening, the problem statement, the layout and system states, the index and permission-filtering sections, the API contract, the acceptance criteria and the non-functional requirements). A query that could match a Tier 1, 2 or 3 entity is a server-backed call: slower, online-only, itself an interceptor-governed and audited access, and degrading to `requires-connection` ([[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]) when offline. Tier 2 is also no longer described as syncing broadly; it does not reach a device. The total exclusion of `AuditEntry` (VPS-F004 G07) is unchanged. Recorded as part of the FDN-104 priority slice.
+
+
+**The index is a trigger-maintained plain table, not FTS5 (F297, 25 September 2026).** The body specified SQLite FTS5 virtual tables in five places, but the pinned `wa-sqlite@1.0.0` builds ship no FTS module (`no such module: fts5`, and likewise `fts3`, `fts4`). A custom FTS5 build would have changed `VPS-A001`'s pinned stack and added a WASM build pipeline; direct `json_extract` scans would degrade against the 30ms budget as a workspace grows. Decided by the founder: a derived `cache_search` table in the existing device cache, maintained by SQL triggers on `cache_nodes`, queried by prefix and substring. Normalization is SQLite's own `lower()` on both the index and query sides so they can never disagree, the user's text is bound as a parameter with wildcards escaped, and a registry change requires a cache-version bump. Fuzzy matching remains out of scope, so nothing this spec promises is lost.
+
+**The skill-match group is server-backed (F298, 25 September 2026).** `skillMatcher.adHocSearch` has been an ordinary server-side authorized read since F286, so a local `search.query` cannot return its result. `search.query` returns a `skillMatched` flag instead, and the palette calls `adHocSearch` unmodified when it is set. Proficiency ordering, availability filtering and Ghost inclusion stay that feature's logic.
+
+**Four of seven registry entries now, and `search.queryProtected` deferred (F299, 25 September 2026).** Employee, Skill, Project and Client are registered. Document (inherited protection, no `file_name` schema), Policy and Deliverable (no `title` schema) are forward dependencies added by the stage that gives each a field schema. `search.queryProtected` waits for the first built node type with a Tier 1–3 searchable name.
+
+**Local permission filtering is the device's audience; commands are ungated for now (F300, 25 September 2026).** The device cache already holds only what the person may read, the same reasoning as `VRS-F014` G03, so no second check is reimplemented. Commands are a static registry matched by text; the server authorizes whatever a command executes, and role-aware command visibility is a later UI-stage concern.
 
 ---
 
