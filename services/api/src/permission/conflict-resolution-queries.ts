@@ -1,6 +1,10 @@
 import { capacityTotalsFor } from "../mutations/assignment.js";
 import { getNodes, type GraphTx } from "../graph/store.js";
-import { filterReadable, type InterceptorContext } from "./interceptor.js";
+import {
+  filterReadable,
+  withinRoleScopedReach,
+  type InterceptorContext,
+} from "./interceptor.js";
 import type { MemberPrincipal } from "./principal.js";
 
 export interface OvercommittedEmployee {
@@ -34,6 +38,17 @@ export async function sweepOvercommitted(
   });
   const result: OvercommittedEmployee[] = [];
   for (const employee of employees) {
+    if (
+      !(await withinRoleScopedReach(
+        tx,
+        principal,
+        employee.nodeId,
+        "Employee",
+        "operational",
+        context,
+      ))
+    )
+      continue;
     const owned = assignments.filter(
       (assignment) => assignment.record["employee_id"] === employee.nodeId,
     );

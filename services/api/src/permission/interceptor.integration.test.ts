@@ -8,6 +8,7 @@ import {
   MATRIX_COVERAGE_BASELINE,
   countMatrixCoverage,
   enumerateMatrixCells,
+  resolvePolicyCell,
   resolvePermission,
   type NodeType,
   type PolicyRole,
@@ -148,8 +149,14 @@ describe("A004-T07 — the permission matrix, against the server interceptor", (
           role === "manager" ? managerDeps : {},
         );
         const expected = resolvePermission(role, nodeType, partitionKey);
+        const cell = resolvePolicyCell(role, nodeType, partitionKey);
+        const expectedAccess =
+          cell.readScope === "any" &&
+          (cell.outcome === "read" || cell.outcome === "full")
+            ? "read"
+            : expected.outcome;
         const actual = decision.access;
-        expect(actual, `${role} ${nodeType}/${partitionKey}`).toBe(expected.outcome);
+        expect(actual, `${role} ${nodeType}/${partitionKey}`).toBe(expectedAccess);
         if (decision.access === "restricted") {
           expect(decision.label).toBe(expected.restrictedLabel ?? "Restricted");
         }

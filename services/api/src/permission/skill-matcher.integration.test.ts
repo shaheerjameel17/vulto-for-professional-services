@@ -191,12 +191,28 @@ describe("VRS-F013 Skill-to-Project Matcher", () => {
     const before = await db.transaction((tx) =>
       getNodes(tx, w.workspaceId, { nodeType: "SkillGap" }),
     );
+    const beforeRequirements = await db.transaction((tx) =>
+      outgoing(tx, w.workspaceId, w.projectId, "requires_skill"),
+    );
+    const beforeHoldings = await db.transaction((tx) =>
+      outgoing(tx, w.workspaceId, employeeId, "has_skill"),
+    );
     const adHoc = await db.transaction((tx) => adHocSearch(tx, w.owner, "type"));
     expect(adHoc.results[0]?.matches[0]?.employeeId).toBe(employeeId);
     const after = await db.transaction((tx) =>
       getNodes(tx, w.workspaceId, { nodeType: "SkillGap" }),
     );
     expect(after).toHaveLength(before.length);
+    expect(
+      await db.transaction((tx) =>
+        outgoing(tx, w.workspaceId, w.projectId, "requires_skill"),
+      ),
+    ).toEqual(beforeRequirements);
+    expect(
+      await db.transaction((tx) =>
+        outgoing(tx, w.workspaceId, employeeId, "has_skill"),
+      ),
+    ).toEqual(beforeHoldings);
   });
   it("refuses generic writes to feature-owned edges while named paths remain live", async () => {
     const w = await world();
@@ -413,10 +429,38 @@ describe("VRS-F013 Skill-to-Project Matcher", () => {
       proficiency_level_required: "Senior",
     });
     expect(requirement.status, JSON.stringify(requirement)).toBe("applied");
+    const secondSkillId = randomUUID();
+    const secondSkill = await w.apply(w.owner, "graph.createNode", {
+      node: {
+        node_id: secondSkillId,
+        node_type: "Skill",
+        schema_version: 1,
+        lifecycle_status: "Active",
+        skill_id: secondSkillId,
+        name: "Architecture",
+        category: "Engineering",
+      },
+    });
+    expect(secondSkill.status, JSON.stringify(secondSkill)).toBe("applied");
+    const secondHolding = await w.apply(w.hr, "employee.attachSkill", {
+      employee_id: available,
+      skill_id: secondSkillId,
+      proficiency_level: "Expert",
+    });
+    expect(secondHolding.status, JSON.stringify(secondHolding)).toBe("applied");
+    const secondRequirement = await w.apply(w.owner, "project.attachSkillRequirement", {
+      project_id: w.projectId,
+      skill_id: secondSkillId,
+      proficiency_level_required: "Expert",
+    });
+    expect(secondRequirement.status, JSON.stringify(secondRequirement)).toBe("applied");
     const results = await db.transaction((tx) =>
       getMatchResults(tx, w.owner, w.projectId, 30, NOW),
     );
-    const matches = results?.perRequirement[0]?.matches;
+    expect(results?.perRequirement).toHaveLength(2);
+    const matches = results?.perRequirement.find(
+      (row) => row.skillId === w.skillId,
+    )?.matches;
     expect(matches?.map((match) => match.employeeId)).toEqual([
       available,
       soon,
@@ -428,11 +472,18 @@ describe("VRS-F013 Skill-to-Project Matcher", () => {
       "2026-01-21",
     ]);
     expect(matches?.map((match) => match.isGhost)).toEqual([false, false, true]);
+    expect(
+      results?.perRequirement
+        .find((row) => row.skillId === secondSkillId)
+        ?.matches.map((match) => match.employeeId),
+    ).toEqual([available]);
     const nearOnly = await db.transaction((tx) =>
       getMatchResults(tx, w.owner, w.projectId, 10, NOW),
     );
     expect(
-      nearOnly?.perRequirement[0]?.matches.map((match) => match.employeeId),
+      nearOnly?.perRequirement
+        .find((row) => row.skillId === w.skillId)
+        ?.matches.map((match) => match.employeeId),
     ).toEqual([available]);
   });
 

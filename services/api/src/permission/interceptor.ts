@@ -30,7 +30,7 @@ import {
 import { resolveEmployeeForUser } from "./employee-link.js";
 import type { RoleDependencies } from "./roles.js";
 import { effectiveRoles } from "./roles.js";
-import type { Principal, SupportPrincipal } from "./principal.js";
+import type { MemberPrincipal, Principal, SupportPrincipal } from "./principal.js";
 import { resolveReaderSet, resolveSubjectEmployee } from "./reader-set.js";
 import { checkWriteAuthority } from "./write-authority.js";
 
@@ -74,6 +74,8 @@ interface RowScopeContext {
   /** Only a pre-write create may use the mutation's declared subject. */
   readonly creating?: boolean;
   readonly declaredSubjectEmployeeId?: string | null;
+  /** Trusted derived-query subject when its governed row has not been written. */
+  readonly subjectEmployeeIdOverride?: string;
 }
 
 /** The stored-row subject path shared by reads, updates, and post-create verification. */
@@ -130,17 +132,23 @@ async function rowScopeSatisfied(
   const me = await resolve(tx, principal.workspaceId, principal.userId);
   if (me === null) return false;
   const asOf = (context.now ?? nowIso)();
-  const subjectEmployeeId =
+  let subjectEmployeeId: string | null;
+  if (row.subjectEmployeeIdOverride !== undefined) {
+    subjectEmployeeId = row.subjectEmployeeIdOverride;
+  } else if (
     row.creating === true &&
     (row.nodeType === "TimesheetEntry" || row.nodeType === "TimesheetWeekSubmission")
-      ? (row.declaredSubjectEmployeeId ?? null)
-      : await resolveStoredSubjectEmployeeId(
-          tx,
-          principal.workspaceId,
-          row.nodeType,
-          nodeId,
-          asOf,
-        );
+  ) {
+    subjectEmployeeId = row.declaredSubjectEmployeeId ?? null;
+  } else {
+    subjectEmployeeId = await resolveStoredSubjectEmployeeId(
+      tx,
+      principal.workspaceId,
+      row.nodeType,
+      nodeId,
+      asOf,
+    );
+  }
   if (subjectEmployeeId === null) return false;
   if (scope === "own") return me === subjectEmployeeId;
   const managerOf = async (employeeId: string) =>
@@ -297,6 +305,39 @@ async function bestCell(
     }
   }
   return best;
+}
+
+/**
+ * Admission for a derived disclosure governed by a named policy cell's original
+ * row scope, independent of any wider readScope on its underlying Employee.
+ */
+export async function withinRoleScopedReach(
+  tx: GraphTx,
+  principal: MemberPrincipal,
+  subjectEmployeeId: string,
+  nodeType: NodeType,
+  partitionKey: string,
+  context: InterceptorContext = {},
+): Promise<boolean> {
+  const subject = await getNode(tx, principal.workspaceId, subjectEmployeeId);
+  if (!subject || subject.isSoftDeleted || subject.nodeType !== "Employee")
+    return false;
+  const { roles } = await decisionRoles(tx, principal, nodeType, "read", context);
+  const best = await bestCell(
+    roles,
+    nodeType,
+    partitionKey,
+    {
+      tx,
+      principal,
+      nodeType,
+      nodeId: subjectEmployeeId,
+      subjectEmployeeIdOverride: subjectEmployeeId,
+      context,
+    },
+    "write",
+  );
+  return best.outcome === "read" || best.outcome === "full";
 }
 
 /** A read decision with no side effects. */
