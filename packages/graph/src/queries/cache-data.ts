@@ -14,6 +14,7 @@ export interface LocalEdge {
   readonly toNodeId: string;
   readonly effectiveFrom: string | null;
   readonly effectiveTo: string | null;
+  readonly record: Record<string, unknown>;
 }
 
 const nodeOf = (row: Record<string, SqlValue>): LocalNode => ({
@@ -30,6 +31,7 @@ const edgeOf = (row: Record<string, SqlValue>): LocalEdge => ({
   toNodeId: String(row["to_node_id"]),
   effectiveFrom: (row["effective_from"] as string | null) ?? null,
   effectiveTo: (row["effective_to"] as string | null) ?? null,
+  record: JSON.parse(String(row["record_json"] ?? "{}")) as Record<string, unknown>,
 });
 
 export async function localNodes(

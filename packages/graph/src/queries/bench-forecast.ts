@@ -72,6 +72,13 @@ const groupBench = (
 const nodeMap = (nodes: readonly LocalNode[]) =>
   new Map(nodes.map((node) => [node.nodeId, node]));
 
+/** The local Assignment coverage rule shared by the forecast and skill holders. */
+export const assignmentCoversDate = (assignment: LocalNode, date: string) =>
+  assignment.nodeType === "Assignment" &&
+  assignment.lifecycleStatus === "Active" &&
+  String(assignment.record["start_date"]) <= date &&
+  date <= String(assignment.record["end_date"]);
+
 export async function getBenchForecast(
   database: SyncDatabase,
   input: {
@@ -183,10 +190,8 @@ export async function getBenchForecast(
         date,
         location: (employee.record["location"] as string | null | undefined) ?? null,
       });
-      const covered = employeeAssignments.some(
-        (assignment) =>
-          String(assignment.record["start_date"]) <= date &&
-          date <= String(assignment.record["end_date"]),
+      const covered = employeeAssignments.some((assignment) =>
+        assignmentCoversDate(assignment, date),
       );
       if (resolved.isWorking && !covered) {
         benchDays.push({ date, fraction: resolved.dayFraction });
