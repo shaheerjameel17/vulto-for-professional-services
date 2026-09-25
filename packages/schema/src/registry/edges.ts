@@ -202,6 +202,13 @@ export const EDGE_GROUPS = [
       ["CareerMilestone", "Skill"],
       ["Requisition", "Skill"],
     ],
+    // Pitch and Requisition are tier-split; every edge touching a split node
+    // must declare which partition governs it or the interceptor structurally
+    // refuses the write (F208 / F235 / F254 / F265 / F267's recurring class).
+    // Skill requirements are non-financial descriptive data on both, matching
+    // staffed_on's and logged_against's own Pitch:identifying precedent.
+    // F285, founder-delegated.
+    governingPartitions: { Pitch: "identifying", Requisition: "identifying" },
   }),
   edgeGroup({
     edgeType: "holds_certification",

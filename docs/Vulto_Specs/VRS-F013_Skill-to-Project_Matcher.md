@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee and `has_skill`), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (the bench computation supplying availability), [[VRS-F007_Ghost_Resources|VRS-F007]] (Ghosts, matched identically), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (`requires_skill`, SkillGap and Skill registry entries), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission-scoped results)
+**Depends On:** [[VRS-F002_Atomic_Employee_Profiles|VRS-F002]] (Employee and `has_skill` — this stage completes that document's own unbuilt `employee.attachSkill` mutation, F287), [[VRS-F005_The_Bench_Forecast|VRS-F005]] (the bench computation supplying availability), [[VRS-F007_Ghost_Resources|VRS-F007]] (Ghosts, matched identically), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (`requires_skill`, SkillGap and Skill registry entries), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (permission-scoped results)
 **Blocks:** [[VRS-F014_Skill_Matrix|VRS-F014]] (which visualizes the Skill schema and proficiency ordering defined here), [[VPS-F002_Local-First_Search|VPS-F002]] (whose palette routes skill-shaped queries to this engine), [[VRS-F054_Skill_Gap_Trend_Analysis|VRS-F054]] (which analyzes the SkillGap history this feature accumulates)
 
 This document is the single source of truth for this feature and owns **Skill's complete schema** and the proficiency ordering the whole product uses.
@@ -93,7 +93,7 @@ Standard list bindings. `Enter` on a match opens that person's profile in the Pa
 
 | State | Treatment |
 |---|---|
-| Syncing | Skeleton rows within each requirement Section |
+| Syncing | Not applicable -- match results and gaps are computed server-side and reach the client via the same shape sync every other node type uses |
 | Restricted | Compensation is never shown on a match card. Availability and proficiency are Tier 0 and always shown |
 | Empty | *No skill requirements attached.* with **Add requirement** |
 | Empty, meaningful | Zero matches renders as a SkillGap, per above, never as a blank list |
@@ -134,6 +134,10 @@ A Deprecated skill's existing `has_skill` edges remain visible and traversable. 
 A match exists where an Employee's `has_skill.proficiency_level` meets **or exceeds** the requirement's `proficiency_level_required`. A Senior person satisfies a Senior or Beginner requirement; an Intermediate person does not satisfy a Senior one.
 
 Availability is filtered using [[VRS-F005_The_Bench_Forecast|VRS-F005]]'s bench computation — not a second implementation — within a configurable window defaulting to thirty days.
+
+### The engine runs server-side
+
+Both modes are ordinary server-side authorized queries per [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor, exactly like every read this project has built since Stage 18 -- not a local-graph traversal. SkillGap detection and auto-resolution are likewise server-side: a reactive check runs inside the writing mutation's own `afterCommit` hook whenever a qualifying `has_skill` edge is written, following `timesheetAnomaly.evaluate`'s (Stage 18) and `revenueGapAlert.evaluate`'s (Stage 20) own precedent, never a client-side or scheduled sweep.
 
 ### requires_skill
 
@@ -180,13 +184,16 @@ project.getMatchResults(projectId, availabilityWindowDays?) -> {
     skillGapId?
   }]
 }
-  // Entirely local. Within 200ms for 150 employees and 50 projects
+  // An ordinary server-side authorized query per VPS-A004's interceptor,
+  // like every read since Stage 18. Within 300ms for 150 employees and 50 projects
 
 skillMatcher.adHocSearch(query) -> {
   results: [{ employeeId, isGhost, availabilityStatus, matchedSkills }]
 }
-  // Called by VPS-F002's palette. No persistence, no SkillGap.
-  // Within 10ms of the third character typed
+  // The same server-side query engine, built now and callable ahead of
+  // VPS-F002's palette, which does not exist yet -- this stage builds the
+  // engine, not the Cmd+K trigger. No persistence, no SkillGap. Within
+  // 300ms of a debounced query, not a per-keystroke local scan
 
 skill.create(name, category?)  -> { skillId }
 skill.deprecate(skillId)       -> { success }
@@ -229,7 +236,7 @@ skillGap.listActive(workspaceId) -> SkillGap[]
 
 **GIVEN** a project with two requirements, three people matching one and one matching the other
 **WHEN** match results are viewed
-**THEN** three ranked cards appear for the first and one for the second, within 200ms from the local graph
+**THEN** three ranked cards appear for the first and one for the second, within 300ms of the request
 
 ---
 
@@ -251,9 +258,9 @@ skillGap.listActive(workspaceId) -> SkillGap[]
 
 ---
 
-**GIVEN** a user types a skill name into [[VPS-F002_Local-First_Search|VPS-F002]]'s palette
+**GIVEN** a caller runs the ad-hoc search with a skill name
 **WHEN** results return
-**THEN** matching people appear within 10ms, with no SkillGap created and no edge written, whether or not any match is found
+**THEN** matching people appear within 300ms, with no SkillGap created and no edge written, whether or not any match is found -- exercised directly, since [[VPS-F002_Local-First_Search|VPS-F002]]'s palette that will call it does not exist yet
 
 ---
 
@@ -263,17 +270,10 @@ skillGap.listActive(workspaceId) -> SkillGap[]
 
 ---
 
-**GIVEN** the device is offline
-**WHEN** either mode is used
-**THEN** both render fully from the local graph with no network attempt and no degradation
-
----
-
 ## Non-Functional Requirements
 
-- Persistent match results within 200ms for 150 employees and 50 projects
-- Ad-hoc lookup within 10ms of the third character typed
-- Full functionality offline in both modes
+- Persistent match results within 300ms for 150 employees and 50 projects
+- Ad-hoc lookup within 300ms of a debounced query
 - Match results and SkillGap resolution update within 1 second of any relevant change
 - A match is never returned for an under-qualified person; proficiency ordering is enforced exactly
 - Exactly one SkillGap per project, skill and proficiency triple; no duplicate for an already-Active gap
@@ -311,6 +311,12 @@ Three reasons. First, [[VRS-F005_The_Bench_Forecast|VRS-F005]] already renders e
 **Severity counts working days**, per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. Fourteen calendar days containing a weekend and a public holiday is nine working days, and the difference between High and Critical urgency.
 
 **The zero-match state offers two actions.** Discovering a capability gap and being offered nothing to do about it wastes the most valuable moment this feature produces.
+
+**`requires_skill`'s missing partition declaration is closed (F285).** Pitch and Requisition are both tier-split, and the edge carried no `governingPartitions` entry for either -- the same class of gap `staffed_on` (F265) and `logged_against` (F267) already exposed and fixed for Pitch. Declared `{ Pitch: "identifying", Requisition: "identifying" }` in the executable registry, matching those precedents exactly: a skill requirement is non-financial descriptive data on both.
+
+**This document's local-first language is corrected (F286).** "Entirely local," the local-graph API contract comments, the 10ms/200ms client-side latency budgets, and the offline acceptance criterion and NFR all predate the project-wide pivot to a server-authoritative architecture (settled before Stage 7) and were never revisited for this foundational spec. Both match modes and SkillGap detection are ordinary server-side authorized reads and a reactive `afterCommit` write, exactly like every engine this project has built since Stage 18. The ad-hoc mode's per-keystroke budget is retired along with the local scan it assumed; it is a debounced server query now, exercised directly since [[VPS-F002_Local-First_Search|VPS-F002]]'s palette does not exist yet.
+
+**`VRS-F002`'s own `employee.attachSkill` mutation is built for the first time by this stage (F287).** That document's API contract has named it since it was written, but the mutation was never implemented -- `has_skill` could only be written through Ghost Resource creation, leaving no path to attach a skill to a real Employee for this feature to ever traverse. Built in `VRS-F002`'s own module, matching its already-specified contract and its G03 replace-on-duplicate semantics exactly; `employee.attachCertification`/`holds_certification` is left untouched, since the executable registry names `VRS-F041` as its owner, not `VRS-F002`, and this feature has no dependency on certifications.
 
 ---
 
