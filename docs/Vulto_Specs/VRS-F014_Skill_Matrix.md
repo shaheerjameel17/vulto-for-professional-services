@@ -242,6 +242,8 @@ skillMatrix.forSkill(skillId) -> {
 
 **Skill's schema ownership moves to [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]].** This feature previously owned it despite being built afterwards, which left the matcher depending on a schema defined downstream of itself. This document now consumes rather than defines.
 
+**`certified` reads `false` for every cell until [[VRS-F041_Certification_and_Training_Tracker|VRS-F041]] exists (F296).** The distinct certified marker this document specifies has no fact behind it yet: [[VRS-F013_Skill-to-Project_Matcher|VRS-F013]]'s own `certified` field is already permanently unfillable, for the identical reason — no metadata slot on `has_skill`, and `VRS-F041`'s own eventual design folds a certification's effect into `verified` rather than defining a second flag. `VRS-F041`, when it is built, must decide whether `certified` becomes a genuinely separate `has_skill` metadata field or whether this document's "distinct marker" requirement is revisited then. Until that decision, the certified dot never renders — an accepted forward dependency, not a defect in this stage's build.
+
 **Ghost Resources appear as rows.** The previous specification did not say either way. Planned capability is a legitimate input to a workforce-planning view — an agency deciding whether it can bid for work should see that the senior engineer arriving in six weeks covers the gap — and excluding them would make this the only skill surface in the product that ignores them.
 
 **The single-skill column view is added.** *Who else could cover this* is the second question anyone asks of a matrix, and the previous specification supported only the first.
