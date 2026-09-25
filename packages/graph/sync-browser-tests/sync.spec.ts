@@ -211,7 +211,9 @@ test("removing the member's role removes the rows they may no longer read from t
   const userId = await signInNewUser(context);
   const fixture = await createWorkspaceAsMember(userId, ["hr-admin"]);
   const { workspaceId } = fixture;
-  await seedProtected(workspaceId, "irrelevant", "irrelevant");
+  const tier1 = `SENTINEL-tier1-${randomUUID()}`;
+  const tier2 = `SENTINEL-tier2-${randomUUID()}`;
+  await seedProtected(workspaceId, tier1, tier2);
   await openHarness(page, workspaceId, userId);
   await expect(statusOf(page)).toHaveText("Synced");
   await expect
@@ -228,6 +230,14 @@ test("removing the member's role removes the rows they may no longer read from t
       );
     })
     .toBe(true);
+  const browserStorage = await page.evaluate(async () => {
+    const w = window as unknown as {
+      __vultoSync: { client: { dump(): Promise<Record<string, unknown[]>> } };
+    };
+    return JSON.stringify(await w.__vultoSync.client.dump());
+  });
+  expect(browserStorage).not.toContain(tier1);
+  expect(browserStorage).not.toContain(tier2);
   const hrOnly = await page.evaluate(async () => {
     const w = window as unknown as {
       __vultoSync: {
