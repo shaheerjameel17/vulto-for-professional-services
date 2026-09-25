@@ -126,8 +126,9 @@ export async function addNode(
   tx: GraphTx,
   workspaceId: string,
   nodeType: string,
+  fields: Record<string, unknown> = {},
 ): Promise<string> {
   const record = nodeRecord(nodeType, workspaceId);
-  await insertNode(tx, record);
+  await insertNode(tx, { ...fields, ...record });
   return record.node_id;
 }

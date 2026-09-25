@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import net from "node:net";
 import { expect, type BrowserContext, type Page } from "@playwright/test";
 import {
+  addNode,
   admitWorkspaceMember,
   applyMutation,
   audienceMaterializer,
@@ -10,9 +11,7 @@ import {
   db,
   eq,
   getKeyServices,
-  insertNode,
   makeWorkspace,
-  nodeRecord,
   resolveMemberPrincipal,
   session,
   sql,
@@ -319,13 +318,11 @@ export async function seedProtected(
 ): Promise<string> {
   const services = getKeyServices();
   return db.transaction(async (tx) => {
-    const employee = await insertNode(tx, {
-      ...nodeRecord("Employee", workspaceId),
+    const employeeId = await addNode(tx, workspaceId, "Employee", {
       employee_type: "Employee",
       full_name: SEARCH_FIXTURE_EMPLOYEE_NAME,
       job_title: "Search Fixture Engineer",
     });
-    const employeeId = employee.nodeId;
     await writeProtected(
       tx,
       services,

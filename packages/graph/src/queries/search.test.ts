@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   ghostEmployeeOperationalRecord,
   validateSearchableNodeTypes,
@@ -8,6 +8,9 @@ import { SqliteCache } from "../sync-client/cache";
 import { openTestDatabase } from "../sync-client/test-database";
 import { searchQuery } from "./search";
 
+beforeEach(() => {
+  vi.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("offline"));
+});
 afterEach(() => vi.restoreAllMocks());
 
 const node = (
@@ -267,9 +270,6 @@ describe("local search index and query", () => {
     for (let i = 0; i < 50; i++) {
       await cache.putNode(node(`p${i}`, "Project", { name: `Per project ${i}` }));
     }
-    const fetch = vi
-      .spyOn(globalThis, "fetch")
-      .mockRejectedValue(new TypeError("offline"));
     await searchQuery(database, { text: "per" });
     const samples: number[] = [];
     for (let i = 0; i < 30; i++) {
@@ -287,7 +287,7 @@ describe("local search index and query", () => {
       `Stage 23 search p95 (150 employees + 50 projects, 3-char "per", 30 runs): ${p95.toFixed(2)}ms`,
     );
     expect(p95).toBeLessThan(100);
-    expect(fetch).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
     await database.close();
   });
 });

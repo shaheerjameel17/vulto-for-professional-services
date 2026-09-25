@@ -1,29 +1,30 @@
 # Stage 23 — Local-First Search
 
 **Status:** BLOCKED
-**Branch:** `codex/stage-23-local-first-search` @ `8f699cf` (partial implementation; finding report follows)
+**Branch:** `codex/stage-23-local-first-search` (partial implementation; see branch tip)
 **Linear issues:** RST-51
 **Date:** 2026-09-25
 
 ## 1. Summary
 
-F301–F303 are present, and implementation reached a working local index, query and focused tests. The F302-required test-only `insertNode` re-export then failed the repository's A003-T52 architecture gate, contradicting the brief's required `pnpm verify` result. Work stopped without weakening the gate or changing the required fixture path. The browser suite and the remaining full gates have not run.
+The local search implementation and F304 fixture correction are preserved on this branch. The four standard gates passed, and the new `cache_search` assertions passed in the real browser suite. The required full browser gate failed because its unchanged `seedEntities` helper calls `graph.createNode` for `Entity`, which the existing feature-owned mutation rule rejects. This conflict is outside Stage 23's authorized file and mutation scope, so the stage is blocked pending a reviewer ruling.
 
 ## 2. Done-criteria checklist
 
-- [x] `cache_search`, replicated table entry and cache schema version 3 — evidence: `packages/graph/src/sync-client/database.test.ts::rebuilds a version-2 cache including the search table and triggers`.
-- [x] Tier 0 registry validation and AuditEntry refusal — evidence: `packages/graph/src/queries/search.test.ts::refuses non-Tier-0 types, protected Employee fields, AuditEntry, unknown types and unsafe names`.
-- [x] Trigger maintenance through cache write methods — evidence: `search.test.ts::maintains insert, rename, soft-delete, reactivation, hard-delete and reset synchronously`.
-- [x] Literal wildcard and non-ASCII matching — evidence: `search.test.ts::escapes LIKE wildcards and matches non-ASCII text using SQLite normalization`.
-- [ ] Three-character query at 150 employees and 50 projects, with reported p95 — the scale test passed its loose ceiling, but the p95 value was not captured in gate output before stopping.
+- [x] `cache_search` exists in `CREATE_REPLICATED_SCHEMA` and `REPLICATED_TABLES`; schema version is 3 — evidence: `database.test.ts::rebuilds a version-2 cache including the search table and triggers`.
+- [x] Registry validates Tier 0 fields and refuses `AuditEntry` — evidence: `search.test.ts::refuses non-Tier-0 types, protected Employee fields, AuditEntry, unknown types and unsafe names`.
+- [x] Triggers maintain insert, rename, soft-delete, reactivation, hard-delete and reset — evidence: `search.test.ts::maintains insert, rename, soft-delete, reactivation, hard-delete and reset synchronously`.
+- [x] Literal `%`, `_` and non-ASCII search through SQLite normalization — evidence: `search.test.ts::escapes LIKE wildcards and matches non-ASCII text using SQLite normalization`.
+- [x] Three-character query at 150 Employees plus 50 Projects is local and grouped — evidence: `search.test.ts` benchmark, 30 runs, `per`, measured p95 **0.84 ms** during `pnpm verify` (focused rerun: 0.90 ms).
 - [x] Deterministic ranking and per-type limit — evidence: `search.test.ts::ranks label-prefix, word-prefix, substring, Active, and binary ties with a per-type limit`.
-- [x] Pre-limit `skillMatched`, with no `skillMatches` or ad-hoc wrapper — evidence: `search.test.ts::computes skillMatched before the limit and returns commands alongside entities`.
-- [x] Real Ghost indexed under role title, detected through `employee_type` — evidence: `search.test.ts::ignores unresolved labels and indexes/relabels a real Ghost by role title`.
-- [x] Shared Employee availability helper; `skill-matrix.test.ts` unchanged — evidence: focused test run, 3 Skill Matrix tests passed.
-- [x] Static commands with symbolic targets — evidence: `search.test.ts::computes skillMatched before the limit and returns commands alongside entities`.
+- [x] `skillMatched` precedes the limit; no `skillMatches` or local ad-hoc wrapper — evidence: `search.test.ts::computes skillMatched before the limit and returns commands alongside entities`.
+- [x] Real Ghost indexed under role title and detected by `employee_type` — evidence: `search.test.ts::ignores unresolved labels and indexes/relabels a real Ghost by role title`.
+- [x] Shared availability helper and unchanged Skill Matrix behavior — evidence: `pnpm verify` graph suite, 97 tests passed; `skill-matrix.test.ts` unchanged.
+- [x] Static symbolic commands, no role gating or executor — evidence: `search-commands.ts` and `search.test.ts::computes skillMatched before the limit and returns commands alongside entities`.
 - [x] Registry fingerprint pin — evidence: `database.test.ts::pins the searchable registry to cache schema version 3`.
-- [ ] Full `pnpm test:sync-browser` with the new index assertion — not run after the required architecture gate failed.
-- [x] File-scope and dependency boundaries — no `apps/` change, no mutation/policy/router/principal or dependency change; only the two F302-authorized API re-exports, one of which the architecture gate rejects.
+- [ ] Full `pnpm test:sync-browser` passes — 18 passed, 9 failed; unchanged `seedEntities` contradicts `graph.createNode`'s feature-owned `Entity` rejection. The new role-removal/index assertions passed.
+- [x] Label guard and real Ghost handling — evidence: `search.test.ts::ignores unresolved labels and indexes/relabels a real Ghost by role title`.
+- [x] File and dependency boundaries — evidence: `pnpm arch:check` and `pnpm verify` passed; no `apps/` or dependency changes, and the sole API diff is F304's optional `addNode` fields parameter.
 
 ## 3. Spec clauses implemented
 
@@ -36,39 +37,39 @@ F301–F303 are present, and implementation reached a working local index, query
 
 ## 4. Files changed
 
-The branch contains partial implementation and prior finding notes. Use `git diff --stat main...HEAD` at the pushed branch tip for the exact diff; no completion diff is claimed.
+See `git diff --stat main...HEAD` at the pushed branch tip; this is a blocked partial build, not a completion diff.
 
 ## 5. Database changes
 
-No server migration. Device-cache schema version 2 → 3 adds `cache_search` with five columns, a node-type index and insert/update/delete triggers generated from the validated registry. This is partial stage work pending the gate ruling.
+No server migration. The device-cache schema changes from version 2 to 3 and adds `cache_search` (`node_id` primary key, `node_type`, `label`, `lifecycle_status`, `search_text`), a node-type index and generated cache-node insert/update/delete triggers. The index is derived from the validated searchable registry; no application-code index write was added.
 
 ## 6. Tests and gates
 
-- `CI=1 pnpm install --frozen-lockfile` — exit 0 with approved network access; 489 packages installed. The first sandbox attempt encountered npm DNS failures and was interrupted.
-- `pnpm stack:up` — exit 0 with Docker access; Postgres, Electric and Redis healthy. Initial sandbox attempt was denied access to the Docker socket.
-- `pnpm --filter @vulto/graph exec vitest run src/queries/search.test.ts src/sync-client/database.test.ts src/queries/skill-matrix.test.ts` — exit 0; 3 test files and 24 tests passed.
-- `pnpm verify` — exit 1. First run stopped at Prettier on unrelated untracked `Claude outputs/`; that directory was temporarily moved, the exact command rerun, then restored unchanged. Second run: formatting, 6/6 lint tasks and conformance (6 passed, 2 todo) passed; `arch:check` failed because `services/api/src/test/sync-browser-support.ts:22` re-exports `insertNode` from `../graph/store.js`, violating A003-T52's import and write checks.
-- `pnpm verify:full` — not run after the blocking architecture failure; this command does not run a browser suite.
-- `pnpm --filter @vulto/api db:migrate` and `pnpm test:sync-browser` — not run after the blocking architecture failure; no CI conclusion is claimed.
+- `CI=1 pnpm install --frozen-lockfile` — exit 0; lockfile current, install completed.
+- `pnpm stack:up` — exit 0; Postgres, Electric and Redis healthy.
+- `pnpm verify` — exit 0; format, six lint tasks, architecture and typechecks passed; conformance 6 passed/2 todo; schema 111 passed/2 todo; graph 97 passed. Search benchmark p95 0.84 ms.
+- `pnpm verify:full` — exit 0 (rerun with local Postgres access after sandbox-only socket denial); API Postgres suite: 25 files passed, 319 tests passed, 2 skipped. This command ran no browser suite.
+- `pnpm --filter @vulto/api db:migrate` — exit 0; migrations applied.
+- `set -a; source .env; set +a; SYNC_BROWSER_DATABASE_URL="$DATABASE_URL" ELECTRIC_URL="$ELECTRIC_URL" ELECTRIC_SECRET="$ELECTRIC_SECRET" pnpm test:sync-browser` — exit 1; full suite: 18 passed, 9 failed. The new role-removal/index assertions passed. Most failures begin at `seedEntities` with `requires-feature-mutation` for `Entity`; a two-tabs count assertion also failed. No test was skipped to claim a pass.
 
 ## 7. Micro-decisions
 
-- Per-type limit 8 comes from the brief, not a new builder decision.
-- No other material design decision was made; F303's ordered labels and F302's fixture are implemented as ruled.
+- Per-type result limit 8 is the brief's value, not a new product decision.
+- The benchmark uses 30 samples and the brief's loose 100 ms regression ceiling; the measured value is reported above.
 
 ## 8. Findings raised
 
-- F301–F303: previously ruled on main and merged here.
-- Unnumbered, open: F302's required test re-export fails A003-T52's architecture gate. Evidence and requested ruling: `STAGE-23_Test_Reexport_Arch_Gate_Finding.md` and RST-51.
+- F301–F304 were previously ruled on `main` and merged into this branch.
+- Open, unnumbered pending reviewer: the existing Entity browser fixture cannot pass the required full browser gate under the existing feature-owned mutation rule. See `STAGE-23_Existing_Entity_Browser_Gate_Finding.md` and RST-51.
 
 ## 9. Deviations from this brief
 
-None intentionally. The required re-export is present as specified; the gate rejects it. No workaround was made.
+None intentionally. The full browser gate was run and failed; no fixture, mutation or gate workaround was made.
 
 ## 10. Known limitations and risks
 
-This is unfinished product code. Only focused in-memory SQLite tests ran; no real IndexedDB-VFS browser verification, full suite, or reportable p95 has been completed. The query and trigger implementation should not be treated as reviewed or release-ready.
+This is unfinished product code. The local and Postgres-backed tests pass, but the full real-browser gate is not green. The independent two-tabs failure has not been root-caused because the Entity fixture contradiction already triggers the required stop.
 
 ## 11. Readiness for the next stage
 
-No. The reviewer must reconcile the F302 test fixture instruction with A003-T52's architecture gate, then Stage 23 can resume on this branch. Stage 24 must wait.
+No. The reviewer must rule how the existing `Entity` browser fixture should respect its feature-owned mutation contract, then Stage 23 can resume on this branch and rerun the gates. Stage 24 must wait.
