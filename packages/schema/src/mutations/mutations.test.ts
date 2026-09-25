@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { isValidEmployeeTransition } from "../employee";
 import { defineMutation } from "./define";
-import { FEATURE_LIFECYCLE_NODE_TYPES } from "./employee";
+import { FEATURE_LIFECYCLE_NODE_TYPES, FEATURE_OWNED_EDGE_TYPES } from "./employee";
 import { initialWorkingWeekFor } from "./calendar";
 import {
   MUTATIONS,
@@ -66,6 +66,7 @@ describe("the foundation mutation set", () => {
       "graph.createNode",
       "graph.softDeleteNode",
       "graph.transitionLifecycle",
+      "graph.updateEdgeMetadata",
       "graph.updateNodeFields",
       "holiday.add",
       "holiday.cancel",
@@ -154,6 +155,8 @@ describe("the foundation mutation set", () => {
   it("gives a feature-owned lifecycle its own table, and shuts the generic one out", () => {
     expect(FEATURE_LIFECYCLE_NODE_TYPES.has("Employee")).toBe(true);
     expect(FEATURE_LIFECYCLE_NODE_TYPES.has("Entity")).toBe(true);
+    expect(FEATURE_OWNED_EDGE_TYPES.has("has_skill")).toBe(true);
+    expect(FEATURE_OWNED_EDGE_TYPES.has("requires_skill")).toBe(true);
     expect(isValidEmployeeTransition("Active", "Inactive")).toBe(true);
     expect(isValidEmployeeTransition("Inactive", "Active")).toBe(true);
     expect(isValidEmployeeTransition("Active", "Converted")).toBe(true);

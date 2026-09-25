@@ -1,5 +1,6 @@
 import {
   FEATURE_LIFECYCLE_NODE_TYPES,
+  FEATURE_OWNED_EDGE_TYPES,
   isNodeType,
   isTier0Only,
   stampNewEdge,
@@ -217,7 +218,10 @@ export const createEdgeMutation: ServerMutation<Args<"graph.createEdge">> = asyn
   );
   return {
     checks: [{ target, change: { operation: "create" } }],
-    validate: nothing,
+    async validate() {
+      if (FEATURE_OWNED_EDGE_TYPES.has(target.edgeType))
+        throw new MutationRejection("requires-feature-mutation");
+    },
     async apply() {
       const stored = await translate(() =>
         insertEdge(
@@ -246,7 +250,10 @@ export const closeEdgeMutation: ServerMutation<Args<"graph.closeEdge">> = async 
   );
   return {
     checks: [{ target, change: { operation: "update" } }],
-    validate: nothing,
+    async validate() {
+      if (FEATURE_OWNED_EDGE_TYPES.has(edge.edgeType))
+        throw new MutationRejection("requires-feature-mutation");
+    },
     async apply() {
       const closed = await translate(() =>
         closeEdge(
@@ -283,7 +290,10 @@ export const updateEdgeMetadataMutation: ServerMutation<
   );
   return {
     checks: [{ target, change: { operation: "update" } }],
-    validate: nothing,
+    async validate() {
+      if (FEATURE_OWNED_EDGE_TYPES.has(edge.edgeType))
+        throw new MutationRejection("requires-feature-mutation");
+    },
     async apply() {
       const updated = await translate(() =>
         updateEdgeMetadata(

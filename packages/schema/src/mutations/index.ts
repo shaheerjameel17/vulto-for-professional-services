@@ -38,6 +38,7 @@ export {
 export {
   EMPLOYEE_MUTATIONS,
   FEATURE_LIFECYCLE_NODE_TYPES,
+  FEATURE_OWNED_EDGE_TYPES,
   employeeCreate,
   employeeAttachSkill,
   employeeLinkUser,

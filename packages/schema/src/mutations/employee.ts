@@ -130,3 +130,9 @@ export const FEATURE_LIFECYCLE_NODE_TYPES: ReadonlySet<string> = new Set([
   "RevenueGapAlert",
   "SkillGap",
 ]);
+
+/** Edges whose invariants belong to named feature mutations (F291). */
+export const FEATURE_OWNED_EDGE_TYPES: ReadonlySet<string> = new Set([
+  "has_skill",
+  "requires_skill",
+]);

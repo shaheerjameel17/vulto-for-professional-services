@@ -144,6 +144,53 @@ export async function countWorkingDays(
   return { days, hours };
 }
 
+/** F290: Project severity uses an Entity calendar, without personal pattern/location. */
+export async function countWorkingDaysForEntity(
+  tx: GraphTx,
+  workspaceId: string,
+  entityId: string,
+  from: string,
+  to: string,
+  mayRead: WorkingDaysReadGuard,
+): Promise<{ days: number; hours: number }> {
+  if (from > to) throw new Error("invalid-args");
+  const entity = await getNode(tx, workspaceId, entityId);
+  if (!entity || entity.isSoftDeleted || entity.nodeType !== "Entity")
+    throw new Error("not-found");
+  if (!(await mayRead(entity))) throw new Error("not-found");
+  let date = from;
+  let days = 0;
+  let hours = 0;
+  while (date <= to) {
+    const calendar = await resolveCalendarForEntity(tx, workspaceId, entityId, date);
+    if (!calendar || !(await mayRead(calendar))) throw new Error("not-found");
+    const holidays = await holidaysFor(tx, workspaceId, calendar.nodeId, mayRead);
+    const resolved = resolveWorkingDay({
+      calendar: {
+        workingWeek: calendar.record["working_week"] as WorkingWeek,
+        standardDailyHours: Number(calendar.record["standard_daily_hours"] ?? 8),
+        reducedHoursPeriods:
+          (calendar.record["reduced_hours_periods"] as
+            ReducedHoursPeriod[] | undefined) ?? [],
+      },
+      pattern: null,
+      holidays: holidays.map((holiday) => ({
+        date: String(holiday.record["date"]),
+        appliesToLocations:
+          (holiday.record["applies_to_locations"] as string[] | null | undefined) ??
+          null,
+        isHalfDay: holiday.record["is_half_day"] === true,
+      })),
+      date,
+      location: null,
+    });
+    days += resolved.dayFraction;
+    hours += resolved.hours;
+    date = addDays(date, 1);
+  }
+  return { days, hours };
+}
+
 export async function nextWorkingDay(
   tx: GraphTx,
   workspaceId: string,
