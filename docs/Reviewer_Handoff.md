@@ -153,7 +153,7 @@ No findings. Merged `--no-ff` as `cd73619`. `FDN-126` moves to Done. **F305 clos
 
 **Closure, 26 September 2026.** The founder pushed `main`. The first push showed that `publish-artifacts` had never actually run and failed at the API image build (F306, hidden by `continue-on-error: true`); Codex's fix on `codex/fix-publish-artifacts` (`1d1672b`, +28/-3 across the Dockerfile and `slow-lane.yml`) was reviewed against its diff and its branch CI, merged `--no-ff` as `8b8828d`, and the branch-only check job removed in `70a4af1`. `main`'s slow lane at `70a4af1` (run 36237114204) then ended green with `publish-artifacts` executing every step. **F305 and F306 are closed** (252 rows, 238 closed, 8 open). Stage 25 (`VPS-F003`) is next; it is not yet briefed.
 
-## 26. Stage 25 — Notification and Alert Center (`VPS-F003`, F307 to F315)
+## 26. Stage 25 — Notification and Alert Center (`VPS-F003`, F307 to F316)
 
 Briefed 26 September 2026, after `main`'s slow lane went green with `publish-artifacts` (F305, F306 closed). The full brief is in `docs/Claude_Code_Build_Prompt.md` Part 3, Stage 25.
 
@@ -162,6 +162,8 @@ What the reviewer established before writing it, from the spec and the code: `No
 **Rulings after Codex's first trace (26 September 2026, stage report `8a8c9e8`):** F313 (the engine cannot live in a `notifications/` folder: A003-T52 allows graph writes only under `mutations/`; re-verified in a scratch tree, `mutations/` passes, `jobs/` and `notifications/` fail; the G03 boundary is restated as no change to any existing source feature's mutation file) and F314 (the obsolete-scope criterion is product code only). Both were brief defects of the reviewer's: the location was named without running the gate against it.
 
 **Third trace, same day (stage report `8b63851`):** F315 — `hrCompliance.listSubmissionStatus` has no role gate (it filters by read reach; a Team Member sees their own row), so the reminder's authorization is now derived from the policy table: a `full`-scope-`any` `TimesheetEntry` cell (Owner and HR Admin), and it may name only employees the query returns for the caller. The reviewer had asserted a gate without reading the query.
+
+**Fourth trace, same day (stage report `10ad231`):** F316 — the pipeline's `changedRowIds` cannot see the watched rows (both are created by standalone engines in their own transactions, the anomaly flag never calls the audience seam, and `revenueGapAlert.sweep` never enters `applyMutation`). Delivery is now driven by an `AsyncLocalStorage` write log fed from the store's write functions and drained by a scope around `applyMutation` and every tRPC procedure; the tests must prove delivery through the real paths. The reviewer had traced the pipeline's signal but not the writers.
 
 **What to check in the Stage 25 report:** see the brief's own list. The three that matter most: the Owner really resolves `none` on another person's notification in a real test; no message can carry a non-Tier-0 field; and the engine cannot fail or roll back a source mutation.
 
