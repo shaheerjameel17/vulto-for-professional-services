@@ -153,7 +153,7 @@ No findings. Merged `--no-ff` as `cd73619`. `FDN-126` moves to Done. **F305 clos
 
 **Closure, 26 September 2026.** The founder pushed `main`. The first push showed that `publish-artifacts` had never actually run and failed at the API image build (F306, hidden by `continue-on-error: true`); Codex's fix on `codex/fix-publish-artifacts` (`1d1672b`, +28/-3 across the Dockerfile and `slow-lane.yml`) was reviewed against its diff and its branch CI, merged `--no-ff` as `8b8828d`, and the branch-only check job removed in `70a4af1`. `main`'s slow lane at `70a4af1` (run 36237114204) then ended green with `publish-artifacts` executing every step. **F305 and F306 are closed** (252 rows, 238 closed, 8 open). Stage 25 (`VPS-F003`) is next; it is not yet briefed.
 
-## 26. Stage 25 — Notification and Alert Center (`VPS-F003`, F307 to F318)
+## 26. Stage 25 — Notification and Alert Center (`VPS-F003`, F307 to F319)
 
 Briefed 26 September 2026, after `main`'s slow lane went green with `publish-artifacts` (F305, F306 closed). The full brief is in `docs/Claude_Code_Build_Prompt.md` Part 3, Stage 25.
 
@@ -168,6 +168,8 @@ What the reviewer established before writing it, from the spec and the code: `No
 **Fifth trace, same day (stage report `0f8044f`):** F317 — nothing reserved the `delivered_to` edge, so the new `recipient` grant (plus Owner and HR Admin holding `full` on every `User`) would have let a recipient attach a second edge and re-address a notification; `delivered_to` joins `FEATURE_OWNED_EDGE_TYPES` and the `recipient` scope fails closed on anything but exactly one agreeing edge. Codex also traced the batch entry: `applyMutations` loops `applyMutation`, so the write-log scope covers it, and `employee/import.ts` uses it.
 
 **Sixth trace, same day (stage report `f6a894f`):** F318 — F317 said the client optimistic edge mutators read `FEATURE_OWNED_EDGE_TYPES`; they never did (the reviewer wrote "they share the set" without grepping the client). The guard is added to the three client edge mutators, covering `has_skill` and `requires_skill` too; the server was always the authority.
+
+**Seventh trace, same day (stage report `33804c3`):** F319 — the server authorizes before it validates, and the generic edge target omits endpoint ids, so generic `Notification` creates and `delivered_to` edge writes are already refused with `role` before any feature guard runs (and F317's predicted re-addressing path was denied in practice). No change to authorization order; guards stay as defense in depth; tests assert what each path really does, with exactly `requires-feature-mutation` where it is reachable (a recipient's generic update, soft-delete or transition, and the client).
 
 **What to check in the Stage 25 report:** see the brief's own list. The three that matter most: the Owner really resolves `none` on another person's notification in a real test; no message can carry a non-Tier-0 field; and the engine cannot fail or roll back a source mutation.
 
