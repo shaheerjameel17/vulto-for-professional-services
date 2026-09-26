@@ -25,6 +25,9 @@ WORKDIR /repo
 # Manifests first, so the dependency install layer caches across source edits.
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY packages/schema/package.json packages/schema/
+# pnpm deploy resolves workspace references even when --prod excludes their
+# installation. API tests declare graph as a devDependency; keep it discoverable.
+COPY packages/graph/package.json packages/graph/
 COPY services/api/package.json services/api/
 RUN pnpm install --frozen-lockfile --filter "@vulto/api..."
 
