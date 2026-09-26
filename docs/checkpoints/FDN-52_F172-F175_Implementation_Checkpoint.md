@@ -11,7 +11,7 @@
 - **F174:** cryptographic erasure applies only to Tier 1/3. Tier 0/2 use weaker VPS-F007 redaction/deletion/cache purge. Tier 3 erasure removes current/history document-key envelopes and loaded keys without destroying sibling documents or their root.
 - **F175:** protected state remains Worker-private except for unavoidable, transient browser ceremony bytes in a narrow trusted Window path. Same-origin execution during an active ceremony is outside the claim. Generic production sealed-record access is prohibited, and diagnostics are excluded from optimized production artifacts.
 
-The independent pre-code mapping is in `docs/FDN-52_F172-F175_Ruling_Review.md`. No contradiction was found after the rulings, so no additional Founder decision was required before implementation.
+The independent pre-code mapping is in `docs/checkpoints/FDN-52_F172-F175_Ruling_Review.md`. No contradiction was found after the rulings, so no additional Founder decision was required before implementation.
 
 ## Findings by severity
 
@@ -24,7 +24,7 @@ The independent pre-code mapping is in `docs/FDN-52_F172-F175_Ruling_Review.md`.
 | High, self-corrected | F180 — identity public/private pair mismatch accepted | Closed by failing-before/passing-after ECDH pair-consistency regression |
 | High, self-corrected | F181 — malformed sealed CAS metadata trusted | Closed by exact hostile-record parser and nine mutation cases |
 
-F168–F171 and F176–F179 also pass the final full regression. Their before/after evidence remains in `docs/FDN-52_Adversarial_QA_Checkpoint.md` and their final states are in `docs/Foundations_Findings.md`.
+F168–F171 and F176–F179 also pass the final full regression. Their before/after evidence remains in `docs/checkpoints/FDN-52_Adversarial_QA_Checkpoint.md` and their final states are in `docs/Foundations_Findings.md`.
 
 ## F172 proof
 
@@ -162,6 +162,6 @@ Tracked diff: 24 modified files, 2,412 insertions and 188 deletions. There are 2
 
 ## External record and final ruling state
 
-The requested Linear FDN-52/FDN-84 decision-record comments were not posted: the connector rejected the security-detail export, and no issue status was changed. The repository decision record is `docs/FDN-52_F172-F175_Ruling_Review.md` plus this checkpoint.
+The requested Linear FDN-52/FDN-84 decision-record comments were not posted: the connector rejected the security-detail export, and no issue status was changed. The repository decision record is `docs/checkpoints/FDN-52_F172-F175_Ruling_Review.md` plus this checkpoint.
 
 No new finding requires a Founder/architecture ruling. F180 and F181 were implementation defects resolvable from the existing A003 identity/CAS properties. F167 remains the only SLIP-0039-related blocker and already has its separate Founder ruling/audit gate.

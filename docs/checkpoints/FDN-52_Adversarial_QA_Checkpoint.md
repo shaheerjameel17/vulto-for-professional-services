@@ -1,6 +1,6 @@
 # FDN-52 adversarial QA checkpoint
 
-> **Historical pre-ruling checkpoint.** Its before-fix reproductions remain the evidence record. The post-ruling implementation state for F172–F175 is in `docs/FDN-52_F172-F175_Implementation_Checkpoint.md`.
+> **Historical pre-ruling checkpoint.** Its before-fix reproductions remain the evidence record. The post-ruling implementation state for F172–F175 is in `docs/checkpoints/FDN-52_F172-F175_Implementation_Checkpoint.md`.
 
 **Date:** 21 August 2026  
 **Branch under review:** `fdn-52-implement-privacy-tier-partitioning-and-workspace-key`  
