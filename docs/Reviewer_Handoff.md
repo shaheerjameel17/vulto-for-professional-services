@@ -253,3 +253,5 @@ What the reviewer established before writing it: the shell already mounts the re
 
 **Linear:** `FDN-131` (Foundation, project "Pilot Slice: Real UI on the Built Backend") is the UI-1 issue, moved to Todo.
 
+**UI-1 pre-build report, ruled 27 September 2026.** Codex traced the brief, wrote no product code and raised three items in one report: the screenshot cap contradicted the states required (F345, fourteen allowed), a local Skill row had no palette group (F346, a distinct Skills group between People and Skill matches, `VPS-F002` updated), and the notification fixtures had no generic write path (F347, seed through the production `deliverNotification`, re-exported from the test-support file). All three were errors of the reviewer's brief, not of the builder. Five micro-decisions accepted (see the brief's rulings paragraph). The branch resumes; nothing is restarted.
+

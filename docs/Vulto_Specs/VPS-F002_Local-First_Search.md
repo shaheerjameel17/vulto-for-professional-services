@@ -73,7 +73,7 @@ The Command Palette component from [[VPS-D002_Component_Library|VPS-D002]] — `
 
 ### Layout
 
-Results are grouped with `micro` uppercase headers in a fixed order: **Commands**, **People**, **Skill matches**, **Projects**, **Clients**, **Documents**, **Policies**. Commands lead because a user who typed a verb wants them first, and a user who typed a name will not have matched any.
+Results are grouped with `micro` uppercase headers in a fixed order: **Commands**, **People**, **Skills** (the direct Skill name matches, context line the category; F346), **Skill matches** (the server's ranked people), **Projects**, **Clients**, **Documents**, **Policies**. Commands lead because a user who typed a verb wants them first, and a user who typed a name will not have matched any.
 
 Each row shows the entity name at `body-medium`, its type as a `subtle` Badge, and one line of the most decision-relevant context available at `small` in `text-secondary`.
 
@@ -332,6 +332,8 @@ search.queryProtected(text, limit?) -> {
 **The skill-match call is a typed `fetch` to the existing GET endpoint (F341).** No client dependency; a network failure, timeout, 5xx or 429 degrades that group alone to `requires-connection` with Retry; a 401 goes to the shell's Reconnect path.
 
 **Only groups with results render (F344).** Documents and Policies are unbuilt and never show as empty headers; the empty state is one message whether nothing matched or matches were filtered; a person's context line is availability and next roll-off date; an action command is offered only if its surface exists.
+
+**A Skill row has its own group (F346, 27 September 2026).** **Skills** sits between People and Skill matches and holds the local Skill name matches; **Skill matches** stays the server's ranked people, so the two kinds of result never share a header.
 
 ---
 
