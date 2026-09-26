@@ -79,6 +79,8 @@ import {
   resolveTimesheetShortcut,
 } from "./permission/timesheet-queries.js";
 import { listActiveAnomalies } from "./permission/timesheet-anomaly-queries.js";
+import { previewOvertime } from "./mutations/timesheet-anomaly.js";
+import { overtimePreviewInputSchema } from "@vulto/schema";
 import { getIndividual, getAgencyAggregate } from "./permission/utilization-queries.js";
 import {
   listActiveRevenueGapAlerts,
@@ -437,6 +439,13 @@ export const appRouter = t.router({
         db.transaction((tx) =>
           listActiveAnomalies(tx, ctx.principal, input.workspace_id),
         ),
+      ),
+  }),
+  overtime: t.router({
+    preview: protectedProcedure
+      .input(overtimePreviewInputSchema)
+      .query(({ ctx, input }) =>
+        db.transaction((tx) => previewOvertime(tx, ctx.principal, input.flag_id)),
       ),
   }),
   utilizationSnapshot: t.router({

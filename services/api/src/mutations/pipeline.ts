@@ -378,7 +378,8 @@ async function applyMutationInScope(
           definition?.name === "ghostResource.promote" ||
           definition?.name === "timesheet.saveCell" ||
           definition?.name === "timesheet.submitWeek" ||
-          definition?.name === "timesheet.unlockWeek"
+          definition?.name === "timesheet.unlockWeek" ||
+          definition?.name === "timesheetAnomaly.clear"
           ? { isolationLevel: "serializable" }
           : undefined,
       );

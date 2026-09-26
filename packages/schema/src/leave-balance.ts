@@ -2,6 +2,12 @@ import { addIsoDays } from "./working-day";
 import type { LeavePolicyConfiguration, LeaveType } from "./leave-policy";
 
 export interface LeaveBalanceInput {
+  readonly ledger: readonly {
+    readonly leave_type: LeaveType;
+    readonly days: number;
+    readonly effective_date: string;
+    readonly expires_on: string | null;
+  }[];
   readonly employee: { readonly start_date: string };
   readonly policyVersions: readonly (LeavePolicyConfiguration & {
     readonly version: number;
@@ -54,12 +60,68 @@ export async function computeLeaveBalance(
     expiringSoon: 0,
     notes: [],
   };
-  if (input.employee.start_date > input.as_of_date) return empty;
-  if (typeAt(input.as_of_date)?.accrual_method === "Earned")
+  if (typeAt(input.as_of_date)?.accrual_method === "Earned") {
+    const entries = input.ledger
+      .filter(
+        (entry) =>
+          entry.leave_type === input.leave_type &&
+          entry.effective_date <= input.as_of_date,
+      )
+      .map((entry) => ({ ...entry, consumed: 0 }))
+      .sort(
+        (a, b) =>
+          (a.expires_on ?? "9999-12-31").localeCompare(b.expires_on ?? "9999-12-31") ||
+          a.effective_date.localeCompare(b.effective_date),
+      );
+    const liveOn = (entry: (typeof entries)[number], date: string) =>
+      entry.effective_date <= date &&
+      (entry.expires_on === null || date < entry.expires_on);
+    let used = 0;
+    let deficit = 0;
+    for (const usage of [...input.usage].sort((a, b) =>
+      a.start_date.localeCompare(b.start_date),
+    )) {
+      if (usage.leave_type !== input.leave_type || usage.start_date > input.as_of_date)
+        continue;
+      const from = usage.start_date;
+      const to = earlier(usage.end_date, input.as_of_date);
+      if (from > to) continue;
+      let deduction = await dependencies.countWorkingDays(from, to);
+      used += deduction;
+      for (const entry of entries.filter((e) => liveOn(e, usage.start_date))) {
+        const take = Math.min(deduction, entry.days - entry.consumed);
+        entry.consumed += take;
+        deduction -= take;
+      }
+      deficit += deduction;
+    }
+    const live = entries.filter((entry) => liveOn(entry, input.as_of_date));
+    const year = input.as_of_date.slice(0, 4);
+    const sum = (rows: typeof entries) =>
+      rows.reduce((total, entry) => total + entry.days, 0);
+    const remaining =
+      live.reduce((total, entry) => total + entry.days - entry.consumed, 0) - deficit;
     return {
-      ...empty,
-      notes: ["Earned accrual is not built yet; it is deferred to Stage 28."],
+      entitledYtd: sum(
+        live.filter((entry) => entry.effective_date.slice(0, 4) === year),
+      ),
+      carriedOver: sum(live.filter((entry) => entry.effective_date.slice(0, 4) < year)),
+      used,
+      remaining,
+      expiringSoon: live
+        .filter(
+          (entry) =>
+            entry.expires_on !== null &&
+            entry.expires_on <= addIsoDays(input.as_of_date, 30),
+        )
+        .reduce((total, entry) => total + entry.days - entry.consumed, 0),
+      notes:
+        remaining < 0
+          ? [`Usage exceeds available Earned accrual by ${-remaining} working days.`]
+          : [],
     };
+  }
+  if (input.employee.start_date > input.as_of_date) return empty;
   const firstYear = Number(input.employee.start_date.slice(0, 4));
   const lastYear = Number(input.as_of_date.slice(0, 4));
   let carry = 0;

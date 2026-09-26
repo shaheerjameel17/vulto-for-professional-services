@@ -21,6 +21,7 @@ export const SYSTEM_PRINCIPAL_NAMES = [
   "revenue-gap-alert-evaluate",
   "skill-gap-evaluate",
   "notification-deliver",
+  "leave-ledger-write",
 ] as const;
 
 export type SystemPrincipalName = (typeof SYSTEM_PRINCIPAL_NAMES)[number];
@@ -38,6 +39,7 @@ export const SYSTEM_PRINCIPAL_DISPLAY_NAMES: Readonly<
   "revenue-gap-alert-evaluate": "Revenue Gap Alert",
   "skill-gap-evaluate": "Skill Gap Evaluation",
   "notification-deliver": "Notifications",
+  "leave-ledger-write": "TOIL Accrual",
 };
 
 export const SYSTEM_OPERATIONS = [
@@ -52,6 +54,7 @@ export const SYSTEM_OPERATIONS = [
   "skill-gap.write",
   "skill-gap.read-cohort",
   "notification.deliver",
+  "leave-ledger.write",
 ] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
@@ -81,6 +84,7 @@ export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
   "revenue-gap-alert-evaluate": ["revenue-gap-alert.write"],
   "skill-gap-evaluate": ["skill-gap.write", "skill-gap.read-cohort"],
   "notification-deliver": ["notification.deliver"],
+  "leave-ledger-write": ["leave-ledger.write"],
 };
 
 export interface SystemOperationTarget {
@@ -108,6 +112,7 @@ export const SYSTEM_OPERATION_TARGETS: Readonly<
   "revenue-gap-alert.write": [{ nodeType: "RevenueGapAlert", partitionKey: "record" }],
   "skill-gap.write": [{ nodeType: "SkillGap", partitionKey: "record" }],
   "notification.deliver": [{ nodeType: "Notification", partitionKey: "record" }],
+  "leave-ledger.write": [{ nodeType: "LeaveLedgerEntry", partitionKey: "record" }],
   "skill-gap.read-cohort": [{ nodeType: "Employee", partitionKey: "operational" }],
 };
 

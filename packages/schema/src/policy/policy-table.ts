@@ -325,6 +325,13 @@ const MATRIX_OVERRIDES: Readonly<Record<string, Partial<RoleCells>>> = {
     manager: READ_ANY(),
     "team-member": READ_ANY(),
   },
+  LeaveLedgerEntry: {
+    owner: READ_ANY(),
+    "hr-admin": READ_ANY(),
+    "finance-admin": READ_ANY(),
+    manager: cell("read", "direct-reports", "Read (direct reports)"),
+    "team-member": cell("read", "own", "Read (own only)"),
+  },
   Holiday: {
     owner: FULL_ANY(),
     "hr-admin": FULL_ANY(),

@@ -54,6 +54,7 @@ export const timesheetAnomalyClear = defineMutation({
       flag_id: uuidV4Schema,
       outcome: z.enum(TIMESHEET_CLEARANCE_OUTCOMES),
       note: z.string().nullable().optional(),
+      acknowledged_toil_days: z.number().nonnegative().optional(),
     })
     .strict(),
   tier: 2,

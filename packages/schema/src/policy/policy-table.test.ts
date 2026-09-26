@@ -111,6 +111,21 @@ describe("resolvePermission — default class mapping, transcribed from VPS-A004
 });
 
 describe("resolvePermission — matrix overrides", () => {
+  it("LeaveLedgerEntry's literal matrix is read-only and subject scoped for members", () => {
+    for (const role of ["owner", "hr-admin", "finance-admin"] as const)
+      expect(resolvePolicyCell(role, "LeaveLedgerEntry", "record")).toEqual({
+        outcome: "read",
+        scope: "any",
+      });
+    expect(resolvePolicyCell("manager", "LeaveLedgerEntry", "record")).toEqual({
+      outcome: "read",
+      scope: "direct-reports",
+    });
+    expect(resolvePolicyCell("team-member", "LeaveLedgerEntry", "record")).toEqual({
+      outcome: "read",
+      scope: "own",
+    });
+  });
   it("LeavePolicy carries exactly WorkingCalendar's literal configuration matrix", () => {
     for (const role of ALL_ROLES)
       expect(resolvePolicyCell(role, "LeavePolicy", "record")).toEqual(
