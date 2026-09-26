@@ -138,7 +138,7 @@ Not an engineer. Adjust accordingly:
 - **Do not ask which library to use.** `VPS-A001` decided. If it did not, choose and say what you chose.
 - **Flag anything that will be expensive to change later**, before doing it.
 
-Work is tracked in Linear, under the **Vulto Foundation** team.
+Work is tracked in Linear, in two teams: **Vulto Foundation** (`FDN`, platform `VPS-*` work) and **Vulto Roster** (`RST`, `VRS-*` work). **You MUST follow `docs/Linear_Operating_Rules.md` for every Linear action**: create each issue in the right team, assign everything to the founder, set a priority and the right labels, and give every project milestones, issues and an initiative.
 
 ---
 

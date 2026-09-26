@@ -8,6 +8,7 @@
 | `Reviewer_Handoff.md` | Current state, direction, recent stage reviews (sections 24 onward, plus sections 1 to 5). |
 | `Claude_Code_Build_Prompt.md` | What Codex builds from: Parts 1 and 2, the current and most recent stage briefs, and the running "what to do now" log. |
 | `Foundations_Findings.md` | Findings index: the recount, the status table of every finding, and links to each finding's detail. |
+| `Linear_Operating_Rules.md` | Binding rules for working in Linear: right team, everything assigned to the founder, priorities, labels, projects with milestones and initiatives. |
 
 **Detail and history**
 
