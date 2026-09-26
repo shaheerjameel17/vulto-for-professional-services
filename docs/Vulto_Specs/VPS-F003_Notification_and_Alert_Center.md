@@ -319,6 +319,8 @@ notification.mute(userId, sourceNodeType) -> { success }
 
 **A Tier 1 or Tier 2 source contributes existence only (F312).** `TimesheetAnomalyFlag` is `Manager-restricted` Tier 2; its rule's message is built from the subject Employee's Tier 0 fields and carries nothing from the flag.
 
+**`listForUser` has no filter parameter (F320).** The contract's `filter?` was never defined; the device query takes no filter and no user id, and returns the Inbox's three groups. A later stage that needs a filter defines it with its consumer.
+
 **Muting is deferred (F311).** Every shippable rule is `ActionNeeded`, so nothing can be muted, and `WorkspaceMembership` is projection-owned with fixed fields. The first `Informational` rule decides where the preference lives.
 
 ---
