@@ -146,6 +146,7 @@ export {
 } from "./auth";
 
 export * from "./policy";
+export * from "./audit-query";
 
 export {
   AUDIT_ACTOR_KINDS,

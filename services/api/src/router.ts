@@ -23,6 +23,8 @@ import {
   timesheetGetWeekInputSchema,
   timesheetShortcutInputSchema,
   hrSubmissionStatusInputSchema,
+  auditLogQueryInputSchema,
+  auditLogQueryOutputSchema,
   timesheetAnomalyListInputSchema,
   utilizationGetIndividualInputSchema,
   utilizationGetAgencyInputSchema,
@@ -48,6 +50,7 @@ import {
   nextWorkingDay,
 } from "./permission/working-days-queries.js";
 import { authorizeRead } from "./permission/interceptor.js";
+import { queryAuditLog } from "./audit/query.js";
 import {
   getBenchForecastAggregate,
   getBenchForecastCosts,
@@ -349,6 +352,21 @@ export const appRouter = t.router({
           ),
         ),
       ),
+  }),
+  auditLog: t.router({
+    query: protectedProcedure
+      .input(auditLogQueryInputSchema)
+      .output(auditLogQueryOutputSchema)
+      .query(async ({ ctx, input }) => {
+        ctx.res.header("Cache-Control", "no-store");
+        if (input.workspace_id !== ctx.principal.workspaceId)
+          throw new TRPCError({ code: "FORBIDDEN", message: "workspace-mismatch" });
+        const result = await db.transaction((tx) =>
+          queryAuditLog(tx, ctx.principal, input),
+        );
+        if (result.denied) throw new TRPCError({ code: "FORBIDDEN" });
+        return result.page;
+      }),
   }),
   hrCompliance: t.router({
     listSubmissionStatus: protectedProcedure
