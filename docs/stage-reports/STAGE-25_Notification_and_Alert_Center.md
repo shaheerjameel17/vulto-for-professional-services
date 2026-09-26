@@ -1,13 +1,13 @@
 # Stage 25 — Notification and Alert Center
 
 **Status:** BLOCKED
-**Branch:** codex/stage-25-notification-center (rebased onto 2ea1e62)
+**Branch:** codex/stage-25-notification-center (rebased onto d698e70)
 **Linear issues:** RST-52
 **Date:** 2026-09-26
 
 ## 1. Summary
 
-The previous pre-code contradictions were ruled as F313–F317, and this branch was rebased onto 2ea1e62. Tracing F317's named shared client guard found that the optimistic edge mutators do not import or consult FEATURE_OWNED_EDGE_TYPES. Adding delivered_to to the set therefore affects the server but does not produce the prescribed client refusal. No product code was written; a ruling on the missing client guard is required before implementation.
+The previous pre-code contradictions were ruled as F313–F318, and this branch was rebased onto d698e70. Tracing the server's generic guards found that authorization runs before the guards and returns role before Notification creation or delivered_to mutation can reach requires-feature-mutation. The generic edge target also omits the endpoint IDs needed by the recipient scope, correcting the earlier static prediction that this path could permit re-addressing. No product code was written; a refusal-order ruling is required before implementation.
 
 ## 2. Done-criteria checklist
 
@@ -71,6 +71,14 @@ None.
 
 Current finding, unnumbered pending reviewer assignment (the ledger and per-finding files are reviewer-owned):
 
+**The prescribed server requires-feature-mutation assertions conflict with authorization-before-validation.** `services/api/src/mutations/pipeline.ts:275–292` calls authorizeWrite for all plan checks and returns its denial immediately; only afterward does it call plan.validate (:298). The existing generic node and edge feature guards live inside validate, not plan construction (`mutations/foundation.ts:120,251,282,320`). For graph.createNode on a new Notification, the prescribed recipient scope must fail closed because no stored node/recipient edge exists, so authorizeWrite returns role before the Notification feature guard could run. For all three delivered_to generic edge mutations, `foundation.ts::edgeTarget` (:90–106) returns fromNodeType and toNodeType but omits fromNodeId and toNodeId even though it loads both nodes. `interceptor.ts::edgeRoleDecision` (:873–899) creates no row context when a nodeId is absent; scoped Notification Full therefore resolves to none and returns role, again before the guard. Do item 8g requires requires-feature-mutation on both server and client, so merely adding the prescribed shared set entries cannot meet the server assertion. Moving checks before authorization, changing the generic target shape or accepting role instead are not prescribed; they alter refusal ordering or the existing source/generic mutation files beyond additive registrations. Reviewer ruling needed on the intended guard location/result and allowed edits. No product code or gate changed.
+
+**Correction to the F317 historical static trace:** the earlier report analyzed edgeRoleDecision with endpoint IDs present but had not checked the generic edgeTarget caller. Because the actual caller omits IDs, the predicted Owner/HR Admin generic re-addressing path is currently denied by role. The engine-only reservation and fail-closed recipient decision remain ruled; this correction concerns the actual generic path and its refusal reason, not a request to reopen those decisions.
+
+### Historical evidence — closed by F318
+
+The following missing client-guard finding was reported at f6a894f and is settled by the explicit new optimistic guards; it is not reopened:
+
 **F317 names a client guard that does not exist.** The corrected Do item 1 says the optimistic mutators read the same FEATURE_OWNED_EDGE_TYPES set and that adding delivered_to makes all three generic edge mutations refuse it. `packages/graph/src/mutators/foundation.ts` imports FEATURE_LIFECYCLE_NODE_TYPES, but does not import FEATURE_OWNED_EDGE_TYPES. Its `createEdge` (:246) parses arguments, loads the two nodes, and writes the stamped edge; `closeEdge` (:292) loads the edge and calls closeAt; `updateEdgeMetadata` (:299) loads the edge and its nodes, then writes metadata. None checks feature ownership. `rg -n FEATURE_OWNED_EDGE_TYPES packages/graph/src` returns no matches. The server implementations in `services/api/src/mutations/foundation.ts` do check the set, but shared input parsing does not (the three definitions in packages/schema/src/mutations/foundation.ts validate generic JSON/UUID arguments only). Thus the brief's set-only change cannot satisfy its client requires-feature-mutation assertions. This does not reopen the recipient-edge protection decision: it reports an absent implementation mechanism the ruling assumed. Reviewer must authorize adding the client guards and specify whether their shared-set behavior also covers the pre-existing has_skill/requires_skill entries. No product code or gate was changed.
 
 ### Historical evidence — closed by F317
@@ -102,7 +110,7 @@ The following were reported at original commit 8a8c9e8 before the rebase; they a
 
 ## 9. Deviations from this brief
 
-Implementation and gates halted on the current pre-code missing client-guard mechanism, as required. No workaround applied.
+Implementation and gates halted on the current pre-code server refusal-order contradiction, as required. No workaround applied.
 
 ## 10. Known limitations and risks
 
@@ -110,4 +118,4 @@ Deliveries skipped: not measured; delivery fixtures were not built or run. Exact
 
 ## 11. Readiness for the next stage
 
-No. Resume Stage 25 only after a reviewer ruling settles the missing client edge guards; do not start another stage.
+No. Resume Stage 25 only after a reviewer ruling settles server refusal ordering and permitted edits; do not start another stage.
