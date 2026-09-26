@@ -276,6 +276,7 @@ Assignment's `effective_billing_rate`, added by [[VRS-F006_Rate_Card_Engine|VRS-
 | SignatureRequest | [[VRS-F021_E-Signature_Native|VRS-F021]] | HR-restricted | 2 |
 | Document | [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] | Inherited | Inherited |
 | LeavePolicy | [[VRS-F018_Leave_Policy_Engine|VRS-F018]] | Standard | 0 |
+| LeaveLedgerEntry | [[VRS-F018_Leave_Policy_Engine|VRS-F018]] | Standard | 0 |
 | LeaveRequest | [[VRS-F019_Self-Service_Leave_Portal|VRS-F019]] | Standard | 0 |
 | Departure | [[VRS-F023_Probation_and_Notice_Period_Tracker|VRS-F023]] | HR-restricted | 2 |
 | Asset | [[VRS-F042_Asset_and_Gear_Tracker|VRS-F042]] | Standard | 0 |
