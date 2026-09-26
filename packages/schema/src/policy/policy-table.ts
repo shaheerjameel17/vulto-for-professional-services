@@ -102,7 +102,7 @@ export type PolicyScope =
   | "own-plan-plus-assignee"
   | "project-scoped"
   | "aggregate-only"
-  | "recipient-only-unresolvable"
+  | "recipient"
   | "inherited-unresolvable";
 
 interface PolicyCell extends PolicyResolution {
@@ -221,15 +221,12 @@ const DEFAULT_CLASS_MAPPING: Readonly<
     "team-member": cell("full", "own", "Full (own only)"),
   },
   "Recipient-only": {
-    // See the module doc comment's second bullet: unresolvable without
-    // knowing the record's addressed recipient. Conservative `none` for
-    // every role, including the role that would otherwise be the
-    // recipient — this stage cannot tell the difference.
-    owner: cell("none", "recipient-only-unresolvable", "Own only"),
-    "hr-admin": cell("none", "recipient-only-unresolvable", "Own only"),
-    "finance-admin": cell("none", "recipient-only-unresolvable", "Own only"),
-    manager: cell("none", "recipient-only-unresolvable", "Own only"),
-    "team-member": cell("none", "recipient-only-unresolvable", "Own only"),
+    // The interceptor requires one delivered_to edge agreeing with the row.
+    owner: cell("full", "recipient", "Own only"),
+    "hr-admin": cell("full", "recipient", "Own only"),
+    "finance-admin": cell("full", "recipient", "Own only"),
+    manager: cell("full", "recipient", "Own only"),
+    "team-member": cell("full", "recipient", "Own only"),
   },
 };
 
@@ -775,7 +772,7 @@ const INHERITED_UNRESOLVABLE_NODE_TYPES: ReadonlySet<string> = new Set([
  *
  * A cell's literal `outcome` is therefore only trustworthy when `scope` is
  * `"any"`. Every other scope resolves to `none` here, unconditionally — not
- * only the three cases (`aggregate-only`, `recipient-only-unresolvable`,
+ * only the three cases (`aggregate-only`, `recipient`,
  * `inherited-unresolvable`) that already stored `"none"` as their literal
  * outcome, but every `own`- and `direct-reports`-qualified cell too, which
  * had NOT been getting this treatment. Resolving those literally is what

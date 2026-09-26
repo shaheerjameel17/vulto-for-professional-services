@@ -20,6 +20,7 @@ export const SYSTEM_PRINCIPAL_NAMES = [
   "utilization-snapshot-compute",
   "revenue-gap-alert-evaluate",
   "skill-gap-evaluate",
+  "notification-deliver",
 ] as const;
 
 export type SystemPrincipalName = (typeof SYSTEM_PRINCIPAL_NAMES)[number];
@@ -36,6 +37,7 @@ export const SYSTEM_PRINCIPAL_DISPLAY_NAMES: Readonly<
   "utilization-snapshot-compute": "Utilization Snapshot",
   "revenue-gap-alert-evaluate": "Revenue Gap Alert",
   "skill-gap-evaluate": "Skill Gap Evaluation",
+  "notification-deliver": "Notifications",
 };
 
 export const SYSTEM_OPERATIONS = [
@@ -49,6 +51,7 @@ export const SYSTEM_OPERATIONS = [
   "revenue-gap-alert.write",
   "skill-gap.write",
   "skill-gap.read-cohort",
+  "notification.deliver",
 ] as const;
 
 export type SystemOperation = (typeof SYSTEM_OPERATIONS)[number];
@@ -77,6 +80,7 @@ export const SYSTEM_PRINCIPAL_OPERATIONS: Readonly<
   ],
   "revenue-gap-alert-evaluate": ["revenue-gap-alert.write"],
   "skill-gap-evaluate": ["skill-gap.write", "skill-gap.read-cohort"],
+  "notification-deliver": ["notification.deliver"],
 };
 
 export interface SystemOperationTarget {
@@ -103,6 +107,7 @@ export const SYSTEM_OPERATION_TARGETS: Readonly<
   ],
   "revenue-gap-alert.write": [{ nodeType: "RevenueGapAlert", partitionKey: "record" }],
   "skill-gap.write": [{ nodeType: "SkillGap", partitionKey: "record" }],
+  "notification.deliver": [{ nodeType: "Notification", partitionKey: "record" }],
   "skill-gap.read-cohort": [{ nodeType: "Employee", partitionKey: "operational" }],
 };
 
@@ -142,5 +147,8 @@ export const SYSTEM_EDGE_OPERATION_TARGETS: Readonly<
   ],
   "skill-gap.write": [
     { edgeType: "gap_for", fromNodeType: "SkillGap", toNodeType: "Skill" },
+  ],
+  "notification.deliver": [
+    { edgeType: "delivered_to", fromNodeType: "Notification", toNodeType: "User" },
   ],
 };

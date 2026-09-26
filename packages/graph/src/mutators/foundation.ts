@@ -6,6 +6,7 @@ import {
   employeeTransitionOutcome,
   deriveEffectiveRoles,
   FEATURE_LIFECYCLE_NODE_TYPES,
+  FEATURE_OWNED_EDGE_TYPES,
   getMutationDefinition,
   getProtectionPartitions,
   isNodeType,
@@ -245,6 +246,8 @@ const softDeleteNode: OptimisticMutator = async (c, raw) => {
 
 const createEdge: OptimisticMutator = async (c, raw) => {
   const { edge } = parse("graph.createEdge", raw);
+  if (FEATURE_OWNED_EDGE_TYPES.has(String(edge["edge_type"])))
+    throw new OptimisticRejection("requires-feature-mutation");
   const edgeId = edge["edge_id"];
   if (typeof edgeId !== "string" || (await c.cache.getEdge(edgeId))) {
     throw new OptimisticRejection("invalid-args");
@@ -293,6 +296,8 @@ const closeEdge: OptimisticMutator = async (c, raw) => {
   const args = parse("graph.closeEdge", raw);
   const edge = await c.cache.getEdge(args.edge_id);
   if (!edge) throw new OptimisticRejection("not-found");
+  if (FEATURE_OWNED_EDGE_TYPES.has(edge.edgeType))
+    throw new OptimisticRejection("requires-feature-mutation");
   return [await closeAt(c.cache, edge, args.effective_to)];
 };
 
@@ -300,6 +305,8 @@ const updateEdgeMetadata: OptimisticMutator = async (c, raw) => {
   const args = parse("graph.updateEdgeMetadata", raw);
   const edge = await c.cache.getEdge(args.edge_id);
   if (!edge) throw new OptimisticRejection("not-found");
+  if (FEATURE_OWNED_EDGE_TYPES.has(edge.edgeType))
+    throw new OptimisticRejection("requires-feature-mutation");
   if (edge.isSoftDeleted) throw new OptimisticRejection("target-deleted");
   const from = await liveNode(c.cache, edge.fromNodeId);
   const to = await liveNode(c.cache, edge.toNodeId);

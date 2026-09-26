@@ -127,6 +127,21 @@ async function rowScopeSatisfied(
     return false;
   }
   const { tx, principal, nodeId, context } = row;
+  if (scope === "recipient") {
+    const node = await getNode(tx, principal.workspaceId, nodeId);
+    const edges = await outgoing(
+      tx,
+      principal.workspaceId,
+      nodeId,
+      "delivered_to",
+      (context.now ?? nowIso)(),
+    );
+    return (
+      edges.length === 1 &&
+      edges[0]?.toNodeId === principal.userId &&
+      node?.record["recipient_user_id"] === principal.userId
+    );
+  }
   const resolve =
     context.roleDependencies?.resolveEmployeeForUser ?? resolveEmployeeForUser;
   const me = await resolve(tx, principal.workspaceId, principal.userId);

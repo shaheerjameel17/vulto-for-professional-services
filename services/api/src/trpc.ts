@@ -11,6 +11,7 @@ import {
   WORKSPACE_HEADER,
 } from "@vulto/schema";
 import type { MemberPrincipal } from "./permission/principal.js";
+import { withNotificationDelivery } from "./mutations/notification-delivery.js";
 
 /**
  * The tRPC context: who is calling, decided on the server.
@@ -80,10 +81,19 @@ export async function createContext({
 
 export const t = initTRPC.context<Context>().create();
 
-export const publicProcedure = t.procedure;
+const deliveryProcedure = t.procedure.use(async ({ next }) =>
+  withNotificationDelivery(async () => {
+    const result = await next();
+    // tRPC returns errors as results: do not drain a failed procedure's scope.
+    if (!result.ok) throw result.error;
+    return result;
+  }),
+);
+
+export const publicProcedure = deliveryProcedure;
 
 /** A procedure that requires a member principal built by `createContext`. */
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
+export const protectedProcedure = deliveryProcedure.use(({ ctx, next }) => {
   if (ctx.principal === null) throw new TRPCError({ code: "UNAUTHORIZED" });
   // A client that names a workspace must mean the session's. Nothing is applied,
   // read or audited for a request acting in a workspace its session is not in.

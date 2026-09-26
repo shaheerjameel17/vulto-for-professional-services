@@ -10,6 +10,20 @@ export interface SearchableNodeType {
 
 const fieldPattern = /^[a-z_]+$/;
 
+/** Shared protection-registry proof, including Employee's operational schema. */
+export function fieldsAreTier0(nodeType: string, fields: readonly string[]): boolean {
+  if (!isNodeType(nodeType)) return false;
+  const protection = getNodeRegistration(nodeType).protection;
+  if (protection.kind === "fixed" && protection.tier === 0) return true;
+  if (protection.kind === "split" && nodeType === "Employee") {
+    const operational = protection.partitions.find(
+      (partition) => partition.key === "operational" && partition.tier === 0,
+    );
+    return Boolean(operational) && fields.every((field) => field in operationalShape);
+  }
+  return false;
+}
+
 /** Registration is the Tier 0 proof; a query never makes a second permission decision. */
 export function validateSearchableNodeTypes(
   registrations: readonly SearchableNodeType[],
@@ -47,14 +61,7 @@ export function validateSearchableNodeTypes(
       throw new Error(`Secondary field is not indexed: ${entry.nodeType}`);
     }
 
-    const protection = getNodeRegistration(entry.nodeType).protection;
-    if (protection.kind === "fixed" && protection.tier === 0) continue;
-    if (protection.kind === "split" && entry.nodeType === "Employee") {
-      const operational = protection.partitions.find(
-        (partition) => partition.key === "operational" && partition.tier === 0,
-      );
-      if (operational && fields.every((field) => field in operationalShape)) continue;
-    }
+    if (fieldsAreTier0(entry.nodeType, fields)) continue;
     throw new Error(`Search fields cannot be proven Tier 0: ${entry.nodeType}`);
   }
 }
