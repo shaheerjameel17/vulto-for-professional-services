@@ -237,21 +237,29 @@ describe("VPS-F003 notification delivery and recipient mutations", () => {
   });
 
   it("covers the standalone revenueGapAlert.sweep through the actual tRPC caller", async () => {
-    const w = await world();
-    const caller = appRouter.createCaller({
-      principal: w.principals.owner!,
-      schemaVersion: 1,
-      claimedWorkspaceId: w.workspaceId,
-      res: { header() {} },
-    });
-    await caller.revenueGapAlert.sweep({ workspace_id: w.workspaceId });
-    const rows = (await w.notifications()).filter(
-      (row) =>
-        row.record["source_node_id"] &&
-        row.record["recipient_user_id"] === w.people.manager!.userId,
-    );
-    expect(rows).toHaveLength(1);
-    await privacy(w, rows[0]!.nodeId, "manager");
+    // The real sweep defaults to wall-clock time. Keep this January fixture in
+    // January rather than scanning an ever-growing employment history in CI.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-01-23T12:00:00.000Z"));
+    try {
+      const w = await world();
+      const caller = appRouter.createCaller({
+        principal: w.principals.owner!,
+        schemaVersion: 1,
+        claimedWorkspaceId: w.workspaceId,
+        res: { header() {} },
+      });
+      await caller.revenueGapAlert.sweep({ workspace_id: w.workspaceId });
+      const rows = (await w.notifications()).filter(
+        (row) =>
+          row.record["source_node_id"] &&
+          row.record["recipient_user_id"] === w.people.manager!.userId,
+      );
+      expect(rows).toHaveLength(1);
+      await privacy(w, rows[0]!.nodeId, "manager");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("isolates an injected delivery failure from the committed source", async () => {
