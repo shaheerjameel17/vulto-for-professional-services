@@ -149,6 +149,8 @@ blackout_periods:      JSON array of {
                        }
 
 version:               integer, starts at 1
+effective_from:        ISO date — the date this version starts to govern accrual
+                       (F329). Version 1 defaults to 1900-01-01
 supersedes_id:         UUID, nullable
 is_active:             boolean, default true
 
@@ -321,6 +323,22 @@ The alternative considered was a distinct OvertimeRequest node with its own subm
 **Every day count resolves through [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]].** Entitlement in days consumed against calendar days would give a Gulf employee more leave than their contract grants and a six-day-week employee less.
 
 **The TOIL cap is disclosed at approval.** A manager approving overtime that accrues nothing should know that at the moment they approve it, not when the employee asks why their balance did not move.
+
+**The feature is built in two stages (F327, 26 September 2026).** Stage 27 builds the policy layer, policy resolution and the accrual engine for `Immediate`, `Monthly` and `Annual` leave. `S05`, overtime approval and TOIL, cannot be built as written: the only record of an overtime approval is `VRS-F010`'s `TimesheetAnomalyFlag`, a `Manager-restricted` Tier 2 record the employee cannot read, while TOIL is specified as a live, offline, Tier 0 balance with no new node type. It waits on a founder decision: (a) a small Tier 0 accrual record written at clearance (a new node type or edge metadata), or (b) a TOIL portion computed on the server from the protected clearance and returned as a derived figure, online only. The reviewer recommends (a).
+
+**LeavePolicy is readable by every role (F328).** It carries the `WorkingCalendar` override row: Owner and HR Admin write, every other role reads. The `Standard` class default resolves to `none` for Manager and Team Member on a node with no subject employee.
+
+**A version applies from its `effective_from` (F329).** Each accrual step uses the version in force on its own date, so an update never rewrites past accrual.
+
+**The policy year is the UTC calendar year (F330).** A per-entity fiscal-year start is a later, additive field.
+
+**Engine details (F331).** A partial first month accrues `entitlement ÷ 12 × working days from start to month end ÷ working days in the month`, once the month is complete; carried days are consumed first and expire at `policy-year start + carryover_expiry_days`; `expiringSoon` is unused carried days expiring within 30 days; a negative balance is returned with a note naming the cause.
+
+**`used` reads approved requests through an input (F332).** `LeaveRequest` has no field schema until `VRS-F019`; the engine takes usage as an input and the server query passes none until then.
+
+**The queries are server-side for now (F333).** The engine is pure and injectable so a local adapter follows with `VRS-F019`; the 200 ms and 20 ms figures are measured server-side.
+
+**TOIL and Earned are tied (F334).** `Earned` if and only if `TOIL`; one entry per leave type; `employment_type_scope` is the four employee types or `All`; an `Earned` balance is an explicit zero with a note until Stage 28.
 
 ---
 
