@@ -42,10 +42,10 @@ Leave policies now have strict validation, controlled versioning and server-side
 
 ## 4. Files changed
 
-`git diff --stat main...9a30d7c` (implementation; subsequent commit changes only this report):
+`git diff --stat main...HEAD` for the completed stage, including this report:
 
 ```text
- .../STAGE-27_Leave_Policy_Engine_Part_1.md         |  23 ++
+ .../STAGE-27_Leave_Policy_Engine_Part_1.md         | 187 ++++++++++
  packages/schema/src/index.ts                       |   2 +
  packages/schema/src/leave-balance.test.ts          | 197 +++++++++++
  packages/schema/src/leave-balance.ts               | 133 +++++++
@@ -63,7 +63,7 @@ Leave policies now have strict validation, controlled versioning and server-side
  .../permission/leave-policy.integration.test.ts    | 381 +++++++++++++++++++++
  services/api/src/permission/leave-queries.ts       | 172 ++++++++++
  services/api/src/router.ts                         |  48 +++
- 18 files changed, 1370 insertions(+), 16 deletions(-)
+ 18 files changed, 1534 insertions(+), 16 deletions(-)
 ```
 
 API mutation diff: new `leave-policy.ts` and additive registration/isolation in `pipeline.ts` only. No existing source feature mutation, application/client package, registered node/edge, interceptor, dependency, workflow or governing document changed.
@@ -132,6 +132,8 @@ STAGE27_SERVER_P95 applicable=4.388ms balance=5.259ms samples=20 fixture=2-emplo
 ```
 
 20 sequential in-process tRPC measurements after one warm-up, nearest-rank p95. Fixture: two Employees (one derived manager), the default founding Entity/calendar plus one feature-created PK Entity/calendar, two lineage versions/one active, no usage. Balance at `2026-08-31`, start `2026-01-01`, monthly entitlement 14→28 on July 1; complete months require no proration. These server figures meet 20/200 ms for this small fixture, not offline/device or production-scale guarantees. Separately a third Employee starting January 15 exercises real F004 proration: 13.5/24.5 working days with half-day Saturdays.
+
+The implementation's slow-lane run independently printed `STAGE27_SERVER_P95 applicable=8.454ms balance=10.636ms` on the same fixture (20 measured samples). Its sync-browser job passed the full suite, `27 passed (2.8m)`.
 
 ### CI
 
