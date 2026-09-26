@@ -146,6 +146,10 @@ category:         enum: ActionNeeded, Informational
 message:          string — a short human-readable summary
 read_at:          timestamp, nullable
 dismissed_at:     timestamp, nullable
+rule_id:          string — the subscription rule that produced it (F308)
+dedupe_key:       string — rule_id:source_node_id:discriminator; a notification
+                  is created only if none exists for this recipient and key,
+                  so re-evaluation never repeats one (F308)
 
 — Universal Node Conventions per VPS-A002 —
 ```
@@ -304,6 +308,18 @@ notification.mute(userId, sourceNodeType) -> { success }
 **The unread indicator counts action items only.** A badge including informational items never reaches zero, and a badge that never clears is a badge people stop reading — at which point the feature has failed at its only job.
 
 **Email delivery is resolved** by [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] rather than inherited as an open question. Push is resolved by [[VPS-F011_Mobile-Native_Experience|VPS-F011]]. Both carry prompts, never content.
+
+**Recipient-only access is a resolvable scope (F307, 26 September 2026).** `Recipient-only` was specified but resolved to `none` for every role, including the recipient. It now resolves through the `delivered_to` edge: a member may read a Notification exactly when the edge's target is that member's own User. No role, Owner included, resolves another person's row.
+
+**Rules fire from changed rows, once, after commit (F308).** The mutation pipeline exposes the ids a mutation touched, not an event. The engine runs after the source commits, in its own transaction, and never fails the source; idempotency by `dedupe_key` (with a rule-supplied discriminator, `severity` for RevenueGapAlert) replaces "created or escalated" event detection. A missing manager or an unlinked recipient delivers nothing, with no fallback recipient.
+
+**The registry ships with two rules (F309).** RevenueGapAlert and TimesheetAnomalyFlag, both to the employee's manager. The other MVP rules register with the features that build them (`VRS-F019`, `VRS-F021`, `VRS-F023`, `VRS-F024`) or with the jobs service (`VRS-F010` week-end, `VRS-F004` window, `VRS-F008` sweep). `hrCompliance.sendReminder`, deferred by `VRS-F010`, is delivered as a manual producer notifying the employee about their own week.
+
+**Email, push and the Inbox screen are deferred (F310).** The data layer, the read-state mutations and the device queries are built; `EmailService`, push and `VPS-D004`'s Inbox surface are not.
+
+**A Tier 1 or Tier 2 source contributes existence only (F312).** `TimesheetAnomalyFlag` is `Manager-restricted` Tier 2; its rule's message is built from the subject Employee's Tier 0 fields and carries nothing from the flag.
+
+**Muting is deferred (F311).** Every shippable rule is `ActionNeeded`, so nothing can be muted, and `WorkspaceMembership` is projection-owned with fixed fields. The first `Informational` rule decides where the preference lives.
 
 ---
 
