@@ -60,7 +60,6 @@ export async function computeLeaveBalance(
     expiringSoon: 0,
     notes: [],
   };
-  if (input.employee.start_date > input.as_of_date) return empty;
   if (typeAt(input.as_of_date)?.accrual_method === "Earned") {
     const entries = input.ledger
       .filter(
@@ -84,7 +83,7 @@ export async function computeLeaveBalance(
     )) {
       if (usage.leave_type !== input.leave_type || usage.start_date > input.as_of_date)
         continue;
-      const from = later(usage.start_date, input.employee.start_date);
+      const from = usage.start_date;
       const to = earlier(usage.end_date, input.as_of_date);
       if (from > to) continue;
       let deduction = await dependencies.countWorkingDays(from, to);
@@ -122,6 +121,7 @@ export async function computeLeaveBalance(
           : [],
     };
   }
+  if (input.employee.start_date > input.as_of_date) return empty;
   const firstYear = Number(input.employee.start_date.slice(0, 4));
   const lastYear = Number(input.as_of_date.slice(0, 4));
   let carry = 0;

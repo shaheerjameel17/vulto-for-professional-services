@@ -86,6 +86,26 @@ const entry = (
 ) => ({ leave_type: "TOIL" as const, days, effective_date, expires_on });
 const countWorkingDays = () => 1;
 describe("VRS-F018 Earned ledger balance", () => {
+  it("uses the ledger's effective window, not the non-Earned employment-start cutoff", async () => {
+    const balance = await computeLeaveBalance(
+      { ...input("2026-01-15", [entry()]), employee: { start_date: "2026-02-01" } },
+      { countWorkingDays },
+    );
+    expect(balance.remaining).toBe(1);
+    const consumed = await computeLeaveBalance(
+      {
+        ...input(
+          "2026-01-15",
+          [entry()],
+          [{ leave_type: "TOIL", start_date: "2026-01-10", end_date: "2026-01-10" }],
+        ),
+        employee: { start_date: "2026-02-01" },
+      },
+      { countWorkingDays },
+    );
+    expect(consumed.remaining).toBe(0);
+    expect(consumed.used).toBe(1);
+  });
   it("is live until exclusive expiry, freeing cap headroom", async () => {
     const before = await computeLeaveBalance(input("2026-03-31", [entry(10)]), {
       countWorkingDays,
