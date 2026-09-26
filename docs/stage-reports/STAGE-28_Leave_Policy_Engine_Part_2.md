@@ -1,7 +1,7 @@
 # Stage 28 — Leave Policy Engine, Part 2
 
 **Status:** COMPLETE
-**Branch:** codex/stage-28-toil-ledger @ 72c9b54 (implementation and tests)
+**Branch:** codex/stage-28-toil-ledger @ 3233ee3 (implementation and tests)
 **Linear issues:** RST-115
 **Date:** 2026-09-27
 
@@ -72,6 +72,14 @@ Test-only CI follow-up, `git diff --stat d3d84de...72c9b54`:
  2 files changed, 106 insertions(+), 18 deletions(-)
 ```
 
+Final Earned-window correction, `git diff --stat 6403bd9...3233ee3`:
+
+```text
+ packages/schema/src/leave-balance.ts |  4 ++--
+ packages/schema/src/toil.test.ts     | 20 ++++++++++++++++++++
+ 2 files changed, 22 insertions(+), 2 deletions(-)
+```
+
 The completion follow-up changes only this report.
 
 ## 5. Database changes
@@ -88,7 +96,7 @@ All four commands exited 0 on the final implementation. The unrelated, untracked
 Scope: all 7 workspace projects
 Lockfile is up to date, resolution step is skipped
 Already up to date
-Done in 675ms using pnpm v9.15.9
+Done in 667ms using pnpm v9.15.9
 ```
 
 `pnpm stack:up` — exit 0: Postgres, Electric and Redis all healthy.
@@ -100,7 +108,7 @@ All matched files use Prettier code style!
 Test Files  1 passed (1)
      Tests  6 passed | 2 todo (8)
 Test Files  22 passed (22)
-     Tests  140 passed | 2 todo (142)
+     Tests  141 passed | 2 todo (143)
 Test Files  16 passed (16)
      Tests  102 passed (102)
 Tasks:    10 successful, 10 total
@@ -113,8 +121,8 @@ Lint, architecture and typecheck all passed. UI, tokens and roster-web retain th
 ```text
 Test Files  33 passed (33)
      Tests  352 passed | 2 skipped (354)
-  Start at  00:53:18
-  Duration  91.51s (transform 516ms, setup 0ms, import 12.12s, tests 77.47s, environment 1ms)
+  Start at  01:12:55
+  Duration  93.07s (transform 521ms, setup 0ms, import 11.88s, tests 79.32s, environment 1ms)
 ```
 
 Negative control: temporarily added actual `export const negativeControl = new Date();` to `toil.ts`. `pnpm --filter @vulto/api exec vitest run src/permission/leave-balance-guard.test.ts` exited 1, `1 failed` file / `1 failed` test, on the forbidden-source assertion. Removed it; the restored guard passed in `pnpm --filter @vulto/api exec vitest run src/permission/toil.integration.test.ts src/permission/leave-balance-guard.test.ts --silent=false --disableConsoleIntercept` (exit 0, two files/seven tests passed at that checkpoint) and in the final full suite. No perturbation is committed.
@@ -126,6 +134,8 @@ Main at `44234af`: [fast-lane 36265578839](https://github.com/shaheerjameel17/vu
 Initial implementation `d3d84de`: [fast-lane 36267159988](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267159988) **success**; [slow-lane 36267160100](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267160100) **failure**. The sole failure was the new acceptance test's embedded timing loop: `Error: Test timed out in 5000ms.` All other 350 API tests passed (two existing skips); sync-browser, auth-browser and production-build succeeded. The fix splits the 20-call measurement into its own test with a 20-second budget; functional assertions, default timeouts, suite/gate configuration and product code are unchanged. The corrected head passed both lanes. Final report-only head CI evidence will be recorded in RST-115 and the completion response, because embedding that head's own run IDs would create another commit.
 
 Implementation/tests `72c9b54`: [fast-lane 36267722472](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267722472) **success** (`resolve-image`, `verify`); [slow-lane 36267722469](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267722469) **success** (`resolve-image`, `api-integration`, `production-build`, `auth-browser`, `sync-browser`). All branch-eligible jobs executed; only main-only `publish-artifacts` was skipped, as configured. Conclusions were read with `gh run view`, not inferred from this report.
+
+Final implementation/tests `3233ee39266f3fbc59bf56ee24147ad74725b844`: [fast-lane 36268738707](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36268738707) **success** (`resolve-image`, `verify`); [slow-lane 36268738771](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36268738771) **success** (`resolve-image`, `api-integration`, `production-build`, `auth-browser`, `sync-browser`). All branch-eligible jobs executed successfully; main-only `publish-artifacts` was skipped. This includes the final Earned-window regression test and correction. The subsequent completion commit changes only this report; its own head CI IDs and conclusions are recorded in RST-115 and the handoff response.
 
 ## 7. Micro-decisions
 
@@ -143,6 +153,7 @@ Consolidated pre-build discrepancies and minimal resolutions:
 - The source guard stays in the API permission test folder, which already has Node filesystem types; the pure schema modules gain no I/O imports. The new API integration path's exact import skeleton passed `node scripts/arch-check.mjs` before fixture logic was added.
 - The timing test has a local 20-second test budget for its 20 sequential preview and 20 balance calls plus setup; it is separate from functional acceptance tests. No suite/gate timeout or retry changed. This fixes the CI-only five-second combined-test timeout, not a product assertion.
 - Existing Stage 27 non-Earned test bodies remain unchanged; the input fixture gains empty `ledger`, and the one deferred-Earned note assertion deliberately becomes zero entitlement with no note for an empty ledger.
+- Earned availability uses the ledger's own effective/expiry window, not the old non-Earned employment-start cutoff. The cutoff remains unchanged for every non-Earned method; a regression test covers a live entry with a later employment start.
 
 Trace: `evaluateInTransaction` reads Submitted entries, maps detector input and sums seven `resolvedDayOn` results. Move those reads into a shared helper; count `isWorking` days, not fractional leave deductions. ApprovedOvertime on other reasons currently clears the flag normally; only HoursExceedExpected gets the re-flag exemption. Preserve that behavior.
 
