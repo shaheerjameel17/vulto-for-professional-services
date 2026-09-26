@@ -75,6 +75,12 @@ import { timesheetAnomalyClear } from "./timesheet-anomaly.js";
 import { revenueGapAlertDismiss } from "./revenue-gap-alert.js";
 import { projectAttachSkillRequirement } from "./skill-matcher.js";
 import { withNotificationDelivery } from "./notification-delivery.js";
+import {
+  notificationMarkRead,
+  notificationDismiss,
+  notificationMarkAllRead,
+} from "./notification.js";
+import { hrComplianceSendReminder } from "./notification-reminder.js";
 
 /**
  * The named-mutation pipeline (A003-T53, T54, T69, T71). Every write to the
@@ -97,6 +103,10 @@ import { withNotificationDelivery } from "./notification-delivery.js";
  */
 
 const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
+  "notification.markRead": notificationMarkRead as ServerMutation<never>,
+  "notification.dismiss": notificationDismiss as ServerMutation<never>,
+  "notification.markAllRead": notificationMarkAllRead as ServerMutation<never>,
+  "hrCompliance.sendReminder": hrComplianceSendReminder as ServerMutation<never>,
   "graph.createNode": createNode as ServerMutation<never>,
   "graph.updateNodeFields": updateNodeFieldsMutation as ServerMutation<never>,
   "graph.softDeleteNode": softDeleteNodeMutation as ServerMutation<never>,

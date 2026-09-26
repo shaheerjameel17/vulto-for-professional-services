@@ -104,9 +104,13 @@ describe("resolvePermission — default class mapping, transcribed from VPS-A004
     }
   });
 
-  it("Recipient-only (Notification) resolves to none for every role, including the class default's nominal 'Own only'", () => {
+  it("Recipient-only requires row context; each role's cell preserves literal Own only", () => {
     for (const role of ALL_ROLES) {
       expect(resolvePermission(role, "Notification", "record").outcome).toBe("none");
+      expect(resolvePolicyCell(role, "Notification", "record")).toMatchObject({
+        outcome: "full",
+        scope: "recipient",
+      });
     }
   });
 });

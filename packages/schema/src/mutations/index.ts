@@ -47,6 +47,7 @@ export {
   employeeUpdate,
 } from "./employee";
 export { ENTITY_MUTATIONS, JURISDICTIONS } from "./entity";
+export { NOTIFICATION_MUTATIONS } from "./notification";
 export {
   CALENDAR_MUTATIONS,
   calendarGetInputSchema,

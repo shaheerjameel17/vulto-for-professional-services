@@ -387,7 +387,7 @@ timesheetAnomaly.clear(flagId, outcome, note?)      -> { toilDaysAccrued? }
 - Fraud investigation or disciplinary workflow downstream of a flag — [[VRS-F046_Case_Management_Disciplinary_and_Grievance|VRS-F046]] where a firm needs it
 - Formal overtime approval and TOIL accrual — [[VRS-F018_Leave_Policy_Engine|VRS-F018]]. This feature owns the flag and its clearance outcome; that feature owns what an ApprovedOvertime outcome means
 - Payroll consumption of this data — [[VRS-F062_Payroll_Engine_Core|VRS-F062]]
-- Reminder delivery — `hrCompliance.sendReminder` requires [[VPS-F003_Notification_and_Alert_Center|VPS-F003]], unbuilt and positioned later in MVP order. This feature's compliance view surfaces submission status only; the reminder action in the interface spec is deferred until that delivery mechanism exists
+- Reminder delivery — `hrCompliance.sendReminder` is delivered by [[VPS-F003_Notification_and_Alert_Center|VPS-F003]] Stage 25. It does not alter this feature's compliance view read contract, which surfaces submission status only
 
 ---
 
