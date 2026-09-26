@@ -1,13 +1,13 @@
 # Stage 25 — Notification and Alert Center
 
 **Status:** BLOCKED
-**Branch:** codex/stage-25-notification-center (rebased onto 471dbdb)
+**Branch:** codex/stage-25-notification-center (rebased onto 2ea1e62)
 **Linear issues:** RST-52
 **Date:** 2026-09-26
 
 ## 1. Summary
 
-The previous pre-code contradictions were ruled as F313–F316, and this branch was rebased onto 471dbdb. Continued tracing found that generic edge mutations do not reserve the recipient-defining delivered_to edge to the notification engine. Enabling recipient Full access as prescribed would permit an Owner or HR Admin recipient to change that edge through existing generic mutations. No product code was written; a recipient-edge integrity ruling is required before implementation.
+The previous pre-code contradictions were ruled as F313–F317, and this branch was rebased onto 2ea1e62. Tracing F317's named shared client guard found that the optimistic edge mutators do not import or consult FEATURE_OWNED_EDGE_TYPES. Adding delivered_to to the set therefore affects the server but does not produce the prescribed client refusal. No product code was written; a ruling on the missing client guard is required before implementation.
 
 ## 2. Done-criteria checklist
 
@@ -71,6 +71,12 @@ None.
 
 Current finding, unnumbered pending reviewer assignment (the ledger and per-finding files are reviewer-owned):
 
+**F317 names a client guard that does not exist.** The corrected Do item 1 says the optimistic mutators read the same FEATURE_OWNED_EDGE_TYPES set and that adding delivered_to makes all three generic edge mutations refuse it. `packages/graph/src/mutators/foundation.ts` imports FEATURE_LIFECYCLE_NODE_TYPES, but does not import FEATURE_OWNED_EDGE_TYPES. Its `createEdge` (:246) parses arguments, loads the two nodes, and writes the stamped edge; `closeEdge` (:292) loads the edge and calls closeAt; `updateEdgeMetadata` (:299) loads the edge and its nodes, then writes metadata. None checks feature ownership. `rg -n FEATURE_OWNED_EDGE_TYPES packages/graph/src` returns no matches. The server implementations in `services/api/src/mutations/foundation.ts` do check the set, but shared input parsing does not (the three definitions in packages/schema/src/mutations/foundation.ts validate generic JSON/UUID arguments only). Thus the brief's set-only change cannot satisfy its client requires-feature-mutation assertions. This does not reopen the recipient-edge protection decision: it reports an absent implementation mechanism the ruling assumed. Reviewer must authorize adding the client guards and specify whether their shared-set behavior also covers the pre-existing has_skill/requires_skill entries. No product code or gate was changed.
+
+### Historical evidence — closed by F317
+
+The following recipient-edge integrity finding was reported at 0f8044f and is settled by F317's reservation and fail-closed scope ruling; it is not reopened:
+
 **The recipient-defining edge has no feature-owned mutation guard.** Do item 1 changes Recipient-only cells to Full with recipient scope and says adding Notification to FEATURE_LIFECYCLE_NODE_TYPES keeps writes closed. That set blocks generic node writes, not generic edge writes. `packages/schema/src/mutations/employee.ts::FEATURE_OWNED_EDGE_TYPES` contains only has_skill and requires_skill. `services/api/src/mutations/foundation.ts::createEdgeMutation`, `closeEdgeMutation` and `updateEdgeMetadataMutation` consult that edge set, not the node set. `delivered_to` is also absent from `interceptor.ts::RESERVED_PROJECTION_EDGE_TYPES` (only membership_of/membership_in). `edgeRoleDecision` checks Full on both endpoints; the new recipient grant supplies Full on the caller's own Notification, and User is Standard Tier 0 with Full-any for Owner/HR Admin. The projection reservation on User applies to node writes, not delivered_to edge writes, and edge writes do not run the node write-authority gate. Thus an Owner/HR Admin recipient could add an outgoing delivered_to edge to another User through graph.createEdge. The registered pair permits it; no uniqueness constraint covers delivered_to (graph/schema.ts:131 limits single-active uniqueness to managed_by/scoped_to_entity). `outgoing` orders by effective_from nulls first then edge_id, so a caller-supplied earlier/null effective_from can become the first edge used by the prescribed recipient resolver; matching-any-edge would also widen recipients. This is a static trace of the effect of the instructed new grant, not a claimed live exploit test of implemented Stage 25 code. The required guard is not prescribed: the brief tells the builder to change neither edge registration nor any permission mechanism beyond the scope change. Reviewer must rule how delivered_to is reserved to delivery (including generic create/close/metadata paths) and how conflicting edges fail closed, rather than leaving the builder to invent a security boundary.
 
 Entry-point trace requested by F316: `applyMutations` loops over `applyMutation` (pipeline.ts:428), so the prescribed applyMutation wrapper covers each batch item. `employee/import.ts:99` calls applyMutations, so it also has that path. Current standalone evaluator invocations outside that path are the revenueGapAlert sweep (covered by the prescribed tRPC wrapper) and direct exported engine calls used in integration tests. No current production jobs entry was found; F316 explicitly requires a future jobs caller to open the scope itself. The new wrappers have not been implemented or tested.
@@ -96,7 +102,7 @@ The following were reported at original commit 8a8c9e8 before the rebase; they a
 
 ## 9. Deviations from this brief
 
-Implementation and gates halted on the current pre-code recipient-edge integrity gap, as required. No workaround applied.
+Implementation and gates halted on the current pre-code missing client-guard mechanism, as required. No workaround applied.
 
 ## 10. Known limitations and risks
 
@@ -104,4 +110,4 @@ Deliveries skipped: not measured; delivery fixtures were not built or run. Exact
 
 ## 11. Readiness for the next stage
 
-No. Resume Stage 25 only after a reviewer ruling settles recipient-edge integrity; do not start another stage.
+No. Resume Stage 25 only after a reviewer ruling settles the missing client edge guards; do not start another stage.
