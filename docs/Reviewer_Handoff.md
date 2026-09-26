@@ -193,4 +193,4 @@ The brief asks the builder to trace every item and report every contradiction on
 
 **What to check in the Stage 26 report:** see the brief's own list. The three that matter most: authorization goes through the interceptor and no role list appears in the query; the query cannot read another workspace's entries; and the pagination cursor is stable across equal timestamps.
 
-**Linear:** an `RST` issue for Stage 26 is needed; `RST-52` is Done and `RST-53` holds the Stage 25 follow-ups (F322).
+**Linear:** `RST-54` (Todo) is the Stage 26 issue, branch `codex/stage-26-silent-audit-log`; `RST-52` is Done and `RST-53` holds the Stage 25 follow-ups (F322).
