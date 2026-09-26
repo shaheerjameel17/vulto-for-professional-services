@@ -1,13 +1,13 @@
 # Stage 25 — Notification and Alert Center
 
 **Status:** BLOCKED
-**Branch:** codex/stage-25-notification-center (base c8b2adf)
+**Branch:** codex/stage-25-notification-center (rebased onto 9402b4e)
 **Linear issues:** RST-52
 **Date:** 2026-09-26
 
 ## 1. Summary
 
-The authorized documentation push completed, and the remote main tip was verified as c8b2adf. Pre-code tracing found that the required notifications engine location conflicts with the architecture gate. A separate literal completion check conflicts with the prohibition on editing governing documents. No product code was written; a reviewer ruling is required before implementation.
+The original two pre-code contradictions were ruled as F313 and F314, and this branch was rebased onto 9402b4e. Continued tracing found that Do item 5's named compliance role gate does not exist in the named query or router. The existing integration test deliberately permits a Team Member's own submission-status row. No product code was written; a reminder-authorization ruling is required before implementation.
 
 ## 2. Done-criteria checklist
 
@@ -20,7 +20,7 @@ The authorized documentation push completed, and the remote main tip was verifie
 - [ ] Missing manager/link skips without fallback — not implemented.
 - [ ] Failure-isolated delivery with only pipeline.ts changed under mutations — blocked by the engine-location/gate conflict.
 - [ ] Own-only idempotent read-state mutations — not implemented.
-- [ ] Compliance reminders reuse the existing gate — not implemented.
+- [ ] Compliance reminders reuse the existing gate — blocked: the named role gate does not exist.
 - [ ] Local grouping and unread-action count — not implemented.
 - [x] No email, push, muting, apps, cache schema or policy changes — no product changes made.
 - [ ] verify, verify:full and both CI workflows green — not claimed; stopped during tracing.
@@ -69,7 +69,13 @@ None.
 
 ## 8. Findings raised
 
-Unnumbered, pending reviewer assignment (the ledger and per-finding files are reviewer-owned):
+Current finding, unnumbered pending reviewer assignment (the ledger and per-finding files are reviewer-owned):
+
+**Do item 5 names a compliance role gate absent from the code.** `services/api/src/router.ts:353` registers `hrCompliance.listSubmissionStatus` as an ordinary `protectedProcedure` with input validation and a call to `listSubmissionStatus`, with no role-specific middleware or check. `services/api/src/permission/timesheet-queries.ts:184` checks workspace equality, filters Active Employees through `filterReadable`, then uses `withinRoleScopedReach` for TimesheetEntry to select rows. It does not reject a role for lacking the compliance view. The existing `services/api/src/permission/timesheet.integration.test.ts` case `limits submission status to a Team Member's own row even when a teammate is readable` explicitly asserts that a Team Member receives their own `Not-Started` row. Do item 5 requires reusing an existing role gate rather than restating one; item 8h requires rejection for a role without the compliance view. Implementing a new role allowlist, equating row visibility with send permission, or choosing which roles lack the view would decide authorization not settled by the brief. Reviewer ruling needed on the exact reusable permission contract, without changing the compliance view's existing read contract.
+
+### Historical evidence — closed by F313 and F314
+
+The following were reported at original commit 8a8c9e8 before the rebase; they are history, not reopened findings:
 
 1. **Do item 3 conflicts with A003-T52's executable gate.** It requires a new `services/api/src/notifications/` engine to load and insert graph rows. `scripts/arch-check.mjs`'s `STORE_IMPORTERS` excludes that folder; its write check allows store writes only under `services/api/src/mutations/` (apart from graph internals and tests). The named precedent, `services/api/src/mutations/revenue-gap-alert.ts`, imports the store and calls `insertNode`/`insertEdge` inside the permitted mutations folder. Moving the engine there would conflict with the stage boundary permitting only `pipeline.ts` under mutations; altering the gate or using an indirect write wrapper is not authorized. The reviewer must reconcile the engine home/write boundary with the brief and gate.
 2. **The repository-wide obsolete-scope check cannot pass within the allowed documentation scope.** The Done criterion says `recipient-only-unresolvable` must no longer exist anywhere and the report checklist requires `git grep` to return nothing. It occurs in the build prompt and `docs/findings/F307.md`, both forbidden to edit. This does not dispute F307's ruled runtime scope correction; the reviewer must clarify whether the check is limited to runtime code or correct the historical-document requirement.
