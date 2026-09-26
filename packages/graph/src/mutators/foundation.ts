@@ -6,6 +6,8 @@ import {
   employeeTransitionOutcome,
   deriveEffectiveRoles,
   FEATURE_LIFECYCLE_NODE_TYPES,
+  FEATURE_OWNED_EDGE_TYPES,
+  resolvePolicyCell,
   getMutationDefinition,
   getProtectionPartitions,
   isNodeType,
@@ -245,6 +247,8 @@ const softDeleteNode: OptimisticMutator = async (c, raw) => {
 
 const createEdge: OptimisticMutator = async (c, raw) => {
   const { edge } = parse("graph.createEdge", raw);
+  if (FEATURE_OWNED_EDGE_TYPES.has(String(edge["edge_type"])))
+    throw new OptimisticRejection("requires-feature-mutation");
   const edgeId = edge["edge_id"];
   if (typeof edgeId !== "string" || (await c.cache.getEdge(edgeId))) {
     throw new OptimisticRejection("invalid-args");
@@ -293,6 +297,8 @@ const closeEdge: OptimisticMutator = async (c, raw) => {
   const args = parse("graph.closeEdge", raw);
   const edge = await c.cache.getEdge(args.edge_id);
   if (!edge) throw new OptimisticRejection("not-found");
+  if (FEATURE_OWNED_EDGE_TYPES.has(edge.edgeType))
+    throw new OptimisticRejection("requires-feature-mutation");
   return [await closeAt(c.cache, edge, args.effective_to)];
 };
 
@@ -300,6 +306,8 @@ const updateEdgeMetadata: OptimisticMutator = async (c, raw) => {
   const args = parse("graph.updateEdgeMetadata", raw);
   const edge = await c.cache.getEdge(args.edge_id);
   if (!edge) throw new OptimisticRejection("not-found");
+  if (FEATURE_OWNED_EDGE_TYPES.has(edge.edgeType))
+    throw new OptimisticRejection("requires-feature-mutation");
   if (edge.isSoftDeleted) throw new OptimisticRejection("target-deleted");
   const from = await liveNode(c.cache, edge.fromNodeId);
   const to = await liveNode(c.cache, edge.toNodeId);
@@ -1461,9 +1469,80 @@ const timesheetWeek =
     return undo;
   };
 
+async function recipientNotification(
+  c: MutatorContext,
+  node: CachedNode,
+): Promise<boolean> {
+  if (
+    node.nodeType !== "Notification" ||
+    node.isSoftDeleted ||
+    node.record["recipient_user_id"] !== c.userId
+  )
+    return false;
+  const edges = (await c.cache.edgesFrom(node.nodeId, "delivered_to")).filter(
+    (edge) =>
+      !edge.isSoftDeleted &&
+      (edge.effectiveFrom === null || edge.effectiveFrom <= c.now) &&
+      (edge.effectiveTo === null || edge.effectiveTo > c.now),
+  );
+  return edges.length === 1 && edges[0]?.toNodeId === c.userId;
+}
+
+const notificationReadState =
+  (dismiss: boolean, all: boolean): OptimisticMutator =>
+  async (c, raw) => {
+    const args = getMutationDefinition(
+      all
+        ? "notification.markAllRead"
+        : dismiss
+          ? "notification.dismiss"
+          : "notification.markRead",
+    )!.input.parse(raw) as { notification_id?: string };
+    const nodes = all
+      ? await c.cache.nodesByType("Notification")
+      : [await c.cache.getNode(args.notification_id!)];
+    const undo: UndoEntry[] = [];
+    for (const node of nodes) {
+      if (!node || !(await recipientNotification(c, node))) {
+        if (!all) throw new OptimisticRejection("not-found");
+        continue;
+      }
+      const patch: Record<string, unknown> = {};
+      if (node.record["read_at"] === null) patch["read_at"] = c.now;
+      if (dismiss && node.record["dismissed_at"] === null)
+        patch["dismissed_at"] = c.now;
+      if (!Object.keys(patch).length) continue;
+      await c.cache.putNode({
+        ...node,
+        version: node.version + 1,
+        record: { ...node.record, ...patch },
+      });
+      undo.push({ kind: "node", id: node.nodeId, before: node });
+    }
+    return undo;
+  };
+
+const hrComplianceSendReminder: OptimisticMutator = async (c, raw) => {
+  parse("hrCompliance.sendReminder", raw);
+  const allowed = deriveEffectiveRoles(
+    await resolveCallerRoles(c.cache, c.userId),
+  ).some((role) => {
+    const cell = resolvePolicyCell(role, "TimesheetEntry", "record");
+    return cell.outcome === "full" && cell.scope === "any";
+  });
+  if (!allowed) throw new OptimisticRejection("role");
+  // No optimistic Notification is authored: the server validates compliance
+  // eligibility and performs delivery when this Tier 0 request reaches it.
+  return [];
+};
+
 export const OPTIMISTIC_MUTATORS: Readonly<
   Partial<Record<MutationName, OptimisticMutator>>
 > = {
+  "notification.markRead": notificationReadState(false, false),
+  "notification.dismiss": notificationReadState(true, false),
+  "notification.markAllRead": notificationReadState(false, true),
+  "hrCompliance.sendReminder": hrComplianceSendReminder,
   "employee.create": employeeCreate,
   "employee.update": employeeUpdate,
   "employee.transitionStatus": employeeTransitionStatus,

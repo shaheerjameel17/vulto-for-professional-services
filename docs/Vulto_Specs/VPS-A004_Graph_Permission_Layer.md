@@ -205,7 +205,7 @@ Only node types whose behavior differs from their Privacy Class default, or whos
 | ImportBatch | Full | Full | None | None | None |
 | ErasureRequest, RetentionPolicy | Full | Full | None | None | None |
 | ApplicationActivation | Full | Read | Read | Read | Read |
-| Notification | Recipient-only, absolute. No role sees another user's | | | | |
+| Notification | Recipient-only, absolute. Resolved only when exactly one active delivered_to edge and recipient_user_id both identify the calling User. No role sees another user's | | | | |
 | GraphReference | Visible only where the user has Read on both source and target, per [[VPS-A005_Cross-App_Reference_Protocol|VPS-A005]] | | | | |
 | ApprovalStage | Inherits the grant of the record it gates | | | | |
 

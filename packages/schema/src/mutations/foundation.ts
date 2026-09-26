@@ -12,6 +12,7 @@ import { PITCH_MUTATIONS } from "./pitch";
 import { TIMESHEET_MUTATIONS } from "./timesheet";
 import { REVENUE_GAP_ALERT_MUTATIONS } from "./revenue-gap-alert";
 import { SKILL_MATCHER_MUTATIONS } from "./skill-matcher";
+import { NOTIFICATION_MUTATIONS } from "./notification";
 
 const jsonObject = z.record(z.string(), jsonValueSchema);
 const version = z.int().positive();
@@ -128,6 +129,7 @@ export const MUTATIONS = {
   ...TIMESHEET_MUTATIONS,
   ...REVENUE_GAP_ALERT_MUTATIONS,
   ...SKILL_MATCHER_MUTATIONS,
+  ...NOTIFICATION_MUTATIONS,
 } as const;
 
 export type MutationName = keyof typeof MUTATIONS;

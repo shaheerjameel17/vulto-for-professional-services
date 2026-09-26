@@ -14,6 +14,7 @@ import {
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { graphEdges, graphNodes } from "./schema.js";
 import type { GraphTx } from "./tx.js";
+import { recordWrite } from "./write-log.js";
 
 /**
  * The canonical graph store (VPS-A003 "The canonical store", Stage 2).
@@ -313,7 +314,9 @@ export async function insertNode(tx: GraphTx, record: unknown): Promise<StoredNo
   if (workspaceId === undefined) {
     throw new GraphValidationError(`${parsed.node_type} requires a workspace_id`);
   }
-  return writeNode(tx, workspaceId, parsed);
+  const written = await writeNode(tx, workspaceId, parsed);
+  recordWrite(written.nodeId);
+  return written;
 }
 
 /** One `User` row for one workspace, its `record` carrying no `workspace_id`. */
@@ -328,7 +331,9 @@ export async function insertUserNode(
   if (parsed.node_type !== "User") {
     throw new GraphValidationError("insertUserNode writes User nodes only");
   }
-  return writeNode(tx, workspaceId, parsed);
+  const written = await writeNode(tx, workspaceId, parsed);
+  recordWrite(written.nodeId);
+  return written;
 }
 
 async function lockNode(
@@ -413,10 +418,12 @@ export async function updateNodeFields(
       );
     }
   }
-  return replaceNodeRecord(tx, row, {
+  const written = await replaceNodeRecord(tx, row, {
     ...(row.record as Record<string, unknown>),
     ...patch,
   });
+  recordWrite(written.nodeId);
+  return written;
 }
 
 export async function softDeleteNode(
@@ -438,10 +445,12 @@ export async function softDeleteNode(
           soft_deleted_at: actor.at,
           soft_deleted_by: actor.userId,
         };
-  return replaceNodeRecord(tx, row, {
+  const written = await replaceNodeRecord(tx, row, {
     ...(row.record as Record<string, unknown>),
     ...deletion,
   });
+  recordWrite(written.nodeId);
+  return written;
 }
 
 export async function getNode(
@@ -580,6 +589,7 @@ export async function insertEdge(
       record: stored,
     })
     .returning();
+  recordWrite(row!.edgeId);
   return toStoredEdge(row!);
 }
 
@@ -645,6 +655,7 @@ export async function updateEdgeMetadata(
     })
     .where(and(eq(graphEdges.workspaceId, workspaceId), eq(graphEdges.edgeId, edgeId)))
     .returning();
+  recordWrite(updated!.edgeId);
   return toStoredEdge(updated!);
 }
 
@@ -680,6 +691,7 @@ export async function closeEdge(
     })
     .where(and(eq(graphEdges.workspaceId, workspaceId), eq(graphEdges.edgeId, edgeId)))
     .returning();
+  recordWrite(updated!.edgeId);
   return toStoredEdge(updated!);
 }
 
