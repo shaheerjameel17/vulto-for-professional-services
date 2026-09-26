@@ -327,6 +327,12 @@ search.queryProtected(text, limit?) -> {
 
 **Local permission filtering is the device's audience; commands are ungated for now (F300, 25 September 2026).** The device cache already holds only what the person may read, the same reasoning as `VRS-F014` G03, so no second check is reimplemented. Commands are a static registry matched by text; the server authorizes whatever a command executes, and role-aware command visibility is a later UI-stage concern.
 
+**The palette reaches `search.query` through a `device-query` kind (F340, 27 September 2026).** The query runs in the worker against the index; the screen renders its result and does not re-rank.
+
+**The skill-match call is a typed `fetch` to the existing GET endpoint (F341).** No client dependency; a network failure, timeout, 5xx or 429 degrades that group alone to `requires-connection` with Retry; a 401 goes to the shell's Reconnect path.
+
+**Only groups with results render (F344).** Documents and Policies are unbuilt and never show as empty headers; the empty state is one message whether nothing matched or matches were filtered; a person's context line is availability and next roll-off date; an action command is offered only if its surface exists.
+
 ---
 
 ## Related Notes

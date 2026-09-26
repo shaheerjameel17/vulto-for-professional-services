@@ -323,6 +323,12 @@ notification.mute(userId, sourceNodeType) -> { success }
 
 **Muting is deferred (F311).** Every shippable rule is `ActionNeeded`, so nothing can be muted, and `WorkspaceMembership` is projection-owned with fixed fields. The first `Informational` rule decides where the preference lives.
 
+**The Inbox reaches the device queries through a `device-query` kind (F340, 27 September 2026).** `GraphClient` gains one strict query kind that runs `notification.listForUser` and `notification.unreadActionCount` inside the worker, so the screen never regroups rows.
+
+**In-place actions are the ones that exist (F342, 27 September 2026).** Mark read, Dismiss and Mark all read, plus Open where the source resolves to an existing route (an Employee source opens the profile). Source-specific actions (approve leave, clear a flag) arrive with each source feature; none is fabricated. The row's icon comes from `source_node_type`, its body is `message`.
+
+**The sidebar count is the live `unreadActionCount`, hidden at zero (F343).**
+
 ---
 
 ## Related Notes

@@ -243,3 +243,13 @@ CI, read from the public API: `fast-lane` 36269048581 and `slow-lane` 3626904863
 
 No blocking finding and no finding raised. Non-blocking: the ledger's registry entry sits at the top of `NODE_REGISTRY`, above the "Identity and workspace" comment, rather than beside `LeaveRequest`; order does not matter to the validator, so it is left. The reviewer added the `LeaveLedgerEntry` row to `VPS-A002`'s node table (Codex flagged the prose registry as a follow-up). Merged `--no-ff` as `d501e34`.
 
+## 30. UI-1 — Inbox and command palette (`FDN-131`, F340 to F344)
+
+Briefed 27 September 2026, after Stage 28 merged (`d501e34`). The full brief is in `docs/Claude_Code_Build_Prompt.md` Part 3, UI-1. This is the first stage whose acceptance is a person looking at it: the founder's visual review follows the reviewer's, and green CI is not acceptance.
+
+What the reviewer established before writing it: the shell already mounts the real graph client (`FDN-117`), so the Inbox and palette are the last two fixture dependencies of the shell itself (`count: 7`, `fixtures/command-palette.ts`); `notificationListForUser`, `notificationUnreadActionCount` and `searchQuery` take a `SyncDatabase` and exist only inside the worker, while the public `GraphQuery` has four cache kinds, so a fifth `device-query` kind is the one client-package change (F340); `roster-web` has no tRPC client, so the skill-match call is a typed `fetch` (F341); only three read-state notification mutations exist and a Notification has no title or link, so in-place actions are Mark read, Dismiss, Mark all read and Open where the route exists (F342); the palette's groups outrun the index (F344). Nothing on the server changes. The proof lives in the existing `sync-browser` suite (real Postgres and Electric), not a second harness.
+
+**What to check in the UI-1 report:** see the brief's own list. The four that matter most: nothing reads `Notification` or the search table through `node-list` or regroups what `device-query` returns; the "other user's notifications are absent" assertion is real; the failure test uses a real refusal; and the palette fixture is gone from the shell. Then open the screenshots.
+
+**Linear:** `FDN-131` (Foundation, project "Pilot Slice: Real UI on the Built Backend") is the UI-1 issue, moved to Todo.
+
