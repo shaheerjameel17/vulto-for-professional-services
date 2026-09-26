@@ -25,6 +25,12 @@ function registerNode(
 }
 
 export const NODE_REGISTRY = [
+  registerNode({
+    nodeType: "LeaveLedgerEntry",
+    owner: "VRS-F018",
+    lifecycle: featureOwnedLifecycle,
+    protection: fixedProtection("Standard", 0),
+  }),
   // Identity and workspace — A002-owned.
   registerNode({
     nodeType: "User",

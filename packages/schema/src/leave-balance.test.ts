@@ -57,6 +57,7 @@ const input = (
   as_of_date,
   leave_type: "Annual" as const,
   usage,
+  ledger: [],
 });
 describe("VRS-F018 pure working-day accrual", () => {
   it("grants 7 of 14 monthly days after six complete months, none for a month in progress", async () => {
@@ -173,7 +174,7 @@ describe("VRS-F018 pure working-day accrual", () => {
       ).toBe(0);
     }
   });
-  it("returns a plain zero and explicit note for deferred Earned accrual", async () => {
+  it("returns zero Earned accrual when there are no ledger entries", async () => {
     const policy = {
       ...leavePolicyConfigurationSchema.parse({
         name: "TOIL",
@@ -190,8 +191,6 @@ describe("VRS-F018 pure working-day accrual", () => {
       dependencies,
     );
     expect(result.entitledYtd).toBe(0);
-    expect(result.notes).toEqual([
-      "Earned accrual is not built yet; it is deferred to Stage 28.",
-    ]);
+    expect(result.notes).toEqual([]);
   });
 });

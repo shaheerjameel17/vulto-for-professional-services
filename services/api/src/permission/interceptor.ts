@@ -94,7 +94,8 @@ export async function resolveStoredSubjectEmployeeId(
   if (
     nodeType === "TimesheetEntry" ||
     nodeType === "TimesheetWeekSubmission" ||
-    nodeType === "UtilizationSnapshot"
+    nodeType === "UtilizationSnapshot" ||
+    nodeType === "LeaveLedgerEntry"
   ) {
     const node = await getNode(tx, workspaceId, nodeId);
     const employeeId = node?.record["employee_id"];
@@ -115,7 +116,8 @@ export async function resolveStoredSubjectEmployeeId(
  *
  * BurnoutAlert and TimesheetAnomalyFlag resolve through their registered
  * `triggered_by` paths. Tier 0 TimesheetEntry resolves through its own stored
- * employee_id. Other node types still resolve conservatively until their
+ * employee_id, as do TimesheetWeekSubmission, UtilizationSnapshot and
+ * LeaveLedgerEntry. Other node types still resolve conservatively until their
  * owning feature supplies a registered subject path.
  */
 async function rowScopeSatisfied(

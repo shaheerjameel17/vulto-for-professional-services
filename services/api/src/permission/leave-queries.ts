@@ -1,8 +1,10 @@
 import {
   computeLeaveBalance,
   leavePolicyFieldsSchema,
+  leaveLedgerEntryFieldsSchema,
   resolvePolicyCell,
   type LeaveType,
+  type LeavePolicy,
 } from "@vulto/schema";
 import { getNode, getNodes, type GraphTx, type StoredNode } from "../graph/store.js";
 import { resolveForEmployee } from "../graph/entity-resolution.js";
@@ -18,7 +20,7 @@ async function employeeFor(tx: GraphTx, principal: MemberPrincipal, id: string) 
   return rows.find((row): row is StoredNode => !("restricted" in row)) ?? null;
 }
 
-async function matchingPolicies(
+export async function matchingPolicies(
   tx: GraphTx,
   principal: MemberPrincipal,
   employee: StoredNode,
@@ -106,18 +108,12 @@ export async function listConflicts(
   return conflicts.sort((a, b) => a.employee_id.localeCompare(b.employee_id));
 }
 
-/** F332: usage is deliberately empty until VRS-F019 defines approved LeaveRequest records. */
-export async function computeBalance(
+/** One caller-filtered lineage traversal, reused by accrual pricing and balances. */
+export async function policyLineage(
   tx: GraphTx,
   principal: MemberPrincipal,
-  employeeId: string,
-  leaveType: LeaveType,
-  date = new Date().toISOString().slice(0, 10),
+  policy: LeavePolicy,
 ) {
-  const employee = await employeeFor(tx, principal, employeeId);
-  if (!employee) return null;
-  const [policy] = await matchingPolicies(tx, principal, employee, date);
-  if (!policy) return null;
   const lineage = [policy];
   const seen = new Set([policy.node_id]);
   let priorId = policy.supersedes_id;
@@ -133,8 +129,32 @@ export async function computeBalance(
     lineage.push(prior);
     priorId = prior.supersedes_id;
   }
+  return lineage;
+}
+
+/** F332: usage is deliberately empty until VRS-F019 defines approved LeaveRequest records. */
+export async function computeBalance(
+  tx: GraphTx,
+  principal: MemberPrincipal,
+  employeeId: string,
+  leaveType: LeaveType,
+  date = new Date().toISOString().slice(0, 10),
+) {
+  const employee = await employeeFor(tx, principal, employeeId);
+  if (!employee) return null;
+  const [policy] = await matchingPolicies(tx, principal, employee, date);
+  if (!policy) return null;
+  const lineage = await policyLineage(tx, principal, policy);
+  if (!lineage) return null;
   const start = employee.record["start_date"];
   if (typeof start !== "string") return null;
+  const ledger = await filterReadable(
+    tx,
+    principal,
+    (
+      await getNodes(tx, principal.workspaceId, { nodeType: "LeaveLedgerEntry" })
+    ).filter((row) => row.record["employee_id"] === employeeId),
+  );
   return computeLeaveBalance(
     {
       employee: { start_date: start },
@@ -142,6 +162,9 @@ export async function computeBalance(
       leave_type: leaveType,
       as_of_date: date,
       usage: [],
+      ledger: ledger
+        .filter((row): row is StoredNode => !("restricted" in row))
+        .map((row) => leaveLedgerEntryFieldsSchema.parse(row.record)),
     },
     {
       countWorkingDays: async (from, to) =>

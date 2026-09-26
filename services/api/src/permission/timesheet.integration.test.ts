@@ -816,7 +816,7 @@ describe("VRS-F010 own TimesheetEntry and F275 endpoint writes", () => {
       flag_id: outsiderFlag!.flagId,
       outcome: "AcceptedAsNormal",
     });
-    expect(refusedNonReport).toMatchObject({ status: "rejected", reason: "role" });
+    expect(refusedNonReport).toMatchObject({ status: "rejected", reason: "not-found" });
   });
 });
 

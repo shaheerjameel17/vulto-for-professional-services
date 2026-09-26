@@ -132,6 +132,7 @@ export const FEATURE_LIFECYCLE_NODE_TYPES: ReadonlySet<string> = new Set([
   "SkillGap",
   "Notification",
   "LeavePolicy",
+  "LeaveLedgerEntry",
 ]);
 
 /** Edges whose invariants belong to named feature mutations (F291). */

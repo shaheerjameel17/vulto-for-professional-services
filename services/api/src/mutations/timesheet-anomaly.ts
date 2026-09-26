@@ -8,6 +8,8 @@ import {
   stampNewEdge,
   stampNewNode,
   updateStamp,
+  computeToilAccrual,
+  leaveLedgerEntryFieldsSchema,
   type AnomalyEntry,
   type MutationArgs,
 } from "@vulto/schema";
@@ -24,8 +26,13 @@ import {
 } from "../graph/store.js";
 import type { GraphTx } from "../graph/tx.js";
 import { resolvedDayOn } from "../graph/working-days.js";
-import { authorizeWrite } from "../permission/interceptor.js";
-import type { SystemPrincipal } from "../permission/principal.js";
+import { authorizeWrite, authorizeRead } from "../permission/interceptor.js";
+import type { SystemPrincipal, MemberPrincipal } from "../permission/principal.js";
+import {
+  matchingPolicies,
+  computeBalance,
+  policyLineage,
+} from "../permission/leave-queries.js";
 import { readProtected } from "../protected/read.js";
 import { writeProtected } from "../protected/write.js";
 import { MutationRejection, type ServerMutation } from "./types.js";
@@ -74,14 +81,14 @@ export async function readFlagRecords(
   );
 }
 
-async function evaluateInTransaction(
+/** Shared Submitted-entry and VRS-F004 week resolution; evaluator keeps its system read path. */
+async function deriveWeekHours(
   tx: GraphTx,
   workspaceId: string,
   employeeId: string,
   weekStartDate: string,
-  now: string,
-): Promise<string[]> {
-  const principal = systemPrincipal(workspaceId);
+  principal?: MemberPrincipal,
+) {
   const entries = (
     await getNodes(tx, workspaceId, { nodeType: "TimesheetEntry" })
   ).filter(
@@ -97,6 +104,46 @@ async function evaluateInTransaction(
     assignment_id: (node.record["assignment_id"] as string | null) ?? null,
     pitch_id: (node.record["pitch_id"] as string | null) ?? null,
   }));
+  let expectedWeeklyHours = 0;
+  let workingDays = 0;
+  for (const date of isoDatesInclusive(weekStartDate, addIsoDays(weekStartDate, 6))) {
+    const day = await resolvedDayOn(tx, workspaceId, employeeId, date, async (node) => {
+      if (!principal) return true;
+      const decision = await authorizeRead(tx, principal, {
+        workspaceId,
+        nodeId: node.nodeId,
+        nodeType: node.nodeType as
+          "Employee" | "Entity" | "WorkingCalendar" | "Holiday" | "WorkingPattern",
+      });
+      return decision.access === "read" || decision.access === "full";
+    });
+    expectedWeeklyHours += day.hours;
+    workingDays += day.isWorking ? 1 : 0;
+  }
+  return {
+    input,
+    expectedWeeklyHours,
+    workingDays,
+    loggedHours: input
+      .filter((entry) => entry.time_category !== "Pitch")
+      .reduce((total, entry) => total + entry.hours, 0),
+  };
+}
+
+async function evaluateInTransaction(
+  tx: GraphTx,
+  workspaceId: string,
+  employeeId: string,
+  weekStartDate: string,
+  now: string,
+): Promise<string[]> {
+  const principal = systemPrincipal(workspaceId);
+  const { input, expectedWeeklyHours } = await deriveWeekHours(
+    tx,
+    workspaceId,
+    employeeId,
+    weekStartDate,
+  );
   const endDates: Record<string, string> = {};
   for (const assignmentId of new Set(
     input.flatMap((entry) => (entry.assignment_id ? [entry.assignment_id] : [])),
@@ -108,11 +155,6 @@ async function evaluateInTransaction(
     )
       endDates[assignmentId] = assignment.record["end_date"];
   }
-  let expectedWeeklyHours = 0;
-  for (const date of isoDatesInclusive(weekStartDate, addIsoDays(weekStartDate, 6)))
-    expectedWeeklyHours += (
-      await resolvedDayOn(tx, workspaceId, employeeId, date, async () => true)
-    ).hours;
   const triggered = [
     ["PostEndDateAssignment", detectPostEndDateAssignment(input, endDates)],
     ["ZeroVarianceWeek", detectZeroVarianceWeek(input)],
@@ -297,13 +339,119 @@ export async function timesheetAnomalyEvaluate(
   throw new Error("unreachable");
 }
 
+export interface ToilResolution {
+  readonly toil_days_accrued: number;
+  readonly capped_at?: number;
+  readonly reason:
+    | "accrued"
+    | "capped"
+    | "no-overtime"
+    | "no-policy"
+    | "no-toil-type"
+    | "no-working-days"
+    | "not-hours-exceed";
+}
+
+async function callerFlag(
+  tx: GraphTx,
+  principal: MemberPrincipal,
+  flagId: string,
+  now: string,
+) {
+  const flag = await getNode(tx, principal.workspaceId, flagId);
+  if (!flag || flag.isSoftDeleted || flag.nodeType !== "TimesheetAnomalyFlag")
+    throw new MutationRejection("not-found");
+  const [item] = await readProtected(
+    tx,
+    getKeyServices(),
+    principal,
+    { nodeIds: [flagId], partitions: ["record"] },
+    { now: () => now },
+  );
+  if (item?.state !== "available") throw new MutationRejection("not-found");
+  return { flag, record: item.value as AnomalyFlagRecord, principal };
+}
+
+/** Caller context stays attached to the protected flag; never a system policy read. */
+export async function resolveToilAccrual(
+  tx: GraphTx,
+  context: Awaited<ReturnType<typeof callerFlag>>,
+  now: string,
+): Promise<{ result: ToilResolution; policy_id?: string; expires_on?: string }> {
+  const { record, principal } = context;
+  const zero = (reason: ToilResolution["reason"]) => ({
+    result: { toil_days_accrued: 0, reason },
+  });
+  if (record.flag_reason !== "HoursExceedExpected") return zero("not-hours-exceed");
+  const employee = await getNode(tx, principal.workspaceId, record.employee_id);
+  if (!employee || employee.isSoftDeleted || employee.nodeType !== "Employee")
+    throw new MutationRejection("not-found");
+  const date = now.slice(0, 10);
+  const [latest] = await matchingPolicies(tx, principal, employee, date);
+  if (!latest) return zero("no-policy");
+  // Stage 27 allows a future-effective version and immediately retires its
+  // predecessor. Price this grant with the version in force on clearance day.
+  const lineage = await policyLineage(tx, principal, latest);
+  if (!lineage) throw new MutationRejection("not-found");
+  const policy = lineage
+    .filter((version) => version.effective_from <= date)
+    .sort(
+      (a, b) =>
+        b.effective_from.localeCompare(a.effective_from) || b.version - a.version,
+    )[0];
+  if (!policy) return zero("no-policy");
+  if (!policy.leave_types.some((type) => type.leave_type === "TOIL"))
+    return zero("no-toil-type");
+  const hours = await deriveWeekHours(
+    tx,
+    principal.workspaceId,
+    record.employee_id,
+    record.week_start_date,
+    principal,
+  );
+  if (hours.workingDays === 0) return zero("no-working-days");
+  const balance = await computeBalance(tx, principal, record.employee_id, "TOIL", date);
+  if (!balance) throw new MutationRejection("not-found");
+  const accrual = computeToilAccrual({
+    logged_hours: hours.loggedHours,
+    expected_hours: hours.expectedWeeklyHours,
+    standard_daily_hours: hours.expectedWeeklyHours / hours.workingDays,
+    accrual_rate: policy.overtime_policy.toil_accrual_rate,
+    held_days: balance.remaining,
+    max_days: policy.overtime_policy.toil_max_accrued_days,
+  });
+  return {
+    result: {
+      toil_days_accrued: accrual.granted_days,
+      ...(accrual.capped ? { capped_at: accrual.cap_days } : {}),
+      reason: accrual.capped
+        ? "capped"
+        : accrual.requested_days > 0
+          ? "accrued"
+          : "no-overtime",
+    },
+    policy_id: policy.node_id,
+    expires_on: addIsoDays(date, policy.overtime_policy.toil_expiry_days),
+  };
+}
+
+export async function previewOvertime(
+  tx: GraphTx,
+  principal: MemberPrincipal,
+  flagId: string,
+  now = new Date().toISOString(),
+) {
+  return (
+    await resolveToilAccrual(tx, await callerFlag(tx, principal, flagId, now), now)
+  ).result;
+}
+
 /** A member-authorized clearance; ApprovedOvertime suppresses only this flag. */
 export const timesheetAnomalyClear: ServerMutation<
   MutationArgs<"timesheetAnomaly.clear">
 > = async (ctx) => {
-  const flag = await getNode(ctx.tx, ctx.principal.workspaceId, ctx.args.flag_id);
-  if (!flag || flag.isSoftDeleted || flag.nodeType !== "TimesheetAnomalyFlag")
-    throw new MutationRejection("not-found");
+  const context = await callerFlag(ctx.tx, ctx.principal, ctx.args.flag_id, ctx.now);
+  const { flag, record } = context;
   return {
     checks: [
       {
@@ -319,21 +467,25 @@ export const timesheetAnomalyClear: ServerMutation<
     ],
     async validate() {},
     async apply() {
-      const [item] = await readProtected(
-        ctx.tx,
-        getKeyServices(),
-        ctx.principal,
-        { nodeIds: [flag.nodeId], partitions: ["record"] },
-        { now: () => ctx.now },
-      );
-      if (item?.state !== "available") throw new MutationRejection("not-found");
-      const record = item.value as AnomalyFlagRecord;
       if (record.cleared_at !== null) throw new MutationRejection("stale-state");
+      const resolution =
+        ctx.args.outcome === "ApprovedOvertime"
+          ? await resolveToilAccrual(ctx.tx, context, ctx.now)
+          : {
+              result: { toil_days_accrued: 0, reason: "no-overtime" } as ToilResolution,
+            };
+      if (
+        ctx.args.outcome === "ApprovedOvertime" &&
+        record.flag_reason === "HoursExceedExpected" &&
+        ctx.args.acknowledged_toil_days !== undefined &&
+        ctx.args.acknowledged_toil_days !== resolution.result.toil_days_accrued
+      )
+        throw new MutationRejection("stale-state");
       await updateNodeFields(
         ctx.tx,
         ctx.principal.workspaceId,
         flag.nodeId,
-        null,
+        flag.version,
         updateStamp("TimesheetAnomalyFlag", {
           workspaceId: ctx.principal.workspaceId,
           userId: ctx.principal.userId,
@@ -358,7 +510,59 @@ export const timesheetAnomalyClear: ServerMutation<
         },
         ctx.principal.userId,
       );
-      return { result: { success: true }, changedRowIds: [flag.nodeId] };
+      const changedRowIds = [flag.nodeId];
+      if (resolution.result.toil_days_accrued > 0) {
+        const principal: SystemPrincipal = {
+          kind: "system",
+          name: "leave-ledger-write",
+          workspaceId: ctx.principal.workspaceId,
+        };
+        const id = randomUUID();
+        const decision = await authorizeWrite(
+          ctx.tx,
+          principal,
+          {
+            kind: "node",
+            workspaceId: principal.workspaceId,
+            nodeType: "LeaveLedgerEntry",
+            nodeId: id,
+            partitionKey: "record",
+          },
+          { operation: "create" },
+          { systemOperation: "leave-ledger.write", now: () => ctx.now },
+        );
+        if (!decision.allowed)
+          throw new Error(`ledger-write-denied:${decision.reason}`);
+        const actor = await ensureSystemActor(
+          ctx.tx,
+          principal.workspaceId,
+          principal.name,
+          ctx.now,
+        );
+        const entry = leaveLedgerEntryFieldsSchema.parse(
+          stampNewNode(
+            {
+              node_id: id,
+              node_type: "LeaveLedgerEntry",
+              schema_version: 1,
+              lifecycle_status: "Active",
+              employee_id: record.employee_id,
+              entry_kind: "ToilAccrual",
+              leave_type: "TOIL",
+              days: resolution.result.toil_days_accrued,
+              effective_date: ctx.now.slice(0, 10),
+              expires_on: resolution.expires_on,
+              policy_id: resolution.policy_id,
+              source_flag_id: flag.nodeId,
+            },
+            "LeaveLedgerEntry",
+            { workspaceId: principal.workspaceId, userId: actor, now: ctx.now },
+          ),
+        );
+        await insertNode(ctx.tx, entry);
+        changedRowIds.push(id);
+      }
+      return { result: { success: true, ...resolution.result }, changedRowIds };
     },
   };
 };
