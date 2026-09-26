@@ -58,6 +58,7 @@ import {
   assignmentUpdate,
 } from "./assignment.js";
 import { rateCardCreate, rateCardUpdate } from "./rate-card.js";
+import { leavePolicyCreate, leavePolicyUpdate } from "./leave-policy.js";
 import {
   ghostResourceCancel,
   ghostResourceCreate,
@@ -139,6 +140,8 @@ const IMPLEMENTATIONS: Record<MutationName, ServerMutation<never>> = {
   "assignment.clearRateOverride": assignmentClearRateOverride as ServerMutation<never>,
   "rateCard.create": rateCardCreate as ServerMutation<never>,
   "rateCard.update": rateCardUpdate as ServerMutation<never>,
+  "leavePolicy.create": leavePolicyCreate as ServerMutation<never>,
+  "leavePolicy.update": leavePolicyUpdate as ServerMutation<never>,
   "ghostResource.create": ghostResourceCreate as ServerMutation<never>,
   "ghostResource.cancel": ghostResourceCancel as ServerMutation<never>,
   "ghostResource.linkOpenRole": ghostResourceLinkOpenRole as ServerMutation<never>,
@@ -371,6 +374,7 @@ async function applyMutationInScope(
           definition?.name === "assignment.cancel" ||
           definition?.name === "assignment.setRateCard" ||
           definition?.name === "rateCard.update" ||
+          definition?.name === "leavePolicy.update" ||
           definition?.name === "ghostResource.promote" ||
           definition?.name === "timesheet.saveCell" ||
           definition?.name === "timesheet.submitWeek" ||

@@ -1,5 +1,7 @@
 /** Canonical VPS-A002 graph contracts. No runtime mutation API is exposed. */
 import "./registry/validate";
+export * from "./leave-policy";
+export * from "./leave-balance";
 
 export * from "./ghost-resource";
 export * from "./search";

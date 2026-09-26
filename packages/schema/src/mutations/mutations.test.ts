@@ -73,6 +73,8 @@ describe("the foundation mutation set", () => {
       "holiday.cancel",
       "holiday.confirm",
       "hrCompliance.sendReminder",
+      "leavePolicy.create",
+      "leavePolicy.update",
       "notification.dismiss",
       "notification.markAllRead",
       "notification.markRead",
@@ -103,7 +105,10 @@ describe("the foundation mutation set", () => {
       );
       // A protected write can never be queued offline.
       expect(definition.onlineOnly).toBe(
-        definition.tier > 0 || definition.name === "ghostResource.promote",
+        definition.tier > 0 ||
+          definition.name === "ghostResource.promote" ||
+          definition.name === "leavePolicy.create" ||
+          definition.name === "leavePolicy.update",
       );
     }
   });
@@ -121,6 +126,7 @@ describe("the foundation mutation set", () => {
         "calendar.update",
         "assignment.cancel",
         "rateCard.update",
+        "leavePolicy.update",
         "ghostResource.cancel",
         "ghostResource.promote",
         "timesheet.submitWeek",
