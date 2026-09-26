@@ -36,6 +36,9 @@ import {
   projectMatchResultsInputSchema,
   skillMatcherAdHocInputSchema,
   skillGapListInputSchema,
+  leavePolicyApplicableInputSchema,
+  leavePolicyConflictsInputSchema,
+  leaveBalanceInputSchema,
 } from "@vulto/schema";
 import { getKeyServices } from "./crypto/keys.js";
 import { db } from "./db.js";
@@ -51,6 +54,11 @@ import {
 } from "./permission/working-days-queries.js";
 import { authorizeRead } from "./permission/interceptor.js";
 import { queryAuditLog } from "./audit/query.js";
+import {
+  getApplicable,
+  listConflicts,
+  computeBalance,
+} from "./permission/leave-queries.js";
 import {
   getBenchForecastAggregate,
   getBenchForecastCosts,
@@ -135,6 +143,46 @@ function toIsoOrRaw(value: unknown): string | null {
  * workspace data goes through it.
  */
 export const appRouter = t.router({
+  leavePolicy: t.router({
+    getApplicable: protectedProcedure
+      .input(leavePolicyApplicableInputSchema)
+      .query(async ({ ctx, input }) => {
+        const result = await db.transaction((tx) =>
+          getApplicable(tx, ctx.principal, input.employee_id),
+        );
+        if (result === null)
+          throw new TRPCError({ code: "NOT_FOUND", message: "not-found" });
+        return result;
+      }),
+    listConflicts: protectedProcedure
+      .input(leavePolicyConflictsInputSchema)
+      .query(async ({ ctx, input }) => {
+        const result = await db.transaction((tx) =>
+          listConflicts(tx, ctx.principal, input.workspace_id),
+        );
+        if (result === null)
+          throw new TRPCError({ code: "FORBIDDEN", message: "role" });
+        return result;
+      }),
+  }),
+  leaveBalance: t.router({
+    compute: protectedProcedure
+      .input(leaveBalanceInputSchema)
+      .query(async ({ ctx, input }) => {
+        const result = await db.transaction((tx) =>
+          computeBalance(
+            tx,
+            ctx.principal,
+            input.employee_id,
+            input.leave_type,
+            input.as_of_date,
+          ),
+        );
+        if (result === null)
+          throw new TRPCError({ code: "NOT_FOUND", message: "not-found" });
+        return result;
+      }),
+  }),
   system: t.router({
     status: publicProcedure.query(async () => {
       const startedAt = Date.now();

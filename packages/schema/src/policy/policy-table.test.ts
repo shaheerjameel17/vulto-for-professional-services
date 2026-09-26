@@ -12,28 +12,23 @@ const ALL_ROLES: readonly PolicyRole[] = POLICY_ROLES;
 
 describe("resolvePermission — default class mapping, transcribed from VPS-A004", () => {
   it("Standard: Owner/HR Admin Full, Finance Admin Read — Manager and Team Member none, per F128", () => {
-    // LeavePolicy is Standard and absent from the matrix — pure A004-T08
+    // LeaveRequest is Standard and absent from the matrix — pure A004-T08
     // default. Standard's own Manager/Team Member cells carry a row-identity
     // qualifier ("Full (direct reports)" / "Read (own + team)"), which this
     // stage cannot resolve — per F128, any cell whose scope is not "any"
     // resolves to `none`, not its literal grant, regardless of role.
     //
-    // Separate observation, not fixed here: LeavePolicy is one of eight node
-    // types `VPS-A004`'s "workspace-configuration pattern" names as needing
-    // a plain, unqualified Read grant for every role — a workspace-wide
-    // policy document has no "direct reports" or "own" relationship to any
-    // one employee. That pattern has no override row in this table yet, so
-    // LeavePolicy falls through to Standard's person-scoped qualifiers
-    // instead. `none` is still the safe, correct answer for Manager and
-    // Team Member either way; the pattern's own row would resolve to `read`
-    // once added.
-    expect(resolvePermission("owner", "LeavePolicy", "record").outcome).toBe("full");
-    expect(resolvePermission("hr-admin", "LeavePolicy", "record").outcome).toBe("full");
-    expect(resolvePermission("finance-admin", "LeavePolicy", "record").outcome).toBe(
+    // F328 gives LeavePolicy its own configuration row; this still proves
+    // the untouched Standard fallback with a matrix-absent registration.
+    expect(resolvePermission("owner", "LeaveRequest", "record").outcome).toBe("full");
+    expect(resolvePermission("hr-admin", "LeaveRequest", "record").outcome).toBe(
+      "full",
+    );
+    expect(resolvePermission("finance-admin", "LeaveRequest", "record").outcome).toBe(
       "read",
     );
-    expect(resolvePermission("manager", "LeavePolicy", "record").outcome).toBe("none");
-    expect(resolvePermission("team-member", "LeavePolicy", "record").outcome).toBe(
+    expect(resolvePermission("manager", "LeaveRequest", "record").outcome).toBe("none");
+    expect(resolvePermission("team-member", "LeaveRequest", "record").outcome).toBe(
       "none",
     );
   });
@@ -116,6 +111,12 @@ describe("resolvePermission — default class mapping, transcribed from VPS-A004
 });
 
 describe("resolvePermission — matrix overrides", () => {
+  it("LeavePolicy carries exactly WorkingCalendar's literal configuration matrix", () => {
+    for (const role of ALL_ROLES)
+      expect(resolvePolicyCell(role, "LeavePolicy", "record")).toEqual(
+        resolvePolicyCell(role, "WorkingCalendar", "record"),
+      );
+  });
   it("makes RevenueGapAlert workspace-visible but writable only by Owner, HR Admin, and Manager", () => {
     expect(resolvePolicyCell("owner", "RevenueGapAlert", "record")).toMatchObject({
       outcome: "full",

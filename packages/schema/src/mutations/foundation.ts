@@ -6,6 +6,7 @@ import { ENTITY_MUTATIONS } from "./entity";
 import { CALENDAR_MUTATIONS } from "./calendar";
 import { ASSIGNMENT_MUTATIONS } from "./assignment";
 import { RATE_CARD_MUTATIONS } from "./rateCard";
+import { LEAVE_POLICY_MUTATIONS } from "./leave-policy";
 import { GHOST_RESOURCE_MUTATIONS } from "./ghostResource";
 import { CONFLICT_RESOLUTION_MUTATIONS } from "./conflict-resolution";
 import { PITCH_MUTATIONS } from "./pitch";
@@ -123,6 +124,7 @@ export const MUTATIONS = {
   ...CALENDAR_MUTATIONS,
   ...ASSIGNMENT_MUTATIONS,
   ...RATE_CARD_MUTATIONS,
+  ...LEAVE_POLICY_MUTATIONS,
   ...GHOST_RESOURCE_MUTATIONS,
   ...CONFLICT_RESOLUTION_MUTATIONS,
   ...PITCH_MUTATIONS,
