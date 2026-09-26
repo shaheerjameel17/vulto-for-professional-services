@@ -161,4 +161,4 @@ What the reviewer established before writing it, from the spec and the code: `No
 
 **What to check in the Stage 25 report:** see the brief's own list. The three that matter most: the Owner really resolves `none` on another person's notification in a real test; no message can carry a non-Tier-0 field; and the engine cannot fail or roll back a source mutation.
 
-**Linear:** an `RST` issue for Stage 25 is needed (the founder creates it or it is created when Linear is connected); `FDN-126` is Done.
+**Linear:** `RST-52` (Todo) is the Stage 25 issue, branch `codex/stage-25-notification-center`; `FDN-126` is Done.
