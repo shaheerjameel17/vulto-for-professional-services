@@ -61,7 +61,7 @@ A policy can carry blackout ranges — a busy client season, a year-end freeze �
 
 ### Overtime and time off in lieu
 
-This is the substantive addition, and it deliberately introduces no new node type and no new approval surface.
+This is the substantive addition. It introduces no new approval surface and, by the founder's decision on RST-60 (F335), one new node type: the append-only `LeaveLedgerEntry` that records each TOIL accrual (see "The TOIL ledger").
 
 When an employee's submitted week trips [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s `HoursExceedExpected` check, their manager already reviews and clears the flag. That clearance now carries an outcome: the hours were **corrected**, **accepted as normal**, or **approved as overtime**.
 
@@ -176,6 +176,26 @@ Balance is computed at query time, never cached — matching [[VRS-F005_The_Benc
 
 Entitlement is expressed in days and consumed in working days. A five-day request spanning a public holiday consumes four. A part-time employee's day is their day, not a notional eight hours. **No calculation in this feature counts a calendar day.**
 
+### The TOIL ledger (F335)
+
+A TOIL accrual is one immutable Tier 0 record, written by the server in the same transaction as the flag clearance and never edited. A correction is a compensating entry.
+
+```
+LeaveLedgerEntry:
+  employee_id:    UUID          the subject; row-scoped access resolves through it
+  entry_kind:     enum: ToilAccrual        (Adjustment and Reversal are reserved for later)
+  leave_type:     enum: TOIL
+  days:           decimal       days granted, after the cap
+  effective_date: ISO date      the clearance date (UTC)
+  expires_on:     ISO date, nullable   effective_date + toil_expiry_days
+  policy_id:      UUID          the LeavePolicy version that priced it, frozen
+  source_flag_id: UUID          opaque reference to the clearing flag
+
+— Universal Node Conventions per VPS-A002 —
+```
+
+The entry carries nothing of the Tier 2 flag: no hours, no week, no reason, no note. The employee sees "1.0 day earned", never the overtime record. Employees read their own entries, managers their direct reports', Owner, HR Admin and Finance Admin any; no member holds write. The only writer is the clearance transaction, through a narrow system operation.
+
 ### TOIL accrual
 
 When [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s flag clearance records `ApprovedOvertime`, TOIL accrues:
@@ -184,7 +204,7 @@ When [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s flag clearance records `Approve
 toil_days = (logged_hours − expected_hours) / standard_daily_hours × toil_accrual_rate
 ```
 
-`standard_daily_hours` comes from the employee's working calendar per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. Accrual is capped at `toil_max_accrued_days`; overtime beyond the cap is approved and exempts the week from re-flagging, but accrues nothing further, and the manager is told so at the point of approval rather than discovering it later.
+`standard_daily_hours` comes from the employee's working calendar per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]] (F337): the week's expected hours divided by its working days. All three hour figures are derived on the server, never supplied by the caller (F336). Accrual is capped at `toil_max_accrued_days`; overtime beyond the cap is approved and exempts the week from re-flagging, but accrues nothing further, and the manager is told so at the point of approval rather than discovering it later.
 
 ### API contracts
 
@@ -202,10 +222,13 @@ leaveBalance.compute(employeeId, leaveType, asOfDate?) -> {
 }
   // Computed live from policy and approved request history. Never cached
 
-overtime.approve(flagId, loggedHours, expectedHours) -> {
-  toilDaysAccrued, cappedAt?
-}
-  // Called from VRS-F010's flag clearance when the outcome is ApprovedOvertime
+overtime.preview(flagId) -> { toilDaysAccrued, cappedAt?, reason }
+  // Read-only, from the same function the clearance uses. The manager sees
+  // the figure before confirming
+timesheetAnomaly.clear(flagId, outcome, note?, acknowledgedToilDays?)
+  -> { success, toilDaysAccrued, cappedAt?, reason }
+  // ApprovedOvertime on a HoursExceedExpected flag writes the ledger entry in
+  // the same transaction. A mismatch with acknowledgedToilDays is stale-state
 ```
 
 ---
@@ -217,11 +240,13 @@ overtime.approve(flagId, loggedHours, expectedHours) -> {
 | G01 | LeavePolicy carries the schema above |
 | G02 | Updating creates a new version through `supersedes`. The prior version is never edited in place |
 | G03 | Exactly one active policy should match an employee. More than one is a configuration issue surfaced to HR Admin, resolved in the interim by the most recently created |
-| G04 | Leave balance is never stored. It is computed at query time from the policy and approved request history |
+| G04 | Leave balance is never stored. It is computed at query time from the policy, the approved request history and, for TOIL, the ledger |
 | G05 | Every entitlement, accrual and deduction counts working days per [[VRS-F004_Working_Calendar_and_Working_Patterns|VRS-F004]]. No calendar-day arithmetic occurs in this feature |
-| G06 | TOIL is a leave type with `accrual_method: Earned`, accruing from [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] flag clearances recorded as ApprovedOvertime |
+| G06 | TOIL is a leave type with `accrual_method: Earned`, accruing as one `LeaveLedgerEntry` per [[VRS-F010_Timesheet_Speed-Run|VRS-F010]] flag clearance recorded as ApprovedOvertime |
 | G07 | Approved overtime exempts that week from re-flagging by [[VRS-F010_Timesheet_Speed-Run|VRS-F010]]'s `HoursExceedExpected` rule |
 | G08 | TOIL accrual is capped. Overtime beyond the cap is approved and exempting, but accrues nothing, and the cap is disclosed at approval |
+| G09 | `LeaveLedgerEntry` is append-only and server-written only, in the clearance transaction. No member holds write; a correction is a compensating entry |
+| G10 | The ledger carries no Tier 2 content: no hours, week, reason or note |
 
 ---
 
@@ -294,6 +319,7 @@ overtime.approve(flagId, loggedHours, expectedHours) -> {
 
 - **LeavePolicy is workspace configuration, not individually sensitive.** Every role reads it — an employee needs to see the rules governing their own entitlement — and only Owner and HR Admin write, per the workspace-configuration pattern in [[VPS-A004_Graph_Permission_Layer|VPS-A004]].
 - **A TOIL balance implies a history of overtime**, which is a fact about a person's working pattern. It is Tier 0 and visible on the same terms as any other leave balance, which is correct: an employee must see what they have earned, and their manager must see what they may take.
+- **The ledger is the only Tier 0 trace of an overtime approval.** It is readable on the same terms as any leave balance and reveals that time was earned, not when, why or how many hours. The protected clearance stays Tier 2.
 - **The overtime approval is audited** per [[VPS-F004_Silent_Audit_Log|VPS-F004]]. A manager authorizing sustained overtime is a fact that matters later, both to [[VRS-F052_Workload_Strain_Signal|VRS-F052]]'s burnout signal and to any dispute about hours.
 
 ---
@@ -339,6 +365,16 @@ The alternative considered was a distinct OvertimeRequest node with its own subm
 **The queries are server-side for now (F333).** The engine is pure and injectable so a local adapter follows with `VRS-F019`; the 200 ms and 20 ms figures are measured server-side.
 
 **TOIL and Earned are tied (F334).** `Earned` if and only if `TOIL`; one entry per leave type; `employment_type_scope` is the four employee types or `All`; an `Earned` balance is an explicit zero with a note until Stage 28.
+
+**A TOIL accrual lives in an append-only Tier 0 ledger (F335, founder decision on RST-60, 27 September 2026).** This supersedes "no new node type" for `LeaveLedgerEntry` only. Option (b), a figure derived on the server from the protected clearance, was rejected: it re-prices past accrual when policy changes, is online-only, and makes the server read protected data on every balance query. Edge metadata was rejected as unqueryable hidden state.
+
+**There is no `overtime.approve` endpoint (F336).** The server derives the hours inside `timesheetAnomaly.clear`; `overtime.preview` shows the figure first; an acknowledged figure that no longer matches is refused as stale.
+
+**The standard day is the week's expected hours over its working days (F337).** A part-timer's day is their day.
+
+**An `Earned` balance has no policy-year roll (F338).** Each entry lives from its effective date to its expiry; the cap applies at accrual against unexpired remaining; deductions consume earliest expiry first.
+
+**The ledger is subject-scoped by `employee_id` and server-write only (F339).** One system operation, `leave-ledger.write`, used only inside the clearance transaction.
 
 ---
 

@@ -223,3 +223,15 @@ What the reviewer established before writing it, from the spec and the code: `Le
 
 CI, read from the public API: `fast-lane` 36264043651 and `slow-lane` 36264043654 at head `7cc56ac`, both `success`. The local vitest suite was not re-run in this shell; CI and Codex's gate output are the evidence. No blocking finding and no finding raised. Merged `--no-ff`; the merge also carries the Linear rules commit `8d01054`.
 
+## 29. Stage 28 — Leave Policy Engine, part 2: overtime approval and TOIL (`VRS-F018`, `S05`, F335 to F339)
+
+Briefed 27 September 2026, after Stage 27 merged (`f6ec167`). The full brief is in `docs/Claude_Code_Build_Prompt.md` Part 3, Stage 28.
+
+**Founder decision on RST-60 (27 September 2026): option (a), refined.** A TOIL accrual lives in an append-only Tier 0 `LeaveLedgerEntry`, written by the server in the same transaction as the flag clearance, carrying no Tier 2 content (no hours, week, reason or note), corrected only by compensating entries. It supersedes the spec's "no new node type" for that one type; option (b) (a server-derived, online-only figure) was rejected because it re-prices past accrual, is online-only and makes the server read protected data on every query, and edge metadata because it is unqueryable hidden state. The founder asked the reviewer to make the remaining design calls; they are F336 to F339.
+
+What the reviewer established from the code: `timesheetAnomaly.clear` and its `clearance_outcome` and the `G07` re-flagging exemption are already built (Stage 18), so the stage adds only the accrual, the ledger and the `Earned` engine; the ledger's subject path follows `TimesheetEntry` (a stored `employee_id`, read by `resolveStoredSubjectEmployeeId`); the server writer follows `timesheet-anomaly-evaluate`'s system-operation pattern; a registry change to a non-searchable node type does not by itself change `CACHE_SCHEMA_VERSION`. Five findings, all closed by ruling; the spec is corrected.
+
+**What to check in the Stage 28 report:** see the brief's own list. The four that matter most: no member (Owner included) can write the ledger and a test really tries; the flag update and the ledger entry are one transaction, proved by a forced-failure test; the entry carries nothing from the Tier 2 flag; and the hours helper was moved out of the evaluator, not duplicated. Also confirm the interceptor and system-principal changes are the only shared-code changes and are exactly as ruled.
+
+**Linear:** RST-60 is Done. The Stage 28 issue is in the Roster team (project "MVP Feature Completion", milestone "Leave Management", labels Compliance and Back-End).
+
