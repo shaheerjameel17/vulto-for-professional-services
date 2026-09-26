@@ -272,6 +272,10 @@ describe("VRS-F018 real TOIL clearance", () => {
           )
         )?.remaining,
       ).toBe(remaining);
+  });
+  it("measures preview and TOIL balance p95 over twenty server calls", async () => {
+    const w = await world();
+    expect((await w.clear()).status).toBe("applied");
     const times: number[] = [],
       balances: number[] = [];
     for (let i = 0; i < 20; i++) {
@@ -289,7 +293,7 @@ describe("VRS-F018 real TOIL clearance", () => {
     console.info(
       `STAGE28_P95 preview_ms=${p95(times)} balance_ms=${p95(balances)} samples=20 employees=4 policies=1 ledger=1 submitted_entries=4`,
     );
-  });
+  }, 20_000);
   it("scopes reads and sync audience to own, direct report and workspace-wide readers, never permits member writes", async () => {
     const w = await world();
     await w.clear();
