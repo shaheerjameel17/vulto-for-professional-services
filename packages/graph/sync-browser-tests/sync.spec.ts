@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { SEARCHABLE_NODE_TYPES } from "@vulto/schema";
+import { SYNC_SUITE_SEED_NODE_TYPE } from "./seed-type.js";
 import {
   applyMutation,
   device,
@@ -17,13 +18,13 @@ import {
   createOwnedWorkspace,
   createWorkspaceAsMember,
   db,
-  listEntities,
+  listClients,
   mutate,
-  newEntity,
+  newClient,
   openHarness,
   scanBrowserStorage,
   SEARCH_FIXTURE_EMPLOYEE_NAME,
-  seedEntities,
+  seedClients,
   seedProtected,
   signInNewUser,
   statusOf,
@@ -75,10 +76,10 @@ test("first sign-in replicates the member's rows and the query returns them", as
 }) => {
   const userId = await signInNewUser(context);
   const workspaceId = await createOwnedWorkspace(userId);
-  const ids = await seedEntities(workspaceId, userId, 3);
+  const ids = await seedClients(workspaceId, userId, 3);
   await openHarness(page, workspaceId, userId);
   await untilSynced(page, 3);
-  expect(await listEntities(page)).toEqual([...ids].sort());
+  expect(await listClients(page)).toEqual([...ids].sort());
 });
 
 test("cold offline boot: with the API unreachable, a reload still answers queries and reports Offline", async ({
@@ -87,7 +88,7 @@ test("cold offline boot: with the API unreachable, a reload still answers querie
 }) => {
   const userId = await signInNewUser(context);
   const workspaceId = await createOwnedWorkspace(userId);
-  const ids = await seedEntities(workspaceId, userId, 2);
+  const ids = await seedClients(workspaceId, userId, 2);
   await openHarness(page, workspaceId, userId);
   await untilSynced(page, 2);
 
@@ -96,7 +97,7 @@ test("cold offline boot: with the API unreachable, a reload still answers querie
   await page.waitForFunction(
     () => (window as unknown as { __vultoSync?: unknown }).__vultoSync !== undefined,
   );
-  expect(await listEntities(page)).toEqual([...ids].sort());
+  expect(await listClients(page)).toEqual([...ids].sort());
   await expect(statusOf(page)).toHaveText("Offline");
 });
 
@@ -111,15 +112,15 @@ test("three offline mutations replay on reconnect, each applied exactly once", a
 
   network.cut();
   const created = [
-    newEntity(workspaceId),
-    newEntity(workspaceId),
-    newEntity(workspaceId),
+    newClient(workspaceId),
+    newClient(workspaceId),
+    newClient(workspaceId),
   ];
   const outcomes = [];
   for (const node of created)
     outcomes.push(await mutate(page, "graph.createNode", { node }));
   expect(outcomes.every((o) => o.accepted)).toBe(true);
-  expect((await listEntities(page)).length).toBe(3);
+  expect((await listClients(page)).length).toBe(3);
   await expect(statusOf(page)).toHaveText("PendingChanges");
 
   network.restore();
@@ -133,7 +134,7 @@ test("three offline mutations replay on reconnect, each applied exactly once", a
     outcomes.map((o) => o.mutationId!).sort(),
   );
   expect(new Set(applied.map((r) => r.mutationId)).size).toBe(3);
-  expect((await listEntities(page)).sort()).toEqual(
+  expect((await listClients(page)).sort()).toEqual(
     created.map((n) => n.node_id).sort(),
   );
 });
@@ -150,9 +151,9 @@ test("two tabs: a mutation in one appears in the other without a reload", async 
   await openHarness(second, workspaceId, userId);
   await untilSynced(second, 0);
 
-  const node = newEntity(workspaceId);
+  const node = newClient(workspaceId);
   expect((await mutate(page, "graph.createNode", { node })).accepted).toBe(true);
-  await expect.poll(() => listEntities(second)).toEqual([node.node_id]);
+  await expect.poll(() => listClients(second)).toEqual([node.node_id]);
 });
 
 test("a queued state transition the server rejects as stale is reverted locally and needs attention", async ({
@@ -161,7 +162,7 @@ test("a queued state transition the server rejects as stale is reverted locally 
 }) => {
   const userId = await signInNewUser(context);
   const workspaceId = await createOwnedWorkspace(userId);
-  const [nodeId] = await seedEntities(workspaceId, userId, 1);
+  const [nodeId] = await seedClients(workspaceId, userId, 1);
   await openHarness(page, workspaceId, userId);
   await untilSynced(page, 1);
 
@@ -185,22 +186,27 @@ test("a queued state transition the server rejects as stale is reverted locally 
   await page.evaluate(() => window.dispatchEvent(new Event("online")));
   await expect(statusOf(page)).toHaveText("NeedsAttention", { timeout: 90_000 });
   await expect(page.getByTestId("sync-attention")).toContainText("stale-state");
-  const nodes = await page.evaluate(async (id) => {
-    const w = window as unknown as {
-      __vultoSync: {
-        client: {
-          query(q: unknown): Promise<{ result: { node: { lifecycleStatus: string } } }>;
+  const nodes = await page.evaluate(
+    async ([id, nodeType]) => {
+      const w = window as unknown as {
+        __vultoSync: {
+          client: {
+            query(
+              q: unknown,
+            ): Promise<{ result: { node: { lifecycleStatus: string } } }>;
+          };
         };
       };
-    };
-    return (
-      await w.__vultoSync.client.query({
-        kind: "node-get",
-        nodeId: id,
-        nodeType: "Entity",
-      })
-    ).result.node.lifecycleStatus;
-  }, nodeId);
+      return (
+        await w.__vultoSync.client.query({
+          kind: "node-get",
+          nodeId: id,
+          nodeType,
+        })
+      ).result.node.lifecycleStatus;
+    },
+    [nodeId, SYNC_SUITE_SEED_NODE_TYPE] as const,
+  );
   expect(nodes).toBe("Active");
 });
 
@@ -278,7 +284,7 @@ test("revoking the person's access erases that workspace's local database", asyn
   const userId = await signInNewUser(context);
   const fixture = await createWorkspaceAsMember(userId, ["hr-admin"]);
   const { workspaceId } = fixture;
-  await seedEntities(workspaceId, fixture.people.owner!.userId, 1).catch(() => []);
+  await seedClients(workspaceId, fixture.people.owner!.userId, 1).catch(() => []);
   await openHarness(page, workspaceId, userId);
   await expect(statusOf(page)).toHaveText("Synced");
   expect((await scanBrowserStorage(page)).databases).toContain(
@@ -307,7 +313,7 @@ test("no Tier 1 or Tier 2 value reaches any browser storage", async ({
   const tier1 = `SENTINEL-tier1-${randomUUID()}`;
   const tier2 = `SENTINEL-tier2-${randomUUID()}`;
   const employeeId = await seedProtected(workspaceId, tier1, tier2);
-  await seedEntities(workspaceId, userId, 1);
+  await seedClients(workspaceId, userId, 1);
   await openHarness(page, workspaceId, userId);
   await expect(statusOf(page)).toHaveText("Synced");
 
@@ -363,11 +369,11 @@ test("without SharedWorker the dedicated-worker fallback replicates and answers 
   });
   const userId = await signInNewUser(context);
   const workspaceId = await createOwnedWorkspace(userId);
-  const ids = await seedEntities(workspaceId, userId, 2);
+  const ids = await seedClients(workspaceId, userId, 2);
   await openHarness(page, workspaceId, userId);
   await expect(page.getByTestId("worker-kind")).toHaveText("dedicated");
   await untilSynced(page, 2);
-  expect(await listEntities(page)).toEqual([...ids].sort());
+  expect(await listClients(page)).toEqual([...ids].sort());
 });
 
 test("revoking the device erases that workspace's local database", async ({
@@ -376,7 +382,7 @@ test("revoking the device erases that workspace's local database", async ({
 }) => {
   const userId = await signInNewUser(context);
   const workspaceId = await createOwnedWorkspace(userId);
-  await seedEntities(workspaceId, userId, 1);
+  await seedClients(workspaceId, userId, 1);
   await openHarness(page, workspaceId, userId);
   await untilSynced(page, 1);
   expect((await scanBrowserStorage(page)).databases).toContain(
@@ -399,8 +405,8 @@ test("sign-out erases every workspace's cache on the origin, including one held 
   const userId = await signInNewUser(context);
   const first = await createOwnedWorkspace(userId);
   const second = await createOwnedWorkspace(userId);
-  await seedEntities(first, userId, 1);
-  await seedEntities(second, userId, 1);
+  await seedClients(first, userId, 1);
+  await seedClients(second, userId, 1);
   await openHarness(page, first, userId);
   await untilSynced(page, 1);
   const other = await context.newPage();

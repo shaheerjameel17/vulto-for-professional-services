@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import net from "node:net";
 import { expect, type BrowserContext, type Page } from "@playwright/test";
+import { SYNC_SUITE_SEED_NODE_TYPE } from "./seed-type.js";
 import {
   addNode,
   admitWorkspaceMember,
@@ -138,8 +139,8 @@ export async function principalFor(userId: string, workspaceId: string) {
   return principal;
 }
 
-/** Creates Entity nodes through the real mutation pipeline, as `ownerId`. */
-export async function seedEntities(
+/** Creates Client nodes through the real mutation pipeline, as `ownerId`. */
+export async function seedClients(
   workspaceId: string,
   ownerId: string,
   count: number,
@@ -154,7 +155,7 @@ export async function seedEntities(
       args: {
         node: {
           node_id: nodeId,
-          node_type: "Entity",
+          node_type: SYNC_SUITE_SEED_NODE_TYPE,
           schema_version: 1,
           lifecycle_status: "Active",
           workspace_id: workspaceId,
@@ -169,9 +170,9 @@ export async function seedEntities(
 
 export { audienceMaterializer };
 
-export const entityQuery = {
+export const clientQuery = {
   kind: "node-list",
-  nodeType: "Entity",
+  nodeType: SYNC_SUITE_SEED_NODE_TYPE,
   limit: 200,
 } as const;
 
@@ -206,7 +207,7 @@ export async function openHarness(
 
 export const statusOf = (page: Page) => page.getByTestId("sync-status");
 
-export function listEntities(page: Page): Promise<string[]> {
+export function listClients(page: Page): Promise<string[]> {
   return page.evaluate(async (query) => {
     const w = window as unknown as {
       __vultoSync: {
@@ -218,7 +219,7 @@ export function listEntities(page: Page): Promise<string[]> {
     return (await w.__vultoSync.client.query(query)).result.nodes
       .map((n) => n.nodeId)
       .sort();
-  }, entityQuery);
+  }, clientQuery);
 }
 
 export function mutate(
@@ -237,9 +238,9 @@ export function mutate(
   );
 }
 
-export const newEntity = (workspaceId: string) => ({
+export const newClient = (workspaceId: string) => ({
   node_id: randomUUID(),
-  node_type: "Entity",
+  node_type: SYNC_SUITE_SEED_NODE_TYPE,
   schema_version: 1,
   lifecycle_status: "Active",
   workspace_id: workspaceId,
@@ -342,8 +343,8 @@ export async function seedProtected(
   });
 }
 
-/** Waits until the cache holds `count` Entities and the client reports `Synced`. */
+/** Waits until the cache holds `count` Clients and the client reports `Synced`. */
 export async function untilSynced(page: Page, count: number): Promise<void> {
-  await expect.poll(async () => (await listEntities(page)).length).toBe(count);
+  await expect.poll(async () => (await listClients(page)).length).toBe(count);
   await expect(statusOf(page)).toHaveText("Synced");
 }
