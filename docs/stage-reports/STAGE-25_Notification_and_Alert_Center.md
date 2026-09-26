@@ -1,13 +1,13 @@
 # Stage 25 — Notification and Alert Center
 
 **Status:** BLOCKED
-**Branch:** codex/stage-25-notification-center (rebased onto f58713d)
+**Branch:** codex/stage-25-notification-center (rebased onto 471dbdb)
 **Linear issues:** RST-52
 **Date:** 2026-09-26
 
 ## 1. Summary
 
-The previous pre-code contradictions were ruled as F313–F315, and this branch was rebased onto f58713d. Continued tracing found that the prescribed pipeline hook receives no IDs for the real alert/flag writes performed by separate engine transactions. It would miss both watched creation paths despite running after the source's afterCommit callback. No product code was written; a delivery-signal ruling is required before implementation.
+The previous pre-code contradictions were ruled as F313–F316, and this branch was rebased onto 471dbdb. Continued tracing found that generic edge mutations do not reserve the recipient-defining delivered_to edge to the notification engine. Enabling recipient Full access as prescribed would permit an Owner or HR Admin recipient to change that edge through existing generic mutations. No product code was written; a recipient-edge integrity ruling is required before implementation.
 
 ## 2. Done-criteria checklist
 
@@ -18,7 +18,7 @@ The previous pre-code contradictions were ruled as F313–F315, and this branch 
 - [ ] Exactly two manager rules registered — not implemented.
 - [ ] Severity and concurrent delivery idempotency — not implemented.
 - [ ] Missing manager/link skips without fallback — not implemented.
-- [ ] Failure-isolated delivery without changing source mutation files — blocked by the missing watched-row signal.
+- [ ] Failure-isolated delivery without changing source mutation files — not implemented; F316 settles the prior signal gap.
 - [ ] Own-only idempotent read-state mutations — not implemented.
 - [ ] Compliance reminders derive authority from the policy table — not implemented; F315 settles the prior gap.
 - [ ] Local grouping and unread-action count — not implemented.
@@ -71,6 +71,14 @@ None.
 
 Current finding, unnumbered pending reviewer assignment (the ledger and per-finding files are reviewer-owned):
 
+**The recipient-defining edge has no feature-owned mutation guard.** Do item 1 changes Recipient-only cells to Full with recipient scope and says adding Notification to FEATURE_LIFECYCLE_NODE_TYPES keeps writes closed. That set blocks generic node writes, not generic edge writes. `packages/schema/src/mutations/employee.ts::FEATURE_OWNED_EDGE_TYPES` contains only has_skill and requires_skill. `services/api/src/mutations/foundation.ts::createEdgeMutation`, `closeEdgeMutation` and `updateEdgeMetadataMutation` consult that edge set, not the node set. `delivered_to` is also absent from `interceptor.ts::RESERVED_PROJECTION_EDGE_TYPES` (only membership_of/membership_in). `edgeRoleDecision` checks Full on both endpoints; the new recipient grant supplies Full on the caller's own Notification, and User is Standard Tier 0 with Full-any for Owner/HR Admin. The projection reservation on User applies to node writes, not delivered_to edge writes, and edge writes do not run the node write-authority gate. Thus an Owner/HR Admin recipient could add an outgoing delivered_to edge to another User through graph.createEdge. The registered pair permits it; no uniqueness constraint covers delivered_to (graph/schema.ts:131 limits single-active uniqueness to managed_by/scoped_to_entity). `outgoing` orders by effective_from nulls first then edge_id, so a caller-supplied earlier/null effective_from can become the first edge used by the prescribed recipient resolver; matching-any-edge would also widen recipients. This is a static trace of the effect of the instructed new grant, not a claimed live exploit test of implemented Stage 25 code. The required guard is not prescribed: the brief tells the builder to change neither edge registration nor any permission mechanism beyond the scope change. Reviewer must rule how delivered_to is reserved to delivery (including generic create/close/metadata paths) and how conflicting edges fail closed, rather than leaving the builder to invent a security boundary.
+
+Entry-point trace requested by F316: `applyMutations` loops over `applyMutation` (pipeline.ts:428), so the prescribed applyMutation wrapper covers each batch item. `employee/import.ts:99` calls applyMutations, so it also has that path. Current standalone evaluator invocations outside that path are the revenueGapAlert sweep (covered by the prescribed tRPC wrapper) and direct exported engine calls used in integration tests. No current production jobs entry was found; F316 explicitly requires a future jobs caller to open the scope itself. The new wrappers have not been implemented or tested.
+
+### Historical evidence — closed by F316
+
+The following signal finding was reported at 10ad231 and is settled by the scoped store-write-log ruling; it is not reopened:
+
 **Do item 3's pipeline-only hook cannot observe the real watched writes.** `pipeline.ts`'s `applied.changedRowIds` comes from the source plan's `apply()` before `afterCommit()`. `timesheet.ts:290` awaits `timesheetAnomalyEvaluate` after commit but discards its `{ flagIds }` result; its apply path returns only TimesheetEntry/TimesheetWeekSubmission IDs (`timesheet.ts:311–350`). `timesheet-anomaly.ts:275–291` creates flags in a separate `db.transaction`, not through `applyMutation`. Running the prescribed `deliverForRows(applied.changedRowIds)` afterward therefore loads entries/markers, not the newly-created TimesheetAnomalyFlag nodes. Likewise, `revenue-gap-alert.ts:231–248` creates/escalates alerts in its own transaction, invoked by Assignment afterCommit callbacks (`assignment.ts:402,652,699`) without adding alert IDs to their source apply result. The `revenueGapAlert.sweep` router (`router.ts:435`) calls `sweepRevenueGapAlerts` directly; that calls the standalone evaluator (`revenue-gap-alert-queries.ts:56`) and never enters applyMutation. The brief forbids changing these source mutation files, prescribes only the changedRowIds hook, and defers reconciliation to FDN-57 (F308). Directly calling deliverForRows in tests with fabricated or manually obtained alert IDs would not prove production event delivery. Reviewer ruling needed on the exact generic signal/seam that exposes standalone engine writes without violating G03. No source code or gate was changed.
 
 ### Historical evidence — closed by F315
@@ -88,7 +96,7 @@ The following were reported at original commit 8a8c9e8 before the rebase; they a
 
 ## 9. Deviations from this brief
 
-Implementation and gates halted on the current pre-code delivery-signal contradiction, as required. No workaround applied.
+Implementation and gates halted on the current pre-code recipient-edge integrity gap, as required. No workaround applied.
 
 ## 10. Known limitations and risks
 
@@ -96,4 +104,4 @@ Deliveries skipped: not measured; delivery fixtures were not built or run. Exact
 
 ## 11. Readiness for the next stage
 
-No. Resume Stage 25 only after a reviewer ruling supplies the watched-write delivery signal; do not start another stage.
+No. Resume Stage 25 only after a reviewer ruling settles recipient-edge integrity; do not start another stage.
