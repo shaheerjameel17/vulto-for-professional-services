@@ -42,7 +42,43 @@ The Notification data layer, recipient read state, compliance reminders and loca
 
 ## 4. Files changed
 
-Final diff-stat evidence is populated after committing the implementation.
+Copied `git diff --stat main...HEAD` at implementation commit eb697a5 (the later evidence-only report commit does not change product files):
+
+```text
+.../Vulto_Specs/VPS-A004_Graph_Permission_Layer.md |   2 +-
+ docs/Vulto_Specs/VRS-F010_Timesheet_Speed-Run.md   |   2 +-
+ .../STAGE-25_Notification_and_Alert_Center.md      | 202 ++++++++
+ packages/graph/src/mutators/foundation.ts          |  79 +++
+ packages/graph/src/mutators/notification.test.ts   | 161 ++++++
+ packages/graph/src/queries/index.ts                |   1 +
+ packages/graph/src/queries/notifications.test.ts   |  63 +++
+ packages/graph/src/queries/notifications.ts        |  41 ++
+ packages/schema/src/index.ts                       |   2 +
+ packages/schema/src/mutations/employee.ts          |   2 +
+ packages/schema/src/mutations/foundation.ts        |   2 +
+ packages/schema/src/mutations/index.ts             |   1 +
+ packages/schema/src/mutations/mutations.test.ts    |   4 +
+ packages/schema/src/mutations/notification.ts      |  37 ++
+ packages/schema/src/notification-rules.test.ts     |  45 ++
+ packages/schema/src/notification-rules.ts          |  85 ++++
+ packages/schema/src/notification.ts                |  30 ++
+ packages/schema/src/policy/policy-table.test.ts    |   6 +-
+ packages/schema/src/policy/policy-table.ts         |  19 +-
+ packages/schema/src/policy/principal-policy.ts     |   8 +
+ packages/schema/src/search.ts                      |  23 +-
+ services/api/src/graph/store.ts                    |  20 +-
+ services/api/src/graph/write-log.test.ts           |  33 ++
+ services/api/src/graph/write-log.ts                |  18 +
+ .../api/src/mutations/notification-delivery.ts     | 279 +++++++++++
+ .../api/src/mutations/notification-reminder.ts     |  87 ++++
+ services/api/src/mutations/notification.ts         | 102 ++++
+ services/api/src/mutations/pipeline.ts             |  24 +
+ services/api/src/permission/interceptor.ts         |  15 +
+ .../src/permission/notification-message.test.ts    |  27 +
+ .../permission/notification.integration.test.ts    | 548 +++++++++++++++++++++
+ services/api/src/trpc.ts                           |  14 +-
+ 32 files changed, 1954 insertions(+), 28 deletions(-)
+```
 
 Files under services/api/src/mutations/: pipeline.ts (wrapper, dependency seam and additive registration); new notification-delivery.ts, notification.ts and notification-reminder.ts. No existing source feature's mutation file changed. Search tests, skill-matrix.test.ts, the audience materializer, cache schema/version, workflows, gates, dependencies and apps/ are unchanged.
 
@@ -99,7 +135,12 @@ Negative controls, temporary and fully reverted:
 - Disabling recordWrite's Set insertion: pnpm --filter @vulto/api exec vitest run src/permission/notification.integration.test.ts -t 'real assignment|through submitWeek|standalone revenueGapAlert' — exit 1, 3 failed, 4 unselected. The assignment and sweep cases found 0 notifications instead of 1; the timesheet case found 0 instead of >0. All seven recordWrite calls remain in the final store diff.
 - Changing the shipped revenue template to {source.daily_cost}: pnpm --filter @vulto/schema exec vitest run src/notification-rules.test.ts — exit 1, module registration fails with "Undeclared notification template field: source.daily_cost". Restored template: same command exit 0, 5 passed.
 
-CI evidence is populated after the pushed implementation runs. The optional local sync-browser command was not run; this stage adds no SQL and its CI sync-browser job is the required browser evidence. A skipped main-only publication job will be reported explicitly, not described as executed.
+CI at implementation commit eb697a50af26a4748db32e82b7dc504b1fcdfbd5:
+
+- fast-lane [36249193805](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36249193805): success; resolve-image and verify executed successfully.
+- slow-lane [36249193785](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36249193785): success; resolve-image, api-integration, production-build, auth-browser and sync-browser executed successfully. publish-artifacts was skipped by its existing main-only condition.
+
+The optional local sync-browser command was not run; its full CI job passed. The subsequent report-only head's run ids and conclusions are recorded in RST-52 and the handoff, separately from these implementation-commit results. The skipped publisher is not described as executed or silently exempted.
 
 Observed server generic refusals in the real test: graph.createNode(Notification), graph.createEdge(delivered_to), graph.closeEdge(delivered_to) and graph.updateEdgeMetadata(delivered_to) each return role. The recipient's generic updateNodeFields, softDeleteNode and transitionLifecycle each return exactly requires-feature-mutation with the row unchanged. All client generic paths and has_skill checks return exactly requires-feature-mutation. No pre-existing client acceptance assertion needed changing.
 
