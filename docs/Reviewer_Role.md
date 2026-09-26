@@ -77,7 +77,7 @@ Two Linear teams are in play: **RST** (one issue per rebuild stage, e.g. `RST-49
 
 ## Right now, as of this doc's writing (26 September 2026, after Stage 24)
 
-**Stage 25 (`VPS-F003`) is merged (`e52fef0`, F307 to F320 closed by ruling, F321 a recorded fact, F322 open and low; Handoff section 26). Next action: brief Stage 26 — check `VRS-001`'s MVP order after `VPS-F003` against the code first, and apply the standing lessons below to every claim in the brief (run the gates against any prescribed location, open every "existing X", grep both sides for every "shares").** Also pending: 92 Dependabot alerts to be handled as their own remediation stage.
+**Stage 25 (`VPS-F003`) is merged (`e52fef0`, F307 to F320 closed by ruling, F321 a recorded fact, F322 open and low; Handoff section 26). Stage 26 (`VPS-F004`) is briefed (F323 to F326, all closed by ruling; Handoff section 27). Next action: wait for Codex's Stage 26 report and review it against the actual diff and the branch's CI runs read from the public API.** Also pending: 92 Dependabot alerts to be handled as their own remediation stage.
 
 **Update, later 26 September 2026:** F305 and F306 are closed (`main`'s slow lane at `70a4af1` green with `publish-artifacts` running), so ignore the "read `main`'s runs, close F305" step below. The next action is to brief Stage 25 (`VPS-F003`). Also open: 92 Dependabot alerts (8 critical, 36 high, mostly `next` and `fastify`); the founder was advised to treat them as their own remediation stage, runtime packages first, and not to bulk-merge Dependabot PRs.
 

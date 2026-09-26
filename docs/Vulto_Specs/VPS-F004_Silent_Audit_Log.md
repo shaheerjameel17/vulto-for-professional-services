@@ -35,7 +35,7 @@ Logging therefore happens inside the one query-layer interceptor every feature a
 
 ## What It Is
 
-An append-only record of two things only: **every permission denial, at any tier**, and **every successful access to Tier 1 or Tier 3 data specifically.**
+An append-only record of two things only: **every permission denial, at any tier**, and **every successful access to Tier 1, Tier 2 or Tier 3 data.**
 
 It records who, what kind of record, and when. It never records the content. And by design it cannot be edited or removed by anyone, including Owner.
 
@@ -155,7 +155,7 @@ An audit log that a compromised or malicious Owner account could edit or erase i
 
 **Every permission denial, at every tier.** A denial at any level is a security-relevant fact.
 
-**Every successful Tier 1 and Tier 3 access.** Not Tier 0 or Tier 2 — logging every routine, broadly-permitted read would produce overwhelming volume with no proportionate accountability value. Tier 1 and Tier 3 are the most sensitive data in the product, and the logging concentrates exactly there.
+**Every successful Tier 1, Tier 2 and Tier 3 access (F323).** Not Tier 0 — logging every routine, broadly-permitted read would produce overwhelming volume with no proportionate accountability value. Tiers 1 to 3 are the sensitive data in the product, their volume is low, and the logging concentrates exactly there. This is `VPS-A004`'s rule and what the interceptor does.
 
 ### Volume
 
@@ -194,7 +194,7 @@ auditLog.query(workspaceId, filters?: {
 | G01 | AuditEntry carries the schema above and is the one node type exempt from the soft-delete fields in [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]]'s Universal Node Conventions |
 | G02 | Creation happens exclusively within [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor. No feature calls a create endpoint for this node type |
 | G03 | No update or soft-delete operation against AuditEntry exists at the API layer, for any role. Rejected at write time, not merely omitted from the interface |
-| G04 | Denials are logged at every tier. Successful-access logging covers Tier 1 and Tier 3 only |
+| G04 | Denials are logged at every tier. Successful-access logging covers Tier 1, Tier 2 and Tier 3 (F323) |
 | G05 | `actor_application` records which suite application issued the query, defaulting to `'VultoRoster'` |
 | G06 | AuditEntry is exempt from erasure under [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]. An erased actor's identifier is pseudonymized to a stable opaque token; the entry itself persists |
 | G09 | A cryptographic erasure is recorded as `CryptographicErasureExecuted`, operation `KeyDestroy`, with the closed target `ErasureTarget { erasure_domain_id, tier, destroyed_key_count, erasure_request_id }`. It is written only by the `erasure` system principal, in the same transaction as the key destruction, and holds identifiers and a count, never content. `erasure_request_id` is null until [[VPS-F007_Data_Governance_Retention_and_Erasure|VPS-F007]]'s ErasureRequest exists, and required from then on, so every erasure traces to an approved request (F209, founder-decided 21 September 2026) |
@@ -280,7 +280,7 @@ auditLog.query(workspaceId, filters?: {
 
 - **Real-time alerting on suspicious patterns.** This is a record, not a detection system. A future feature could read this log the way [[VRS-F059_Retention_Analytics|VRS-F059]] and [[VRS-F060_Hiring_Quality_Analytics|VRS-F060]] read other historical records
 - **Export for external compliance tooling** — [[VRS-F061_Reporting_and_Export_Engine|VRS-F061]], where export is governed consistently
-- **Logging Tier 0 and Tier 2 successful reads** — volume without proportionate value
+- **Logging Tier 0 successful reads** — volume without proportionate value
 - **Retention shortening.** Entries are kept for the workspace's lifetime; there is no configuration to reduce it, because a configurable audit retention is a configurable way to lose the record
 
 ---
@@ -296,6 +296,14 @@ auditLog.query(workspaceId, filters?: {
 **The exemption from Universal Node Conventions is stated explicitly.** The previous specification noted the absent fields were deliberate; [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] did not record the exemption, which would have surfaced as a schema-conformance failure in review.
 
 **Audit review is a server call, not a cached read (F199, 22 September 2026).** The body previously said entries inside a local retention window were reviewed from the device cache and older ones rendered as the aged-out state and were fetched on demand. Under [[VPS-A003_Unified_Sync_Architecture|VPS-A003]]'s server-authoritative revision there is no retention window and audit history was never Tier 0, so it was never eligible for the device cache; the two clauses (Volume and Non-Functional Requirements) are corrected, and the aged-out state they cited is now `requires-connection` in [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]. The append-only design, the every-denial and every-Tier-1/3-access rules and the exclusion from search are unchanged. Recorded as part of the FDN-104 priority slice.
+
+**Successful Tier 2 access is logged (F323, 26 September 2026).** This document said Tier 1 and Tier 3 only; `VPS-A004` and the interceptor log every successful grant of Tier 1, Tier 2 and Tier 3. The latter stands: an unlogged Tier 2 access cannot be recovered later, Tier 2 volume is low, and the audit log is itself Tier 2.
+
+**`auditLog.query` is specified (F324).** A server-side query with `workspace_id`, optional `start_date`, `end_date`, `actor_user_id`, `event_types` (any of), `target_node_type` and `target_tier`, keyset-paginated by an opaque cursor (limit 50, maximum 200), newest first, returning full entries. Authorization is the interceptor's decision for `AuditEntry`; a denied call writes a `PermissionDenied` entry and a permitted call one `SensitiveAccessGranted` entry per call.
+
+**Immutability is structural, with a stated limitation (F325).** The journal exposes no update or delete, only the pseudonymizer updates a retained row, and every generic write path is refused for `AuditEntry`. No database trigger exists yet; tamper-evidence is the hash chain (`FDN-108`), and until then a database owner or migration can edit the journal.
+
+**The review screen and erasure orchestration are deferred (F326).** They need the shell, `VPS-F005`'s console and `VPS-F007`.
 
 ---
 
