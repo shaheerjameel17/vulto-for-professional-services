@@ -1,13 +1,13 @@
 # Stage 28 — Leave Policy Engine, Part 2
 
-**Status:** IN PROGRESS
-**Branch:** codex/stage-28-toil-ledger @ d3d84de (implementation)
+**Status:** COMPLETE
+**Branch:** codex/stage-28-toil-ledger @ 72c9b54 (implementation and tests)
 **Linear issues:** RST-115
 **Date:** 2026-09-27
 
 ## 1. Summary
 
-Approved overtime now accrues into an immutable, server-written Tier 0 ledger that employees can read without seeing the protected flag. Preview and clearance share the same calculation, and clearance writes the flag and grant atomically. The Earned engine applies per-entry expiry and consumes the earliest-expiring entitlement first. All four local gates pass; branch CI is pending. Main was fast-forwarded to `44234af8a3bda8817b927df7b7f19548636027cc`, verified by `git ls-remote origin refs/heads/main`, and both main CI lanes succeeded.
+Approved overtime now accrues into an immutable, server-written Tier 0 ledger that employees can read without seeing the protected flag. Preview and clearance share the same calculation, and clearance writes the flag and grant atomically. The Earned engine applies per-entry expiry and consumes the earliest-expiring entitlement first. All four local gates and both implementation CI lanes pass. Main was fast-forwarded to `44234af8a3bda8817b927df7b7f19548636027cc`, verified by `git ls-remote origin refs/heads/main`, and both main CI lanes succeeded.
 
 ## 2. Done-criteria checklist
 
@@ -18,7 +18,7 @@ Approved overtime now accrues into an immutable, server-written Tier 0 ledger th
 - [x] Atomic grant/clearance, acknowledgment refusal, repeat stale-state, unchanged re-flag exemption and read-only preview — `toil.integration.test.ts::previews, atomically grants one day for 48 of 40, repeats stale, expires and preserves re-flag exemption`, `::rolls back both cleared flag and ledger after a forced post-write failure`, and `::serializes two concurrent clearances to one entry and one stale refusal`.
 - [x] Earned expiry/usage semantics and caller-filtered ledger input; non-Earned behavior unchanged — `toil.test.ts::VRS-F018 Earned ledger balance`, existing `leave-balance.test.ts`, `leave-queries.ts::computeBalance`.
 - [x] No UI/client query/client mutator, LeaveRequest, adjustment/reversal, edge type, cache table or dependency change; cache schema version unchanged — file diff below and registry-driven replication trace in section 7.
-- [ ] Four gates and both branch CI workflows green — local gates pass; branch CI pending.
+- [x] Four gates and both branch CI workflows green — section 6 records exact commands, outputs, run IDs and job conclusions.
 
 ## 3. Spec clauses implemented
 
@@ -35,7 +35,7 @@ Ledger schema: the standard universal envelope plus UUID `employee_id`, literal 
 
 ## 4. Files changed
 
-`git diff --stat main...HEAD` at implementation commit `d3d84de` (subsequent report completion changes only this report):
+`git diff --stat main...HEAD` at initial implementation commit `d3d84de`:
 
 ```text
  .../STAGE-28_Leave_Policy_Engine_Part_2.md         |  73 +++
@@ -63,6 +63,16 @@ Ledger schema: the standard universal envelope plus UUID `employee_id`, literal 
  services/api/src/router.ts                         |   9 +
  23 files changed, 1242 insertions(+), 57 deletions(-)
 ```
+
+Test-only CI follow-up, `git diff --stat d3d84de...72c9b54`:
+
+```text
+ .../STAGE-28_Leave_Policy_Engine_Part_2.md         | 118 ++++++++++++++++++---
+ .../api/src/permission/toil.integration.test.ts    |   6 +-
+ 2 files changed, 106 insertions(+), 18 deletions(-)
+```
+
+The completion follow-up changes only this report.
 
 ## 5. Database changes
 
@@ -109,11 +119,13 @@ Test Files  33 passed (33)
 
 Negative control: temporarily added actual `export const negativeControl = new Date();` to `toil.ts`. `pnpm --filter @vulto/api exec vitest run src/permission/leave-balance-guard.test.ts` exited 1, `1 failed` file / `1 failed` test, on the forbidden-source assertion. Removed it; the restored guard passed in `pnpm --filter @vulto/api exec vitest run src/permission/toil.integration.test.ts src/permission/leave-balance-guard.test.ts --silent=false --disableConsoleIntercept` (exit 0, two files/seven tests passed at that checkpoint) and in the final full suite. No perturbation is committed.
 
-Latest targeted timing run: `pnpm --filter @vulto/api exec vitest run src/permission/toil.integration.test.ts --disableConsoleIntercept`, exit 0, one file/eight tests passed. Server p95: preview **89.1965 ms**, TOIL balance **8.762917 ms**; 20 calls each, four Employees, one policy version, one live ledger entry, four Submitted TimesheetEntry rows, and one retained overtime flag. These are real Postgres/local-key-provider measurements, not device or production load claims.
+Latest targeted timing run: `pnpm --filter @vulto/api exec vitest run src/permission/toil.integration.test.ts --disableConsoleIntercept`, exit 0, one file/nine tests passed. Server p95: preview **86.136709 ms**, TOIL balance **9.540083 ms**; 20 calls each, four Employees, one policy version, one live ledger entry, four Submitted TimesheetEntry rows, and one retained overtime flag. These are real Postgres/local-key-provider measurements, not device or production load claims.
 
 Main at `44234af`: [fast-lane 36265578839](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36265578839) **success**; [slow-lane 36265578951](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36265578951) **success**, all six jobs including publish-artifacts.
 
-Initial implementation `d3d84de`: [fast-lane 36267159988](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267159988) **success**; [slow-lane 36267160100](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267160100) **failure**. The sole failure was the new acceptance test's embedded timing loop: `Error: Test timed out in 5000ms.` All other 350 API tests passed (two existing skips); sync-browser, auth-browser and production-build succeeded. The fix splits the 20-call measurement into its own test with a 20-second budget; functional assertions, default timeouts, suite/gate configuration and product code are unchanged. Final verification is pending. Final report-only head CI evidence will be recorded in RST-115 and the completion response, because embedding that head's own run IDs would create another commit.
+Initial implementation `d3d84de`: [fast-lane 36267159988](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267159988) **success**; [slow-lane 36267160100](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267160100) **failure**. The sole failure was the new acceptance test's embedded timing loop: `Error: Test timed out in 5000ms.` All other 350 API tests passed (two existing skips); sync-browser, auth-browser and production-build succeeded. The fix splits the 20-call measurement into its own test with a 20-second budget; functional assertions, default timeouts, suite/gate configuration and product code are unchanged. The corrected head passed both lanes. Final report-only head CI evidence will be recorded in RST-115 and the completion response, because embedding that head's own run IDs would create another commit.
+
+Implementation/tests `72c9b54`: [fast-lane 36267722472](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267722472) **success** (`resolve-image`, `verify`); [slow-lane 36267722469](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36267722469) **success** (`resolve-image`, `api-integration`, `production-build`, `auth-browser`, `sync-browser`). All branch-eligible jobs executed; only main-only `publish-artifacts` was skipped, as configured. Conclusions were read with `gh run view`, not inferred from this report.
 
 ## 7. Micro-decisions
 
@@ -140,7 +152,7 @@ Trace: audience eligibility derives from registry protection partitions; materia
 
 ## 8. Findings raised
 
-None blocking at this point. All discrepancies above have minimal in-scope resolutions; governing documents remain untouched.
+No new F-number or unresolved blocker. Closed F335–F339 were implemented, not reopened. All discrepancies above have minimal in-scope resolutions; governing documents remain untouched.
 
 Fixture tracing during the first integration run exposed the detector's existing 130% threshold: 48/40 does not generate a flag. The acceptance fixture creates a flagged 60-hour submission, then uses the real unlock, correction and resubmission paths to retain that flag at 48 hours before preview/clearance. The detector is unchanged. The fixture explicitly sets a five-day/eight-hour calendar because the initial Pakistan calendar is six-day; production code makes no weekend assumption.
 
@@ -154,4 +166,4 @@ Usage remains empty on the server until VRS-F019; the pure engine accepts it and
 
 ## 11. Readiness for the next stage
 
-No next stage is started. Product implementation and local gates are complete; CI and reviewer approval remain.
+Ready for reviewer evaluation, not approval to begin another stage. Implementation, local gates and implementation CI are complete. No next stage is started; wait for the founder/reviewer.
