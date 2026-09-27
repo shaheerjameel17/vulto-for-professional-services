@@ -4,6 +4,8 @@ export {
   notificationListForUserQuery,
   notificationUnreadActionCountQuery,
   searchDeviceQuery,
+  employeeListForDirectoryQuery,
+  employeeGetQuery,
   type GraphQuery,
 } from "./query";
 export { SEARCH_COMMANDS } from "./queries/search-commands";
@@ -13,3 +15,4 @@ export * from "./queries/bench-forecast";
 export * from "./queries/contextual-intelligence";
 export * from "./queries/conflict-check";
 export * from "./queries/skill-matrix";
+export * from "./queries/employee-directory";

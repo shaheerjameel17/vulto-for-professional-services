@@ -1,15 +1,23 @@
 # UI-2 — People directory and Employee profile
 
-**Status:** BLOCKED — consolidated pre-build trace; no product code written
+**Status:** BLOCKED — F357–F359 implemented; unbaselined primary-button contrast needs ruling
 **Branch:** codex/ui-2-people-profile (from main @ 2648caf6c7d0e814f996352973f19e76610aefa2)
 **Linear issues:** RST-56
 **Date:** 2026-09-27
 
 ## 1. Summary
 
+**Resumption, 27 September:** merged the reviewer rulings at `8f76263` into the existing branch without discarding `19fc064`. Implemented the memory-only protected-write path, both local Employee queries, real directory/profile data and mutations, three-state compensation rendering, shared Table order and real skill/empty sources. The four standard gates pass; real browser scenarios complete their functional checks at 150 employees but fail the unchanged guarded axe baseline on the existing primary Add person button. Its white-on-orange text measures 2.51:1, below 4.5:1; fixing shared tokens/components or expanding the baseline needs ruling. The original pre-build evidence below is retained as **history**, not as a claim that the branch still has no implementation.
+
+**Historical pre-build summary:**
+
 The two reviewer documentation commits were pushed fast-forward; both main workflows passed, including both browser jobs. The UI-2 branch was created from that verified main. All ten Do items were traced before implementation. Two mechanisms need a ruling: the real graph client's compensation-write path persists plaintext mutation arguments, and the Table does not expose the sorted order required for cross-screen navigation within the stage's stated file scope. The remaining mismatches and their minimal resolutions are collected below rather than raised one at a time.
 
 ## 2. Done-criteria checklist
+
+**Current implementation:** both strict queries and row/edge subscription tests are implemented; directory creation is a named mutation; Overview edits use employee.update/org.moveEmployee/protectedMutate separately; the profile has no role lookup or viewer toggle; skills and empty sources are real; Table emits order from an effect with a plain-order fallback. Unit tests prove interrupted protected upload and wrong-method refusal leave the outbox empty. Both browser themes prove a real operational round-trip, valid reporting move, cycle refusal, available/restricted/absent compensation across three real accounts, a protected compensation write, stale-state refusal, real empty tabs and offline directory operation. Completion is **not claimed**: axe/branch CI are not green, and the screenshot set is diagnostic rather than final acceptance material (see section 10).
+
+**Historical pre-build checklist:**
 
 - [ ] Strict Employee device queries — traced, not implemented.
 - [ ] Real directory, lifecycle badges, client-side filters/sorting and creation — traced, not implemented.
@@ -23,6 +31,17 @@ The two reviewer documentation commits were pushed fast-forward; both main workf
 - [ ] Full UI-2 gates and green branch workflows — not claimed. The green workflow evidence below is explicitly for the requested **main documentation push**, not an implementation.
 
 ## 3. Spec clauses implemented
+
+| Current contract | Implementation | Proof |
+| --- | --- | --- |
+| F350/F351 local operational directory/profile | employee-directory.ts; strict device query dispatch | employee-directory.test.ts; engine.test.ts row/manager-edge subscription regression |
+| F357 memory-only protected writes | engine.ts, worker protocol/host/client; mutate tier/onlineOnly guard | engine.test.ts protected mutation interruption/wrong-method/outcome tests |
+| F358 server-owned compensation visibility | employee-profile.ts typed no-store fetch, profile route and OverviewTab | people-profile.spec.ts three signed-in accounts; no principal.current/viewer.ts call |
+| F359 actual directory order | Table.tsx effect callback; people-order.ts workspace-scoped transient store | people-profile.spec.ts actual header sorting/J/K and fresh-tab fallback |
+| F353 reporting line | OverviewTab calls org.moveEmployee, never employee.update patch | real move/cycle assertions |
+| F354–F356 honest local sources | Employee profile query reuses skill holding shaping and returns real empty deferred sources | local inactive-skill test and real browser tabs |
+
+**Historical pre-build trace:**
 
 None yet. Pre-build trace against the authoritative UI-2 section:
 
@@ -46,6 +65,8 @@ None yet. Pre-build trace against the authoritative UI-2 section:
 
 ## 4. Files changed
 
+Current changes are confined to the app, the authorized graph/query/protected-write plumbing and tests, Table.tsx, this report and diagnostic screenshots. No server/schema/permission/interceptor/migration/dependency change. The original report-only state below is historical; the final pushed diff is the authoritative file list.
+
 Only this stage report. The untracked `Claude outputs/` and `scripts/dev-seed.mts` predate UI-2 and are preserved, excluded from this branch's commit. No fixture, server, app, graph, UI, schema, migration, dependency or governing documentation change.
 
 ## 5. Database changes
@@ -53,6 +74,32 @@ Only this stage report. The untracked `Claude outputs/` and `scripts/dev-seed.mt
 None. No real data was used in the outbox diagnostic. It ran in a fresh in-memory SQLite database with synthetic UUIDs and values and a fake interrupted upload; that database was closed afterward. The founder's seeded local dev instance was not reseeded or modified.
 
 ## 6. Tests and gates
+
+**Resumed implementation gates:**
+
+```text
+pnpm install --frozen-lockfile                 exit 0; Already up to date
+pnpm stack:up                                exit 0; postgres, redis, Electric Healthy
+pnpm verify                                  exit 0; 10 successful tasks, 10 total
+pnpm verify:full                             exit 0
+ Test Files 33 passed (33)
+ Tests 352 passed | 2 skipped (354)
+```
+
+The two skipped API tests are pre-existing; no skips or retries were added. Final verification is rerun after the last edits; its output and the full sync-browser run will be appended before handoff. Frozen install changed no lockfile/dependency. One initial format run encountered the founder's pre-existing untracked `Claude outputs/`; it was temporarily preserved outside the repository, not edited or ignored by a gate, and is restored before handoff. Implementation formatting/fixture mistakes were fixed, not baselined.
+
+Real-stack diagnostic command (after successful `pnpm --filter @vulto/api db:migrate`, with `.env` sourced and SYNC_BROWSER_DATABASE_URL/ELECTRIC_URL/ELECTRIC_SECRET passed):
+
+```text
+pnpm test:sync-browser --grep 'real People and profile'
+exit 1: 2 failed (Light and Dark), solely at the unchanged final guarded axe assertion
+UI-2 offline Table sort/render p95, 150 employees (Light): 13.60ms
+UI-2 offline Table sort/render p95, 150 employees (Dark): 14.40ms
+```
+
+Each theme uses 150 employees, 20 offline sort-to-DOM-mutation samples, no proportional extrapolation. This is warm-cache sorting/rendering, not cold sync time. Separately, the local SQLite query's 20-sample p95 at 150 employees was 2.47 ms in verify:full. Functional assertions execute before the retained axe check so their evidence can be collected together; no assertion is removed or weakened. Browser fixture corrections: Manager is derived by a real employee.linkUser/managed_by relationship, not an assignable membership role; Skill's category is required. No product policy or server code was changed for either.
+
+**Historical main-push and outbox reproduction evidence:**
 
 Requested main push, exit 0:
 
@@ -93,6 +140,8 @@ UI-2 `pnpm install --frozen-lockfile`, `pnpm stack:up`, `pnpm verify`, `pnpm ver
 
 ## 7. Micro-decisions
 
+**Resumption:** F357's wrong-method guard uses the explicit refusal `requires-protected-mutation`; offline protectedMutate uses `requires-connection`. Unknown/server errors are not serialized with potentially protected arguments. Protected reads remain a typed no-store fetch to the existing employee.get; no role call/context was added. Erased fragments render absent. Nullable compensation inputs map empty values to null. Employee types are re-exported through the existing graph dependency, with no new app dependency. Existing PageHeader.headingLevel=1 fixes the directory's heading semantics without changing typography or a shared component. Table computation is memoized with its comparator/cycle unchanged, and its effect publishes workspace-keyed transient IDs without storage/URL persistence. The original accepted micro-decisions below are retained; F358 supersedes their old binary role/conditional-spread gating detail.
+
 Minimal in-scope resolutions selected for implementation after the blocking ruling; **not yet coded**:
 
 - Follow the authoritative brief's client-side filter/sort location, despite F350's earlier detail saying worker filtering/sorting. Do not reopen the ruled local-query contract or add filter arguments.
@@ -108,6 +157,12 @@ Minimal in-scope resolutions selected for implementation after the blocking ruli
 - Reuse the existing conditional-spread structure for authorized compensation and exact existing empty-state wording for Certifications/Documents/Activity. Do not invent a populated source or wire auditLog.query.
 
 ## 8. Findings raised
+
+**Current blocker (reviewer to number): primary action contrast is outside the authorized F348 baseline.** Both Light/Dark browser scenarios fail `color-contrast` on the existing Add person primary Button (`bg-brand-600 text-text-inverse`), not on tertiary text. Axe reports foreground `#ffffff`, background `#ff8000`, contrast 2.51:1, 13px normal-weight text, expected 4.5:1. Exact error: `Unbaselined contrast debt: <button type="button" class="inline-flex items-center justify-center gap-2 rounded-full font-ui text-body-medium whitespace-nowrap motion-fast transition-colors disabled:cursor-not-allowed disabled:opacity-40 bg-brand-600 text-text-inverse hover:bg-brand-700 h-button-md px-3">`.
+
+Item 7 explicitly prohibits a broader exemption or token change; F359 permits only Table.tsx in packages/ui. I did not add a fake tertiary class, skip axe, change tokens, silently downgrade the primary action or modify Button.tsx. Please rule the accessible primary-action treatment and its scope; the existing FDN-140 tertiary-token debt is not reopened by this report. A variant/call-site treatment using existing tokens could remain app-local if explicitly approved, or the reviewer may authorize the shared fix separately. This blocks the required green browser gate for the whole stage.
+
+**Historical findings below:** A is closed/implemented by F357, B by F359, C/D by F358, E accepted. They are not reopened.
 
 All trace discrepancies are recorded together here. No F-number allocated and no ledger/finding/reviewer/spec file edited; the reviewer owns numbering and rulings.
 
@@ -139,9 +194,13 @@ The nonexistent localNode/EMPLOYEE_COLUMNS names, missing LocalNode version, har
 
 ## 9. Deviations from this brief
 
+**Current:** stopped for ruling on primary-button contrast after implementing the existing rulings and collecting the other functional evidence. No baseline/token/scope workaround. The earlier report-only stoppage below is historical.
+
 No product implementation or scope expansion. Stopped before writing product code on A/B and supplied this single consolidated report for ruling. No attempt to repair the protected write path, expose Table sorting, change viewer.ts, modify a server endpoint, or weaken a gate was made.
 
 ## 10. Known limitations and risks
+
+**Current:** screenshots are diagnostic, not a final approved visual set. Full-page Playwright capture does not automatically expand the shell's internal scroll area, so the available-profile capture can omit compensation below the viewport; screenshot framing must be corrected inside the test helper when resuming, not mistaken for completed acceptance material. Initial cross-account theme framing also needed explicit per-context theme selection (now added). Add-person browser round-trip/duplicate-control coverage is not yet part of this blocked handoff. No green branch CI or complete stage acceptance is claimed. The historical outbox defect described below is now fixed by F357's implementation and regression tests.
 
 - The outbox finding affects the existing client transport, not the protected server storage. The diagnostic uses synthetic data only; no claim is made that real compensation has already been leaked.
 - Main CI passing does not prove a currently unused compensation editor safe: the existing online-only test covers refusal while offline, not an online protected upload that subsequently fails.
@@ -151,4 +210,4 @@ No product implementation or scope expansion. Stopped before writing product cod
 
 ## 11. Readiness for the next stage
 
-No. Await a consolidated reviewer ruling, then resume this same branch. No other stage has been started.
+No. Await the primary-action contrast ruling, then resume this same branch. No other stage has been started. The original consolidated pre-build rulings were received and implemented, not reopened.

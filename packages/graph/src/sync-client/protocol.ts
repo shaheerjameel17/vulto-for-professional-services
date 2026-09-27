@@ -37,7 +37,7 @@ export type WorkerRequest =
     }
   | {
       readonly id: number;
-      readonly op: "mutate";
+      readonly op: "mutate" | "protectedMutate";
       readonly payload: { name: string; args: unknown };
     }
   | {
@@ -76,5 +76,6 @@ export type WorkerMessage = WorkerResponse | WorkerEvent;
 export interface ResponseTypes {
   query: QueryOutcome;
   mutate: MutateOutcome;
+  protectedMutate: MutateOutcome;
   protectedRead: ProtectedReadOutcome;
 }

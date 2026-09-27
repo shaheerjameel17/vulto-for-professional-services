@@ -1,6 +1,6 @@
 import { MoreHorizontal } from "lucide-react";
 import { Avatar, Badge, Button, Text } from "@vulto/ui";
-import type { EmployeeProfile } from "../../lib/profile";
+import type { EmployeeProfile } from "../../lib/employee-profile";
 
 /*
  * VRS-F002: "identity fixed above [the tabs]: avatar at 40px, name at h1,
@@ -29,7 +29,9 @@ export function ProfileHeader({ profile }: { profile: EmployeeProfile }) {
             <Text variant="h1" className="text-text-primary">
               {profile.preferredName ?? profile.fullName}
             </Text>
-            <Badge tone="success">Active</Badge>
+            <Badge tone={profile.lifecycleStatus === "Active" ? "success" : "neutral"}>
+              {profile.lifecycleStatus}
+            </Badge>
           </div>
           <Text variant="small" className="text-text-secondary">
             {profile.jobTitle} · {profile.department}

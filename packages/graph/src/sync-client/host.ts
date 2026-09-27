@@ -262,6 +262,15 @@ export async function handleRequest(
           ok: true,
           data: await engine.mutate(request.payload.name, request.payload.args),
         };
+      case "protectedMutate":
+        return {
+          id: request.id,
+          ok: true,
+          data: await engine.protectedMutate(
+            request.payload.name,
+            request.payload.args,
+          ),
+        };
       case "protectedRead":
         return {
           id: request.id,

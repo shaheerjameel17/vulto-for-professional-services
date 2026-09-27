@@ -1,5 +1,5 @@
 import { Badge, Section, Text } from "@vulto/ui";
-import type { EmployeeProfile } from "../../lib/profile";
+import type { EmployeeProfile } from "../../lib/employee-profile";
 
 /*
  * Skills and certifications. Both are Tier 0 per VRS-F002 — visible to any

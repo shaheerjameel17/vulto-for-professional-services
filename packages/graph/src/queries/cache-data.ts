@@ -4,6 +4,7 @@ export interface LocalNode {
   readonly nodeId: string;
   readonly nodeType: string;
   readonly lifecycleStatus: string;
+  readonly version: number;
   readonly record: Record<string, unknown>;
 }
 
@@ -21,6 +22,7 @@ const nodeOf = (row: Record<string, SqlValue>): LocalNode => ({
   nodeId: String(row["node_id"]),
   nodeType: String(row["node_type"]),
   lifecycleStatus: String(row["lifecycle_status"]),
+  version: Number(row["version"]),
   record: JSON.parse(String(row["record_json"])) as Record<string, unknown>,
 });
 

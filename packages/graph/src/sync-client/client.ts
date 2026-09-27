@@ -37,6 +37,7 @@ export interface GraphClient {
   query(query: GraphQuery): Promise<QueryOutcome>;
   subscribe(query: GraphQuery, listener: (outcome: QueryOutcome) => void): () => void;
   mutate(name: string, args: unknown): Promise<MutateOutcome>;
+  protectedMutate(name: string, args: unknown): Promise<MutateOutcome>;
   protectedRead(nodeIds: readonly string[]): Promise<ProtectedReadOutcome>;
   prefetchProtected(nodeIds: readonly string[]): Promise<void>;
   dismissRejected(mutationId: string): Promise<void>;
@@ -175,6 +176,8 @@ export async function createGraphClient(
     },
     mutate: (name, args) =>
       request((id) => ({ id, op: "mutate", payload: { name, args } })),
+    protectedMutate: (name, args) =>
+      request((id) => ({ id, op: "protectedMutate", payload: { name, args } })),
     protectedRead: (nodeIds) =>
       request((id) => ({
         id,
