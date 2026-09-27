@@ -16,6 +16,7 @@ import {
 } from "@vulto/ui";
 import { useShellBootstrap } from "../../../components/shell-bootstrap";
 import { usePanel } from "../../../components/panel-context";
+import { notificationRefusalMessage } from "../../../lib/notification-refusal";
 
 type Groups = Extract<CacheQueryResult, { name: "notification.listForUser" }>["data"];
 const relativeTime = (date: string) => {
@@ -55,7 +56,10 @@ export default function Page() {
     for (const rejected of state.attention) {
       const id = pending.current.get(rejected.mutationId);
       if (id) {
-        setFailures((previous) => ({ ...previous, [id]: rejected.reason }));
+        setFailures((previous) => ({
+          ...previous,
+          [id]: notificationRefusalMessage(rejected.reason),
+        }));
         pending.current.delete(rejected.mutationId);
       }
     }
@@ -73,7 +77,11 @@ export default function Page() {
         id === "all" ? {} : { notification_id: id },
       );
       if (outcome.accepted) pending.current.set(outcome.mutationId, id);
-      else setFailures((previous) => ({ ...previous, [id]: outcome.reason }));
+      else
+        setFailures((previous) => ({
+          ...previous,
+          [id]: notificationRefusalMessage(outcome.reason),
+        }));
     } catch {
       setFailures((previous) => ({
         ...previous,

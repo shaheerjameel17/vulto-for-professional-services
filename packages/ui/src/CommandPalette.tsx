@@ -259,7 +259,9 @@ export function CommandPalette({
               <div className="flex items-center gap-2 text-text-tertiary">
                 <Icon icon={ArrowUp} />
                 <Icon icon={ArrowDown} />
-                <Text variant="small">Navigate</Text>
+                <Text variant="small" className="text-text-tertiary">
+                  Navigate
+                </Text>
               </div>
               <Text variant="small" className="text-text-tertiary">
                 Enter to open · Cmd+Enter for panel

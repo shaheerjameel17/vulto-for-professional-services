@@ -8,6 +8,8 @@ import {
   admitWorkspaceMember,
   deliverNotification,
   audienceMaterializer,
+  eq,
+  session,
 } from "../../../services/api/src/test/sync-browser-support.js";
 import {
   NetworkSwitch,
@@ -243,6 +245,42 @@ async function measurePalette(page: Page) {
 const row = (page: Page, message: string) =>
   page.getByRole("article", { name: message, exact: true });
 
+// F348 / FDN-140: remove this single-rule baseline and guard when the token is fixed.
+// The auth smoke constant lives in a test-registering spec, so do not import it here.
+const KNOWN_DEBT_RULES = ["color-contrast"] as const;
+function assertGuardedAxe(
+  violations: Awaited<ReturnType<AxeBuilder["analyze"]>>["violations"],
+) {
+  expect(
+    violations.filter(
+      (violation) => !KNOWN_DEBT_RULES.some((id) => id === violation.id),
+    ),
+  ).toEqual([]);
+  for (const violation of violations) {
+    for (const node of violation.nodes) {
+      const classes =
+        node.html.match(/^<[^>]*\bclass=["']([^"']*)["']/)?.[1]?.split(/\s+/) ?? [];
+      expect(classes, `Unbaselined contrast debt: ${node.html}`).toContain(
+        "text-text-tertiary",
+      );
+    }
+  }
+}
+
+async function assertCountAgreement(page: Page, count: number) {
+  const needsYou = page
+    .locator("main section")
+    .filter({ has: page.getByRole("heading", { name: "Needs you", exact: true }) });
+  const badge = page.getByRole("button", { name: /Inbox/ });
+  await expect
+    .poll(async () => ({
+      unreadActionRows: await needsYou.locator('article[data-unread="true"]').count(),
+      sidebarCount: Number((await badge.textContent())?.match(/\d+/)?.[0] ?? 0),
+    }))
+    .toEqual({ unreadActionRows: count, sidebarCount: count });
+  if (count === 0) await expect(badge).not.toContainText(/\d/);
+}
+
 for (const appearance of ["Light", "Dark"] as const) {
   test(`real Inbox and palette: audience, actions, keyboard, offline skills, axe and visuals (${appearance})`, async ({
     page,
@@ -274,29 +312,66 @@ for (const appearance of ["Light", "Dark"] as const) {
     ]);
     await expect(page.getByText("OTHER USER PRIVATE NOTICE")).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Inbox/ })).toContainText("2");
+    await assertCountAgreement(page, 2);
     const inboxViolations = (await new AxeBuilder({ page }).analyze()).violations;
     await testInfo.attach("inbox-axe", {
       body: JSON.stringify(inboxViolations),
       contentType: "application/json",
     });
     await capture(page, `inbox-groups-${appearance.toLowerCase()}`);
+    // J moves to the next item, K to the previous, independent of click navigation.
+    const items = page.getByRole("article");
+    await items.nth(0).focus();
+    await expect(items.nth(0)).toHaveClass(/bg-bg-selected/);
+    await page.keyboard.press("j");
+    await expect(items.nth(1)).toHaveClass(/bg-bg-selected/);
+    await expect(items.nth(0)).not.toHaveClass(/bg-bg-selected/);
+    await page.keyboard.press("k");
+    await expect(items.nth(0)).toHaveClass(/bg-bg-selected/);
+    await expect(items.nth(1)).not.toHaveClass(/bg-bg-selected/);
     await row(page, "Review your capacity")
       .getByRole("button", { name: "Mark read" })
       .click();
     await expect(page.getByRole("button", { name: /Inbox/ })).toContainText("1");
+    await assertCountAgreement(page, 1);
     await page.reload();
     await expect(row(page, "Review your capacity")).toHaveAttribute(
       "data-unread",
       "false",
     );
+    await assertCountAgreement(page, 1);
     await theme(page, appearance);
-    await row(page, "Welcome to the workspace")
+    // E must both mark a previously unread item read and archive it.
+    await row(page, "Welcome to the workspace").focus();
+    await expect(row(page, "Welcome to the workspace")).toHaveAttribute(
+      "data-unread",
+      "true",
+    );
+    await page.keyboard.press("e");
+    await expect(row(page, "Welcome to the workspace")).toHaveCount(0);
+    await expect
+      .poll(async () => {
+        const [stored] = await db.execute(
+          sql`select record from graph_nodes where node_id = ${fixture.notificationIds["Welcome to the workspace"]}`,
+        );
+        const record = stored!["record"] as Record<string, unknown>;
+        return {
+          read: typeof record["read_at"],
+          archived: typeof record["dismissed_at"],
+          sameTimestamp:
+            record["read_at"] !== null && record["read_at"] === record["dismissed_at"],
+        };
+      })
+      .toEqual({ read: "string", archived: "string", sameTimestamp: true });
+    await assertCountAgreement(page, 1);
+    await row(page, "Previous workspace update")
       .getByRole("button", { name: "Dismiss" })
       .click();
-    await expect(row(page, "Welcome to the workspace")).toHaveCount(0);
+    await expect(row(page, "Previous workspace update")).toHaveCount(0);
     await page.getByRole("button", { name: "Mark all read", exact: true }).click();
     await expect(page.locator('article[data-unread="true"]')).toHaveCount(0);
     await expect(page.getByRole("button", { name: /Inbox/ })).not.toContainText(/\d/);
+    await assertCountAgreement(page, 0);
     await row(page, "Review your capacity").focus();
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(new RegExp(`/people/${fixture.employeeId}$`));
@@ -316,6 +391,13 @@ for (const appearance of ["Light", "Dark"] as const) {
     ).toBeVisible();
     await expect(page.getByRole("option", { name: /Project Palette 0/ })).toBeVisible();
     await expect(page.getByRole("option", { name: /Client Palette 0/ })).toBeVisible();
+    // Scan the settled surface, not opacity composited mid entrance animation.
+    // Performance measurements below still start at the actual opening keystroke.
+    await page.locator("[data-command-palette-surface]").evaluate(async (element) => {
+      await Promise.all(
+        element.getAnimations({ subtree: true }).map((animation) => animation.finished),
+      );
+    });
     const paletteViolations = (await new AxeBuilder({ page }).analyze()).violations;
     await testInfo.attach("palette-axe", {
       body: JSON.stringify(paletteViolations),
@@ -417,15 +499,60 @@ for (const appearance of ["Light", "Dark"] as const) {
       .click();
     network.restore();
     await expect(
-      row(page, "Action could not complete").getByText("not-found", { exact: true }),
+      row(page, "Action could not complete").getByText(
+        "This item is no longer available",
+        { exact: true },
+      ),
     ).toBeVisible({ timeout: 90000 });
+    await expect(
+      row(page, "Action could not complete").getByText("not-found", { exact: true }),
+    ).toHaveCount(0);
     await capture(page, `inbox-failure-${appearance.toLowerCase()}`);
     expect(errors).toEqual([]);
-    expect(inboxViolations).toEqual([]);
-    expect(paletteViolations).toEqual([]);
+    assertGuardedAxe(inboxViolations);
+    assertGuardedAxe(paletteViolations);
     await testInfo.attach("fixture-scale", {
       body: "12 employees, 1 skill, 3 projects, 3 clients; 6 notifications across 2 recipients",
       contentType: "text/plain",
     });
   });
 }
+
+test("a real skill-match 401 opens Reconnect, not a group connection message", async ({
+  page,
+  context,
+}) => {
+  const userId = await signInNewUser(context);
+  await seed(userId);
+  await page.goto(`${webOrigin}/inbox`);
+  await expect(page.getByText("Synced", { exact: true })).toBeVisible({
+    timeout: 90000,
+  });
+  await page.keyboard.press("Control+k");
+  const search = page.getByRole("combobox", { name: "Search" });
+  await search.fill("TypeScript");
+  await expect(
+    page.getByRole("group", { name: "Skill matches", exact: true }),
+  ).toContainText("Ada Palette");
+  // Real revocation, exactly the existing Reconnect suite's mechanism; no response stub.
+  await db.delete(session).where(eq(session.userId, userId));
+  const refused = page.waitForResponse(
+    (response) =>
+      response.url().includes("/trpc/skillMatcher.adHocSearch") &&
+      response.status() === 401,
+  );
+  await search.fill("TypeScrip");
+  expect((await refused).status()).toBe(401);
+  await expect(
+    page.getByText(
+      "Reconnect to continue. Vulto needs to verify your session before opening your workspace.",
+      { exact: true },
+    ),
+  ).toBeVisible({ timeout: 90000 });
+  await expect(page.getByRole("button", { name: "Retry", exact: true })).toBeVisible();
+  await expect(page.locator('[data-state="requires-connection"]')).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Search" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Open Sync Browser Co menu" }),
+  ).toHaveCount(0);
+});

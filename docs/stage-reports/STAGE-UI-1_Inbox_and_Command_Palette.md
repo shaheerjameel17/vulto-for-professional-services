@@ -1,7 +1,7 @@
 # UI-1 — Inbox and Command Palette
 
-**Status:** BLOCKED — resumption implemented below; new zero-axe/required-token conflict awaits ruling
-**Branch:** codex/ui-1-inbox-palette; verified implementation at 94e3e1d, based on reviewer main 9589957
+**Status:** BLOCKED — F348/F349 implemented; final verification and CI evidence pending below
+**Branch:** codex/ui-1-inbox-palette; resumed from ed48916, merged reviewer main 69c4a63
 **Linear issue:** FDN-131
 **Date:** 2026-09-27
 
@@ -262,3 +262,192 @@ The founder has not accepted the visuals. The existing Employee profile remains 
 ### 11. Resumption readiness
 
 No. Await the accessibility ruling, then continue this same branch, retain this history, finish outstanding proof and repeat the full gates/CI. Do not start another stage.
+
+## Second resumption — F348/F349 pre-build trace (27 September 2026)
+
+Main 69c4a63 was fast-forward pushed and merged into this same branch. The revised UI-1 brief and F348/F349 were read before edits. No new contradiction was found.
+
+- `services/api/src/mutations/notification.ts::plan` and `packages/graph/src/mutators/foundation.ts::notificationReadState` both set `read_at` when null and, for Dismiss, `dismissed_at` when null. E can keep its one `notification.dismiss` call; a real database assertion will prove both timestamps on a previously unread row.
+- Read-state refusal paths were opened on both sides: the named implementation/optimistic recipient check returns `not-found`; the member's write checks can return `role` or `write-authority`; shared pipeline paths include `mutation-id-conflict`, `invalid-args`, `unknown-mutation`, and `constraint-violation`. The client handles an absent optimistic implementation, and throws validation failures into the screen's catch. The mapper will cover these, stale/deleted/connection/session/batch reasons defensively, and every unknown code with plain fallback text. None is a new permission check.
+- `reconnect.spec.ts` revokes real sessions via `db.delete(session).where(eq(session.userId, userId))`. The new assertion will wait for an actual skill-match HTTP 401, then Reconnect (not synthesize a response or dispatch an online event).
+- Existing `a11y-smoke.spec.ts` keeps its debt constant inside a side-effectful Playwright spec. Importing it would register the auth tests in sync-browser. Keep UI-1's single-rule constant local with the stronger F348 per-node HTML-class guard, and attach the full arrays; tokens remain unchanged.
+- Existing Mark-read/reload checks only paired a badge assertion with one row's state. Add an explicit comparison to unread ActionNeeded rows in the visible Needs you section at initial state, after mutation and after reload, plus zero after Mark all read. Individual J/K selection, Enter route, E timestamps and Escape previous-route assertions belong to the real two-theme spec.
+
+The original reports above remain history, not claims about the resumed head. Final gates, screenshot bytes, timings and head CI evidence will be appended below.
+
+## Final resumption on F348/F349
+
+### 1. Summary
+
+The existing branch was resumed, not restarted, and the prior reports remain above as history. The Inbox now explains refusals in plain language. The browser proof covers each required key, both E timestamps, count agreement after mutation and reload, and a real revoked-session skill-match 401 reaching Reconnect. Accessibility inherits only the ruled tertiary-text debt, with a guard against every other rule and every non-tertiary violating node. Fourteen fresh real-stack screenshots show the final UI; CI completion is recorded below when verified.
+
+### 2. Done-criteria checklist
+
+- [x] Strict device queries, existing query implementations and live grouped/count subscriptions — query.test.ts and engine.test.ts, unchanged from the first implementation.
+- [x] Real audience Inbox, named read-state actions, plain refusal, live count hidden at zero — both theme tests; notification-refusal.test.ts; `assertCountAgreement` before mutation, after Mark read, after reload and after Mark all read.
+- [x] Real palette, only nonempty groups, omitted unbuilt commands, identical empty template and timing budgets — both theme tests, below.
+- [x] Unmodified server skill matching, local results retained on outage, Retry, and real 401 Reconnect — both theme tests plus `a real skill-match 401 opens Reconnect, not a group connection message`.
+- [x] Individual J/K selection assertions, Enter source navigation, E read/archive timestamps and removal, Escape prior route — both theme tests. E calls Dismiss once because both existing implementations already set both timestamps.
+- [x] Ruled guarded axe baseline, full arrays attached and unexpected-console/page-error assertions — both theme tests. Every non-contrast rule must be absent; the first tag of each contrast node's HTML must contain the exact `text-text-tertiary` class.
+- [x] Fourteen fresh PNGs, all under 400 KB — final real-stack run's captures, listed below.
+- [x] No product-server/schema/permission/interceptor/migration/dependency/token edit, no role checks or shell fixtures — architecture gate and diff. The F347 test-support re-export is the only API change.
+- [x] Four local standard gates and full browser suite — final outputs below, all exit 0.
+- [ ] Final-head fast/slow CI with both browser jobs executed — CI confirmation pending at this checkpoint.
+
+### 3. Spec clauses implemented
+
+| Clause / ruling | Implementation | Proof |
+| --- | --- | --- |
+| F348 guarded contrast baseline | inbox-palette.spec.ts::assertGuardedAxe | both theme tests attach full Inbox/palette arrays; all other rules zero, each debt node carries the token |
+| F349 understandable refusals | lib/notification-refusal.ts; Inbox accepted-false and rejected-outbox paths | notification-refusal.test.ts, 16 tests; real recipient-scope refusal renders the exact human sentence and restores its row |
+| VPS-F003 keyboard | existing Inbox shortcuts, unchanged Dismiss mutation | individual J/K selection, Enter source route, E database timestamps/removal, Escape previous route in each theme |
+| VPS-F003 ActionNeeded-only count | existing device-query subscriptions | assertCountAgreement compares visible Needs you unread rows against badge after mutation and reload; zero hidden |
+| VPS-D004 Reconnect / F341 | existing fetchSkillMatches and reportUnauthorized | actual session deletion, actual skill HTTP 401, shell Reconnect and no per-group connection state |
+
+### 4. Files changed
+
+This resumption changes the Inbox presentation, adds `apps/roster-web/src/lib/notification-refusal.ts` and its unit test, extends the existing real browser spec, makes Navigate's already-inherited tertiary token explicit in `CommandPalette.tsx`, and extends this report plus fourteen PNGs. No additional API or graph-query product implementation changed in this resumption.
+
+Verbatim full-stage diff-stat at the implementation evidence checkpoint, before the later report-only CI update:
+
+```text
+ apps/roster-web/src/app/(shell)/inbox/page.tsx     | 192 ++++++-
+ apps/roster-web/src/components/Shell.tsx           | 167 +++++-
+ apps/roster-web/src/components/panel-context.tsx   |   1 +
+ apps/roster-web/src/components/shell-bootstrap.tsx |  13 +
+ apps/roster-web/src/fixtures/command-palette.ts    | 210 --------
+ .../src/lib/notification-refusal.test.ts           |  21 +
+ apps/roster-web/src/lib/notification-refusal.ts    |  27 +
+ apps/roster-web/src/lib/skill-matches.ts           |  28 ++
+ apps/roster-web/src/nav.ts                         |   2 +-
+ .../STAGE-UI-1_Inbox_and_Command_Palette.md        | 411 +++++++++++++++
+ docs/stage-reports/ui-1/inbox-empty-dark.png       | Bin 0 -> 34781 bytes
+ docs/stage-reports/ui-1/inbox-empty-light.png      | Bin 0 -> 35395 bytes
+ docs/stage-reports/ui-1/inbox-failure-dark.png     | Bin 0 -> 44611 bytes
+ docs/stage-reports/ui-1/inbox-failure-light.png    | Bin 0 -> 45145 bytes
+ docs/stage-reports/ui-1/inbox-groups-dark.png      | Bin 0 -> 67349 bytes
+ docs/stage-reports/ui-1/inbox-groups-light.png     | Bin 0 -> 68207 bytes
+ .../stage-reports/ui-1/palette-connection-dark.png | Bin 0 -> 58756 bytes
+ .../ui-1/palette-connection-light.png              | Bin 0 -> 63931 bytes
+ docs/stage-reports/ui-1/palette-empty-dark.png     | Bin 0 -> 56491 bytes
+ docs/stage-reports/ui-1/palette-empty-light.png    | Bin 0 -> 61730 bytes
+ docs/stage-reports/ui-1/palette-mixed-dark.png     | Bin 0 -> 78862 bytes
+ docs/stage-reports/ui-1/palette-mixed-light.png    | Bin 0 -> 83347 bytes
+ docs/stage-reports/ui-1/palette-skills-dark.png    | Bin 0 -> 57339 bytes
+ docs/stage-reports/ui-1/palette-skills-light.png   | Bin 0 -> 61889 bytes
+ packages/graph/src/index.ts                        |  10 +-
+ packages/graph/src/query.test.ts                   |  20 +
+ packages/graph/src/query.ts                        |  39 ++
+ packages/graph/src/sync-client/engine.test.ts      |  72 +++
+ packages/graph/src/sync-client/query.ts            |  42 ++
+ .../graph/sync-browser-tests/inbox-palette.spec.ts | 558 +++++++++++++++++++++
+ packages/ui/src/CommandPalette.tsx                 |  48 +-
+ packages/ui/src/InboxRow.tsx                       |  83 +++
+ packages/ui/src/PageHeader.tsx                     |   8 +-
+ packages/ui/src/index.ts                           |   1 +
+ packages/ui/src/useShortcuts.ts                    |   3 +
+ services/api/src/test/sync-browser-support.ts      |   1 +
+ 36 files changed, 1723 insertions(+), 234 deletions(-)
+```
+
+### 5. Database changes
+
+None. Existing schema/migrations only. Fixtures use the real mutation/delivery paths and the existing adversarial recipient-edge refusal setup; no migration, permission change or source feature implementation change.
+
+### 6. Tests and gates
+
+Final local commands and outputs (all exit **0**):
+
+`pnpm install --frozen-lockfile`:
+
+```text
+Scope: all 7 workspace projects
+Lockfile is up to date, resolution step is skipped
+Already up to date
+Done in 692ms using pnpm v9.15.9
+```
+
+`pnpm stack:up`:
+
+```text
+Container vulto-redis-1 Healthy
+Container vulto-electric-1 Healthy
+Container vulto-postgres-1 Healthy
+```
+
+`pnpm verify`:
+
+```text
+@vulto/schema:test: Test Files 22 passed (22)
+@vulto/schema:test: Tests 141 passed | 2 todo (143)
+roster-web:test: Test Files 1 passed (1)
+roster-web:test: Tests 16 passed (16)
+@vulto/graph:test: Test Files 16 passed (16)
+@vulto/graph:test: Tests 104 passed (104)
+Tasks: 10 successful, 10 total
+Cached: 8 cached, 10 total
+Time: 2.647s
+```
+
+UI's existing 6 passed/2 todo are also unchanged. The unrelated untracked `Claude outputs/` was temporarily moved outside the checkout for format verification, with a restoration trap; never edited, staged or discarded. Initial sandbox attempts could not reach Docker/Postgres; the actual gates above were rerun with the required access. No native reinstall loop or dependency change.
+
+`pnpm verify:full`:
+
+```text
+Test Files 33 passed (33)
+Tests 352 passed | 2 skipped (354)
+Duration 95.01s (transform 515ms, setup 0ms, import 11.91s, tests 81.21s, environment 1ms)
+```
+
+Preparation: `set -a; source .env; set +a; pnpm --filter @vulto/api db:migrate`, exit **0**, `[✓] migrations applied successfully!vulto_electric password set`. Then the **full**, unfiltered command `set -a; source .env; set +a; SYNC_BROWSER_DATABASE_URL="$DATABASE_URL" ELECTRIC_URL="$ELECTRIC_URL" ELECTRIC_SECRET="$ELECTRIC_SECRET" pnpm test:sync-browser`, exit **0**:
+
+```text
+30 passed (2.0m)
+```
+
+Both theme tests and `a real skill-match 401 opens Reconnect, not a group connection message` passed, as did all 27 existing tests. No browser skip or retry. Earlier full development runs were red only at the new guard: first for inherited Navigate styling, then for a dark palette sampled during entrance opacity; those defects were traced and corrected above, not exempted.
+
+Main fast-forward was verified by `git ls-remote origin refs/heads/main` returning `69c4a630535f70676d5d2c08c6a27c5e1011ad15`.
+
+Main CI, checked from GitHub: [fast-lane 36298691860](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36298691860) **success**; [slow-lane 36298691874](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36298691874) **success**. These are main evidence, not branch acceptance.
+
+Final local browser UI measurements (20 opening/focus samples and 60 three-character local-result samples per theme; raw arrays attached and printed): Light opening **6.1 ms**, local result **8.5 ms** p95; Dark opening **4.7 ms**, local result **9.2 ms** p95. Fixture: **12 employees, 1 skill, 3 projects, 3 clients, 6 initial notifications across 2 recipients**, plus one production-delivered refusal item. Opening and query measurement do not wait for animations; only the stable visual/axe sample does.
+
+Fourteen screenshots regenerated by that successful full local run, 1280 × 720; all below 84 KB and below the 400 KB limit. Empty Dark is byte-identical to the earlier capture but was captured again by this run.
+
+| State | Light PNG / bytes | Dark PNG / bytes |
+| --- | --- | --- |
+| Inbox groups | inbox-groups-light.png / 68207 | inbox-groups-dark.png / 67349 |
+| Inbox empty | inbox-empty-light.png / 35395 | inbox-empty-dark.png / 34781 |
+| Inbox refusal | inbox-failure-light.png / 45145 | inbox-failure-dark.png / 44611 |
+| Palette mixed | palette-mixed-light.png / 83347 | palette-mixed-dark.png / 78862 |
+| Palette empty | palette-empty-light.png / 61730 | palette-empty-dark.png / 56491 |
+| Palette skills | palette-skills-light.png / 61889 | palette-skills-dark.png / 57339 |
+| Palette connection | palette-connection-light.png / 63931 | palette-connection-dark.png / 58756 |
+
+### 7. Micro-decisions
+
+- Keep the debt-rule constant local: importing the auth smoke spec would register its tests in the sync suite. UI-1 reuses its one-rule spirit with the stronger per-node F348 guard, not its broader exemption.
+- Name the presentation-only mapper `notificationRefusalMessage`; explicitly map `not-found`, `role`, `write-authority`, `mutation-id-conflict`, `invalid-args`, `unknown-mutation`, `constraint-violation`, and `missing-optimistic-mutator`, plus defensive `stale-state`, `target-deleted`, `requires-connection`, `access-revoked`, `signed-out`, `blocked-by-earlier-rejection`, `rejected`. Unknown or inherited object-key codes get the generic sentence. A thrown local queue error keeps the existing human retry sentence. No raw code is visible.
+- Reuse one Dismiss call for E: both actual implementations already set read and archive. Prove both are strings and equal for a previously unread item in Postgres, rather than assume the row disappearing means both happened.
+- Compare the badge with unread rows specifically in Needs you, not all unread Informational rows. Poll both UI values after subscriptions settle, without any reload between action and first comparison.
+- Assert J and K against the existing selected-row style; Enter and Escape against actual URLs. No new key or component state is added.
+- The strict guard exposed Navigate's inherited tertiary styling. Put the same existing token on that Text node, preserving its rendered color and making the guard honest.
+- The first dark palette scan caught fade-in compositing (secondary text looked temporarily dimmed). Await actual surface Web Animations completion before axe/visual sampling, not a fixed sleep, rule exemption, animation change or timing-budget change.
+- Keep the already-present `@vulto/api` type-only import: roster-web already declares that workspace dependency; architecture and production-build gates verify the accepted dependency edge. No dependency edit.
+
+### 8. Findings raised
+
+None new. F348 remains open under FDN-140 for the founder's token decision; only the expressly ruled UI-1 guard/exemption is applied. F349 is implemented. F345–F347 and the earlier blocked-report evidence remain above as history.
+
+### 9. Deviations from this brief
+
+None. No tokens changed, no broad axe exclusion, skip, retry or full-suite exclusion added. The optional real-rule ActionNeeded row was not built: the ruling says it is not required, and the production-delivery fixture isolates the UI behaviors without expanding the existing source-rule integration setup.
+
+### 10. Known limitations and risks
+
+The tertiary palette contrast debt still exists and remains visibly hard to read; FDN-140 owns its palette-wide correction, after which this exemption and guard must be removed. The accepted Employee profile destination is still fixture-backed; Open proves navigation, not profile correctness. Expected transport errors during the deliberate outage are not mistaken for application console errors. Founder visual acceptance has not happened, and green CI is not acceptance.
+
+### 11. Readiness for the next stage
+
+No next stage is started. Await final verification and then the reviewer/founder decision; FDN-131 stays In Review.
