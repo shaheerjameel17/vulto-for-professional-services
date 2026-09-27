@@ -151,6 +151,22 @@ export default function PeoplePage() {
     COLUMN_OPTIONS.map((column) => column.value),
   );
   const [addPersonOpen, setAddPersonOpen] = useState(false);
+  const [dialogInstance, setDialogInstance] = useState(0);
+  const creationId = useRef<string | null>(null);
+  useEffect(
+    () =>
+      client.syncStatus.subscribe((state) => {
+        const rejected = state.attention.find(
+          (item) => item.mutationId === creationId.current,
+        );
+        if (rejected) {
+          creationId.current = null;
+          setRefusal(notificationRefusalMessage(rejected.reason));
+          setAddPersonOpen(true);
+        }
+      }),
+    [client],
+  );
 
   const rows: DirectoryRow[] = useMemo(
     () =>
@@ -206,6 +222,7 @@ export default function PeoplePage() {
       },
     });
     if (!outcome.accepted) setRefusal(notificationRefusalMessage(outcome.reason));
+    else creationId.current = outcome.mutationId;
     return outcome.accepted;
   }
 
@@ -355,7 +372,12 @@ export default function PeoplePage() {
           <Button
             variant="secondary"
             icon={Plus}
-            onClick={() => setAddPersonOpen(true)}
+            onClick={() => {
+              creationId.current = null;
+              setRefusal(null);
+              setDialogInstance((value) => value + 1);
+              setAddPersonOpen(true);
+            }}
           >
             Add person
           </Button>
@@ -441,6 +463,7 @@ export default function PeoplePage() {
         </div>
       </Content>
       <AddPersonDialog
+        key={dialogInstance}
         open={addPersonOpen}
         onOpenChange={setAddPersonOpen}
         onCreate={createPerson}

@@ -38,17 +38,6 @@ export function AddPersonDialog({
   const [pending, setPending] = useState(false);
   const [employmentType, setEmploymentType] = useState<EmploymentType>("FullTime");
 
-  function reset() {
-    setFullName("");
-    setEmail("");
-    setJobTitle("");
-    setDepartment("");
-    setEntityId("");
-    setEmployeeCode("");
-    setStartDate("");
-    setEmploymentType("FullTime");
-  }
-
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
@@ -65,7 +54,7 @@ export function AddPersonDialog({
     setPending(false);
     if (saved) {
       onOpenChange(false);
-      reset();
+      // Keep the draft in memory for a later server refusal; a new dialog key resets it.
     }
   }
 

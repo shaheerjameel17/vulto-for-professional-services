@@ -403,6 +403,31 @@ for (const appearance of ["Light", "Dark"] as const) {
       await expect(dialog).not.toBeVisible();
       await expect(page.locator("tbody tr")).toHaveCount(151);
       await expect(page.getByText("New colleague", { exact: true })).toBeVisible();
+      await expect
+        .poll(async () => {
+          const result = await db.execute(
+            sql`select count(*)::int as total from graph_nodes where workspace_id = ${fixture.workspaceId} and node_type = 'Employee' and record->>'employee_code' = 'UI2-NEW'`,
+          );
+          return result[0]?.["total"];
+        })
+        .toBe(1);
+      await page.getByRole("button", { name: "Add person", exact: true }).click();
+      await dialog.getByLabel("Employee code", { exact: true }).fill("UI2-NEW");
+      await dialog.getByLabel("Start date", { exact: true }).fill("2026-01-01");
+      await dialog.getByLabel("Full name", { exact: true }).fill("Duplicate colleague");
+      await dialog
+        .getByLabel("Work email", { exact: true })
+        .fill(`duplicate-${randomUUID()}@example.com`);
+      await dialog.getByLabel("Job title", { exact: true }).fill("Engineer");
+      await dialog.getByLabel("Department", { exact: true }).fill("Engineering");
+      await dialog.getByRole("button", { name: "Add person", exact: true }).click();
+      await expect(
+        dialog.getByText("This employee code is already in use", { exact: true }),
+      ).toBeVisible();
+      await expect(dialog.getByLabel("Full name", { exact: true })).toHaveValue(
+        "Duplicate colleague",
+      );
+      await expect(page.locator("tbody tr")).toHaveCount(151);
       expect(errors).toEqual([]);
       await testInfo.attach("ui-2-axe", {
         body: JSON.stringify(axeViolations),
