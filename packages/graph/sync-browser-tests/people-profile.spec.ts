@@ -52,7 +52,7 @@ async function capture(page: Page, name: string) {
   expect((await stat(file)).size).toBeLessThan(400 * 1024);
 }
 async function setTheme(page: Page, value: "Light" | "Dark") {
-  await page.getByRole("button", { name: "Open Sync Browser Co menu" }).click();
+  await page.getByRole("button", { name: /^Open .+ menu$/ }).click();
   await page.getByRole("radio", { name: value, exact: true }).click();
   await page.keyboard.press("Escape");
 }
