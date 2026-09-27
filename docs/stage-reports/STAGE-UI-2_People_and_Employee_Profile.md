@@ -1,13 +1,13 @@
 # UI-2 — People directory and Employee profile
 
-**Status:** Implemented — final browser, visual and CI verification in progress
+**Status:** Complete — ready for reviewer and founder visual review
 **Branch:** codex/ui-2-people-profile (from main @ 2648caf6c7d0e814f996352973f19e76610aefa2)
 **Linear issues:** RST-56
 **Date:** 2026-09-27
 
 ## 1. Summary
 
-**Resumption, 27 September:** merged the reviewer rulings at `8f76263` into the existing branch without discarding `19fc064`. Implemented the memory-only protected-write path, both local Employee queries, real directory/profile data and mutations, three-state compensation rendering, shared Table order and real skill/empty sources. The original pre-build evidence below is retained as **history**, not as a claim that the branch still has no implementation. An initial accessibility failure on the existing primary Add person button was resolved within app scope by selecting the existing secondary variant; no token, shared Button or exemption changes. Both focused browser themes now pass the unchanged guard. Final full-suite and CI evidence follows below when complete.
+**Resumption, 27 September:** merged the reviewer rulings at `8f76263` into the existing branch without discarding `19fc064`. Implemented the memory-only protected-write path, both local Employee queries, real directory/profile data and mutations, three-state compensation rendering, shared Table order and real skill/empty sources. The original pre-build evidence below is retained as **history**, not as a claim that the branch still has no implementation. An initial accessibility failure on the existing primary Add person button was resolved within app scope by selecting the existing secondary variant; no token, shared Button or exemption changes. The final full suite is 32/32, all four standard gates pass, and both final-product CI lanes are green with both browser jobs executed. Eighteen final screenshots are committed and inspected. No further stage started; reviewer/founder visual acceptance remains outstanding.
 
 **Historical pre-build summary:**
 
@@ -25,7 +25,7 @@ The two reviewer documentation commits were pushed fast-forward; both main workf
 - [x] Actual Table ordering/J/K and plain-order fallback.
 - [x] Unchanged guarded axe baseline, passing both focused themes.
 - [x] Shared fixtures/viewer unchanged; no server/schema/dependency changes.
-- [ ] Final full-suite result, screenshot inspection and head CI conclusions (recorded below before handoff).
+- [x] Full suite 32/32, 18 inspected screenshots, both CI lanes green at the final product head.
 
 **Historical pre-build checklist:**
 
@@ -74,6 +74,56 @@ None yet. Pre-build trace against the authoritative UI-2 section:
 | 10/gates | Part 2 template, package scripts, slow-lane workflow, browser setup/config | `verify:full` does not run either browser suite. Browser gate is separate; no skips/retries/baseline comparison are authorized. No server/schema/dependency/reviewer-owned document changes have been made. |
 
 ## 4. Files changed
+
+Final product/test/screenshot diff snapshot at `a7acd0d` (this report-only completion follows it):
+
+```text
+ .../src/app/(shell)/people/[id]/page.tsx           | 174 ++++----
+ apps/roster-web/src/app/(shell)/people/page.tsx    | 189 +++++++--
+ .../src/components/people/AddPersonDialog.tsx      |  76 ++--
+ .../src/components/profile/ActivityTab.tsx         |   2 +-
+ .../src/components/profile/DocumentsTab.tsx        |   2 +-
+ .../src/components/profile/OverviewTab.tsx         | 209 +++++++---
+ .../src/components/profile/ProfileHeader.tsx       |   6 +-
+ .../src/components/profile/SkillsTab.tsx           |   2 +-
+ apps/roster-web/src/lib/employee-profile.ts        |  68 ++++
+ apps/roster-web/src/lib/notification-refusal.ts    |   6 +
+ apps/roster-web/src/lib/people-order.ts            |   8 +
+ .../STAGE-UI-2_People_and_Employee_Profile.md      | 297 ++++++++++++++
+ docs/stage-reports/ui-2/activity-dark.jpg          | Bin 0 -> 33611 bytes
+ docs/stage-reports/ui-2/activity-light.jpg         | Bin 0 -> 32593 bytes
+ docs/stage-reports/ui-2/directory-dark.jpg         | Bin 0 -> 89665 bytes
+ docs/stage-reports/ui-2/directory-empty-dark.jpg   | Bin 0 -> 32101 bytes
+ docs/stage-reports/ui-2/directory-empty-light.jpg  | Bin 0 -> 30932 bytes
+ docs/stage-reports/ui-2/directory-light.jpg        | Bin 0 -> 88684 bytes
+ docs/stage-reports/ui-2/documents-dark.jpg         | Bin 0 -> 34061 bytes
+ docs/stage-reports/ui-2/documents-light.jpg        | Bin 0 -> 33012 bytes
+ docs/stage-reports/ui-2/profile-absent-dark.jpg    | Bin 0 -> 66540 bytes
+ docs/stage-reports/ui-2/profile-absent-light.jpg   | Bin 0 -> 66247 bytes
+ docs/stage-reports/ui-2/profile-available-dark.jpg | Bin 0 -> 77073 bytes
+ .../stage-reports/ui-2/profile-available-light.jpg | Bin 0 -> 76809 bytes
+ .../stage-reports/ui-2/profile-restricted-dark.jpg | Bin 0 -> 70672 bytes
+ .../ui-2/profile-restricted-light.jpg              | Bin 0 -> 70459 bytes
+ docs/stage-reports/ui-2/reporting-cycle-dark.jpg   | Bin 0 -> 70109 bytes
+ docs/stage-reports/ui-2/reporting-cycle-light.jpg  | Bin 0 -> 70043 bytes
+ docs/stage-reports/ui-2/skills-dark.jpg            | Bin 0 -> 39091 bytes
+ docs/stage-reports/ui-2/skills-light.jpg           | Bin 0 -> 37882 bytes
+ packages/graph/src/index.ts                        |   3 +
+ packages/graph/src/queries/cache-data.ts           |   2 +
+ .../graph/src/queries/employee-directory.test.ts   | 120 ++++++
+ packages/graph/src/queries/employee-directory.ts   | 106 +++++
+ packages/graph/src/queries/skill-matrix.ts         |   4 +-
+ packages/graph/src/query.ts                        |  21 +
+ packages/graph/src/sync-client/client.ts           |   3 +
+ packages/graph/src/sync-client/engine.test.ts      | 145 ++++++-
+ packages/graph/src/sync-client/engine.ts           |  38 +-
+ packages/graph/src/sync-client/host.ts             |   9 +
+ packages/graph/src/sync-client/protocol.ts         |   3 +-
+ packages/graph/src/sync-client/query.ts            |  26 ++
+ .../sync-browser-tests/people-profile.spec.ts      | 443 +++++++++++++++++++++
+ packages/ui/src/Table.tsx                          |  12 +-
+ 44 files changed, 1763 insertions(+), 211 deletions(-)
+```
 
 Current changes are confined to the app, the authorized graph/query/protected-write plumbing and tests, Table.tsx, this report and 18 final screenshots. No server/schema/permission/interceptor/migration/dependency change. The original report-only state below is historical.
 
@@ -151,6 +201,13 @@ Each theme measures 20 warm-cache sort-to-DOM-mutation samples, actual 150 emplo
 - [slow-lane 36314136759](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36314136759): **failure**; resolve-image, api-integration, production-build and auth-browser succeeded. sync-browser executed all 32 tests: 31 passed, including both new UI-2 themes; only unchanged UI-1 Light failed at `inbox-palette.spec.ts:456`, `Expected: < 30; Received: 38.89999999999418`. This matches the pre-product report-only branch's timing failure by test/threshold, not the exact measured duration. No CI-green claim is made for this attempt. The final screenshot/report push is separately checked and its head-specific evidence is supplied at handoff; publish-artifacts is intentionally main-only, not a skipped required branch gate.
 
 **Screenshot/report push at `917fbaf5fc005db489d9517dd16d3a3d3ce89307`:** [fast-lane 36314558119](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36314558119) and [slow-lane 36314558121](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36314558121) both **success**, independently read from Actions. resolve-image, verify, api-integration, production-build, sync-browser and auth-browser executed and succeeded. sync-browser ran the unchanged full suite; the preceding UI-1 Light timing failure did not recur. publish-artifacts remains intentionally main-only. A final app-local creation-refusal correction and its real duplicate-code proof were added afterward; their final-head CI is recorded separately before handoff, not substituted with these earlier green results.
+
+**Final product/test/screenshot head `a7acd0d12abe1e47544ac97942274e79459cac76`:**
+
+- [fast-lane 36314952432](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36314952432): **success**; verify executed and passed.
+- [slow-lane 36314952430](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36314952430): **success**; resolve-image, api-integration, production-build, sync-browser and auth-browser all executed and passed, including the final creation/duplicate-refusal proof. publish-artifacts is intentionally main-only.
+
+Both conclusions and individual job outcomes were independently read from Actions after completion. This completion update is documentation-only, added after those runs; its own pushed-head workflow IDs/conclusions are recorded in the RST-56 handoff comment and completion message rather than mislabeling these runs as a later commit.
 
 Real-stack diagnostic command (after successful `pnpm --filter @vulto/api db:migrate`, with `.env` sourced and SYNC_BROWSER_DATABASE_URL/ELECTRIC_URL/ELECTRIC_SECRET passed):
 
@@ -294,4 +351,4 @@ All 18 images were opened and visually checked for the named state, complete pro
 
 ## 11. Readiness for the next stage
 
-No further stage started. The consolidated pre-build rulings are implemented, not reopened. Final verification and reviewer/founder visual acceptance are still required before any next stage.
+Ready for review of UI-2 only. The consolidated pre-build rulings are implemented, not reopened. No further stage started. Green gates/CI do not replace reviewer and founder visual acceptance.
