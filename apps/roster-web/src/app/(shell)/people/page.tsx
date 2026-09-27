@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { employeeListForDirectoryQuery, type DirectoryEmployee } from "@vulto/graph";
 import type { EmploymentType } from "@vulto/graph";
 import { useShellBootstrap } from "../../../components/shell-bootstrap";
@@ -125,6 +125,13 @@ export default function PeoplePage() {
    * controls at rest.
    */
   const [entityFilter, setEntityFilter] = useState<string[]>([]);
+  const entityFilterInitialized = useRef(false);
+  useEffect(() => {
+    if (!entityFilterInitialized.current && ENTITY_FILTERS.length > 0) {
+      entityFilterInitialized.current = true;
+      setEntityFilter(ENTITY_FILTERS.map((option) => option.value));
+    }
+  }, [ENTITY_FILTERS]);
   const [typeFilter, setTypeFilter] = useState<EmploymentType[]>(
     TYPE_FILTERS.map((option) => option.value),
   );
@@ -345,7 +352,11 @@ export default function PeoplePage() {
         title="People"
         headingLevel={1}
         actions={
-          <Button variant="primary" icon={Plus} onClick={() => setAddPersonOpen(true)}>
+          <Button
+            variant="secondary"
+            icon={Plus}
+            onClick={() => setAddPersonOpen(true)}
+          >
             Add person
           </Button>
         }

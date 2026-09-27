@@ -81,7 +81,7 @@ export function AddPersonDialog({
             Cancel
           </Button>
           <Button
-            variant="primary"
+            variant="secondary"
             type="submit"
             form="add-person-form"
             disabled={pending || entities.length === 0}

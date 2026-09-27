@@ -45,16 +45,44 @@ function assertGuardedAxe(
     }
 }
 async function capture(page: Page, name: string) {
+  // A full navigation creates a new in-memory shell appearance state.
+  await setTheme(page, name.endsWith("-dark") ? "Dark" : "Light");
   const directory = path.resolve("docs/stage-reports/ui-2");
   await mkdir(directory, { recursive: true });
-  const file = path.join(directory, `${name}.png`);
-  await page.screenshot({ path: file, fullPage: true });
+  const file = path.join(directory, `${name}.jpg`);
+  const viewport = page.viewportSize()!;
+  // Directory evidence shows the real scrolling viewport, not all 150 rows.
+  // Expand profile content only because the shell scrolls internally.
+  const height = name.startsWith("directory")
+    ? viewport.height
+    : await page.evaluate(
+        () =>
+          Math.max(
+            window.innerHeight,
+            ...[...document.querySelectorAll<HTMLElement>("main, main *")].map(
+              (element) => element.scrollHeight,
+            ),
+          ) + 64,
+      );
+  try {
+    await page.setViewportSize({ width: viewport.width, height });
+    await page.screenshot({
+      path: file,
+      type: "jpeg",
+      quality: 85,
+      fullPage: true,
+      animations: "disabled",
+    });
+  } finally {
+    await page.setViewportSize(viewport);
+  }
   expect((await stat(file)).size).toBeLessThan(400 * 1024);
 }
 async function setTheme(page: Page, value: "Light" | "Dark") {
   await page.getByRole("button", { name: /^Open .+ menu$/ }).click();
   await page.getByRole("radio", { name: value, exact: true }).click();
   await page.keyboard.press("Escape");
+  await expect(page.locator("html")).toHaveAttribute("data-theme", value.toLowerCase());
 }
 async function edit(page: Page, label: string, value: string) {
   await page
@@ -255,8 +283,8 @@ for (const appearance of ["Light", "Dark"] as const) {
         await expect(page.getByText(expected!, { exact: true })).toBeVisible();
         if (tab === "Skills")
           await expect(page.getByText("TypeScript", { exact: true })).toBeVisible();
-        axeViolations.push(...(await new AxeBuilder({ page }).analyze()).violations);
         await capture(page, `${tab!.toLowerCase()}-${appearance.toLowerCase()}`);
+        axeViolations.push(...(await new AxeBuilder({ page }).analyze()).violations);
       }
       const memberPage = await memberContext.newPage();
       const memberAnswer = memberPage.waitForResponse((response) =>
@@ -359,6 +387,22 @@ for (const appearance of ["Light", "Dark"] as const) {
         body: JSON.stringify({ employees: 150, scaleRatio: 1, directoryP95, samples }),
         contentType: "application/json",
       });
+      // Creation is admitted by the real mutation and appears via replication.
+      await expect(page.getByText("Synced", { exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Add person", exact: true }).click();
+      const dialog = page.getByRole("dialog");
+      await dialog.getByLabel("Employee code", { exact: true }).fill("UI2-NEW");
+      await dialog.getByLabel("Start date", { exact: true }).fill("2026-01-01");
+      await dialog.getByLabel("Full name", { exact: true }).fill("New colleague");
+      await dialog
+        .getByLabel("Work email", { exact: true })
+        .fill(`new-${randomUUID()}@example.com`);
+      await dialog.getByLabel("Job title", { exact: true }).fill("Engineer");
+      await dialog.getByLabel("Department", { exact: true }).fill("Engineering");
+      await dialog.getByRole("button", { name: "Add person", exact: true }).click();
+      await expect(dialog).not.toBeVisible();
+      await expect(page.locator("tbody tr")).toHaveCount(151);
+      await expect(page.getByText("New colleague", { exact: true })).toBeVisible();
       expect(errors).toEqual([]);
       await testInfo.attach("ui-2-axe", {
         body: JSON.stringify(axeViolations),

@@ -88,7 +88,7 @@ export default function EmployeeProfilePage() {
     if (next) router.push(`/people/${next}`);
   }
   useShortcuts({ keys: { j: () => goTo(1), k: () => goTo(-1) } });
-  if (!local)
+  if (!local || local.employeeId !== id)
     return (
       <Content>
         <Text variant="body" className="text-text-secondary">
