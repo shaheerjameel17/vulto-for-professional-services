@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useRef,
@@ -28,6 +29,7 @@ export type ShellBootstrap = Ready & {
   workspaceName: string;
   /** Repeats the entire session and workspace resolution, including a fresh client. */
   retry(): void;
+  reportUnauthorized(): void;
 };
 
 const ShellBootstrapContext = createContext<ShellBootstrap | null>(null);
@@ -81,6 +83,14 @@ export function ShellBootstrapProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState<Ready | null>(null);
   const [state, setState] = useState<SyncState | null>(null);
   const refused = useRef(false);
+  const externalRefusal = useRef(false);
+  const reportUnauthorized = useCallback(() => {
+    externalRefusal.current = true;
+    refused.current = true;
+    setState((previous) =>
+      previous ? { ...previous, refusal: "unauthorized" } : previous,
+    );
+  }, []);
   const retryPhase = useRef<"idle" | "refreshing" | "boot">("idle");
   const [workspaceName, setWorkspaceName] = useState("Workspace");
   const [holding, setHolding] = useState(false);
@@ -144,6 +154,7 @@ export function ShellBootstrapProvider({ children }: { children: ReactNode }) {
         });
         if (cancelled) return;
         unsubscribeState = client.syncStatus.subscribe((next) => {
+          if (externalRefusal.current && !next.refusal) return;
           refused.current = Boolean(next.refusal);
           setState(next);
         });
@@ -180,7 +191,9 @@ export function ShellBootstrapProvider({ children }: { children: ReactNode }) {
           ...ready,
           state,
           workspaceName,
+          reportUnauthorized,
           retry: () => {
+            externalRefusal.current = false;
             retryPhase.current = "refreshing";
             void refetch().then(
               () => {

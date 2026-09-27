@@ -17,6 +17,7 @@ export type PageHeaderProps = {
   actions?: ReactNode;
   titleAccessory?: ReactNode;
   className?: string;
+  headingLevel?: 1 | 2;
 };
 
 export function PageHeader({
@@ -25,6 +26,7 @@ export function PageHeader({
   actions,
   titleAccessory,
   className,
+  headingLevel = 2,
 }: PageHeaderProps) {
   return (
     <header
@@ -35,7 +37,11 @@ export function PageHeader({
       )}
     >
       <div className="flex min-w-0 items-center gap-3">
-        <Text variant="h2" className="truncate text-text-primary">
+        <Text
+          variant="h2"
+          as={headingLevel === 1 ? "h1" : "h2"}
+          className="truncate text-text-primary"
+        >
           {title}
         </Text>
         {titleAccessory}

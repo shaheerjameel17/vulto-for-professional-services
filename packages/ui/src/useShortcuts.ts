@@ -48,6 +48,7 @@ export function useShortcuts(map: ShortcutMap): void {
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
+      if (event.defaultPrevented) return;
       const current = latest.current;
       if (current.enabled === false) return;
 
@@ -55,6 +56,8 @@ export function useShortcuts(map: ShortcutMap): void {
       const modified = event.metaKey || event.ctrlKey;
 
       if (event.key === "Escape") {
+        // A Radix popover/menu owns Escape before the underlying screen.
+        if (document.querySelector("[data-radix-popper-content-wrapper]")) return;
         pendingGoto.current = null;
         if (current.onEscape) {
           event.preventDefault();

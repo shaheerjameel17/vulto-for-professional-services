@@ -1,4 +1,9 @@
 import type { GraphQuery } from "../query";
+import {
+  notificationListForUser,
+  notificationUnreadActionCount,
+} from "../queries/notifications";
+import { searchQuery } from "../queries/search";
 import type { SqlValue, SyncDatabase } from "./database";
 
 /**
@@ -32,6 +37,21 @@ export interface CacheNeighbor {
 }
 
 export type CacheQueryResult =
+  | {
+      readonly kind: "device-query";
+      readonly name: "notification.listForUser";
+      readonly data: Awaited<ReturnType<typeof notificationListForUser>>;
+    }
+  | {
+      readonly kind: "device-query";
+      readonly name: "notification.unreadActionCount";
+      readonly data: number;
+    }
+  | {
+      readonly kind: "device-query";
+      readonly name: "search.query";
+      readonly data: Awaited<ReturnType<typeof searchQuery>>;
+    }
   | { readonly kind: "node-get"; readonly node: CacheNode | null }
   | {
       readonly kind: "node-list";
@@ -79,6 +99,28 @@ export async function runCacheQuery(
   query: GraphQuery,
 ): Promise<CacheQueryResult> {
   switch (query.kind) {
+    case "device-query":
+      switch (query.name) {
+        case "notification.listForUser":
+          return {
+            kind: query.kind,
+            name: query.name,
+            data: await notificationListForUser(database),
+          };
+        case "notification.unreadActionCount":
+          return {
+            kind: query.kind,
+            name: query.name,
+            data: await notificationUnreadActionCount(database),
+          };
+        case "search.query":
+          return {
+            kind: query.kind,
+            name: query.name,
+            data: await searchQuery(database, query.args),
+          };
+      }
+      throw new Error("Unreachable device query name");
     case "node-get": {
       const [row] = await database.all(
         `SELECT * FROM cache_nodes WHERE node_id = ? AND node_type = ? ${query.includeSoftDeleted ? "" : "AND is_soft_deleted = 0"}`,

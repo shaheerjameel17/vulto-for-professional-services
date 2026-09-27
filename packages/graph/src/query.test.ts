@@ -5,6 +5,26 @@ const ID = "123e4567-e89b-42d3-a456-426614174000";
 const NOW = "2026-08-17T10:30:00.000Z";
 
 describe("typed graph query contract", () => {
+  it("accepts only the three device names with exact per-name arguments", () => {
+    expect(
+      graphQuerySchema.parse({
+        kind: "device-query",
+        name: "search.query",
+        args: { text: "sql", limit: 8 },
+      }),
+    ).toMatchObject({ name: "search.query" });
+    for (const query of [
+      { kind: "device-query", name: "invented" },
+      { kind: "device-query", name: "notification.listForUser", args: {} },
+      { kind: "device-query", name: "notification.unreadActionCount", userId: ID },
+      {
+        kind: "device-query",
+        name: "search.query",
+        args: { text: "sql", role: "owner" },
+      },
+    ])
+      expect(graphQuerySchema.safeParse(query).success).toBe(false);
+  });
   it("accepts an exact registered relationship and supplies bounded defaults", () => {
     expect(
       graphQuerySchema.parse({

@@ -7,10 +7,12 @@ import { Badge } from "./Badge";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
 import { Text } from "./Text";
+import { Button } from "./Button";
 
 export const COMMAND_PALETTE_GROUPS = [
   "Commands",
   "People",
+  "Skills",
   "Skill matches",
   "Projects",
   "Clients",
@@ -37,6 +39,8 @@ export type CommandPaletteProps = {
   onQueryChange: (query: string) => void;
   results: CommandPaletteResult[];
   onSelect: (result: CommandPaletteResult, destination: "page" | "panel") => void;
+  skillConnectionRequired?: boolean;
+  onRetrySkills?: () => void;
 };
 
 /*
@@ -50,6 +54,8 @@ export function CommandPalette({
   onQueryChange,
   results,
   onSelect,
+  skillConnectionRequired = false,
+  onRetrySkills,
 }: CommandPaletteProps) {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -63,6 +69,7 @@ export function CommandPalette({
       })).filter((group) => group.results.length > 0),
     [results],
   );
+  const orderedResults = groups.flatMap((group) => group.results);
 
   useEffect(() => setSelectedIndex(0), [query]);
 
@@ -76,12 +83,14 @@ export function CommandPalette({
   }, [selectedIndex]);
 
   function moveSelection(delta: number) {
-    if (results.length === 0) return;
-    setSelectedIndex((current) => (current + delta + results.length) % results.length);
+    if (orderedResults.length === 0) return;
+    setSelectedIndex(
+      (current) => (current + delta + orderedResults.length) % orderedResults.length,
+    );
   }
 
   function choose(destination: "page" | "panel") {
-    const selected = results[selectedIndex];
+    const selected = orderedResults[selectedIndex];
     if (selected) onSelect(selected, destination);
   }
 
@@ -128,10 +137,13 @@ export function CommandPalette({
                 onKeyDown={onInputKeyDown}
                 placeholder="Search people, skills, projects, or commands"
                 aria-label="Search"
+                role="combobox"
+                aria-expanded={open}
+                aria-autocomplete="list"
                 aria-controls="command-palette-results"
                 aria-activedescendant={
-                  results[selectedIndex]
-                    ? `command-result-${results[selectedIndex]!.id}`
+                  orderedResults[selectedIndex]
+                    ? `command-result-${orderedResults[selectedIndex]!.id}`
                     : undefined
                 }
                 className="h-full min-w-0 flex-1 bg-transparent font-ui text-body text-text-primary outline-none placeholder:text-text-tertiary"
@@ -165,10 +177,11 @@ export function CommandPalette({
                 groups.map((group) => (
                   <section
                     key={group.name}
-                    aria-labelledby={`command-group-${group.name}`}
+                    role="group"
+                    aria-labelledby={`command-group-${group.name.replaceAll(" ", "-")}`}
                   >
                     <Text
-                      id={`command-group-${group.name}`}
+                      id={`command-group-${group.name.replaceAll(" ", "-")}`}
                       variant="micro"
                       className="block px-4 pb-1 pt-3 text-text-tertiary first:pt-1"
                     >
@@ -224,12 +237,31 @@ export function CommandPalette({
                 ))
               )}
             </div>
+            {skillConnectionRequired ? (
+              <section
+                aria-label="Skill matches"
+                data-state="requires-connection"
+                className="px-4 py-3"
+              >
+                <Text variant="micro" className="text-text-tertiary">
+                  Skill matches
+                </Text>
+                <Text variant="body" className="text-text-secondary">
+                  Skill matches require a connection.
+                </Text>
+                <Button variant="ghost" onClick={onRetrySkills}>
+                  Retry
+                </Button>
+              </section>
+            ) : null}
 
             <div className="hidden shrink-0 items-center justify-between border-t border-border-default px-4 py-2 md:flex">
               <div className="flex items-center gap-2 text-text-tertiary">
                 <Icon icon={ArrowUp} />
                 <Icon icon={ArrowDown} />
-                <Text variant="small">Navigate</Text>
+                <Text variant="small" className="text-text-tertiary">
+                  Navigate
+                </Text>
               </div>
               <Text variant="small" className="text-text-tertiary">
                 Enter to open · Cmd+Enter for panel
