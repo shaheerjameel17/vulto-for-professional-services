@@ -1,7 +1,7 @@
 # UI-1 — Inbox and Command Palette
 
 **Status:** BLOCKED — resumption implemented below; new zero-axe/required-token conflict awaits ruling
-**Branch:** codex/ui-1-inbox-palette, based on main 3f3805d
+**Branch:** codex/ui-1-inbox-palette; verified implementation at 94e3e1d, based on reviewer main 9589957
 **Linear issue:** FDN-131
 **Date:** 2026-09-27
 
@@ -76,7 +76,7 @@ No. Await the consolidated ruling, then resume this same branch. Do not start an
 
 ## Resumption after F345–F347
 
-Reviewer commit 9589957 was fast-forward pushed to main and merged into the same branch. The report above is retained as pre-build history, not a current unresolved finding. F345 allows fourteen screenshots; F346 specifies Skills between People and Skill matches; F347 allows the production delivery helper's test-support re-export. All accepted micro-decisions will be implemented. Implementation and verification are now in progress; completion evidence will be appended rather than replacing this history.
+Reviewer commit 9589957 was fast-forward pushed to main and merged into the same branch. The report above is retained as pre-build history, not a current unresolved finding. F345 allows fourteen screenshots; F346 specifies Skills between People and Skill matches; F347 allows the production delivery helper's test-support re-export. The accepted micro-decisions are implemented. Evidence below extends that history; the new contrast conflict prevents completion.
 
 ### 1. Resumption summary
 
@@ -113,6 +113,46 @@ The worker bridge, real Inbox, live count, palette and separate server skill-mat
 - services/api/src/test/sync-browser-support.ts: one production delivery helper re-export, per F347; no other API file.
 - This report and docs/stage-reports/ui-1/*.png.
 
+Verbatim `git diff --stat main...HEAD` captured at the verified implementation commit 94e3e1d (before this report-only evidence update):
+
+```text
+ apps/roster-web/src/app/(shell)/inbox/page.tsx     | 184 ++++++++-
+ apps/roster-web/src/components/Shell.tsx           | 167 +++++++-
+ apps/roster-web/src/components/panel-context.tsx   |   1 +
+ apps/roster-web/src/components/shell-bootstrap.tsx |  13 +
+ apps/roster-web/src/fixtures/command-palette.ts    | 210 ----------
+ apps/roster-web/src/lib/skill-matches.ts           |  28 ++
+ apps/roster-web/src/nav.ts                         |   2 +-
+ .../STAGE-UI-1_Inbox_and_Command_Palette.md        | 215 ++++++++++
+ docs/stage-reports/ui-1/inbox-empty-dark.png       | Bin 0 -> 34781 bytes
+ docs/stage-reports/ui-1/inbox-empty-light.png      | Bin 0 -> 36288 bytes
+ docs/stage-reports/ui-1/inbox-failure-dark.png     | Bin 0 -> 43026 bytes
+ docs/stage-reports/ui-1/inbox-failure-light.png    | Bin 0 -> 43419 bytes
+ docs/stage-reports/ui-1/inbox-groups-dark.png      | Bin 0 -> 67349 bytes
+ docs/stage-reports/ui-1/inbox-groups-light.png     | Bin 0 -> 68246 bytes
+ .../stage-reports/ui-1/palette-connection-dark.png | Bin 0 -> 64467 bytes
+ .../ui-1/palette-connection-light.png              | Bin 0 -> 70590 bytes
+ docs/stage-reports/ui-1/palette-empty-dark.png     | Bin 0 -> 62227 bytes
+ docs/stage-reports/ui-1/palette-empty-light.png    | Bin 0 -> 68600 bytes
+ docs/stage-reports/ui-1/palette-mixed-dark.png     | Bin 0 -> 82068 bytes
+ docs/stage-reports/ui-1/palette-mixed-light.png    | Bin 0 -> 87134 bytes
+ docs/stage-reports/ui-1/palette-skills-dark.png    | Bin 0 -> 63085 bytes
+ docs/stage-reports/ui-1/palette-skills-light.png   | Bin 0 -> 68606 bytes
+ packages/graph/src/index.ts                        |  10 +-
+ packages/graph/src/query.test.ts                   |  20 +
+ packages/graph/src/query.ts                        |  39 ++
+ packages/graph/src/sync-client/engine.test.ts      |  72 ++++
+ packages/graph/src/sync-client/query.ts            |  42 ++
+ .../graph/sync-browser-tests/inbox-palette.spec.ts | 431 +++++++++++++++++++++
+ packages/ui/src/CommandPalette.tsx                 |  44 ++-
+ packages/ui/src/InboxRow.tsx                       |  83 ++++
+ packages/ui/src/PageHeader.tsx                     |   8 +-
+ packages/ui/src/index.ts                           |   1 +
+ packages/ui/src/useShortcuts.ts                    |   3 +
+ services/api/src/test/sync-browser-support.ts      |   1 +
+ 34 files changed, 1341 insertions(+), 233 deletions(-)
+```
+
 ### 5. Resumption database changes
 
 None. Browser fixtures use the production delivery writer, named source/read-state mutations and existing workspace helpers. The failure test adds a second active delivered_to edge via fixture SQL to trigger the real F317 fail-closed recipient check, while the device retains its previous audience snapshot. It does not mock a response, modify the cache or implement a read-state action in SQL.
@@ -131,15 +171,15 @@ Test Files  16 passed (16)
 Tasks:    10 successful, 10 total
 ```
 
-`pnpm verify:full`: exit 0 in the successful run preceding final browser-label fixes:
+`pnpm verify:full`: exit 0 on the final product diff, after the Reconnect correction:
 
 ```text
 Test Files  33 passed (33)
      Tests  352 passed | 2 skipped (354)
-Duration  108.46s
+Duration  99.10s
 ```
 
-Both gates are being re-run on the final product diff; final output is recorded after the run finishes. An initial `verify` attempt failed only on unrelated untracked Claude outputs formatting. That directory was temporarily moved outside the checkout with a restoration trap, never edited or staged. Two builder lint defects (an unavailable lint-rule suppression and a nested switch fallthrough diagnostic) were fixed rather than bypassed.
+Both final gate commands returned exit 0. Fast-test output also includes UI: 6 passed/2 existing todo, schema: 141 passed/2 existing todo, graph: 104 passed; roster-web has no unit tests. An initial `verify` attempt failed only on unrelated untracked Claude outputs formatting. That directory was temporarily moved outside the checkout with a restoration trap, never edited or staged. Two builder lint defects (an unavailable lint-rule suppression and a nested switch fallthrough diagnostic) were fixed rather than bypassed.
 
 Browser preparation: `set -a; source .env; set +a; pnpm --filter @vulto/api db:migrate` (exit 0), then `SYNC_BROWSER_DATABASE_URL="$DATABASE_URL" ELECTRIC_URL="$ELECTRIC_URL" ELECTRIC_SECRET="$ELECTRIC_SECRET" pnpm test:sync-browser`. Final full run: exit 1, 27 passed, 2 failed, zero skipped. Both new theme tests reach the final Inbox axe assertion and fail on `color-contrast`; all 27 existing tests pass, including Retry recovery. No skip, retry, exclusion or rule suppression was added. Earlier development runs used `--grep 'real Inbox and palette'` only to diagnose builder fixture/keyboard/label bugs; those are not the full gate. One obsolete development run was interrupted after its stale indexed-locator cleanup stalled; the corrected cleanup repeatedly dismisses the first live row.
 
@@ -159,7 +199,16 @@ Browser timing measurements from the full-suite UI tests, 20 open/focus samples 
 
 Fixture scale: 12 employees, 1 skill, 3 projects, 3 clients, 6 initial notifications across two recipients; an additional production-delivered notification is used for the refusal scenario. Raw timing arrays are attached by the browser test and printed in its output. These meet the budgets but do not make the failing suite green.
 
-Main CI at reviewer commit 9589957: [fast-lane 36270552882](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36270552882) success; [slow-lane 36270552849](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36270552849) success. These are main evidence, not branch evidence. Branch run IDs/conclusions will be recorded on the issue after pushing; no green branch conclusion is claimed.
+Main CI at reviewer commit 9589957: [fast-lane 36270552882](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36270552882) success; [slow-lane 36270552849](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36270552849) success.
+
+Branch CI at verified implementation head **94e3e1d4010dbf9a5fbaba431a69f7dadf1483d4**, read with `gh run view --json status,conclusion,jobs`:
+
+- [fast-lane 36297883266](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36297883266): **success**; resolve-image and verify executed successfully.
+- [slow-lane 36297883282](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36297883282): **failure**. resolve-image, api-integration, production-build and auth-browser executed and succeeded. sync-browser executed its full test step and failed. publish-artifacts was skipped as intended on a branch.
+
+The failed log was read with `gh run view 36297883282 --log-failed`: 27 passed, 2 failed (the Light and Dark UI tests), both at `Error: expect(received).toEqual(expected) // deep equality` with `id: color-contrast`. The auth job's actual `Auth browser suite (sign-in, passkeys, accessibility smoke pass)` step has conclusion success; the sync job's actual `Sync browser suite` step has conclusion failure. Neither browser job was skipped. CI measured p95 open/local results at 15.6/21.0 ms in light and 14.4/16.1 ms in dark on the same fixture scale, so its failures are not timing-budget failures.
+
+This final evidence update is report-only after the tested implementation head. It is not a claim that a later documentation-only head has green CI, or that UI-1 is complete. The literal two-green-workflows criterion remains unchecked.
 
 Screenshots, all captured in the real suite, 1280 × 720, each below 88 KB (byte sizes observed at this checkpoint):
 
