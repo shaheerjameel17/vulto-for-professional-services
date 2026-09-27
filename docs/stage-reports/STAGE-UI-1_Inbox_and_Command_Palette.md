@@ -1,9 +1,11 @@
 # UI-1 — Inbox and Command Palette
 
-**Status:** BLOCKED — F348/F349 implemented; final verification and CI evidence pending below
-**Branch:** codex/ui-1-inbox-palette; resumed from ed48916, merged reviewer main 69c4a63
+**Status:** COMPLETE — implemented and verified on F348/F349; awaiting reviewer and founder acceptance
+**Branch:** codex/ui-1-inbox-palette; verified implementation 9afd111cd4e843464b0f78ca7da7ae2510d541b0, merged reviewer main 69c4a63
 **Linear issue:** FDN-131
 **Date:** 2026-09-27
+
+The original pre-build and first-resumption reports below are retained history. The current result is the **Final resumption on F348/F349** appendix, including the green CI evidence; old unchecked boxes and refusal text are not claims about the current implementation.
 
 ## 1. Summary
 
@@ -279,7 +281,7 @@ The original reports above remain history, not claims about the resumed head. Fi
 
 ### 1. Summary
 
-The existing branch was resumed, not restarted, and the prior reports remain above as history. The Inbox now explains refusals in plain language. The browser proof covers each required key, both E timestamps, count agreement after mutation and reload, and a real revoked-session skill-match 401 reaching Reconnect. Accessibility inherits only the ruled tertiary-text debt, with a guard against every other rule and every non-tertiary violating node. Fourteen fresh real-stack screenshots show the final UI; CI completion is recorded below when verified.
+The existing branch was resumed, not restarted, and the prior reports remain above as history. The Inbox now explains refusals in plain language. The browser proof covers each required key, both E timestamps, count agreement after mutation and reload, and a real revoked-session skill-match 401 reaching Reconnect. Accessibility inherits only the ruled tertiary-text debt, with a guard against every other rule and every non-tertiary violating node. Fourteen fresh real-stack screenshots show the final UI; all local gates and both implementation-head workflows passed, including both browser jobs.
 
 ### 2. Done-criteria checklist
 
@@ -292,7 +294,7 @@ The existing branch was resumed, not restarted, and the prior reports remain abo
 - [x] Fourteen fresh PNGs, all under 400 KB — final real-stack run's captures, listed below.
 - [x] No product-server/schema/permission/interceptor/migration/dependency/token edit, no role checks or shell fixtures — architecture gate and diff. The F347 test-support re-export is the only API change.
 - [x] Four local standard gates and full browser suite — final outputs below, all exit 0.
-- [ ] Final-head fast/slow CI with both browser jobs executed — CI confirmation pending at this checkpoint.
+- [x] Implementation-head fast/slow CI with both browser jobs executed — exact SHA, run IDs and actual step conclusions below. The report-only follow-up head is verified separately and its exact run IDs recorded on FDN-131 after pushing.
 
 ### 3. Spec clauses implemented
 
@@ -411,6 +413,13 @@ Main fast-forward was verified by `git ls-remote origin refs/heads/main` returni
 
 Main CI, checked from GitHub: [fast-lane 36298691860](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36298691860) **success**; [slow-lane 36298691874](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36298691874) **success**. These are main evidence, not branch acceptance.
 
+Branch CI at final implementation **9afd111cd4e843464b0f78ca7da7ae2510d541b0**, read from the public Actions API via `gh api repos/shaheerjameel17/vulto-for-professional-services/actions/runs/<id>` and `/jobs`:
+
+- [fast-lane 36299412127](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36299412127): **success**, resolve-image and verify both executed successfully.
+- [slow-lane 36299412117](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36299412117): **success**, resolve-image, api-integration, production-build, auth-browser and sync-browser all executed successfully. Auth's actual `Auth browser suite (sign-in, passkeys, accessibility smoke pass)` step and sync's actual `Sync browser suite` step each have **success**, not skipped. publish-artifacts alone is skipped by its main-only condition, as the brief allows.
+
+This completed evidence update changes only the report. Its exact final-head run IDs will be posted on FDN-131 and quoted in the handoff after that head also finishes CI; no final-head success is inferred from these earlier run IDs. A transient TLS failure of `gh run watch` was a local read failure, not a CI conclusion; the actual final result above was re-read through the Actions API.
+
 Final local browser UI measurements (20 opening/focus samples and 60 three-character local-result samples per theme; raw arrays attached and printed): Light opening **6.1 ms**, local result **8.5 ms** p95; Dark opening **4.7 ms**, local result **9.2 ms** p95. Fixture: **12 employees, 1 skill, 3 projects, 3 clients, 6 initial notifications across 2 recipients**, plus one production-delivered refusal item. Opening and query measurement do not wait for animations; only the stable visual/axe sample does.
 
 Fourteen screenshots regenerated by that successful full local run, 1280 × 720; all below 84 KB and below the 400 KB limit. Empty Dark is byte-identical to the earlier capture but was captured again by this run.
@@ -435,6 +444,7 @@ Fourteen screenshots regenerated by that successful full local run, 1280 × 720;
 - The strict guard exposed Navigate's inherited tertiary styling. Put the same existing token on that Text node, preserving its rendered color and making the guard honest.
 - The first dark palette scan caught fade-in compositing (secondary text looked temporarily dimmed). Await actual surface Web Animations completion before axe/visual sampling, not a fixed sleep, rule exemption, animation change or timing-budget change.
 - Keep the already-present `@vulto/api` type-only import: roster-web already declares that workspace dependency; architecture and production-build gates verify the accepted dependency edge. No dependency edit.
+- Commit CI evidence against its exact implementation SHA, then verify the report-only head again and record its run IDs on FDN-131 and in the handoff. This avoids falsely labeling an earlier run as a later head's run.
 
 ### 8. Findings raised
 
@@ -450,4 +460,4 @@ The tertiary palette contrast debt still exists and remains visibly hard to read
 
 ### 11. Readiness for the next stage
 
-No next stage is started. Await final verification and then the reviewer/founder decision; FDN-131 stays In Review.
+Yes, ready for reviewer and founder visual review, not accepted or merged. No next stage is started; FDN-131 stays In Review. Later work awaits approval, and FDN-140 separately owns the tertiary-token correction.
