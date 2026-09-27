@@ -164,6 +164,78 @@ const genericNode = (nodeId = uuid()) => ({
 });
 
 describe("replication into the cache", () => {
+  it("dispatches device queries and re-fires grouped and numeric subscriptions on notification changes", async () => {
+    const h = await harness();
+    const grouped: number[] = [],
+      counts: number[] = [];
+    const stopGrouped = h.engine.subscribe(
+      { kind: "device-query", name: "notification.listForUser" },
+      ({ result }) => {
+        if (
+          result.kind === "device-query" &&
+          result.name === "notification.listForUser"
+        )
+          grouped.push(result.data.needsYou.length);
+      },
+    );
+    const stopCount = h.engine.subscribe(
+      { kind: "device-query", name: "notification.unreadActionCount" },
+      ({ result }) => {
+        if (
+          result.kind === "device-query" &&
+          result.name === "notification.unreadActionCount"
+        )
+          counts.push(result.data);
+      },
+    );
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const id = uuid();
+    const record = {
+      node_id: id,
+      node_type: "Notification",
+      category: "ActionNeeded",
+      message: "Review week",
+      read_at: null,
+      dismissed_at: null,
+      created_at: new Date().toISOString(),
+    };
+    await h.source("nodes").emit([
+      {
+        type: "changes",
+        changes: [nodeRow(id, { node_type: "Notification", record })],
+        cursor: { handle: "h", offset: "1" },
+      },
+    ]);
+    expect(grouped).toEqual([0, 1]);
+    expect(counts).toEqual([0, 1]);
+    await h.source("nodes").emit([
+      {
+        type: "changes",
+        changes: [
+          nodeRow(id, {
+            node_type: "Notification",
+            record: { ...record, dismissed_at: new Date().toISOString() },
+          }),
+        ],
+        cursor: { handle: "h", offset: "2" },
+      },
+    ]);
+    expect(grouped).toEqual([0, 1, 0]);
+    expect(counts).toEqual([0, 1, 0]);
+    const search = await h.engine.query({
+      kind: "device-query",
+      name: "search.query",
+      args: { text: "bench" },
+    });
+    expect(search.result).toMatchObject({
+      kind: "device-query",
+      name: "search.query",
+      data: { commandMatches: [{ commandId: "go-bench-forecast" }] },
+    });
+    stopGrouped();
+    stopCount();
+    await h.engine.stop();
+  });
   it("applies inserts, partial updates and deletes, and stores the cursor with them", async () => {
     const h = await harness();
     const id = uuid();

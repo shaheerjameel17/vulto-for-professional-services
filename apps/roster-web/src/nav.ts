@@ -33,7 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
       // name now — it was Home here, `/dashboard` in the URL and "Manager
       // Dashboard" on the page, which named a role most viewers do not hold.
       { href: "/home", label: "Home", icon: House, shortcut: "G H" },
-      { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: "G I", count: 7 },
+      { href: "/inbox", label: "Inbox", icon: Inbox, shortcut: "G I" },
     ],
   },
   {

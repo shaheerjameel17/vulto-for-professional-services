@@ -94,14 +94,53 @@ const recursiveNeighborsQuerySchema = z
     }
   });
 
+const deviceQuerySchema = z.discriminatedUnion("name", [
+  z
+    .object({
+      kind: z.literal("device-query"),
+      name: z.literal("notification.listForUser"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("device-query"),
+      name: z.literal("notification.unreadActionCount"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("device-query"),
+      name: z.literal("search.query"),
+      args: z
+        .object({
+          text: z.string(),
+          limit: z.number().int().min(0).max(200).optional(),
+        })
+        .strict(),
+    })
+    .strict(),
+]);
+
 export const graphQuerySchema = z.discriminatedUnion("kind", [
   nodeGetQuerySchema,
   nodeListQuerySchema,
   edgeNeighborsQuerySchema,
   recursiveNeighborsQuerySchema,
+  deviceQuerySchema,
 ]);
 
 export type GraphQuery = z.infer<typeof graphQuerySchema>;
+
+export const notificationListForUserQuery = () =>
+  ({ kind: "device-query", name: "notification.listForUser" }) as const;
+export const notificationUnreadActionCountQuery = () =>
+  ({ kind: "device-query", name: "notification.unreadActionCount" }) as const;
+export const searchDeviceQuery = (text: string, limit?: number) =>
+  ({
+    kind: "device-query",
+    name: "search.query",
+    args: { text, ...(limit === undefined ? {} : { limit }) },
+  }) as const;
 
 export function parseGraphQuery(value: unknown): GraphQuery {
   return graphQuerySchema.parse(value);

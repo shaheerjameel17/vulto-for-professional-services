@@ -1,6 +1,6 @@
 # UI-1 — Inbox and Command Palette
 
-**Status:** BLOCKED — consolidated pre-build trace; no product code written
+**Status:** BLOCKED — resumption implemented below; new zero-axe/required-token conflict awaits ruling
 **Branch:** codex/ui-1-inbox-palette, based on main 3f3805d
 **Linear issue:** FDN-131
 **Date:** 2026-09-27
@@ -73,3 +73,143 @@ The Employee route exists but its current profile rendering is fixture-backed; o
 ## 11. Readiness for the next stage
 
 No. Await the consolidated ruling, then resume this same branch. Do not start another stage.
+
+## Resumption after F345–F347
+
+Reviewer commit 9589957 was fast-forward pushed to main and merged into the same branch. The report above is retained as pre-build history, not a current unresolved finding. F345 allows fourteen screenshots; F346 specifies Skills between People and Skill matches; F347 allows the production delivery helper's test-support re-export. All accepted micro-decisions will be implemented. Implementation and verification are now in progress; completion evidence will be appended rather than replacing this history.
+
+### 1. Resumption summary
+
+The worker bridge, real Inbox, live count, palette and separate server skill-match group are implemented on the existing branch. The real-stack UI tests exercise the audience, mutations, refusal restoration, reload, keyboard navigation, offline skill Retry and timings, and produce all fourteen screenshots. Both UI tests reach their final zero-axe assertion and fail on required/existing design-token contrast, not functional behavior. No token, specification, server product code or accessibility exemption was changed. This is not a completed-stage claim.
+
+### 2. Resumption done criteria
+
+- [x] Strict device-query schema, worker dispatch, grouped and numeric subscriptions — `query.test.ts::accepts only the three device names with exact per-name arguments`; `engine.test.ts::dispatches device queries and re-fires grouped and numeric subscriptions on notification changes`.
+- [x] Real Inbox/read-state actions/live badge/real refusal — both `inbox-palette.spec.ts::real Inbox and palette: audience, actions, keyboard, offline skills, axe and visuals` theme variants reach the final axe assertion after these checks.
+- [x] Real local palette, omitted dead commands and identical empty-state template — same browser tests; fixture deleted, no remaining shell import.
+- [x] Skill results arrive separately; API cut degrades only that group; Retry restores it — same browser tests. The fetch uses credentials, input derived from the existing schema, and the bootstrap's new unauthorized-report entry point. A dedicated real skill-fetch 401 browser assertion is not yet present; do not infer it from other Reconnect tests.
+- [ ] Zero-axe browser pass — blocked on the contrast ruling below.
+- [x] Fourteen real-browser PNGs, all below 400 KB — enumerated below.
+- [x] No server product/schema/permission/interceptor/migration/dependency change — only the F347 test-support re-export under services/api.
+- [ ] Both branch workflows green, with sync-browser and auth-browser executed — cannot claim while the new zero-axe assertions fail.
+
+### 3. Resumption implementation mapping
+
+| Contract | Implementation | Proof |
+| --- | --- | --- |
+| F340: strict worker queries | graph query schema and sync-client cache dispatcher | schema and engine tests named above |
+| VPS-F003: groups, actions, failure, unread count | Inbox page, InboxRow and Shell count subscription | real browser checks before final axe assertion |
+| F343/F346: real local palette, Skills group | Shell and CommandPalette | mixed/entity/command/local-Skill browser assertions |
+| F341: server skill-match read | lib/skill-matches.ts and bootstrap unauthorized entry point | API-cut/Retry browser assertions; 401 branch traced in code |
+| F345/F347: visual proof and real delivery fixtures | inbox-palette.spec.ts and test-support delivery export | fourteen PNGs; other-recipient notification exists on server and is absent on screen |
+
+### 4. Resumption files
+
+- packages/graph/src/query.ts, query.test.ts, index.ts, sync-client/query.ts, sync-client/engine.test.ts.
+- packages/graph/sync-browser-tests/inbox-palette.spec.ts.
+- apps/roster-web/src/app/(shell)/inbox/page.tsx; components/Shell.tsx, shell-bootstrap.tsx, panel-context.tsx; lib/skill-matches.ts; nav.ts.
+- Deleted apps/roster-web/src/fixtures/command-palette.ts (only the shell imported it).
+- packages/ui/src/InboxRow.tsx, CommandPalette.tsx, PageHeader.tsx, useShortcuts.ts, index.ts.
+- services/api/src/test/sync-browser-support.ts: one production delivery helper re-export, per F347; no other API file.
+- This report and docs/stage-reports/ui-1/*.png.
+
+### 5. Resumption database changes
+
+None. Browser fixtures use the production delivery writer, named source/read-state mutations and existing workspace helpers. The failure test adds a second active delivered_to edge via fixture SQL to trigger the real F317 fail-closed recipient check, while the device retains its previous audience snapshot. It does not mock a response, modify the cache or implement a read-state action in SQL.
+
+### 6. Resumption tests and gates
+
+`pnpm install --frozen-lockfile`: exit 0, lockfile unchanged, already up to date.
+
+`pnpm stack:up`: exit 0, Postgres/Electric/Redis healthy.
+
+`pnpm verify`: exit 0. Final lines from the successful run:
+
+```text
+Test Files  16 passed (16)
+     Tests  104 passed (104)
+Tasks:    10 successful, 10 total
+```
+
+`pnpm verify:full`: exit 0 in the successful run preceding final browser-label fixes:
+
+```text
+Test Files  33 passed (33)
+     Tests  352 passed | 2 skipped (354)
+Duration  108.46s
+```
+
+Both gates are being re-run on the final product diff; final output is recorded after the run finishes. An initial `verify` attempt failed only on unrelated untracked Claude outputs formatting. That directory was temporarily moved outside the checkout with a restoration trap, never edited or staged. Two builder lint defects (an unavailable lint-rule suppression and a nested switch fallthrough diagnostic) were fixed rather than bypassed.
+
+Browser preparation: `set -a; source .env; set +a; pnpm --filter @vulto/api db:migrate` (exit 0), then `SYNC_BROWSER_DATABASE_URL="$DATABASE_URL" ELECTRIC_URL="$ELECTRIC_URL" ELECTRIC_SECRET="$ELECTRIC_SECRET" pnpm test:sync-browser`. Final full run: exit 1, 27 passed, 2 failed, zero skipped. Both new theme tests reach the final Inbox axe assertion and fail on `color-contrast`; all 27 existing tests pass, including Retry recovery. No skip, retry, exclusion or rule suppression was added. Earlier development runs used `--grep 'real Inbox and palette'` only to diagnose builder fixture/keyboard/label bugs; those are not the full gate. One obsolete development run was interrupted after its stale indexed-locator cleanup stalled; the corrected cleanup repeatedly dismisses the first live row.
+
+```text
+2 failed
+  real Inbox and palette: audience, actions, keyboard, offline skills, axe and visuals (Light)
+  real Inbox and palette: audience, actions, keyboard, offline skills, axe and visuals (Dark)
+27 passed (1.9m)
+```
+
+Browser timing measurements from the full-suite UI tests, 20 open/focus samples and 60 three-character input-to-result samples per theme (native input event to MutationObserver-visible option; no debounce):
+
+| Theme | Open/focus p95 | Local result p95 |
+| --- | --- | --- |
+| Light | 5.8 ms | 7.6 ms |
+| Dark | 5.0 ms | 8.1 ms |
+
+Fixture scale: 12 employees, 1 skill, 3 projects, 3 clients, 6 initial notifications across two recipients; an additional production-delivered notification is used for the refusal scenario. Raw timing arrays are attached by the browser test and printed in its output. These meet the budgets but do not make the failing suite green.
+
+Main CI at reviewer commit 9589957: [fast-lane 36270552882](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36270552882) success; [slow-lane 36270552849](https://github.com/shaheerjameel17/vulto-for-professional-services/actions/runs/36270552849) success. These are main evidence, not branch evidence. Branch run IDs/conclusions will be recorded on the issue after pushing; no green branch conclusion is claimed.
+
+Screenshots, all captured in the real suite, 1280 × 720, each below 88 KB (byte sizes observed at this checkpoint):
+
+| State | Light PNG (bytes) | Dark PNG (bytes) |
+| --- | --- | --- |
+| Inbox groups | inbox-groups-light.png (68246) | inbox-groups-dark.png (67349) |
+| Inbox empty | inbox-empty-light.png (36288) | inbox-empty-dark.png (34781) |
+| Inbox failure | inbox-failure-light.png (43419) | inbox-failure-dark.png (43026) |
+| Palette mixed | palette-mixed-light.png (87134) | palette-mixed-dark.png (82068) |
+| Palette empty | palette-empty-light.png (68600) | palette-empty-dark.png (62227) |
+| Palette skills | palette-skills-light.png (68606) | palette-skills-dark.png (63085) |
+| Palette requires-connection | palette-connection-light.png (70590) | palette-connection-dark.png (64467) |
+
+### 7. Resumption micro-decisions
+
+- Worker results use `{ kind: "device-query", name, data }` inside the unchanged QueryOutcome envelope; typed object factories prevent raw screen query construction. Existing complete serialized-outcome comparison detects group/count changes.
+- Ordered results come directly from the existing three functions. The palette flattens its displayed fixed groups for keyboard indexing, without re-ranking inside them. Skill categories occupy Skills, people returned by the matcher occupy Skill matches, in server order.
+- All static navigate destinations were traced: bench-forecast → `/` (the Bench Forecast page), people → `/people`, timesheets → `/timesheets`, home → `/home`. Both unbuilt action commands are omitted. Employee Open asserts the existing route, not prototype-backed profile content.
+- Zero badge is undefined; Sidebar needed no change. Read-state declarations are onlineOnly false, so offline actions queue optimistically.
+- The bootstrap exposes reportUnauthorized into the existing refusal/retry path and does not allow subsequent non-refusal worker state to silently clear that refusal before retry.
+- A first implementation accidentally latched ordinary worker refusals as well, breaking the existing Retry-recovery browser test. It was corrected to latch only external fetch refusals and clear that separate latch on Retry; the existing recovery test passes again in the subsequent full run. This was a builder defect, not a finding or baseline exemption.
+- InboxRow is the sole new design-system component. PageHeader gains an opt-in semantic h1 while retaining the specified h2 visual token, fixing the new screen's heading violation without changing other pages.
+- Keyboard handlers respect consumed Escape events and Radix popovers. Shell handles Escape only when a panel actually exists; otherwise the Inbox can return to the previous screen.
+- Palette group label IDs normalize spaces; the old Skill matches ID was interpreted as two aria-labelledby references. This builder defect was fixed.
+- A null matcher availability date renders Available now, not the string null. No proficiency or availability logic is duplicated.
+- No real source-rule notification was added yet; existing timesheet-anomaly integration fixtures were traced, but the browser seeding uses production deliverNotification for both categories. This optional F347 enhancement remains for resumption, not a claim of source-rule browser proof.
+
+### 8. Resumption finding — one consolidated accessibility ruling request
+
+**UI-1 Do items 2/6 and Done criteria cannot simultaneously hold with the current required tokens.** Item 2 requires relative timestamps at `small` in `text-tertiary`; item 6 requires an axe pass with zero violations. Real Chromium reports `color-contrast` on exactly that rendering and existing shell micro labels:
+
+```text
+Elements must meet minimum color contrast ratio thresholds
+Light shell: #a1a1aa on #efeff0, 2.23:1 (expected 4.5:1)
+Dark shell:  #71717a on #09090a, 4.11:1 (expected 4.5:1)
+Inbox timestamp: <p class="font-ui text-small text-text-tertiary">Just now</p>
+```
+
+Evidence: both theme variants of inbox-palette.spec.ts fail their final zero-axe assertion; the complete violation arrays are attached as inbox-axe/palette-axe. `packages/tokens/src/runtime.css` defines these existing colors. `services/api/browser-tests/a11y-smoke.spec.ts` explicitly lists `color-contrast` in KNOWN_DEBT_RULES as a palette-wide VPS-D001 decision, unlike UI-1's zero-violation criterion. VPS-D001 permits tertiary only for non-essential text and records the separate founder-accepted white-on-brand contrast exception; changing tokens or silently importing a contrast exemption is not a minimal implementation fix under this brief.
+
+Reviewer should rule whether UI-1 inherits the explicitly recorded contrast-debt baseline, or whether a separate token/spec correction is required before the literal zero-axe gate. The builder has done neither. The fixable heading violation was resolved in scope; no other new contradiction is currently identified. The functional tests remain failing at their unchanged axe assertion, so this stage is BLOCKED rather than complete.
+
+### 9. Resumption deviations
+
+No gate weakened. Work stops for the new acceptance contradiction after preserving the implementation and browser evidence. No reviewer-owned document/spec or server product file was edited. Branch CI cannot be honestly reported green while the required browser assertions are red.
+
+### 10. Resumption limitations
+
+The founder has not accepted the visuals. The existing Employee profile remains prototype-backed as explicitly accepted by the rulings. The special unauthorized-reporting branch is implemented but lacks its own real skill-fetch 401 assertion. J/K/E handlers exist but need more explicit individual browser assertions on resumption. The other-user isolation check seeds a real second-recipient row before checking absence; it is not an empty-fixture assertion. Expected network transport errors caused by NetworkSwitch are distinguished from unexpected console/page errors; no application error is suppressed.
+
+### 11. Resumption readiness
+
+No. Await the accessibility ruling, then continue this same branch, retain this history, finish outstanding proof and repeat the full gates/CI. Do not start another stage.

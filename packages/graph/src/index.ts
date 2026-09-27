@@ -1,4 +1,12 @@
-export { graphQuerySchema, parseGraphQuery, type GraphQuery } from "./query";
+export {
+  graphQuerySchema,
+  parseGraphQuery,
+  notificationListForUserQuery,
+  notificationUnreadActionCountQuery,
+  searchDeviceQuery,
+  type GraphQuery,
+} from "./query";
+export { SEARCH_COMMANDS } from "./queries/search-commands";
 export * from "./mutators";
 export * from "./sync-client";
 export * from "./queries/bench-forecast";

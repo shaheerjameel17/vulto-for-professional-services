@@ -38,6 +38,7 @@ export { Sidebar, type SidebarProps, type NavItem, type NavGroup } from "./Sideb
 export { Tooltip, TooltipProvider, type TooltipProps } from "./Tooltip";
 
 export { useShortcuts, type ShortcutMap } from "./useShortcuts";
+export { InboxRow } from "./InboxRow";
 export { useReorder, type ReorderAxis, type UseReorderOptions } from "./useReorder";
 export {
   CommandPalette,

@@ -11,6 +11,7 @@ import { createContext, useContext, type ReactNode } from "react";
 type PanelValue = {
   panel: ReactNode;
   setPanel: (panel: ReactNode) => void;
+  paletteOpen: boolean;
 };
 
 export const PanelContext = createContext<PanelValue | null>(null);
