@@ -14,8 +14,9 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VRS-F020_Universal_Contract_Builder|VRS-F020]] (Contract, and the `contract.markSent` / `contract.markSigned` handoff points), [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] (where the signed document is filed), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (SignatureRequest's registry entry), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (Tier 1 envelope encryption, extended here to a one-time signing key), [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] (transactional email delivery)
+**Depends On:** [[VRS-F020_Universal_Contract_Builder|VRS-F020]] (Contract, and the `contract.markSent` / `contract.markSigned` handoff points), [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] (hard build-order dependency — the signed document is filed there, and Vault must exist first), [[VPS-A002_Master_Graph_Schema_Definition|VPS-A002]] (SignatureRequest's registry entry), [[VPS-A003_Unified_Sync_Architecture|VPS-A003]] (Tier 1 envelope encryption, extended here to a one-time signing key), [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]] (transactional email delivery)
 **Blocks:** Nothing structurally.
+**Build note:** Built together with [[VRS-F022_Encrypted_Document_Vault|VRS-F022]] as one combined effort — Vault first, then E-Signature. This corrects a circular dependency the two documents previously stated (Vault no longer lists E-Signature under Depends On). Founder decision, 28 Sept 2026; see `docs/findings/F362.md`.
 
 This document is the single source of truth for this feature.
 
