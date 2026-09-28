@@ -1,5 +1,7 @@
 # Linear operating rules
 
+**Historical workflow — superseded, 27–28 September 2026.** Vulto now uses Notion for engineering issues and projects (see `docs/Reviewer_Role.md`, "Issue tracking (Notion)"). This document is retained for migration provenance; its operational instructions below are not the current workflow.
+
 Binding on **everyone who touches Linear**: the reviewer, Codex, and any other agent. A rule marked **MUST** is not a preference. Breaking one is a defect to fix at once, and it is reported in the stage report.
 
 The founder is **Shaheer Jameel**. Where a rule says "assign to the founder", the Linear user is `Shaheer Jameel` (`assignee: "me"` in the Linear tool).
