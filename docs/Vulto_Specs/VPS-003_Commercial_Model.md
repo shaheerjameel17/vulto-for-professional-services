@@ -1,7 +1,7 @@
 ---
 Type:
   - Vulto for Professional Services Specs
-Date: "[[2026-09-20]]"
+Date: "[[2026-09-28]]"
 Product Phase:
   - Architecture
 Feature Type:
@@ -14,7 +14,7 @@ aliases:
 
 **Status:** Decided at Founder Level
 **Owner:** Founder (Shaheer Jameel), decided with AI advisory. No dedicated CTO function is currently engaged on this project; formal engineering review will occur whenever that changes.
-**Depends On:** [[VPS-000_Documentation_Standard|VPS-000]] (**the Feature Type enum, which this document uses as the plan boundary**), [[VRS-001_Feature_Register|VRS-001]] (every feature's own type assignment), [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] (Workspace's billing fields, extended here), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (the interceptor this document adds a third check to), [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] (the write-authority check this one sits alongside)
+**Depends On:** [[VPS-000_Documentation_Standard|VPS-000]] (the Feature Type enum — engineering classification only since 28 September 2026, no longer the plan boundary; see Decisions recorded), [[VRS-001_Feature_Register|VRS-001]] (every feature's own type assignment), [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] (Workspace's billing fields, extended here), [[VPS-A004_Graph_Permission_Layer|VPS-A004]] (the interceptor this document adds a third check to), [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] (the write-authority check this one sits alongside)
 **Blocks:** Nothing structurally. Every feature is buildable without knowing its plan; none is sellable without it.
 
 This document is the single source of truth for what Vulto charges, what each plan contains, and how a feature knows whether a workspace has bought it.
@@ -23,13 +23,13 @@ This document is the single source of truth for what Vulto charges, what each pl
 
 ## Why this is a specification and not a pricing page
 
-Plan gating is a product feature. Every one of the seventy-eight features has to know whether the workspace in front of it has paid for it, and **an implementer given a pricing page has been given marketing copy rather than a rule.**
+Plan gating is a product feature. Every one of the seventy-eight features has to know whether the workspace in front of it is entitled to use it, and **an implementer given a pricing page has been given marketing copy rather than a rule.**
 
-More importantly: **the plan boundary is already in the schema.** [[VPS-000_Documentation_Standard|VPS-000]] defines Feature Type as a closed six-value enum, assigned to every feature in [[VRS-001_Feature_Register|VRS-001]] on grounds that had nothing to do with pricing — it describes what kind of engineering problem a feature is.
+**Corrected 28 September 2026 (founder ruling, F360).** This document previously used [[VPS-000_Documentation_Standard|VPS-000]]'s Feature Type enum as the commercial boundary itself — a workspace's plan determined which Feature Types it could open at all. That is rejected as a governing principle: **engineering feature categories must not automatically become pricing gates.** A five-person agency running payroll has exactly the same sophisticated requirement as a fifty-person one; needing `Financial` or `Intelligence` features is not evidence of ability to pay more for them.
 
-That enum turns out to be the right commercial boundary too, and that is not a coincidence. **A feature's engineering character and its commercial value are correlated because both derive from what it does for the business.** Intelligence features exist because a workspace has accumulated history. Financial features exist because a firm is running payroll. Platform features exist because an organization has integration needs. Each of those is also the moment a customer is willing to pay more.
+**Every feature, in every Feature Type, is available on every plan, including Starter, from day one.** Feature Type remains exactly what [[VPS-000_Documentation_Standard|VPS-000]] and [[VRS-001_Feature_Register|VRS-001]] always used it for — an engineering classification of what kind of problem a feature solves — and nothing downstream may read it as an entitlement boundary.
 
-**The practical consequence: every feature already knows its plan.** No feature needs a new property, and no plan assignment can drift from the register, because there is only one place it is recorded.
+**The commercial boundary is consumption, not capability.** Vulto charges for scale (more of the business running through it), consumption (real infrastructure and third-party cost), organizational complexity, and enterprise obligations — never for feature sophistication. See "The four plans" and "How a workspace's plan is enforced," below, for the mechanism this replaces the Feature-Type check with.
 
 ---
 
@@ -45,20 +45,20 @@ Not per-application licensing. The entire proposition of [[Vulto for Professiona
 
 ## The four plans
 
-Each plan is the previous plan plus one or two Feature Types.
+**No plan restricts which features or Feature Types a workspace can use.** `Core`, `Experience`, `Intelligence`, `Compliance` and `Financial` features are open to every plan, Starter included — the Bench Forecast, profiles, assignments, timesheets, leave, onboarding, the org chart and the self-service portal alongside utilization and capacity analytics, the strain and retention signals, the reasoning layer, contracts, e-signature, policies, right to work, case management, audit, payroll, tax configuration, multi-currency, disbursement, contractor invoicing, expenses, compensation bands and benchmarking. `Platform` features (the API, the suite bridge, custom fields) are open too, with the single exception of the items enterprise security teams specifically ask for and that carry real operating cost to run — SSO/SCIM, customer-managed encryption keys, configurable long-term retention, choice of data residency region, SIEM/DLP integrations and dedicated procurement/SLA support — which stay Enterprise-only, per the security principle below.
 
-| Plan | Adds | Contains |
-|---|---|---|
-| **Starter** | `Core` · `Experience` | The Bench Forecast, profiles, assignments, timesheets, leave, onboarding, the org chart, the self-service portal |
-| **Professional** | `Intelligence` · `Compliance` | Utilization and capacity analytics, the strain and retention signals, the reasoning layer, contracts, e-signature, policies, right to work, case management, audit |
-| **Complete** | `Financial` | Payroll, tax configuration, multi-currency, disbursement, contractor invoicing, expenses, compensation bands, benchmarking |
-| **Enterprise** | `Platform` | The API, suite bridge, custom fields, SSO and SCIM, configurable retention, customer-managed encryption keys, choice of data residency region, priority support |
+**Plans differ by scale, consumption, complexity and commercial obligation.** The upgrade dimensions, most-tested first:
 
-**Starter includes `Experience` deliberately**, and this is the one deviation from a strict type-per-plan mapping. Experience features — the self-service portal, the daily briefing, the manager dashboard — are what make the product feel finished rather than functional. A Starter workspace where employees cannot see their own leave balance is not a cheaper product; it is a worse one, and it churns.
+- **Internal users** — already the billing unit itself (see Pricing, below); not a cap, since every seat is paid for regardless of plan.
+- **Active clients / engagements** — the strongest available upgrade signal once [[Vulto Projects]] and [[Vulto Sales]] exist: how much of the business is actually running through Vulto.
+- **Storage, automation executions, and AI consumption** — real infrastructure cost, metered once the features that generate them (workflow automation, the reasoning layer behind Intelligence analytics) ship.
+- **API / compute usage** — Platform's territory, Enterprise-scoped as today.
 
-**Trust is not a plan feature, with two exceptions.** Every plan carries [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]'s baseline promises — no staff access without the Owner's approval, a visible Access Transparency log, field-level encryption of pay and HR data, a tamper-evident audit log, published access rules and an open export. A customer trusting Vulto with salaries should not have to pay more to be told who looked at them. Customer-managed keys and residency choice are Enterprise because each carries real operating cost and is asked for by enterprise security teams specifically.
+**Exact numeric caps are not fixed in this document.** Per the founder's decided pricing strategy, caps should be set from real product telemetry once each dimension is live, not guessed at now — and should prefer active totals ("10 active clients") over lifetime totals ("10 clients ever created"), so a workspace is never forced to delete history to remain within a plan. Until a dimension actually exists in the product, no plan enforces a cap on it.
 
-**Compliance sits at Professional rather than Complete**, which is arguable. Contracts and e-signature are the second thing a small agency asks for after the Forecast, and placing them behind the payroll tier would put the most common upgrade trigger two plans away from the entry point.
+**Security principle.** Core security — encryption, MFA/passkeys, secure sessions, Vault security, basic role-based access — is universal, on every plan, for the same reason features are: a customer should not be less safe for paying less. What Enterprise actually sells on top is organizational security *governance*: SCIM, advanced policy enforcement, long-term audit retention, SIEM/DLP, customer-managed keys, residency choice, and the contractual/procurement relationship that comes with them.
+
+**Trust remains universal, with the same two exceptions as before.** Every plan carries [[VPS-A008_Trust_and_Data_Protection_Program|VPS-A008]]'s baseline promises — no staff access without the Owner's approval, a visible Access Transparency log, field-level encryption of pay and HR data, a tamper-evident audit log, published access rules and an open export. Customer-managed keys and residency choice stay Enterprise, for the same real-operating-cost reason as above, not because trust itself is a paid feature.
 
 ---
 
@@ -160,7 +160,7 @@ More importantly: **this is an opinionated product, and a free tier forces the o
 
 ---
 
-## How a feature knows its plan
+## How a workspace's plan is enforced
 
 ### Workspace fields
 
@@ -175,21 +175,21 @@ subscription_status:   enum: Trialing, Active, PastDue, Canceled
 trial_ends_at:         date, nullable
 ```
 
+**No `feature_type_entitlements` field exists, and none should be added.** Nothing in the graph resolves "can this workspace open this Feature Type" — every Feature Type is reachable on every plan, so there is nothing there to check.
+
 ### The third check
 
 [[VPS-A004_Graph_Permission_Layer|VPS-A004]]'s interceptor already runs two checks: **role permission**, and where [[VPS-F008_Vulto_Suite_Graph_Bridge|VPS-F008]] applies, **write authority**.
 
-`planEntitlement.check(workspaceId, featureType)` is a third, running **after both**, and it never widens anything. A feature the role cannot reach is refused by the first check regardless of plan.
+A third check, `usageEntitlement.check(workspaceId, dimension)`, runs **after both**, once a dimension named in "The four plans" above is actually metered, and it never widens anything. A feature the role cannot reach is refused by the first check regardless of plan. **It never resolves against Feature Type.** It resolves against a named consumption dimension (active clients, storage, automation executions, and so on) and the workspace's current usage against that dimension's cap for its plan — and where no cap is yet defined for a dimension, the check passes unconditionally rather than blocking on an unset limit.
 
-**It resolves against Feature Type, never a feature identifier.** A per-feature entitlement list is a list that drifts from [[VRS-001_Feature_Register|VRS-001]] the first time somebody forgets to update it; a type-level check cannot drift, because the type is already in the frontmatter.
+### What a capped workspace looks like
 
-### What a gated feature looks like
+**Not a permission error, and not a locked feature.** [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s restricted state means *you may not see this*, which is a statement about the person. A usage cap means *your workspace has reached its plan's limit on this*, which is a statement about consumption, not capability — the feature itself stays fully open.
 
-**Not a permission error.** [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s restricted state means *you may not see this*, which is a statement about the person. A plan gate means *your workspace has not bought this*, which is a statement about the account and needs its own treatment.
+A workspace at its cap renders **a plain statement of the limit reached, the workspace's current usage against it, and a single action to upgrade or increase the limit.** Not a blurred screenshot, not a teaser, not a modal that interrupts, and never wording implying the feature itself is unavailable — it is available; the workspace has simply reached the consumption its plan covers.
 
-A gated feature renders **a plain description of what it does, what plan includes it, and a single action to view plans.** Not a blurred screenshot, not a teaser, not a modal that interrupts.
-
-**Nothing is hidden from navigation.** A Starter workspace sees Payroll in its sidebar with a `Complete` badge. Hiding it means a customer never learns the product does the thing they are about to buy elsewhere.
+**Nothing about a feature's presence changes by plan.** A Starter workspace sees Payroll, Intelligence analytics, e-signature and every other application exactly as a Complete or Enterprise workspace does. What can change by plan is a specific consumption dimension's limit — for example, a cap on active clients — surfaced at the point the workspace actually reaches it, never as a reason a feature is hidden or degraded.
 
 ### Downgrade
 
@@ -205,15 +205,15 @@ A gated feature renders **a plain description of what it does, what plan include
 
 | ID | Specification |
 |---|---|
-| VPS-003-T01 | Plan entitlement MUST resolve against Feature Type, never a per-feature list |
-| VPS-003-T02 | The entitlement check MUST run after role permission and write authority, and MUST NOT widen either |
+| VPS-003-T01 | No feature or Feature Type MAY be gated by plan. Every Feature Type MUST be reachable on every plan, including Starter |
+| VPS-003-T02 | Where a consumption dimension is metered, its check MUST run after role permission and write authority, and MUST NOT widen either |
 | VPS-003-T03 | A downgrade MUST NOT destroy, hide or degrade any record. Affected surfaces become read-only |
 | VPS-003-T04 | Export MUST NOT be gated by plan or subscription status, including Canceled |
 | VPS-003-T05 | Billable seats MUST count Active Employee nodes only, billed on the monthly peak |
 | VPS-003-T06 | `price_locked_at` MUST be set at subscription and MUST NOT change. A rate card revision applies to new subscriptions only |
 | VPS-003-T07 | `regional_tier` MUST resolve once from the primary Entity's jurisdiction and MUST NOT be recomputed |
-| VPS-003-T08 | A gated feature MUST render its own plan-gate state, never [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s permission-restricted state |
-| VPS-003-T09 | Gated features MUST remain visible in navigation with their required plan named |
+| VPS-003-T08 | A workspace at a consumption cap MUST render its own usage-limit state, never [[VPS-D004_Application_Shell_Navigation_and_System_States|VPS-D004]]'s permission-restricted state, and MUST NOT imply the feature itself is unavailable |
+| VPS-003-T09 | A consumption cap MUST be surfaced at the point a workspace reaches it, never as a reason a feature is hidden from navigation or degraded in advance |
 | VPS-003-T10 | Billing fields are Tier 2, Owner-only. HR Admin has no access, per [[VPS-F001_Authentication_and_Workspace_Foundation|VPS-F001]] |
 
 ---
@@ -222,7 +222,13 @@ A gated feature renders **a plain description of what it does, what plan include
 
 **GIVEN** a Starter workspace opens Payroll
 **WHEN** it renders
-**THEN** a plan-gate state appears naming Complete, distinct from a permission-restricted state, with the feature still visible in navigation
+**THEN** it opens fully — Payroll is not gated by plan on any tier
+
+---
+
+**GIVEN** a Starter workspace has reached its plan's active-clients cap (once that dimension is metered)
+**WHEN** it attempts to add another active client
+**THEN** a usage-limit state appears naming the current usage and the cap, distinct from a permission-restricted state, and no other feature is affected
 
 ---
 
@@ -266,7 +272,7 @@ A gated feature renders **a plain description of what it does, what plan include
 
 - **Payment collection, invoicing and dunning** — a billing provider's territory, reached through [[VPS-A006_Platform_Services_and_Infrastructure|VPS-A006]]'s abstraction. This document defines what is owed, not how it is taken
 - **Per-application licensing** — permanently excluded, per the reasoning above
-- **Usage-based pricing on any dimension** — per employee, per month, and nothing else. Metered pricing on storage, API calls or payroll runs would make the bill unpredictable for a firm whose own margins are thin
+- **Metering a workspace's bill directly on a consumption dimension** — active-clients, storage, automation and AI-consumption caps (see "The four plans") gate *what a plan allows*, decided per plan tier, not a variable per-unit bill. The unit charge stays per employee, per month; consumption governs which flat-rate plan a workspace needs, not a metered invoice line
 - **A free tier** — permanently excluded
 - **Partner, reseller or agency-of-agencies pricing** — a real future question, not answered here
 - **Per-feature entitlement overrides** — a workspace with one Complete feature on a Professional plan is a support burden with no revenue path
@@ -275,9 +281,7 @@ A gated feature renders **a plain description of what it does, what plan include
 
 ## Decisions recorded
 
-**The Feature Type enum is the plan boundary.** It was defined in [[VPS-000_Documentation_Standard|VPS-000]] on engineering grounds and turns out to be the right commercial boundary, because both derive from what a feature does for the business. Every feature already knows its plan, and no assignment can drift from the register.
-
-**Experience ships with Starter**, the one deviation. A Starter workspace where employees cannot see their own leave balance is not a cheaper product, it is a worse one.
+**Corrected 28 September 2026, founder ruling (F360): no Feature Type is a plan boundary.** The original design used [[VPS-000_Documentation_Standard|VPS-000]]'s Feature Type enum to gate which applications a plan could open — Starter got `Core`/`Experience`, Professional added `Intelligence`/`Compliance`, Complete added `Financial`, Enterprise added `Platform`. That is rejected: engineering classification and commercial entitlement are not the same axis, and gating by feature category is exactly the artificial upgrade tax the founder's pricing strategy rejects. Every feature is now open on every plan, Starter included; plans differ only by consumption caps (active clients, storage, automation, AI usage, once each is metered) and by the enterprise-only governance features (SSO/SCIM, customer-managed keys, residency, SIEM/DLP) that carry real operating cost to run.
 
 **Enterprise pricing is published.** Every competitor hides it, and the reason they hide it is that they intend to charge differently depending on the conversation.
 
