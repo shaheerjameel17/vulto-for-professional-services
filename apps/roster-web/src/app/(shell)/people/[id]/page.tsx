@@ -1,99 +1,116 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Content, Tabs, TabPanel, Text, ToggleGroup, useShortcuts } from "@vulto/ui";
-import { buildEmployeeProfile } from "../../../../lib/profile";
-import { PROFILED_EMPLOYEE_IDS } from "../../../../fixtures/profiles";
+import { Content, Tabs, TabPanel, Text, useShortcuts } from "@vulto/ui";
+import {
+  employeeGetQuery,
+  employeeListForDirectoryQuery,
+  type DirectoryEmployee,
+} from "@vulto/graph";
+import {
+  fetchEmployee,
+  profileFromLocal,
+  type EmployeeAnswer,
+  type LocalEmployeeProfile,
+} from "../../../../lib/employee-profile";
+import { peopleOrder } from "../../../../lib/people-order";
+import { useShellBootstrap } from "../../../../components/shell-bootstrap";
 import { ProfileHeader } from "../../../../components/profile/ProfileHeader";
 import { OverviewTab } from "../../../../components/profile/OverviewTab";
 import { SkillsTab } from "../../../../components/profile/SkillsTab";
 import { DocumentsTab } from "../../../../components/profile/DocumentsTab";
 import { ActivityTab } from "../../../../components/profile/ActivityTab";
-import { canSeeCompensation, type ViewerRole } from "../../../../lib/viewer";
-
-/*
- * VRS-F002 — Atomic Employee Profiles.
- *
- * Tabs — Overview, Skills, Documents, Activity — with identity fixed above
- * them. `J`/`K` move between profiles without returning to the directory,
- * per VPS-D003, which is what makes reviewing a team a scan rather than a
- * navigation exercise.
- *
- * This screen uses Content only. VRS-F002's own screens table lists
- * "Content + Panel" for the profile, but names nothing the Panel would
- * show — nothing here is a list a Panel opens on selection from — so no
- * Panel is used. Logged as a specification gap rather than resolved by
- * inventing a use for it.
- */
-
-/** Prototype furniture only, exactly like the Bench Forecast's Owner/Manager
- * toggle: the only way to compare the authorized and unauthorized render of
- * the compensation Section side by side. Not a real permission system.
- *
- * The role vocabulary lives in `lib/viewer`. This screen previously declared
- * its own `hr-admin | team-member` union — a third `ViewerRole` type meaning
- * something different from the other two — which is how a codebase ends up
- * with three names for the same person. */
-type ProfileViewer = Extract<ViewerRole, "hr-admin" | "member">;
 
 export default function EmployeeProfilePage() {
-  const params = useParams<{ id: string }>();
+  const { id } = useParams<{ id: string }>();
   const router = useRouter();
+  const { client, workspaceId, reportUnauthorized } = useShellBootstrap();
   const [tab, setTab] = useState("overview");
-  const [role, setRole] = useState<ProfileViewer>("hr-admin");
-
-  const compensationVisible = canSeeCompensation(role);
-  const profile = buildEmployeeProfile(params.id, compensationVisible);
-
-  const index = PROFILED_EMPLOYEE_IDS.indexOf(params.id);
-
+  const [local, setLocal] = useState<LocalEmployeeProfile | null>(null);
+  const [employees, setEmployees] = useState<DirectoryEmployee[]>([]);
+  const [answer, setAnswer] = useState<EmployeeAnswer>(null);
+  const [protectedError, setProtectedError] = useState(false);
+  const [readRevision, setReadRevision] = useState(0);
+  const protectedSaved = useCallback(
+    () => setReadRevision((version) => version + 1),
+    [],
+  );
+  useEffect(() => {
+    setLocal(null);
+    return client.subscribe(employeeGetQuery(id), ({ result }) => {
+      if (result.kind === "device-query" && result.name === "employee.get")
+        setLocal(result.data);
+    });
+  }, [client, id]);
+  useEffect(
+    () =>
+      client.subscribe(employeeListForDirectoryQuery(), ({ result }) => {
+        if (
+          result.kind === "device-query" &&
+          result.name === "employee.listForDirectory"
+        )
+          setEmployees(result.data);
+      }),
+    [client],
+  );
+  useEffect(() => {
+    const controller = new AbortController();
+    setAnswer(null);
+    setProtectedError(false);
+    void fetchEmployee(id, controller.signal)
+      .then((data) => {
+        if (!controller.signal.aborted) setAnswer(data);
+      })
+      .catch((error: unknown) => {
+        if (controller.signal.aborted) return;
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "status" in error &&
+          error.status === 401
+        )
+          reportUnauthorized();
+        setProtectedError(true);
+      });
+    return () => controller.abort();
+  }, [id, readRevision, reportUnauthorized]);
+  const remembered = peopleOrder(workspaceId);
+  const order = remembered.length
+    ? remembered
+    : employees
+        .filter((employee) => employee.operational["employee_type"] !== "Ghost")
+        .map((employee) => employee.employeeId);
   function goTo(delta: number) {
-    if (index === -1) return;
-    const next = Math.min(PROFILED_EMPLOYEE_IDS.length - 1, Math.max(0, index + delta));
-    const nextId = PROFILED_EMPLOYEE_IDS[next];
-    if (nextId) router.push(`/people/${nextId}`);
+    const index = order.indexOf(id);
+    if (index < 0) return;
+    const next = order[Math.min(order.length - 1, Math.max(0, index + delta))];
+    if (next) router.push(`/people/${next}`);
   }
-
-  useShortcuts({
-    keys: {
-      j: () => goTo(1),
-      k: () => goTo(-1),
-    },
-  });
-
-  if (!profile) {
+  useShortcuts({ keys: { j: () => goTo(1), k: () => goTo(-1) } });
+  if (!local || local.employeeId !== id)
     return (
       <Content>
-        <div className="mt-6">
-          <Text variant="body" className="text-text-secondary">
-            No profile found for this person.
-          </Text>
-        </div>
+        <Text variant="body" className="text-text-secondary">
+          No profile found for this person.
+        </Text>
       </Content>
     );
-  }
-
+  const profile = profileFromLocal(local);
+  const compensation = answer?.compensation.find(
+    (item) =>
+      item.node_id === id &&
+      item.partition === "compensation" &&
+      item.state !== "erased",
+  );
   return (
     <Content>
-      {/* Prototype furniture, on its own row above the real header so
-       * ProfileHeader itself stays exactly what VRS-F002 specifies — this
-       * control has no equivalent in the spec. Not a real permission
-       * system; see the type above. */}
-      <div className="flex justify-end pt-4">
-        <ToggleGroup<ProfileViewer>
-          label="Viewing as"
-          value={role}
-          onChange={setRole}
-          options={[
-            { value: "hr-admin", label: "HR Admin" },
-            { value: "member", label: "Team Member" },
-          ]}
-        />
-      </div>
-
       <ProfileHeader profile={profile} />
-
+      {protectedError ? (
+        <Text variant="small" className="text-text-secondary">
+          Reconnect to load protected fields.
+        </Text>
+      ) : null}
       <Tabs
         value={tab}
         onChange={setTab}
@@ -105,7 +122,12 @@ export default function EmployeeProfilePage() {
         ]}
       >
         <TabPanel value="overview">
-          <OverviewTab profile={profile} />
+          <OverviewTab
+            profile={profile}
+            compensation={compensation}
+            employees={employees}
+            onProtectedSaved={protectedSaved}
+          />
         </TabPanel>
         <TabPanel value="skills">
           <SkillsTab profile={profile} />

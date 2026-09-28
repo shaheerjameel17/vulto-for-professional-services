@@ -1,5 +1,5 @@
 import { Text } from "@vulto/ui";
-import type { EmployeeProfile } from "../../lib/profile";
+import type { EmployeeProfile } from "../../lib/employee-profile";
 
 export function ActivityTab({ profile }: { profile: EmployeeProfile }) {
   if (profile.activity.length === 0) {

@@ -1,6 +1,6 @@
 import { FileText } from "lucide-react";
 import { Badge, Icon, Text } from "@vulto/ui";
-import type { EmployeeProfile } from "../../lib/profile";
+import type { EmployeeProfile } from "../../lib/employee-profile";
 
 export function DocumentsTab({ profile }: { profile: EmployeeProfile }) {
   if (profile.documents.length === 0) {

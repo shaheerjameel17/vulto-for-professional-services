@@ -164,6 +164,81 @@ const genericNode = (nodeId = uuid()) => ({
 });
 
 describe("replication into the cache", () => {
+  it("re-fires an Employee subscription for both operational and manager-edge-only changes", async () => {
+    const h = await harness();
+    const employee = uuid(),
+      manager = uuid();
+    const answers: { title: unknown; manager: unknown }[] = [];
+    const stop = h.engine.subscribe(
+      { kind: "device-query", name: "employee.get", args: { employee_id: employee } },
+      ({ result }) => {
+        if (
+          result.kind === "device-query" &&
+          result.name === "employee.get" &&
+          result.data
+        )
+          answers.push({
+            title: result.data.operational["job_title"],
+            manager: result.data.managerName,
+          });
+      },
+    );
+    await h.source("nodes").emit([
+      {
+        type: "changes",
+        cursor: { handle: "h", offset: "1" },
+        changes: [
+          nodeRow(employee, {
+            node_type: "Employee",
+            record: { full_name: "Ada", job_title: "Engineer" },
+          }),
+          nodeRow(manager, { node_type: "Employee", record: { full_name: "Grace" } }),
+        ],
+      },
+    ]);
+    await h.source("edges").emit([
+      {
+        type: "changes",
+        cursor: { handle: "e", offset: "1" },
+        changes: [
+          {
+            operation: "insert",
+            value: {
+              edge_id: uuid(),
+              workspace_id: WORKSPACE,
+              edge_type: "managed_by",
+              from_node_id: employee,
+              to_node_id: manager,
+              effective_from: null,
+              effective_to: null,
+              is_soft_deleted: false,
+              version: 1n,
+              record: {},
+            },
+          },
+        ],
+      },
+    ]);
+    await h.source("nodes").emit([
+      {
+        type: "changes",
+        cursor: { handle: "h", offset: "2" },
+        changes: [
+          {
+            ...nodeRow(employee, {
+              node_type: "Employee",
+              record: { full_name: "Ada", job_title: "Lead" },
+            }),
+            operation: "update",
+          },
+        ],
+      },
+    ]);
+    expect(answers).toContainEqual({ title: "Engineer", manager: "Grace" });
+    expect(answers.at(-1)).toEqual({ title: "Lead", manager: "Grace" });
+    stop();
+    await h.engine.stop();
+  });
   it("dispatches device queries and re-fires grouped and numeric subscriptions on notification changes", async () => {
     const h = await harness();
     const grouped: number[] = [],
@@ -695,7 +770,7 @@ describe("the outbox and optimistic writes", () => {
       }),
     ).toEqual({
       accepted: false,
-      reason: "requires-connection",
+      reason: "requires-protected-mutation",
     });
   });
 
@@ -963,6 +1038,74 @@ describe("review — a workspace mismatch fails closed", () => {
     expect(h.api.applied.size).toBe(1);
     expect(await h.database.all("SELECT * FROM outbox")).toEqual([]);
     expect(h.engine.getState().attention).toEqual([]);
+  });
+});
+
+describe("protected mutations never enter durable storage", () => {
+  const args = {
+    employee_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+    compensation: {
+      base_compensation_amount: 123456.78,
+      compensation_frequency: "Annual",
+      compensation_currency: "USD",
+    },
+  };
+
+  it("refuses the old method online and offline without writing or uploading", async () => {
+    const h = await harness();
+    await h.source("nodes").emit([upToDate()]);
+    await h.source("edges").emit([upToDate()]);
+    expect(await h.engine.mutate("employee.setCompensation", args)).toEqual({
+      accepted: false,
+      reason: "requires-protected-mutation",
+    });
+    h.source("nodes").fail({ kind: "network" });
+    expect(await h.engine.mutate("employee.setCompensation", args)).toEqual({
+      accepted: false,
+      reason: "requires-protected-mutation",
+    });
+    expect(await h.database.all("SELECT * FROM outbox")).toEqual([]);
+    expect(h.api.calls).toEqual([]);
+    await h.engine.stop();
+  });
+
+  it("awaits upload inline and leaves outbox empty after an interrupted upload", async () => {
+    const h = await harness();
+    await h.source("nodes").emit([upToDate()]);
+    await h.source("edges").emit([upToDate()]);
+    h.api.offline = true;
+    expect(await h.engine.protectedMutate("employee.setCompensation", args)).toEqual({
+      accepted: false,
+      reason: "requires-connection",
+    });
+    expect(h.api.calls).toHaveLength(1);
+    expect(await h.database.all("SELECT * FROM outbox")).toEqual([]);
+    expect(await h.engine.protectedMutate("employee.setCompensation", args)).toEqual({
+      accepted: false,
+      reason: "requires-connection",
+    });
+    expect(h.api.calls).toHaveLength(1);
+    await h.engine.stop();
+  });
+
+  it("maps a successful and a rejected single server outcome", async () => {
+    const h = await harness();
+    await h.source("nodes").emit([upToDate()]);
+    await h.source("edges").emit([upToDate()]);
+    expect(
+      (await h.engine.protectedMutate("employee.setCompensation", args)).accepted,
+    ).toBe(true);
+    const apply = h.api.applyMutations.bind(h.api);
+    h.api.applyMutations = async (envelopes) => {
+      h.api.reject.set(envelopes[0]!.mutation_id, "role");
+      return apply(envelopes);
+    };
+    expect(await h.engine.protectedMutate("employee.setCompensation", args)).toEqual({
+      accepted: false,
+      reason: "role",
+    });
+    expect(await h.database.all("SELECT * FROM outbox")).toEqual([]);
+    await h.engine.stop();
   });
 });
 

@@ -98,6 +98,19 @@ const deviceQuerySchema = z.discriminatedUnion("name", [
   z
     .object({
       kind: z.literal("device-query"),
+      name: z.literal("employee.listForDirectory"),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("device-query"),
+      name: z.literal("employee.get"),
+      args: z.object({ employee_id: uuidV4Schema }).strict(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("device-query"),
       name: z.literal("notification.listForUser"),
     })
     .strict(),
@@ -133,6 +146,14 @@ export type GraphQuery = z.infer<typeof graphQuerySchema>;
 
 export const notificationListForUserQuery = () =>
   ({ kind: "device-query", name: "notification.listForUser" }) as const;
+export const employeeListForDirectoryQuery = () =>
+  ({ kind: "device-query", name: "employee.listForDirectory" }) as const;
+export const employeeGetQuery = (employeeId: string) =>
+  ({
+    kind: "device-query",
+    name: "employee.get",
+    args: { employee_id: employeeId },
+  }) as const;
 export const notificationUnreadActionCountQuery = () =>
   ({ kind: "device-query", name: "notification.unreadActionCount" }) as const;
 export const searchDeviceQuery = (text: string, limit?: number) =>

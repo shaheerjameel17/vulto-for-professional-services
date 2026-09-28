@@ -1,6 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { employeeListForDirectoryQuery, type DirectoryEmployee } from "@vulto/graph";
+import type { EmploymentType } from "@vulto/graph";
+import { useShellBootstrap } from "../../../components/shell-bootstrap";
+import { rememberPeopleOrder } from "../../../lib/people-order";
+import { notificationRefusalMessage } from "../../../lib/notification-refusal";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import {
@@ -15,9 +20,6 @@ import {
   Text,
   type TableColumn,
 } from "@vulto/ui";
-import { EMPLOYEES, type Employee } from "../../../fixtures/roster";
-import { profileFor, type EmploymentType } from "../../../fixtures/profiles";
-import { ENTITY_NAMES, type EntityId } from "../../../fixtures/calendar";
 import {
   AddPersonDialog,
   type NewPersonDraft,
@@ -43,7 +45,15 @@ import {
  */
 
 type DirectoryRow = {
-  employee: Employee;
+  employee: {
+    employeeId: string;
+    fullName: string;
+    employeeCode: string;
+    jobTitle: string;
+    entityId: string;
+  };
+  lifecycleStatus: string;
+  entityName: string;
   department: string;
   employmentType: string;
   managerName?: string;
@@ -52,11 +62,6 @@ type DirectoryRow = {
 
 type DirectoryColumnKey =
   "code" | "role" | "department" | "entity" | "type" | "status" | "manager" | "hours";
-
-const ENTITY_FILTERS: { value: EntityId; label: string; keywords: string }[] = [
-  { value: "uk", label: ENTITY_NAMES.uk, keywords: "UK London" },
-  { value: "pk", label: ENTITY_NAMES.pk, keywords: "PK Pakistan Karachi" },
-];
 
 const TYPE_FILTERS: { value: EmploymentType; label: string }[] = [
   { value: "FullTime", label: "Full time" },
@@ -78,6 +83,37 @@ const COLUMN_OPTIONS: { value: DirectoryColumnKey; label: string }[] = [
 
 export default function PeoplePage() {
   const router = useRouter();
+  const { client, workspaceId } = useShellBootstrap();
+  const [employees, setEmployees] = useState<DirectoryEmployee[]>([]);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  useEffect(
+    () =>
+      client.subscribe(employeeListForDirectoryQuery(), ({ result }) => {
+        if (
+          result.kind === "device-query" &&
+          result.name === "employee.listForDirectory"
+        )
+          setEmployees(result.data);
+      }),
+    [client],
+  );
+  const ENTITY_FILTERS = useMemo(
+    () => [
+      ...new Map(
+        employees
+          .filter((row) => row.entityId !== null)
+          .map((row) => [
+            row.entityId!,
+            {
+              value: row.entityId!,
+              label: row.entityName ?? row.entityId!,
+              keywords: row.entityName ?? "",
+            },
+          ]),
+      ).values(),
+    ],
+    [employees],
+  );
   /*
    * Every option selected, not none.
    *
@@ -88,9 +124,14 @@ export default function PeoplePage() {
    * opposite of what is true. The control should agree with the table it
    * controls at rest.
    */
-  const [entityFilter, setEntityFilter] = useState<EntityId[]>(
-    ENTITY_FILTERS.map((option) => option.value),
-  );
+  const [entityFilter, setEntityFilter] = useState<string[]>([]);
+  const entityFilterInitialized = useRef(false);
+  useEffect(() => {
+    if (!entityFilterInitialized.current && ENTITY_FILTERS.length > 0) {
+      entityFilterInitialized.current = true;
+      setEntityFilter(ENTITY_FILTERS.map((option) => option.value));
+    }
+  }, [ENTITY_FILTERS]);
   const [typeFilter, setTypeFilter] = useState<EmploymentType[]>(
     TYPE_FILTERS.map((option) => option.value),
   );
@@ -110,22 +151,80 @@ export default function PeoplePage() {
     COLUMN_OPTIONS.map((column) => column.value),
   );
   const [addPersonOpen, setAddPersonOpen] = useState(false);
-  const [lastCreated, setLastCreated] = useState<NewPersonDraft | null>(null);
+  const [dialogInstance, setDialogInstance] = useState(0);
+  const creationId = useRef<string | null>(null);
+  useEffect(
+    () =>
+      client.syncStatus.subscribe((state) => {
+        const rejected = state.attention.find(
+          (item) => item.mutationId === creationId.current,
+        );
+        if (rejected) {
+          creationId.current = null;
+          setRefusal(notificationRefusalMessage(rejected.reason));
+          setAddPersonOpen(true);
+        }
+      }),
+    [client],
+  );
 
   const rows: DirectoryRow[] = useMemo(
     () =>
-      EMPLOYEES.filter((e) => e.employeeType === "Employee").map((employee) => {
-        const detail = profileFor(employee.employeeId);
-        return {
-          employee,
-          department: detail?.department ?? "—",
-          employmentType: detail?.employmentType ?? "—",
-          managerName: detail?.managerName,
-          contractedHours: detail?.contractedHours,
-        };
-      }),
-    [],
+      employees
+        .filter((row) => row.operational["employee_type"] !== "Ghost")
+        .map((row) => {
+          const r = row.operational;
+          return {
+            employee: {
+              employeeId: row.employeeId,
+              fullName: String(r["full_name"] ?? ""),
+              employeeCode: String(r["employee_code"] ?? ""),
+              jobTitle: String(r["job_title"] ?? ""),
+              entityId: row.entityId ?? "",
+            },
+            lifecycleStatus: row.lifecycleStatus,
+            entityName: row.entityName ?? "—",
+            department: String(r["department"] ?? "—"),
+            employmentType: String(r["employment_type"] ?? "—"),
+            managerName: row.managerName ?? undefined,
+            contractedHours:
+              typeof r["contracted_hours"] === "number"
+                ? r["contracted_hours"]
+                : undefined,
+          };
+        }),
+    [employees],
   );
+  const orderedRowsChange = useCallback(
+    (ordered: DirectoryRow[]) => {
+      rememberPeopleOrder(
+        workspaceId,
+        ordered.map((row) => row.employee.employeeId),
+      );
+    },
+    [workspaceId],
+  );
+
+  async function createPerson(person: NewPersonDraft): Promise<boolean> {
+    setRefusal(null);
+    const outcome = await client.mutate("employee.create", {
+      employee_id: crypto.randomUUID(),
+      entity_id: person.entityId,
+      effective_from: new Date().toISOString(),
+      fields: {
+        employee_code: person.employeeCode,
+        full_name: person.fullName,
+        email: person.email,
+        job_title: person.jobTitle,
+        department: person.department || null,
+        employment_type: person.employmentType,
+        start_date: person.startDate,
+      },
+    });
+    if (!outcome.accepted) setRefusal(notificationRefusalMessage(outcome.reason));
+    else creationId.current = outcome.mutationId;
+    return outcome.accepted;
+  }
 
   const filteredRows = rows.filter((row) => {
     if (entityFilter.length > 0 && !entityFilter.includes(row.employee.entityId))
@@ -192,10 +291,10 @@ export default function PeoplePage() {
       key: "entity",
       header: "Entity",
       sortable: true,
-      sortValue: (row) => ENTITY_NAMES[row.employee.entityId],
+      sortValue: (row) => row.entityName,
       render: (row) => (
         <Text variant="body" className="text-text-secondary">
-          {ENTITY_NAMES[row.employee.entityId]}
+          {row.entityName}
         </Text>
       ),
     },
@@ -213,9 +312,12 @@ export default function PeoplePage() {
     {
       key: "status",
       header: "Status",
-      render: () => (
-        <Badge tone="success" shape="pill">
-          Active
+      render: (row) => (
+        <Badge
+          tone={row.lifecycleStatus === "Active" ? "success" : "neutral"}
+          shape="pill"
+        >
+          {row.lifecycleStatus}
         </Badge>
       ),
     },
@@ -265,15 +367,25 @@ export default function PeoplePage() {
     <>
       <PageHeader
         title="People"
+        headingLevel={1}
         actions={
-          <Button variant="primary" icon={Plus} onClick={() => setAddPersonOpen(true)}>
+          <Button
+            variant="secondary"
+            icon={Plus}
+            onClick={() => {
+              creationId.current = null;
+              setRefusal(null);
+              setDialogInstance((value) => value + 1);
+              setAddPersonOpen(true);
+            }}
+          >
             Add person
           </Button>
         }
       />
       <Content>
         <div className="sticky top-0 z-30 flex h-12 flex-wrap items-center gap-2 bg-bg-subtle">
-          <MultiSelect<EntityId>
+          <MultiSelect<string>
             label="Entity"
             allLabel="All entities"
             value={entityFilter}
@@ -304,10 +416,9 @@ export default function PeoplePage() {
           />
         </div>
 
-        {lastCreated ? (
-          <InlineAlert tone="success" className="mt-4">
-            {lastCreated.fullName} was added to this prototype session. Reloading clears
-            the mock change.
+        {refusal ? (
+          <InlineAlert tone="danger" className="mt-4">
+            {refusal}
           </InlineAlert>
         ) : null}
 
@@ -315,6 +426,7 @@ export default function PeoplePage() {
           <Table
             columns={columns}
             rows={filteredRows}
+            onOrderedRowsChange={orderedRowsChange}
             rowKey={(row) => row.employee.employeeId}
             appearance="directory"
             stickyHeaderClassName="top-12"
@@ -351,9 +463,12 @@ export default function PeoplePage() {
         </div>
       </Content>
       <AddPersonDialog
+        key={dialogInstance}
         open={addPersonOpen}
         onOpenChange={setAddPersonOpen}
-        onCreate={setLastCreated}
+        onCreate={createPerson}
+        entities={ENTITY_FILTERS}
+        refusal={refusal}
       />
     </>
   );

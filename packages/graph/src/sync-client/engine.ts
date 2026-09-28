@@ -352,9 +352,9 @@ export class SyncEngine {
   async mutate(name: string, args: unknown): Promise<MutateOutcome> {
     const definition = getMutationDefinition(name);
     if (!definition) return { accepted: false, reason: "unknown-mutation" };
-    // A protected or online-only mutation is never queued (A003-T63).
-    if (definition.onlineOnly && this.#connectivity !== "online") {
-      return { accepted: false, reason: "requires-connection" };
+    // Protected arguments must never enter the durable outbox, even online.
+    if (definition.tier > 0 || definition.onlineOnly) {
+      return { accepted: false, reason: "requires-protected-mutation" };
     }
     const mutationId = (this.#options.newId ?? (() => crypto.randomUUID()))();
     const now = (this.#options.now ?? (() => new Date().toISOString()))();
@@ -503,6 +503,38 @@ export class SyncEngine {
   }
 
   // ── Protected values: memory only ───────────────────────────────────────
+
+  async protectedMutate(name: string, args: unknown): Promise<MutateOutcome> {
+    if (!getMutationDefinition(name)) {
+      return { accepted: false, reason: "unknown-mutation" };
+    }
+    if (this.#connectivity !== "online") {
+      return { accepted: false, reason: "requires-connection" };
+    }
+    const mutationId = (this.#options.newId ?? (() => crypto.randomUUID()))();
+    try {
+      const [outcome] = await this.#options.api.applyMutations([
+        { mutation_id: mutationId, name, args },
+      ]);
+      if (!outcome) return { accepted: false, reason: "rejected" };
+      return outcome.status === "rejected"
+        ? { accepted: false, reason: outcome.reason ?? "rejected" }
+        : { accepted: true, mutationId };
+    } catch (error) {
+      if (error instanceof ApiError && error.kind === "network") {
+        this.#connectivity = "offline";
+        await this.#refreshState();
+        return { accepted: false, reason: "requires-connection" };
+      }
+      if (error instanceof ApiError && error.kind === "unauthenticated") {
+        this.#refusal = "unauthorized";
+        await this.#refreshState();
+        return { accepted: false, reason: "unauthorized" };
+      }
+      // Do not relay an exception that might contain protected request values.
+      return { accepted: false, reason: "rejected" };
+    }
+  }
 
   async protectedRead(nodeIds: readonly string[]): Promise<ProtectedReadOutcome> {
     // Always try: the connectivity flag is a hint, and a request that works is the cure.

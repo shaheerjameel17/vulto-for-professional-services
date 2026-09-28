@@ -1,6 +1,12 @@
 /** Presentation only: the server still decides whether a read-state write is allowed. */
 export const NOTIFICATION_REFUSAL_MESSAGES: Readonly<Record<string, string>> = {
   "not-found": "This item is no longer available",
+  "duplicate-email": "A person with this email already exists",
+  "duplicate-code": "This employee code is already in use",
+  cycle: "This reporting line would create a cycle. Choose another manager",
+  "no-change": "This person already reports to that manager",
+  "requires-protected-mutation":
+    "This protected change requires the secure online editor",
   role: "You don't have access to do that",
   "write-authority": "This action isn't available in this application",
   "mutation-id-conflict":

@@ -22,12 +22,12 @@ export interface SkillMatrixCell {
   readonly certified: false;
 }
 
-const activeHolding = (edge: LocalEdge, now: string) =>
+export const activeHolding = (edge: LocalEdge, now: string) =>
   edge.edgeType === "has_skill" &&
   edge.effectiveTo === null &&
   (edge.effectiveFrom === null || edge.effectiveFrom <= now);
 
-const holdingCell = (edge: LocalEdge): SkillMatrixCell | null => {
+export const holdingCell = (edge: LocalEdge): SkillMatrixCell | null => {
   const metadata = edge.record["metadata"] as Record<string, unknown> | undefined;
   const parsed = proficiencyLevelSchema.safeParse(metadata?.["proficiency_level"]);
   if (!parsed.success) return null;

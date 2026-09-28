@@ -1,7 +1,7 @@
 "use client";
 
 import { ChevronDown, ChevronUp } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useReorder } from "./useReorder";
 import { cx } from "./cx";
 import { Icon } from "./Icon";
@@ -63,6 +63,7 @@ export type TableProps<T> = {
   rows: T[];
   rowKey: (row: T) => string;
   onRowClick?: (row: T) => void;
+  onOrderedRowsChange?: (rows: T[]) => void;
   /** Controlled selection for J/K-driven experience surfaces. */
   selectedRowKey?: string;
   emptyState?: ReactNode;
@@ -136,6 +137,7 @@ export function Table<T>({
   rows,
   rowKey,
   onRowClick,
+  onOrderedRowsChange,
   selectedRowKey,
   emptyState,
   appearance = "default",
@@ -168,7 +170,7 @@ export function Table<T>({
     });
   }
 
-  const sortedRows = (() => {
+  const sortedRows = useMemo(() => {
     if (!sort) return rows;
     const column = columns.find((c) => c.key === sort.key);
     if (!column?.sortValue) return rows;
@@ -179,7 +181,11 @@ export function Table<T>({
       return 0;
     });
     return withValue.map((w) => w.row);
-  })();
+  }, [rows, columns, sort]);
+
+  useEffect(() => {
+    onOrderedRowsChange?.(sortedRows);
+  }, [sortedRows, onOrderedRowsChange]);
 
   if (rows.length === 0 && emptyState) {
     return <>{emptyState}</>;

@@ -1,5 +1,9 @@
 import type { GraphQuery } from "../query";
 import {
+  listEmployeesForDirectory,
+  getEmployeeForProfile,
+} from "../queries/employee-directory";
+import {
   notificationListForUser,
   notificationUnreadActionCount,
 } from "../queries/notifications";
@@ -37,6 +41,16 @@ export interface CacheNeighbor {
 }
 
 export type CacheQueryResult =
+  | {
+      readonly kind: "device-query";
+      readonly name: "employee.listForDirectory";
+      readonly data: Awaited<ReturnType<typeof listEmployeesForDirectory>>;
+    }
+  | {
+      readonly kind: "device-query";
+      readonly name: "employee.get";
+      readonly data: Awaited<ReturnType<typeof getEmployeeForProfile>>;
+    }
   | {
       readonly kind: "device-query";
       readonly name: "notification.listForUser";
@@ -101,6 +115,18 @@ export async function runCacheQuery(
   switch (query.kind) {
     case "device-query":
       switch (query.name) {
+        case "employee.listForDirectory":
+          return {
+            kind: query.kind,
+            name: query.name,
+            data: await listEmployeesForDirectory(database),
+          };
+        case "employee.get":
+          return {
+            kind: query.kind,
+            name: query.name,
+            data: await getEmployeeForProfile(database, query.args.employee_id),
+          };
         case "notification.listForUser":
           return {
             kind: query.kind,
