@@ -6,7 +6,7 @@ This document is for whichever Claude session is acting as **the reviewer** on V
 
 Shaheer Jameel (founder/CEO, Vulto/Xelerate Lab, Islamabad) runs a two-agent build pipeline for this rebuild:
 
-- **Codex** is the builder. It works via git branches and Linear issues, in its own environment, following the brief in `docs/Claude_Code_Build_Prompt.md`.
+- **Codex** is the builder. It works via git branches and Notion issues, in its own environment, following the brief in `docs/Claude_Code_Build_Prompt.md`.
 - **The reviewer** (you) verifies Codex's work directly against the actual code — never from its report's prose alone — rules on findings using standing founder-delegated authority, documents rulings, and writes each next stage's brief before Codex resumes.
 
 Shaheer relays messages between the two of you by hand (Codex is not in this conversation and cannot read it). Every ruling, finding and brief you produce needs to survive being copy-pasted to a separate agent with no shared context — write self-contained prose, not shorthand that only makes sense here.
@@ -54,7 +54,7 @@ Never approve a stage, or accept a finding's fix, from a completion report's pro
 
 If the review turns up nothing: merge the branch into `main` with `--no-ff`, write the completion-review paragraph into `Reviewer_Handoff.md`'s numbered section for that stage (matching the style of every prior one — specific files, specific functions, specific test names, not a generic "looks good"), update the stage-status table, and write the next stage's brief in the same sitting, per unbroken practice — checking the next feature directly against the code before writing its brief, the same way every stage's own brief has been produced. Only stop and wait for Shaheer at the actual stage boundary (report written, Linear updated) — writing the next brief is your own job, not something that needs his go-ahead first.
 
-If the review finds something: rule it (directly or via escalation, per the authority section above), document it across the three docs, and hand Shaheer a resume prompt for Codex plus whatever Linear content he needs to paste or a connected Linear tool needs executed.
+If the review finds something: rule it (directly or via escalation, per the authority section above), document it across the three docs, and hand Shaheer a resume prompt for Codex plus whatever Notion content he needs to paste or a connected Notion tool needs executed.
 
 ## Issue tracking (Notion)
 

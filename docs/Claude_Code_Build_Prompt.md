@@ -31,7 +31,7 @@ Until 20 September 2026 this repository was building a **local-first, device-can
 | Trust program (context only this phase) | `docs/Vulto_Specs/VPS-A008_Trust_and_Data_Protection_Program.md` |
 | Why the direction changed | `docs/Foundations_Findings.md` — F199, F200, F201, F202 |
 | Project rules | `CLAUDE.md` |
-| Work tracking | Linear, team **Vulto Foundation**, project **Server-Authoritative Data Layer** |
+| Work tracking | Notion — **Vulto Issues (Engineering)**, Team = Vulto Foundation, Project = Server-Authoritative Data Layer (search by `Legacy Linear ID` for older FDN-xx numbers this document uses) |
 
 ### Repository state at the start of this phase
 
@@ -73,16 +73,19 @@ Until 20 September 2026 this repository was building a **local-first, device-can
 
 - Each stage runs on its own branch from the latest `main`: `stage-<N>-<slug>`, for example `stage-2-graph-store`.
 - Commit in small logical steps: `feat(FDN-94): ...`, `test(FDN-94): ...`, `docs(FDN-94): ...`.
-- At the end of a stage: run the gates, push the branch, write the report, update Linear, and **stop**.
-- When the founder writes "Stage N approved": merge the branch into `main` with `git merge --no-ff stage-N-...`, push `main`, set that stage's Linear issues to **Done**, then start Stage N+1 from the new `main`.
+- At the end of a stage: run the gates, push the branch, write the report, update the stage's Notion issue(s), and **stop**.
+- When the founder writes "Stage N approved": merge the branch into `main` with `git merge --no-ff stage-N-...`, push `main`, set that stage's Notion issue(s) Status to **Done**, then start Stage N+1 from the new `main`.
 - Never force-push `main`. Never rewrite `archive/local-first-e2e` or `fdn-68-audit-wip`.
 
-### Linear workflow
+### Notion workflow
 
-- When a stage starts, set its issues to **In Progress**.
-- When the stage report is written, set them to **In Review** and add a comment on each: the report path, the branch name, and a one-paragraph summary.
+**Work tracking moved from Linear to Notion on 27–28 September 2026 (F363). Do not create, update or comment on a Linear issue for any reason — Linear is retained read-only, as provenance only.** The live system of record is three related Notion databases under the **Vulto for Professional Services** page: **Vulto Issues (Engineering)**, **Vulto Projects (Engineering)**, **Vulto Milestones (Engineering)**. Use the `mcp__Notion__*` tools directly (`notion-update-page`, `notion-create-comment`, `notion-query-data-sources`) rather than asking the founder to paste anything.
+
+- When a stage starts, set its issue(s)' Status to **In Progress**.
+- When the stage report is written, set them to **In Review** and add a Notion comment on each: the report path, the branch name, and a one-paragraph summary.
 - Do not set anything to **Done** before approval.
 - If you raise a finding, comment it on the relevant issue.
+- `Legacy Linear ID` on each Notion issue preserves its old `RST-*`/`FDN-*` identifier — this document's own entries below still use those numbers, and they still identify the same issue.
 
 ### The stage report
 
@@ -93,7 +96,7 @@ At the end of every stage, write `docs/stage-reports/STAGE-<N>_<Slug>.md` with *
 
 **Status:** COMPLETE | BLOCKED
 **Branch:** stage-<N>-<slug> @ <commit sha>
-**Linear issues:** FDN-xx, FDN-yy
+**Notion issues:** FDN-xx, FDN-yy (Legacy Linear ID)
 **Date:** YYYY-MM-DD
 
 ## 1. Summary
