@@ -18,6 +18,6 @@ export { graphMutations } from "../graph/schema.js";
 export { applyMutation } from "../mutations/pipeline.js";
 export { deliverNotification } from "../mutations/notification-delivery.js";
 export { resolveMemberPrincipal } from "../permission/member-principal.js";
-export { addNode, makeWorkspace } from "../permission/test-support.js";
+export { addEdge, addNode, makeWorkspace } from "../permission/test-support.js";
 export { getKeyServices } from "../crypto/keys.js";
 export { writeProtected } from "../protected/write.js";

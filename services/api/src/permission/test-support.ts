@@ -8,7 +8,7 @@ import {
 } from "../auth/workspace-session.js";
 import { db } from "../db.js";
 import type { GraphTx } from "../graph/tx.js";
-import { insertNode } from "../graph/store.js";
+import { insertEdge, insertNode } from "../graph/store.js";
 
 /** Test fixtures shared by the permission and audit suites. Not imported by production code. */
 
@@ -131,4 +131,18 @@ export async function addNode(
   const record = nodeRecord(nodeType, workspaceId);
   await insertNode(tx, { ...fields, ...record });
   return record.node_id;
+}
+
+export async function addEdge(
+  tx: GraphTx,
+  workspaceId: string,
+  edgeType: string,
+  from: string,
+  to: string,
+  effectiveFrom: string | null = NOW,
+  effectiveTo: string | null = null,
+): Promise<string> {
+  const record = edgeRecord(edgeType, from, to, effectiveFrom, effectiveTo);
+  await insertEdge(tx, workspaceId, record);
+  return record.edge_id;
 }

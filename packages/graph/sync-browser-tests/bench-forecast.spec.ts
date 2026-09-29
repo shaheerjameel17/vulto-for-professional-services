@@ -4,6 +4,7 @@ import path from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import {
+  addEdge,
   addNode,
   admitWorkspaceMember,
   applyMutation,
@@ -202,8 +203,9 @@ async function seed(ownerId: string, managerUserId: string) {
       effective_to: null,
     },
   });
-  const burnoutId = await db.transaction(async (tx) => {
+  await db.transaction(async (tx) => {
     const id = await addNode(tx, workspaceId, "BurnoutAlert");
+    await addEdge(tx, workspaceId, "triggered_by", id, ids[0]);
     await writeProtected(
       tx,
       getKeyServices(),
@@ -211,17 +213,6 @@ async function seed(ownerId: string, managerUserId: string) {
       "record",
       { severity: "High" },
     );
-    return id;
-  });
-  await apply("graph.createEdge", {
-    edge: {
-      edge_id: randomUUID(),
-      edge_type: "triggered_by",
-      from_node_id: burnoutId,
-      to_node_id: ids[0],
-      effective_from: new Date().toISOString(),
-      effective_to: null,
-    },
   });
   await db.transaction((tx) =>
     audienceMaterializer.recomputeWorkspace(tx, workspaceId),
