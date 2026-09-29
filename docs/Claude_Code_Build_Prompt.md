@@ -660,6 +660,42 @@ The third UI stage of the pilot slice, wiring the product's centerpiece screen (
 
 ---
 
+### UI-3 brief correction (F366–F369), following Codex's pre-build trace
+
+Codex's mandatory pre-build trace (`docs/stage-reports/STAGE-UI-3_Bench_Forecast.md`, 29 September 2026) found nine contradictions and one non-blocking correction before writing any product code, exactly as this brief's own "read this before anything else" instruction required. Every one of them was independently re-verified directly against the code before this ruling — none was taken on the trace's word alone. All nine resolve to precedent (`F239`, `F240`, `F241`, `F242`, `F292`, `F236`, `F358`) or to a mechanical, additive extension of an already-authorized endpoint; none required a founder ruling. Four new findings record the resolutions: `F366` (the local query's return shape and grouping need real completion — F365's "no code change needed" clause is corrected), `F367` (bench cost needs a per-region breakdown, not one total per employee), `F368` (the contextual-intelligence and Ghost-promotion wiring in Do items 1 and 3 cannot work as originally written), and `F369` (the Manager's workspace-wide read scope is F292's deliberate, founder-ruled design, not a gap — `VRS-F005`'s "what a Manager sees" language is simply stale). Read all four before resuming.
+
+This section corrects Do items 1 through 5 and 9 of the original brief above. Do items 6, 7, and 8 are unchanged.
+
+**1. Extend the device queries (F365, F368) — corrected.** As originally briefed: add `benchForecast.get`, `contextualIntelligence.get` and `conflictCheck.evaluate` to `deviceQuerySchema`/`runCacheQuery`. Corrected per F368: `contextualIntelligence.get` dispatches to `getLocalContextualIntelligence` alone (Tier 0 only — skills, open roles, references) — not the combined `getContextualIntelligence(database, employeeId, getProtected)` function, which cannot run inside a synchronous, local-only `device-query` dispatch and has no node id to hand a `protectedRead`-style callback for the Tier 2 alerts it needs. `benchForecast.get` and `conflictCheck.evaluate` dispatch unchanged, once `bench-forecast.ts` itself is corrected per item 2 below.
+
+**2. Complete, then wire, the Bench Forecast query and screen (F365, F366) — corrected.** Before wiring `benchForecast.get` into the screen, `packages/graph/src/queries/bench-forecast.ts` needs completing against contracts already settled at Stage 13, not just registering as-is:
+- `BenchForecastRow` gains a per-date `calendarDays: { date: string, isWorking: boolean, note: string | null }[]` covering the full visible window (not only bench-gap dates), so `Timeline.tsx`'s `workingDayStates`/day notes can render without a second calendar read.
+- The bench-day computation excludes `Pitch`-categorized `TimesheetEntry` dates, reading that node type (Tier 0, already registered) the same way the server's `benchDaysForWindow` already does (`F283`) — `F239`'s deferral is discharged now that `VRS-F009`/`VRS-F010` exist.
+- Each Ghost row (an Employee with `employee_type: "Ghost"`) resolves and returns its pointing `GhostResource`'s own `ghostResourceId` and `ghostResourceVersion` — distinct from the Ghost Employee's own id, and required by `ghostResource.promote`'s input.
+- `BenchAssignmentBar` gains `version`, matching `F240`'s already-decided `assignment.cancel(assignmentId, expectedVersion)` contract.
+- `groupBench` is corrected to span non-working dates inside an existing gap (matching `lib/bench.ts`'s settled F2/F26/F27/F30/F36 semantics) instead of breaking the gap at every weekend or holiday.
+- The row gains `entityId` (already resolved locally, previously discarded after filtering) and each assignment bar gains a resolved client name alongside `clientId`.
+- `bench-forecast.test.ts` is extended to cover the new fields and the corrected grouping; it is not rewritten from scratch, and its existing offline/filter scenario keeps passing.
+
+Once corrected, wire the screen as originally briefed: replace `buildForecast`'s fixture call with a `benchForecast.get` subscription; adapt `lib/bench.ts` to consume the corrected `BenchForecastRow[]` shape (using the new `calendarDays` in place of `fixtures/calendar.ts`'s helpers); filters, shortcuts, and the Panel-scroll behavior are unchanged from the original brief.
+
+**3. The Contextual Intelligence Panel (F365, F368) — corrected.** As originally briefed, with two corrections: Tier 2 fields (`burnoutAlert`, `flightRiskSignal`) are fetched via a new, separate, on-demand `contextualIntelligence.getProtected` typed call (the server procedure already exists, unchanged), batched and non-blocking with `cache: "no-store"`, mirroring `F358`'s exact Employee-profile pattern and this brief's own Do item 4 pattern for bench cost/aggregate — not obtained by injecting a `getProtected` callback into the local subscription. "Promote to employee" submits via `client.protectedMutate`, not `client.mutate` — `ghostResourcePromote` is `onlineOnly: true` and the engine refuses `onlineOnly` mutations through `client.mutate` outright — supplying the `ghostResourceId`/`ghostResourceVersion` item 2 now returns. Everything else (Assignment create/update wiring, the conflict-override path, the revenue-gap dismiss) is unchanged.
+
+**4. Bench cost and aggregate utilization (F367) — corrected.** `benchForecast.getCost` is called per visible bench region, not per employee for the whole window: request `{ employeeId, fromDate, toDate }[]` for each region needing a figure, receive one costed (or F36-suppressed) result per region. The interceptor gate and per-day cost math are unchanged; only the grouping changes. `benchForecast.getAggregate` is unchanged from the original brief.
+
+**5. Role-scoped cohort (F369) — corrected.** Do not add a client-side Manager filter; the audience is correct as built. Confirm `F292` governs this screen (Employee operational data readable by every workspace member, Bench Forecast named as one of its own reasons) and correct `VRS-F005`'s "what a Manager sees" section to state the current, intentional workspace-wide view instead of the pre-`F292` direct-reports framing. The instruction to remove the role toggle, `principal.current` fetch, and any `lib/viewer.ts` read from this screen stands unchanged — the real audience now legitimately shows the same view to every role.
+
+**9. Docs and the stage report — corrected.** `docs/stage-reports/STAGE-UI-3_Bench_Forecast.md` (Codex's pre-build report) is superseded, not deleted, by the real stage report once implementation completes — keep both, the pre-build report as historical record of the trace, per this project's own practice of never retroactively editing a prior report. Do not edit `F365`, `F366`, `F367`, `F368`, `F369`, `VRS-F005`, or `docs/Foundations_Findings.md` — the reviewer already updated them for this stage.
+
+**Done criteria, corrected additions:**
+- `bench-forecast.ts`'s return shape and `groupBench` match items 2's five corrections exactly; its existing unit test passes plus new coverage for each addition.
+- `contextualIntelligence.get` dispatches to `getLocalContextualIntelligence` only; a separate `contextualIntelligence.getProtected` on-demand call supplies Tier 2 fields.
+- Ghost promotion is submitted via `client.protectedMutate`.
+- `benchForecast.getCost` is called per bench region, not per employee-window; each qualifying amber region shows its own figure or correctly shows none beyond the 45-day horizon.
+- No client-side Manager/role filter exists anywhere in this screen's files; `VRS-F005`'s Manager-visibility language matches the real, `F292`-governed audience.
+
+---
+
 ## Part 4 — After Stage 7
 
 ---
