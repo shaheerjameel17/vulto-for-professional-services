@@ -92,6 +92,13 @@ async function benchDaysForWindow(
   window: { readonly fromDate: string; readonly toDate: string },
   guard: WorkingDaysReadGuard,
 ): Promise<string[]> {
+  const employee = await getNode(tx, workspaceId, employeeId);
+  if (!employee || employee.isSoftDeleted || employee.nodeType !== "Employee")
+    throw new Error("not-found");
+  const fromDate = [window.fromDate, String(employee.record["start_date"])]
+    .sort()
+    .at(-1)!;
+  if (fromDate > window.toDate) return [];
   const assignments = await assignmentsFor(tx, workspaceId, employeeId);
   // F283: a Pitch day is neither an Assignment day nor an uncovered bench day.
   // This trusted Tier 0 input read exposes only derived days to the caller.
@@ -108,7 +115,7 @@ async function benchDaysForWindow(
       .map((entry) => String(entry.record["date"])),
   );
   const benchDays: string[] = [];
-  for (const date of isoDatesInclusive(window.fromDate, window.toDate)) {
+  for (const date of isoDatesInclusive(fromDate, window.toDate)) {
     const day = await resolvedDayOn(tx, workspaceId, employeeId, date, guard);
     if (
       day.isWorking &&
@@ -264,6 +271,7 @@ async function utilizationTotals(
       employee.node.nodeId,
     );
     for (const date of isoDatesInclusive(window.from_date, window.to_date)) {
+      if (date < String(employee.node.record["start_date"])) continue;
       const day = await resolvedDayOn(
         tx,
         principal.workspaceId,
@@ -441,6 +449,7 @@ export async function getBenchForecastCosts(
     let total = 0;
     const yearlyDenominators = new Map<string, number>();
     for (const date of isoDatesInclusive(region.fromDate, region.toDate)) {
+      if (date < String(employee.record["start_date"])) continue;
       const day = await resolvedDayOn(
         tx,
         principal.workspaceId,
