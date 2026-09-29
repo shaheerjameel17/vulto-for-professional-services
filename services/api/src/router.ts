@@ -595,8 +595,7 @@ export const appRouter = t.router({
         ctx.res.header("Cache-Control", "no-store");
         return db.transaction((tx) =>
           getBenchForecastCosts(tx, getKeyServices(), ctx.principal, {
-            employeeIds: input.employee_ids,
-            window: input.window,
+            regions: input.regions,
           }),
         );
       }),

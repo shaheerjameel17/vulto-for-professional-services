@@ -80,8 +80,20 @@ export const benchForecastGetInputSchema = z
 
 export const benchForecastCostInputSchema = z
   .object({
-    employee_ids: z.array(uuidV4Schema).max(500),
-    window: benchForecastWindowSchema,
+    regions: z
+      .array(
+        z
+          .object({
+            employeeId: uuidV4Schema,
+            fromDate: z.iso.date(),
+            toDate: z.iso.date(),
+          })
+          .strict()
+          .refine((region) => region.fromDate <= region.toDate, {
+            message: "toDate must be on or after fromDate",
+          }),
+      )
+      .max(500),
   })
   .strict();
 

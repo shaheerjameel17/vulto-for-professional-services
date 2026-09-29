@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Info, SlidersHorizontal } from "lucide-react";
+import { benchForecastGetQuery, type BenchForecastRow } from "@vulto/graph";
 import {
   Button,
   Content,
   Icon,
+  MultiSelect,
   PageHeader,
   Panel,
   Stat,
@@ -16,8 +18,21 @@ import {
   TooltipProvider,
   useShortcuts,
 } from "@vulto/ui";
-import { buildForecast, DAY_WIDTH, formatMoney, type Horizon } from "../../lib/bench";
-import { canSeeCompensation, cohortIdsFor, type ViewerRole } from "../../lib/viewer";
+import {
+  adaptForecast,
+  DAY_WIDTH,
+  forecastWindow,
+  formatMoney,
+  regionKey,
+  type BenchCost,
+  type Horizon,
+} from "../../lib/bench";
+import {
+  fetchBenchAggregate,
+  fetchBenchCosts,
+  type AggregateAnswer,
+} from "../../lib/forecast-server";
+import { useShellBootstrap } from "../../components/shell-bootstrap";
 import { usePanel } from "../../components/panel-context";
 import { ForecastPanel } from "../../components/ForecastPanel";
 
@@ -38,28 +53,167 @@ import { ForecastPanel } from "../../components/ForecastPanel";
  * Panel.
  */
 
-/** Prototype furniture. The only way to see the restricted state (F5, F6).
- * The role vocabulary and the cohort rule live in `lib/viewer`; this screen
- * narrows them to the two roles whose difference it can actually show. */
-type ForecastViewer = Extract<ViewerRole, "owner" | "manager">;
-
 export default function BenchForecastPage() {
+  const { client, workspaceId, userId } = useShellBootstrap();
   const [horizon, setHorizon] = useState<Horizon>(90);
-  const [role, setRole] = useState<ForecastViewer>("owner");
+  const [sourceRows, setSourceRows] = useState<readonly BenchForecastRow[]>([]);
+  const [projects, setProjects] = useState<readonly { id: string; name: string }[]>([]);
+  const [costs, setCosts] = useState<Map<string, BenchCost | null>>(new Map());
+  const [aggregate, setAggregate] = useState<AggregateAnswer | null>(null);
+  const [skillIds, setSkillIds] = useState<string[]>([]);
+  const [seniorityLevels, setSeniorityLevels] = useState<string[]>([]);
+  const [departments, setDepartments] = useState<string[]>([]);
+  const [entityIds, setEntityIds] = useState<string[]>([]);
+  const [availability, setAvailability] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string | undefined>();
   const [todayNonce, setTodayNonce] = useState(0);
 
   const filtersRef = useRef<HTMLButtonElement>(null);
   const { setPanel } = usePanel();
 
-  const compensationVisible = canSeeCompensation(role);
-
+  const today = new Date().toISOString().slice(0, 10);
+  const window = useMemo(() => forecastWindow(horizon, today), [horizon, today]);
+  const filters = useMemo(
+    () => ({
+      ...(skillIds.length ? { skillIds } : {}),
+      ...(seniorityLevels.length
+        ? {
+            seniorityLevels: seniorityLevels as (
+              "Junior" | "Mid" | "Senior" | "Lead" | "Principal" | "Director" | "CLevel"
+            )[],
+          }
+        : {}),
+      ...(departments.length ? { departments } : {}),
+      ...(entityIds.length ? { entityIds } : {}),
+      ...(availability
+        ? { availability: { fromDate: today, toDate: window.to_date } }
+        : {}),
+    }),
+    [
+      skillIds,
+      seniorityLevels,
+      departments,
+      entityIds,
+      availability,
+      today,
+      window.to_date,
+    ],
+  );
+  useEffect(
+    () =>
+      client.subscribe(benchForecastGetQuery(window, filters), ({ result }) => {
+        if (result.kind === "device-query" && result.name === "benchForecast.get") {
+          setSourceRows(result.data.rows);
+          setProjects(result.data.projects);
+        }
+      }),
+    [client, window, filters],
+  );
+  useEffect(() => {
+    const controller = new AbortController();
+    setAggregate(null);
+    void fetchBenchAggregate(
+      { workspace_id: workspaceId, window, filters },
+      controller.signal,
+    )
+      .then(setAggregate)
+      .catch(() => {});
+    return () => controller.abort();
+  }, [workspaceId, window, filters]);
+  useEffect(() => {
+    const controller = new AbortController();
+    const regions = sourceRows.flatMap((row) =>
+      row.benchPeriods.map((period) => ({
+        employeeId: row.employeeId,
+        fromDate: period.fromDate,
+        toDate: period.toDate,
+      })),
+    );
+    setCosts(new Map());
+    if (regions.length > 0)
+      void fetchBenchCosts({ regions }, controller.signal)
+        .then((answer) =>
+          setCosts(
+            new Map(
+              answer.costs.map((item) => [
+                regionKey(item.employeeId, item.fromDate, item.toDate),
+                item.cost,
+              ]),
+            ),
+          ),
+        )
+        .catch(() => {});
+    return () => controller.abort();
+  }, [sourceRows]);
   const forecast = useMemo(
-    () => buildForecast(horizon, compensationVisible, cohortIdsFor(role)),
-    [horizon, compensationVisible, role],
+    () => adaptForecast(sourceRows, horizon, today, costs),
+    [sourceRows, horizon, today, costs],
+  );
+  const filterOptions = useMemo(
+    () => ({
+      skills: [
+        ...new Map(
+          sourceRows.flatMap((row) =>
+            row.skills.map(
+              (skill) => [skill.id, { value: skill.id, label: skill.name }] as const,
+            ),
+          ),
+        ).values(),
+      ],
+      seniority: [
+        ...new Set(
+          sourceRows
+            .map((row) => row.employee["seniority_level"])
+            .filter((value): value is string => typeof value === "string"),
+        ),
+      ].map((value) => ({ value, label: value })),
+      departments: [
+        ...new Set(
+          sourceRows
+            .map((row) => row.employee["department"])
+            .filter((value): value is string => typeof value === "string"),
+        ),
+      ].map((value) => ({ value, label: value })),
+      entities: [
+        ...new Map(
+          sourceRows
+            .filter((row) => row.entityId !== null)
+            .map(
+              (row) =>
+                [
+                  row.entityId!,
+                  { value: row.entityId!, label: row.entityName ?? row.entityId! },
+                ] as const,
+            ),
+        ).values(),
+      ],
+    }),
+    [sourceRows],
   );
 
   const selected = forecast.rows.find((row) => row.id === selectedId);
+  const visibleCosts = forecast.rows
+    .filter((row) => !row.ghost)
+    .flatMap((row) =>
+      row.source.benchPeriods.map((period) =>
+        costs.get(regionKey(row.id, period.fromDate, period.toDate)),
+      ),
+    )
+    .filter((value): value is BenchCost => value !== null && value !== undefined);
+  const totalsByCurrency = new Map<string, number>();
+  for (const value of visibleCosts) {
+    const currency = value.currency ?? "GBP";
+    totalsByCurrency.set(
+      currency,
+      (totalsByCurrency.get(currency) ?? 0) + value.amount,
+    );
+  }
+  const totalCostLabel = [...totalsByCurrency]
+    .map(([currency, amount]) => formatMoney(amount, currency))
+    .join(" · ");
+  const utilization = aggregate?.aggregateUtilization;
+  const ghostContribution = aggregate?.ghostContribution;
 
   // The Panel is owned by the shell, so the screen pushes content into it.
   useEffect(() => {
@@ -74,11 +228,16 @@ export default function BenchForecastPage() {
           dashedAvatar={selected.ghost}
           onClose={() => setSelectedId(undefined)}
         >
-          <ForecastPanel row={selected} canSeeCompensation={compensationVisible} />
+          <ForecastPanel
+            row={selected}
+            client={client}
+            callerUserId={userId}
+            projects={projects}
+          />
         </Panel>
       ) : null,
     );
-  }, [selected, compensationVisible, setPanel]);
+  }, [selected, client, userId, projects, setPanel]);
 
   // Clear the panel when leaving the screen.
   useEffect(() => () => setPanel(null), [setPanel]);
@@ -96,10 +255,16 @@ export default function BenchForecastPage() {
     keys: {
       j: () => moveSelection(1),
       k: () => moveSelection(-1),
+      Enter: () => {
+        if (!selectedId && forecast.rows[0]) setSelectedId(forecast.rows[0].id);
+      },
       "1": () => setHorizon(30),
       "2": () => setHorizon(90),
       "3": () => setHorizon(180),
-      f: () => filtersRef.current?.focus(),
+      f: () => {
+        setFiltersOpen(true);
+        filtersRef.current?.focus();
+      },
       t: () => setTodayNonce((value) => value + 1),
     },
     onEscape: () => setSelectedId(undefined),
@@ -137,28 +302,6 @@ export default function BenchForecastPage() {
               <Icon icon={Info} size={14} />
             </button>
           </Tooltip>
-        }
-        actions={
-          // Prototype furniture: VRS-F005's restricted state is one of the
-          // things worth looking at, and this is the only way to see it.
-          // Small, and in the title row rather than the controls row, so it
-          // reads as scaffolding beside the page identity rather than as a
-          // screen control a real user would touch.
-          <div className="flex items-center gap-2">
-            <Text variant="micro" className="text-text-tertiary">
-              Prototype viewer
-            </Text>
-            <ToggleGroup<ForecastViewer>
-              label="Viewing as"
-              value={role}
-              onChange={setRole}
-              size="sm"
-              options={[
-                { value: "owner", label: "Owner" },
-                { value: "manager", label: "Manager" },
-              ]}
-            />
-          </div>
         }
       />
 
@@ -199,6 +342,7 @@ export default function BenchForecastPage() {
                 icon={SlidersHorizontal}
                 iconSize={14}
                 aria-label="Filter the cohort"
+                onClick={() => setFiltersOpen((open) => !open)}
               />
             </Tooltip>
             {/* FDN-44: `md`, matching the filter button beside it. At `sm` the
@@ -215,6 +359,48 @@ export default function BenchForecastPage() {
               </Button>
             </Tooltip>
           </div>
+
+          {filtersOpen ? (
+            <div className="flex items-center gap-2" aria-label="Forecast filters">
+              <MultiSelect
+                label="Skill"
+                allLabel="All skills"
+                value={skillIds}
+                options={filterOptions.skills}
+                onChange={setSkillIds}
+                searchable
+              />
+              <MultiSelect
+                label="Seniority"
+                allLabel="All levels"
+                value={seniorityLevels}
+                options={filterOptions.seniority}
+                onChange={setSeniorityLevels}
+              />
+              <MultiSelect
+                label="Department"
+                allLabel="All departments"
+                value={departments}
+                options={filterOptions.departments}
+                onChange={setDepartments}
+              />
+              <MultiSelect
+                label="Entity"
+                allLabel="All entities"
+                value={entityIds}
+                options={filterOptions.entities}
+                onChange={setEntityIds}
+              />
+              <Button
+                variant="secondary"
+                size="md"
+                onClick={() => setAvailability((value) => !value)}
+                aria-pressed={availability}
+              >
+                Available
+              </Button>
+            </div>
+          ) : null}
 
           <div className="flex items-center">
             {/*
@@ -233,8 +419,14 @@ export default function BenchForecastPage() {
              * shared baseline that ignores the row they sit in. */}
             <div className="flex items-center gap-10">
               <Stat
-                label={`Utilization${forecast.ghostContribution > 0 ? ` · +${forecast.ghostContribution}% planned` : ""}`}
-                value={`${forecast.utilization}%`}
+                label={`Utilization${typeof ghostContribution === "number" && ghostContribution > 0 ? ` · +${Math.round(ghostContribution * 100)}% planned` : ""}`}
+                value={
+                  typeof utilization === "number"
+                    ? `${Math.round(utilization * 100)}%`
+                    : utilization?.state === "suppressed"
+                      ? "Restricted"
+                      : "—"
+                }
                 scale="numeric-md"
                 labelPlacement="below"
                 className="items-end text-right"
@@ -246,10 +438,10 @@ export default function BenchForecastPage() {
                 labelPlacement="below"
                 className="items-end text-right"
               />
-              {compensationVisible ? (
+              {visibleCosts.length > 0 ? (
                 <Stat
                   label={`Unrecovered · next ${forecast.costHorizonDays} days`}
-                  value={formatMoney(forecast.totalBenchCost)}
+                  value={totalCostLabel}
                   scale="numeric-md"
                   labelPlacement="below"
                   className="items-end text-right"
@@ -278,6 +470,7 @@ export default function BenchForecastPage() {
               dayWidth={DAY_WIDTH[horizon]}
               selectedRowId={selectedId}
               onSelectRow={setSelectedId}
+              panelOpen={selectedId !== undefined}
               scrollToTodayNonce={todayNonce}
             />
           </div>

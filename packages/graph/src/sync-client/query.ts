@@ -8,6 +8,9 @@ import {
   notificationUnreadActionCount,
 } from "../queries/notifications";
 import { searchQuery } from "../queries/search";
+import { getBenchForecast } from "../queries/bench-forecast";
+import { getLocalContextualIntelligence } from "../queries/contextual-intelligence";
+import { evaluateConflict } from "../queries/conflict-check";
 import type { SqlValue, SyncDatabase } from "./database";
 
 /**
@@ -65,6 +68,21 @@ export type CacheQueryResult =
       readonly kind: "device-query";
       readonly name: "search.query";
       readonly data: Awaited<ReturnType<typeof searchQuery>>;
+    }
+  | {
+      readonly kind: "device-query";
+      readonly name: "benchForecast.get";
+      readonly data: Awaited<ReturnType<typeof getBenchForecast>>;
+    }
+  | {
+      readonly kind: "device-query";
+      readonly name: "contextualIntelligence.get";
+      readonly data: Awaited<ReturnType<typeof getLocalContextualIntelligence>>;
+    }
+  | {
+      readonly kind: "device-query";
+      readonly name: "conflictCheck.evaluate";
+      readonly data: Awaited<ReturnType<typeof evaluateConflict>>;
     }
   | { readonly kind: "node-get"; readonly node: CacheNode | null }
   | {
@@ -144,6 +162,27 @@ export async function runCacheQuery(
             kind: query.kind,
             name: query.name,
             data: await searchQuery(database, query.args),
+          };
+        case "benchForecast.get":
+          return {
+            kind: query.kind,
+            name: query.name,
+            data: await getBenchForecast(database, query.args),
+          };
+        case "contextualIntelligence.get":
+          return {
+            kind: query.kind,
+            name: query.name,
+            data: await getLocalContextualIntelligence(
+              database,
+              query.args.employee_id,
+            ),
+          };
+        case "conflictCheck.evaluate":
+          return {
+            kind: query.kind,
+            name: query.name,
+            data: await evaluateConflict(database, query.args),
           };
       }
       throw new Error("Unreachable device query name");

@@ -377,17 +377,23 @@ export async function getBenchForecastCosts(
   services: KeyServices,
   principal: Principal,
   input: {
-    readonly employeeIds: readonly string[];
-    readonly window: BenchForecastWindow;
+    readonly regions: readonly {
+      readonly employeeId: string;
+      readonly fromDate: string;
+      readonly toDate: string;
+    }[];
   },
   context: InterceptorContext = {},
+  today = new Date().toISOString().slice(0, 10),
 ) {
   const allowed = new Set(
     (await listEmployees(tx, principal, {}, context)).map(
       ({ employeeId }) => employeeId,
     ),
   );
-  const ids = [...new Set(input.employeeIds)].filter((id) => allowed.has(id));
+  const ids = [...new Set(input.regions.map((region) => region.employeeId))].filter(
+    (id) => allowed.has(id),
+  );
   const protectedValues = await readProtected(
     tx,
     services,
@@ -402,30 +408,39 @@ export async function getBenchForecastCosts(
         : [],
     ),
   );
-  const costs: Record<string, { amount: number; currency: string | null } | null> = {};
+  const costs: {
+    employeeId: string;
+    fromDate: string;
+    toDate: string;
+    cost: { amount: number; currency: string | null } | null;
+  }[] = [];
   const guard = readGuard(tx, principal, context);
-  for (const requestedId of input.employeeIds) {
+  for (const region of input.regions) {
+    const requestedId = region.employeeId;
+    const result = (cost: { amount: number; currency: string | null } | null) =>
+      costs.push({ ...region, cost });
+    if (region.fromDate >= addIsoDays(today, 45)) {
+      result(null);
+      continue;
+    }
     const value = compensation.get(requestedId);
     const employee = allowed.has(requestedId)
       ? await getNode(tx, principal.workspaceId, requestedId)
       : null;
     if (!value || !employee) {
-      costs[requestedId] = null;
+      result(null);
       continue;
     }
     const amount = value["base_compensation_amount"];
     const frequency = value["compensation_frequency"];
     if (typeof amount !== "number" || typeof frequency !== "string") {
-      costs[requestedId] = null;
+      result(null);
       continue;
     }
     const assignments = await assignmentsFor(tx, principal.workspaceId, requestedId);
     let total = 0;
     const yearlyDenominators = new Map<string, number>();
-    for (const date of isoDatesInclusive(
-      input.window.from_date,
-      input.window.to_date,
-    )) {
+    for (const date of isoDatesInclusive(region.fromDate, region.toDate)) {
       const day = await resolvedDayOn(
         tx,
         principal.workspaceId,
@@ -473,10 +488,10 @@ export async function getBenchForecastCosts(
         });
       }
     }
-    costs[requestedId] = {
+    result({
       amount: total,
       currency: (value["compensation_currency"] as string | null | undefined) ?? null,
-    };
+    });
   }
   return { costs };
 }

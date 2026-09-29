@@ -393,19 +393,49 @@ describe("VRS-F005 — The Bench Forecast", () => {
       ),
     );
     const owner = await db.transaction((tx) =>
-      getBenchForecastCosts(tx, getKeyServices(), w.principals.owner!, {
-        employeeIds: [employeeId],
-        window: { from_date: "2027-12-31", to_date: "2028-01-03" },
-      }),
+      getBenchForecastCosts(
+        tx,
+        getKeyServices(),
+        w.principals.owner!,
+        {
+          regions: [{ employeeId, fromDate: "2027-12-31", toDate: "2028-01-03" }],
+        },
+        {},
+        "2027-12-30",
+      ),
     );
-    expect(owner.costs[employeeId]?.amount).toBeCloseTo(36500 / 261 + 36500 / 260);
+    expect(owner.costs[0]?.cost?.amount).toBeCloseTo(36500 / 261 + 36500 / 260);
+    const far = await db.transaction((tx) =>
+      getBenchForecastCosts(
+        tx,
+        getKeyServices(),
+        w.principals.owner!,
+        {
+          regions: [
+            { employeeId, fromDate: "2027-12-31", toDate: "2028-01-03" },
+            { employeeId, fromDate: "2028-03-01", toDate: "2028-03-02" },
+          ],
+        },
+        {},
+        "2027-12-30",
+      ),
+    );
+    expect(far.costs).toHaveLength(2);
+    expect(far.costs[0]?.cost?.amount).toBeCloseTo(owner.costs[0]!.cost!.amount);
+    expect(far.costs[1]?.cost).toBeNull();
     const unauthorized = await db.transaction((tx) =>
-      getBenchForecastCosts(tx, getKeyServices(), w.principals.team!, {
-        employeeIds: [employeeId],
-        window: { from_date: "2027-12-31", to_date: "2028-01-03" },
-      }),
+      getBenchForecastCosts(
+        tx,
+        getKeyServices(),
+        w.principals.team!,
+        {
+          regions: [{ employeeId, fromDate: "2027-12-31", toDate: "2028-01-03" }],
+        },
+        {},
+        "2027-12-30",
+      ),
     );
-    expect(unauthorized.costs[employeeId]).toBeNull();
+    expect(unauthorized.costs[0]?.cost).toBeNull();
   }, 15_000);
 
   it("uses the real interceptor for protected Panel fields and never requests wellness", async () => {

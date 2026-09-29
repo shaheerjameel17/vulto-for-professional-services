@@ -12,9 +12,11 @@ import { localEdges, localNodes, type LocalEdge, type LocalNode } from "./cache-
 
 export interface BenchAssignmentBar {
   readonly assignmentId: string;
+  readonly version: number;
   readonly projectId: string;
   readonly projectName: string | null;
   readonly clientId: string | null;
+  readonly clientName: string | null;
   readonly startDate: string;
   readonly endDate: string;
   readonly billablePercentage: number;
@@ -29,6 +31,17 @@ export interface BenchPeriod {
 export interface BenchForecastRow {
   readonly employeeId: string;
   readonly employee: Readonly<Record<string, unknown>>;
+  readonly entityId: string | null;
+  readonly entityName: string | null;
+  readonly skills: readonly { readonly id: string; readonly name: string }[];
+  readonly ghostResourceId: string | null;
+  readonly ghostResourceVersion: number | null;
+  readonly revenueGapAlertId: string | null;
+  readonly calendarDays: readonly {
+    readonly date: string;
+    readonly isWorking: boolean;
+    readonly note: string | null;
+  }[];
   readonly assignments: readonly BenchAssignmentBar[];
   readonly benchPeriods: readonly BenchPeriod[];
   readonly benchDayCount: number;
@@ -49,23 +62,29 @@ const currentOpenEdge = (
   );
 
 const groupBench = (
-  days: readonly { date: string; fraction: number }[],
+  days: readonly { date: string; fraction: number; eligible: boolean }[],
 ): BenchPeriod[] => {
   const groups: BenchPeriod[] = [];
+  let start: string | null = null;
+  let end: string | null = null;
+  let workingDays = 0;
+  const close = () => {
+    if (start !== null && end !== null && workingDays > 0)
+      groups.push({ fromDate: start, toDate: end, workingDays });
+    start = null;
+    end = null;
+    workingDays = 0;
+  };
   for (const day of days) {
-    const prior = groups.at(-1);
-    const priorNext = prior ? new Date(`${prior.toDate}T00:00:00.000Z`) : undefined;
-    priorNext?.setUTCDate(priorNext.getUTCDate() + 1);
-    if (prior && priorNext?.toISOString().slice(0, 10) === day.date) {
-      groups[groups.length - 1] = {
-        ...prior,
-        toDate: day.date,
-        workingDays: prior.workingDays + day.fraction,
-      };
-    } else {
-      groups.push({ fromDate: day.date, toDate: day.date, workingDays: day.fraction });
+    if (!day.eligible) {
+      close();
+      continue;
     }
+    start ??= day.date;
+    end = day.date;
+    workingDays += day.fraction;
   }
+  close();
   return groups;
 };
 
@@ -86,7 +105,10 @@ export async function getBenchForecast(
     readonly filters?: BenchForecastFilters;
     readonly now?: string;
   },
-): Promise<{ readonly rows: readonly BenchForecastRow[] }> {
+): Promise<{
+  readonly rows: readonly BenchForecastRow[];
+  readonly projects: readonly { readonly id: string; readonly name: string }[];
+}> {
   const now = input.now ?? new Date().toISOString();
   const nodes = await localNodes(database, [
     "Employee",
@@ -100,6 +122,8 @@ export async function getBenchForecast(
     "Holiday",
     "WorkingPattern",
     "Skill",
+    "TimesheetEntry",
+    "RevenueGapAlert",
   ]);
   const edges = await localEdges(database, [
     "scoped_to_entity",
@@ -128,6 +152,10 @@ export async function getBenchForecast(
   )) {
     const entityEdge = currentOpenEdge(edges, employee.nodeId, "scoped_to_entity", now);
     const entityId = entityEdge?.toNodeId ?? null;
+    const entityName =
+      entityId === null
+        ? null
+        : ((byId.get(entityId)?.record["name"] as string | null | undefined) ?? null);
     const calendarEdge =
       entityId === null
         ? undefined
@@ -141,6 +169,27 @@ export async function getBenchForecast(
     if (!calendar) continue;
     const employeeAssignments = assignments.filter(
       (assignment) => assignment.record["employee_id"] === employee.nodeId,
+    );
+    const ghostResource =
+      employee.record["employee_type"] === "Ghost"
+        ? nodes.find(
+            (node) =>
+              node.nodeType === "GhostResource" &&
+              node.record["ghost_employee_id"] === employee.nodeId,
+          )
+        : undefined;
+    const pitchDates = new Set(
+      nodes
+        .filter(
+          (node) =>
+            node.nodeType === "TimesheetEntry" &&
+            node.record["employee_id"] === employee.nodeId &&
+            node.record["time_category"] === "Pitch" &&
+            typeof node.record["date"] === "string" &&
+            derivedFrom <= node.record["date"] &&
+            node.record["date"] <= derivedTo,
+        )
+        .map((node) => String(node.record["date"])),
     );
     const holidayNodes = nodes.filter(
       (node) =>
@@ -156,7 +205,10 @@ export async function getBenchForecast(
         const node = byId.get(edge.fromNodeId);
         return node?.nodeType === "WorkingPattern" ? [node] : [];
       });
-    const benchDays: { date: string; fraction: number }[] = [];
+    const derivedDayStates: { date: string; fraction: number; eligible: boolean }[] =
+      [];
+    const calendarDays: { date: string; isWorking: boolean; note: string | null }[] =
+      [];
     for (const date of derivedDates) {
       const pattern = patterns
         .filter((candidate) => {
@@ -193,15 +245,41 @@ export async function getBenchForecast(
       const covered = employeeAssignments.some((assignment) =>
         assignmentCoversDate(assignment, date),
       );
-      if (resolved.isWorking && !covered) {
-        benchDays.push({ date, fraction: resolved.dayFraction });
-      }
+      const holiday = holidayNodes.find(
+        (candidate) =>
+          candidate.record["date"] === date &&
+          (candidate.record["applies_to_locations"] === null ||
+            (Array.isArray(candidate.record["applies_to_locations"]) &&
+              candidate.record["applies_to_locations"].includes(
+                employee.record["location"],
+              ))),
+      );
+      if (visibleDates.includes(date))
+        calendarDays.push({
+          date,
+          isWorking: resolved.isWorking,
+          note:
+            typeof holiday?.record["name"] === "string" ? holiday.record["name"] : null,
+        });
+      const eligible = !covered && !pitchDates.has(date);
+      derivedDayStates.push({
+        date,
+        eligible,
+        fraction: eligible && resolved.isWorking ? resolved.dayFraction : 0,
+      });
     }
+    const benchDays = derivedDayStates.filter((day) => day.fraction > 0);
     const skillIds = edges
       .filter(
         (edge) => edge.edgeType === "has_skill" && edge.fromNodeId === employee.nodeId,
       )
       .map((edge) => edge.toNodeId);
+    const skills = skillIds.flatMap((id) => {
+      const skill = byId.get(id);
+      return skill?.nodeType === "Skill" && typeof skill.record["name"] === "string"
+        ? [{ id, name: skill.record["name"] }]
+        : [];
+    });
     if (
       !matchesBenchForecastFilters(
         {
@@ -230,11 +308,18 @@ export async function getBenchForecast(
         const clientEdge = edges.find(
           (edge) => edge.edgeType === "belongs_to" && edge.fromNodeId === projectId,
         );
+        const clientId = clientEdge?.toNodeId ?? null;
         return {
           assignmentId: assignment.nodeId,
+          version: assignment.version,
           projectId,
           projectName: (project?.record["name"] as string | null | undefined) ?? null,
-          clientId: clientEdge?.toNodeId ?? null,
+          clientId,
+          clientName:
+            clientId === null
+              ? null
+              : ((byId.get(clientId)?.record["name"] as string | null | undefined) ??
+                null),
           startDate: String(assignment.record["start_date"]),
           endDate: String(assignment.record["end_date"]),
           billablePercentage: Number(assignment.record["billable_percentage"]),
@@ -246,10 +331,36 @@ export async function getBenchForecast(
     rows.push({
       employeeId: employee.nodeId,
       employee: employee.record,
+      entityId,
+      entityName,
+      skills,
+      ghostResourceId: ghostResource?.nodeId ?? null,
+      ghostResourceVersion: ghostResource?.version ?? null,
+      revenueGapAlertId:
+        nodes.find(
+          (node) =>
+            node.nodeType === "RevenueGapAlert" &&
+            node.lifecycleStatus === "Active" &&
+            node.record["employee_id"] === employee.nodeId,
+        )?.nodeId ?? null,
+      calendarDays,
       assignments: bars,
-      benchPeriods: groupBench(visibleBenchDays),
+      benchPeriods: groupBench(
+        derivedDayStates.filter(({ date }) => visibleDates.includes(date)),
+      ),
       benchDayCount: visibleBenchDays.reduce((sum, day) => sum + day.fraction, 0),
     });
   }
-  return { rows };
+  return {
+    rows,
+    projects: nodes
+      .filter(
+        (node) => node.nodeType === "Project" && node.lifecycleStatus === "Active",
+      )
+      .map((node) => ({
+        id: node.nodeId,
+        name:
+          typeof node.record["name"] === "string" ? node.record["name"] : node.nodeId,
+      })),
+  };
 }

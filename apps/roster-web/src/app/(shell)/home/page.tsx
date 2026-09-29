@@ -28,7 +28,7 @@ import {
   viewerEmployee,
   type ViewerRole,
 } from "../../../lib/viewer";
-import { buildForecast, formatMoney } from "../../../lib/bench";
+import { buildForecast, formatMoney } from "../../../lib/prototype-bench";
 import {
   MANAGER_QUEUE,
   type ManagerQueueItem,

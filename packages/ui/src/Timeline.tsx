@@ -133,6 +133,8 @@ export type TimelineProps = {
   todayIndex: number;
   dayWidth: number;
   selectedRowId?: string;
+  /** Forecast-only: keep the selected live region clear of the overlay Panel. */
+  panelOpen?: boolean;
   onSelectRow?: (rowId: string) => void;
   /** Bumped by the caller to scroll today into view, per VRS-F005's `T`. */
   scrollToTodayNonce?: number;
@@ -156,6 +158,7 @@ export function Timeline({
   todayIndex,
   dayWidth,
   selectedRowId,
+  panelOpen,
   onSelectRow,
   scrollToTodayNonce,
 }: TimelineProps) {
@@ -267,6 +270,53 @@ export function Timeline({
     const target = Math.max(0, todayIndex * dayWidth - dayWidth * 4);
     scroller.current.scrollTo({ left: target, behavior: "smooth" });
   }, [scrollToTodayNonce, todayIndex, dayWidth]);
+
+  useEffect(() => {
+    const node = scroller.current;
+    if (!node || !panelOpen || !selectedRowId || window.innerWidth >= 1536) return;
+    const row = rows.find((candidate) => candidate.id === selectedRowId);
+    if (!row) return;
+    const regions = [...row.bars, ...row.bench]
+      .filter((region) => region.start >= 0)
+      .sort((left, right) => left.start - right.start);
+    const live =
+      regions.find(
+        (region) =>
+          region.start <= todayIndex && todayIndex < region.start + region.span,
+      ) ?? regions.find((region) => region.start > todayIndex);
+    if (!live) return;
+    const labelWidth =
+      node.querySelector<HTMLElement>("[data-timeline-label]")?.offsetWidth ?? 220;
+    const available = Math.max(0, node.clientWidth - labelWidth - 360);
+    const right = (live.start + live.span) * dayWidth;
+    const target = Math.max(0, right - available);
+    if (target <= node.scrollLeft) return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const token = getComputedStyle(document.documentElement)
+      .getPropertyValue("--vt-motion-base")
+      .trim();
+    const duration = reduced
+      ? 0
+      : token.endsWith("ms")
+        ? Number(token.slice(0, -2))
+        : Number(token.slice(0, -1)) * 1000;
+    if (!duration) {
+      node.scrollLeft = target;
+      return;
+    }
+    const start = node.scrollLeft;
+    let frame = 0;
+    let startTime: number | null = null;
+    const step = (time: number) => {
+      startTime ??= time;
+      const progress = Math.min(1, (time - startTime) / duration);
+      const eased = 1 - (1 - progress) ** 3;
+      node.scrollLeft = start + (target - start) * eased;
+      if (progress < 1) frame = requestAnimationFrame(step);
+    };
+    frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(frame);
+  }, [panelOpen, selectedRowId, rows, todayIndex, dayWidth]);
 
   return (
     <TooltipProvider>

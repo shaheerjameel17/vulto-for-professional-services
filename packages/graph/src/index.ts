@@ -6,6 +6,9 @@ export {
   searchDeviceQuery,
   employeeListForDirectoryQuery,
   employeeGetQuery,
+  benchForecastGetQuery,
+  contextualIntelligenceQuery,
+  conflictCheckQuery,
   type GraphQuery,
 } from "./query";
 export { SEARCH_COMMANDS } from "./queries/search-commands";

@@ -12,6 +12,10 @@ const ids = {
   skill: "10000000-0000-4000-8000-000000000006",
   ghostEmployee: "10000000-0000-4000-8000-000000000007",
   ghostAssignment: "10000000-0000-4000-8000-000000000008",
+  ghostResource: "10000000-0000-4000-8000-000000000009",
+  client: "10000000-0000-4000-8000-000000000010",
+  holiday: "10000000-0000-4000-8000-000000000011",
+  pitch: "10000000-0000-4000-8000-000000000012",
 };
 
 afterEach(() => vi.restoreAllMocks());
@@ -60,6 +64,18 @@ describe("the local Bench Forecast query", () => {
       reduced_hours_periods: [],
     });
     await put(ids.project, "Project", { name: "Alpha" });
+    await put(ids.client, "Client", { name: "Acme" });
+    await put(ids.ghostResource, "GhostResource", {
+      ghost_employee_id: ids.ghostEmployee,
+      role_title: "Planned consultant",
+    });
+    await put(ids.holiday, "Holiday", {
+      name: "Founders Day",
+      date: "2026-03-05",
+      calendar_id: ids.calendar,
+      applies_to_locations: null,
+      is_half_day: false,
+    });
     await put(ids.skill, "Skill", { name: "TypeScript" });
     await put(ids.assignment, "Assignment", {
       employee_id: ids.employee,
@@ -129,6 +145,12 @@ describe("the local Bench Forecast query", () => {
       ids.employee,
       ids.skill,
     );
+    await edge(
+      "20000000-0000-4000-8000-000000000006",
+      "belongs_to",
+      ids.project,
+      ids.client,
+    );
     const fetch = vi
       .spyOn(globalThis, "fetch")
       .mockRejectedValue(new TypeError("offline"));
@@ -147,16 +169,47 @@ describe("the local Bench Forecast query", () => {
     expect(result.rows).toHaveLength(2);
     expect(result.rows[0]).toMatchObject({
       employeeId: ids.employee,
-      benchDayCount: 3,
-      assignments: [{ projectId: ids.project, projectName: "Alpha" }],
-      benchPeriods: [{ fromDate: "2026-03-04", toDate: "2026-03-06", workingDays: 3 }],
+      benchDayCount: 2,
+      entityId: ids.entity,
+      entityName: "Entity",
+      calendarDays: [
+        { date: "2026-03-02", isWorking: true },
+        { date: "2026-03-03", isWorking: true },
+        { date: "2026-03-04", isWorking: true },
+        { date: "2026-03-05", isWorking: false, note: "Founders Day" },
+        { date: "2026-03-06", isWorking: true },
+      ],
+      assignments: [
+        {
+          projectId: ids.project,
+          projectName: "Alpha",
+          clientId: ids.client,
+          clientName: "Acme",
+          version: 1,
+        },
+      ],
+      benchPeriods: [{ fromDate: "2026-03-04", toDate: "2026-03-06", workingDays: 2 }],
     });
     expect(result.rows[1]).toMatchObject({
       employeeId: ids.ghostEmployee,
       employee: { employee_type: "Ghost" },
-      benchDayCount: 3,
-      assignments: [{ projectId: ids.project, projectName: "Alpha" }],
-      benchPeriods: [{ fromDate: "2026-03-04", toDate: "2026-03-06", workingDays: 3 }],
+      benchDayCount: 2,
+      ghostResourceId: ids.ghostResource,
+      ghostResourceVersion: 1,
+      assignments: [{ projectId: ids.project, projectName: "Alpha", version: 1 }],
+      benchPeriods: [{ fromDate: "2026-03-04", toDate: "2026-03-06", workingDays: 2 }],
+    });
+    await put(ids.pitch, "TimesheetEntry", {
+      employee_id: ids.employee,
+      time_category: "Pitch",
+      date: "2026-03-04",
+    });
+    const later = await getBenchForecast(database, {
+      window: { from_date: "2026-03-02", to_date: "2026-03-10" },
+      now: "2026-03-01T00:00:00.000Z",
+    });
+    expect(later.rows.find((row) => row.employeeId === ids.employee)).toMatchObject({
+      benchPeriods: [{ fromDate: "2026-03-05", toDate: "2026-03-10", workingDays: 3 }],
     });
     await database.close();
   });
